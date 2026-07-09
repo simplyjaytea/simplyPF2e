@@ -36,10 +36,29 @@
   </fieldset>
 
   {{#if busy}}
-    <div class="spf-busy">
-      <i class="fa-solid fa-spinner fa-spin"></i>
-      {{localize "SIMPLYPF2E.Generator.Busy"}} <span class="spf-model">({{model}})</span>
-    </div>
+    {{#if progress}}
+      <div class="spf-progress">
+        <div class="spf-progress-bar">
+          <div class="spf-progress-fill" style="width: {{progress.percent}}%"></div>
+        </div>
+        <ol class="spf-progress-steps">
+          {{#each progress.steps}}
+            <li class="spf-step-{{this.state}}">
+              {{#if (eq this.state "done")}}<i class="fa-solid fa-check"></i>{{/if}}
+              {{#if (eq this.state "active")}}<i class="fa-solid fa-spinner fa-spin"></i>{{/if}}
+              {{localize this.label}}
+            </li>
+          {{/each}}
+        </ol>
+        <p class="spf-progress-detail">{{progress.detail}}</p>
+        <p class="spf-model">{{model}}</p>
+      </div>
+    {{else}}
+      <div class="spf-busy">
+        <i class="fa-solid fa-spinner fa-spin"></i>
+        {{localize "SIMPLYPF2E.Generator.Busy"}} <span class="spf-model">({{model}})</span>
+      </div>
+    {{/if}}
   {{/if}}
 
   {{#if error}}

@@ -65,6 +65,13 @@ Provider examples:
 
 By default the Forge draws from the PF2e system packs (bestiary ability glossary, spells, feats, equipment). Under **Module Settings → SimplyPF2e → Compendium Sources** you can change that: the module scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you check the ones each category may use — so homebrew compendiums and content modules (e.g. adventure-path packs) become available to the AI. The grounded spell selection reads from your chosen spell packs too, meaning the AI literally sees and picks from your homebrew spell list. Leaving a category empty falls back to the system defaults.
 
+### Troubleshooting slow or stuck generations
+
+- Responses are **streamed**: while generating you'll see a live progress bar with the current step and a character counter. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
+- A **request timeout** setting (default 90 s) aborts the request only if the provider sends *no data* at all for that long, so slow-but-alive generations are never cut off. If you get timeout errors, check the provider's status page and your model name.
+- Make sure **Model** is the exact API identifier from your provider's documentation (for DeepSeek e.g. `deepseek-chat` or `deepseek-reasoner`) — marketing names don't always match the API id. A wrong id normally returns an immediate error, not a hang.
+- Spellcasters make **two** AI calls (concept, then grounded spell selection), so they take roughly twice as long as martial creatures.
+
 > **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is stored in world settings (visible to other GMs of the same world). Use a key you're comfortable with in that context.
 
 ## Known limitations (v0.1)
