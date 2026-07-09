@@ -78,7 +78,17 @@ By default the Forge draws from the PF2e system packs (bestiary ability glossary
 
 - Generated spellcasters use a spontaneous-style entry with 2 slots per rank; adjust on the sheet if you want prepared or innate casting.
 - The benchmark tables were transcribed by hand from GM Core. If you spot a value that disagrees with the book, please open an issue.
-- Elite/weak adjustments, focus spells, and "generate from an existing creature as a template" are on the roadmap.
+- Matched feats are converted to NPC action items (the PF2e system does not allow feat items on NPC actors) — they keep the feat's cost, rules text, and automation.
+
+## To do / Roadmap
+
+- [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
+- [ ] **Batch mode** — "four themed guards for this warlord" in one generation, sharing a single concept call.
+- [ ] **Treasure** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.
+- [ ] **Templates / presets** — GM Core road-map presets (Brute, Sneak, Skirmisher, Spellcaster, ...) and "reskin an existing creature" as a starting template.
+- [ ] **Full PC-power-level characters** — generate complete character-class-strength NPCs (villains, rivals, pregens) built to player-character power budgets.
+- [ ] Elite/weak adjustments and level shifting for existing creatures.
+- [ ] Focus spells for spellcasters.
 
 ## Releasing (for maintainers)
 
