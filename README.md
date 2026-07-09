@@ -75,9 +75,10 @@ By default the Forge draws from the PF2e system packs (bestiary ability glossary
 
 ## Releasing (for maintainers)
 
-Publishing an update is one step, done either way:
+Publishing an update is one step, done any of three ways:
 
-- **From Actions:** go to **Actions → Release → Run workflow** and enter a version like `0.1.1`. The workflow creates the `v0.1.1` release itself.
+- **Push a tag:** `git tag v0.1.1 && git push origin v0.1.1`. The workflow creates the release itself.
+- **From Actions:** go to **Actions → Release → Run workflow** and enter a version like `0.1.1`.
 - **From Releases:** draft and publish a release by hand with a tag like `v0.1.1`.
 
 Either way the workflow stamps the version into `module.json`, builds `module.zip`, and attaches both to the release. Because the install link above points at `releases/latest`, existing users are offered the update automatically and the link never changes.
