@@ -46,7 +46,7 @@ JSON schema (all keys required unless marked optional):
       "glossary": string|null,          // EXACT name of a standard PF2e bestiary glossary ability (e.g. "Grab", "Knockdown", "Frightful Presence", "Attack of Opportunity") if this is one, else null
       "actionType": "action"|"reaction"|"free"|"passive",
       "actions": 1|2|3|null,            // action cost, null unless actionType is "action"
-      "description": string,            // full rules text; may reference "the Extreme/High/Moderate DC" or "moderate damage" and the builder substitutes real numbers
+      "description": string,            // full rules text following the DESCRIPTION CONVENTIONS below
       "traits": string[]
     }
   ],
@@ -63,6 +63,15 @@ JSON schema (all keys required unless marked optional):
 }
 
 SCALE = "extreme"|"high"|"moderate"|"low". SCALE5 additionally allows "terrible".
+
+DESCRIPTION CONVENTIONS for specialAbilities.description — the module converts these exact phrasings into clickable roll links, so follow them precisely:
+- Table-scaled damage: "high damage", "moderate fire damage", "low persistent bleed damage" (scale word, optional "persistent", optional damage type, then "damage"). Use for an ability's main damage so it scales with level.
+- Fixed dice you choose yourself (for small riders): "2d6 fire damage", "1d4 persistent bleed damage".
+- Saving throws: "basic high Reflex save", "moderate Fortitude save", "extreme Will save" (optional "basic", scale word, save name, "save"). Basic saves are for plain damage effects.
+- Skill checks against the creature: "high DC Athletics check".
+- Areas: "30-foot cone", "15-foot burst", "60-foot line", "10-foot emanation".
+- Structure activated abilities as "Frequency ...; Trigger ...; Effect ..." and requirements as "Requirements ...; Effect ...".
+- Never invent flat numeric DCs or attack bonuses; always use the scale words.
 
 Design guidance (GM Core road maps):
 - Pick ONE stat at most to be extreme, and balance it with a low or terrible stat.
