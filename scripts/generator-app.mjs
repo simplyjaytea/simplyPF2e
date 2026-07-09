@@ -36,12 +36,14 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   #error = null;
   #concept = null;
   #resolved = null;
+  #progress = null;
 
   async _prepareContext() {
     return {
       input: this.#input,
       busy: this.#busy,
       error: this.#error,
+      progress: this.#progress,
       hasApiKey: Boolean(getSetting(SETTINGS.apiKey)),
       model: getSetting(SETTINGS.model),
       rarities: [
@@ -106,6 +108,54 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#input = { prompt, level, rarity, allowSpellcasting };
   }
 
+  /** Initialize the step list shown while generating. */
+  #beginProgress(includeSpells) {
+    const defs = [
+      ["concept", "SIMPLYPF2E.Progress.Concept"],
+      ...(includeSpells ? [["spells", "SIMPLYPF2E.Progress.Spells"]] : []),
+      ["match", "SIMPLYPF2E.Progress.Match"]
+    ];
+    this.#progress = {
+      steps: defs.map(([key, label]) => ({ key, label, state: "pending" })),
+      detail: "",
+      percent: 0
+    };
+  }
+
+  /** Mark `key` active, everything before it done, and re-render. */
+  async #setStep(key) {
+    const progress = this.#progress;
+    if (!progress) return;
+    let reached = false;
+    for (const step of progress.steps) {
+      if (step.key === key) {
+        step.state = "active";
+        reached = true;
+      } else {
+        step.state = reached ? "pending" : "done";
+      }
+    }
+    const done = progress.steps.filter((s) => s.state === "done").length;
+    progress.percent = Math.round(((done + 0.5) / progress.steps.length) * 100);
+    progress.detail = "";
+    await this.render();
+  }
+
+  /**
+   * Streaming callback: updates the detail line directly in the DOM so the
+   * counter ticks live without re-rendering the whole application.
+   */
+  #onAIProgress({ phase, chars }) {
+    const progress = this.#progress;
+    if (!progress) return;
+    progress.detail = game.i18n.format(
+      phase === "thinking" ? "SIMPLYPF2E.Progress.Thinking" : "SIMPLYPF2E.Progress.Writing",
+      { chars: chars.toLocaleString() }
+    );
+    const el = this.element?.querySelector(".spf-progress-detail");
+    if (el) el.textContent = progress.detail;
+  }
+
   static async #onGenerate() {
     this.#readForm();
     if (!this.#input.prompt.trim()) {
@@ -114,16 +164,20 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     this.#busy = true;
     this.#error = null;
-    await this.render();
+    this.#beginProgress(this.#input.allowSpellcasting);
     try {
+      await this.#setStep("concept");
       const raw = await generateConcept({
         prompt: this.#input.prompt,
         level: this.#input.level,
         rarity: this.#input.rarity,
-        allowSpellcasting: this.#input.allowSpellcasting
+        allowSpellcasting: this.#input.allowSpellcasting,
+        onProgress: (p) => this.#onAIProgress(p)
       });
       this.#concept = normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity });
+      if (this.#concept.spellcasting) await this.#setStep("spells");
       await this.#refineSpells();
+      await this.#setStep("match");
       this.#resolved = await resolveConcept(this.#concept);
     } catch (err) {
       console.error(`${MODULE_ID} | generation failed`, err);
@@ -132,6 +186,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this.#resolved = null;
     } finally {
       this.#busy = false;
+      this.#progress = null;
       await this.render();
     }
   }
@@ -147,7 +202,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     try {
       const candidates = await getSpellCandidates(spellcasting.tradition, spellcasting.maxRank);
       if (candidates.length) {
-        const spells = await selectSpells({ concept: this.#concept, candidates, maxRank: spellcasting.maxRank });
+        const spells = await selectSpells({
+          concept: this.#concept,
+          candidates,
+          maxRank: spellcasting.maxRank,
+          onProgress: (p) => this.#onAIProgress(p)
+        });
         if (spells.length) spellcasting.spells = spells;
       }
     } catch (err) {

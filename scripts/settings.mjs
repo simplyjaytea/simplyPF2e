@@ -6,6 +6,7 @@ export const SETTINGS = {
   model: "model",
   temperature: "temperature",
   maxTokens: "maxTokens",
+  requestTimeout: "requestTimeout",
   sourcePacks: "sourcePacks"
 };
 
@@ -76,6 +77,16 @@ export function registerSettings(SourcesConfigApp) {
     restricted: true,
     type: Number,
     default: 4000
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.requestTimeout, {
+    name: "SIMPLYPF2E.Settings.RequestTimeout.Name",
+    hint: "SIMPLYPF2E.Settings.RequestTimeout.Hint",
+    scope: "world",
+    config: true,
+    restricted: true,
+    type: Number,
+    default: 90
   });
 }
 

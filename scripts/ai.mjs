@@ -81,11 +81,7 @@ export class AIRequestError extends Error {}
  * Ask the configured model for a creature concept.
  * @returns {Promise<object>} parsed concept JSON
  */
-export async function generateConcept({ prompt, level, rarity, allowSpellcasting }) {
-  const apiKey = getSetting(SETTINGS.apiKey);
-  const baseUrl = String(getSetting(SETTINGS.apiBaseUrl) ?? "").replace(/\/+$/, "");
-  if (!baseUrl) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoBaseUrl"));
-
+export async function generateConcept({ prompt, level, rarity, allowSpellcasting, onProgress }) {
   const userPrompt = [
     `Creature level: ${level}`,
     `Rarity: ${rarity}`,
@@ -94,34 +90,11 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
     `Concept from the GM: ${prompt}`
   ].join("\n");
 
-  const body = {
-    model: getSetting(SETTINGS.model),
-    temperature: Number(getSetting(SETTINGS.temperature)) || 0.8,
-    max_tokens: Number(getSetting(SETTINGS.maxTokens)) || 4000,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userPrompt }
-    ],
-    response_format: { type: "json_object" }
-  };
-
-  let response = await postChatCompletion(baseUrl, apiKey, body);
-  // Some OpenAI-compatible providers reject response_format; retry without it.
-  if (response.status === 400) {
-    delete body.response_format;
-    response = await postChatCompletion(baseUrl, apiKey, body);
-  }
-
-  if (!response.ok) {
-    const detail = await safeErrorDetail(response);
-    throw new AIRequestError(
-      game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
-    );
-  }
-
-  const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"));
+  const content = await requestCompletion({
+    system: SYSTEM_PROMPT,
+    user: userPrompt,
+    onProgress
+  });
   return parseConceptJSON(content);
 }
 
@@ -135,10 +108,7 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
  * @param {number} args.maxRank
  * @returns {Promise<{name: string, rank: number}[]>}
  */
-export async function selectSpells({ concept, candidates, maxRank }) {
-  const apiKey = getSetting(SETTINGS.apiKey);
-  const baseUrl = String(getSetting(SETTINGS.apiBaseUrl) ?? "").replace(/\/+$/, "");
-
+export async function selectSpells({ concept, candidates, maxRank, onProgress }) {
   const byRank = new Map();
   for (const c of candidates) {
     if (!byRank.has(c.rank)) byRank.set(c.rank, []);
@@ -167,10 +137,37 @@ Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward 
     list
   ].filter((line) => line !== null).join("\n");
 
+  const content = await requestCompletion({ system, user, onProgress });
+  const parsed = parseConceptJSON(content);
+  return (Array.isArray(parsed.spells) ? parsed.spells : [])
+    .filter((s) => s?.name)
+    .map((s) => ({ name: String(s.name), rank: Math.min(Math.max(Math.round(Number(s.rank) || 0), 0), maxRank) }));
+}
+
+/**
+ * Send one chat completion request and return the assistant's text content.
+ *
+ * Requests are streamed so slow (especially reasoning) models show progress
+ * immediately, and an inactivity watchdog aborts the request if the provider
+ * goes silent — a stalled connection can no longer hang the UI forever. The
+ * total time is unbounded as long as data keeps arriving.
+ *
+ * @param {object} args
+ * @param {string} args.system
+ * @param {string} args.user
+ * @param {(p: {phase: "thinking"|"writing", chars: number}) => void} [args.onProgress]
+ * @returns {Promise<string>}
+ */
+async function requestCompletion({ system, user, onProgress }) {
+  const apiKey = getSetting(SETTINGS.apiKey);
+  const baseUrl = String(getSetting(SETTINGS.apiBaseUrl) ?? "").replace(/\/+$/, "");
+  if (!baseUrl) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoBaseUrl"));
+
   const body = {
     model: getSetting(SETTINGS.model),
     temperature: Number(getSetting(SETTINGS.temperature)) || 0.8,
     max_tokens: Number(getSetting(SETTINGS.maxTokens)) || 4000,
+    stream: true,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user }
@@ -178,37 +175,109 @@ Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward 
     response_format: { type: "json_object" }
   };
 
-  let response = await postChatCompletion(baseUrl, apiKey, body);
-  if (response.status === 400) {
-    delete body.response_format;
-    response = await postChatCompletion(baseUrl, apiKey, body);
-  }
-  if (!response.ok) {
-    const detail = await safeErrorDetail(response);
-    throw new AIRequestError(
-      game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
-    );
-  }
+  const idleSeconds = Math.max(10, Number(getSetting(SETTINGS.requestTimeout)) || 90);
+  const controller = new AbortController();
+  let idleTimer = null;
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => controller.abort(), idleSeconds * 1000);
+  };
 
-  const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"));
-  const parsed = parseConceptJSON(content);
-  return (Array.isArray(parsed.spells) ? parsed.spells : [])
-    .filter((s) => s?.name)
-    .map((s) => ({ name: String(s.name), rank: Math.min(Math.max(Math.round(Number(s.rank) || 0), 0), maxRank) }));
+  try {
+    resetIdle();
+    let response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
+    // Some OpenAI-compatible providers reject response_format or streaming;
+    // retry progressively less demanding.
+    if (response.status === 400) {
+      delete body.response_format;
+      resetIdle();
+      response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
+    }
+    if (response.status === 400) {
+      delete body.stream;
+      resetIdle();
+      response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
+    }
+    if (!response.ok) {
+      const detail = await safeErrorDetail(response);
+      throw new AIRequestError(
+        game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
+      );
+    }
+
+    const contentType = response.headers.get("content-type") ?? "";
+    let content;
+    if (contentType.includes("text/event-stream") && response.body) {
+      content = await readEventStream(response, { onProgress, resetIdle });
+    } else {
+      resetIdle();
+      const data = await response.json();
+      content = data?.choices?.[0]?.message?.content;
+    }
+    if (!content) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"));
+    return content;
+  } catch (err) {
+    if (err.name === "AbortError" || controller.signal.aborted) {
+      throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.Timeout", { seconds: idleSeconds }));
+    }
+    throw err;
+  } finally {
+    clearTimeout(idleTimer);
+  }
 }
 
-async function postChatCompletion(baseUrl, apiKey, body) {
+/** Consume an SSE chat-completions stream, reporting progress per chunk. */
+async function readEventStream(response, { onProgress, resetIdle }) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let reasoningChars = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    resetIdle();
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+      let chunk;
+      try {
+        chunk = JSON.parse(payload);
+      } catch {
+        continue; // partial keep-alive noise
+      }
+      const delta = chunk?.choices?.[0]?.delta ?? {};
+      // DeepSeek reasoning models stream their chain of thought first
+      if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
+        reasoningChars += delta.reasoning_content.length;
+        onProgress?.({ phase: "thinking", chars: reasoningChars });
+      }
+      if (typeof delta.content === "string" && delta.content) {
+        content += delta.content;
+        onProgress?.({ phase: "writing", chars: content.length });
+      }
+    }
+  }
+  return content;
+}
+
+async function postChatCompletion(baseUrl, apiKey, body, signal) {
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
   try {
     return await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers,
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal
     });
   } catch (err) {
+    if (err.name === "AbortError") throw err;
     // fetch throws on network/CORS failures before we get a Response
     throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.NetworkError", { message: err.message }));
   }

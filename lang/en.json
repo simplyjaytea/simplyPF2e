@@ -20,6 +20,10 @@
       "MaxTokens": {
         "Name": "Max response tokens",
         "Hint": "Upper limit for the AI response length. Raise this if complex creatures come back truncated."
+      },
+      "RequestTimeout": {
+        "Name": "Request timeout (seconds)",
+        "Hint": "Abort a generation if the AI provider sends no data for this long. Responses are streamed, so slow models keep working as long as data keeps arriving — this only catches genuinely stalled connections."
       }
     },
     "Generator": {
@@ -38,6 +42,13 @@
       "Discard": "Discard",
       "Created": "Created actor \"{name}\".",
       "NoApiKey": "No API key is configured. Set one in Module Settings → SimplyPF2e before generating."
+    },
+    "Progress": {
+      "Concept": "Creature concept",
+      "Spells": "Spell selection",
+      "Match": "Compendium matching",
+      "Thinking": "The model is thinking… ({chars} characters of reasoning)",
+      "Writing": "Receiving the stat block… ({chars} characters)"
     },
     "Sources": {
       "MenuName": "Compendium Sources",
@@ -94,6 +105,7 @@
       "ApiError": "The AI provider returned an error ({status}): {detail}",
       "NetworkError": "Could not reach the AI provider: {message}. If you are using a local or self-hosted provider, make sure it allows requests from Foundry (CORS).",
       "EmptyResponse": "The AI provider returned an empty response.",
+      "Timeout": "The AI provider sent no data for {seconds} seconds and the request was aborted. Check the model name and provider status, or raise the timeout in the module settings.",
       "BadJson": "The AI response was not valid JSON. Try generating again.",
       "WrongSystem": "SimplyPF2e requires the Pathfinder Second Edition (pf2e) game system."
     }
