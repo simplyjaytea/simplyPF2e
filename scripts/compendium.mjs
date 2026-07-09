@@ -6,7 +6,8 @@
 export const PACKS = {
   abilities: ["pf2e.bestiary-ability-glossary-srd", "pf2e.bestiary-family-ability-glossary-srd"],
   spells: ["pf2e.spells-srd"],
-  equipment: ["pf2e.equipment-srd"]
+  equipment: ["pf2e.equipment-srd"],
+  feats: ["pf2e.feats-srd"]
 };
 
 const indexCache = new Map();
@@ -28,7 +29,12 @@ async function getIndex(packId) {
     indexCache.set(packId, null);
     return null;
   }
-  const index = await pack.getIndex({ fields: ["name", "type", "system.slug", "system.level.value", "system.traits.value"] });
+  const index = await pack.getIndex({
+    fields: [
+      "name", "type", "system.slug", "system.level.value",
+      "system.traits.value", "system.traits.traditions", "system.ritual"
+    ]
+  });
   const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
   indexCache.set(packId, entries);
   return entries;
@@ -77,6 +83,31 @@ export async function getDocument(entry) {
   const pack = game.packs.get(entry.packId);
   if (!pack) return null;
   return pack.getDocument(entry._id);
+}
+
+/**
+ * List real, castable spells of a tradition up to a maximum rank, so the AI
+ * can choose from the compendium instead of naming spells from memory.
+ * @returns {Promise<{name: string, rank: number}[]>} sorted by rank then name
+ */
+export async function getSpellCandidates(tradition, maxRank) {
+  const candidates = [];
+  for (const packId of PACKS.spells) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "spell") continue;
+      if (entry.system?.ritual) continue;
+      const traditions = entry.system?.traits?.traditions ?? [];
+      if (!traditions.includes(tradition)) continue;
+      const isCantrip = (entry.system?.traits?.value ?? []).includes("cantrip");
+      const rank = isCantrip ? 0 : (entry.system?.level?.value ?? 1);
+      if (rank > maxRank) continue;
+      candidates.push({ name: entry.name, rank });
+    }
+  }
+  candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+  return candidates;
 }
 
 /** Clone a compendium document into plain item data ready for embedding. */

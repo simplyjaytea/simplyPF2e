@@ -61,6 +61,7 @@
       "Attack": "attack",
       "Rank": "rank",
       "Cantrip": "cantrip",
+      "Feats": "Feats",
       "Equipment": "Equipment",
       "Description": "Description",
       "Immunities": "Immunities",
