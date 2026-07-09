@@ -216,12 +216,80 @@ export function computeStats(concept) {
   };
 }
 
-/** Replace "<scale> DC/damage" phrases in AI ability text with real numbers. */
-function substituteNumbers(text, stats, level) {
-  return String(text)
-    .replace(/\b(extreme|high|moderate)\s+DC\b/gi, (_, s) => `DC ${stats.classDC[s.toLowerCase()]}`)
-    .replace(/\b(extreme|high|moderate|low)\s+damage\b/gi, (_, s) =>
-      `${T.lookup(T.STRIKE_DAMAGE, level, s.toLowerCase())} damage`);
+const DAMAGE_TYPES =
+  "acid|bludgeoning|cold|electricity|fire|force|mental|piercing|poison|slashing|sonic|spirit|vitality|void|bleed|precision|untyped";
+const SAVE_TYPES = "fortitude|reflex|will";
+const CHECK_TYPES =
+  "acrobatics|arcana|athletics|crafting|deception|diplomacy|intimidation|medicine|nature|occultism|performance|religion|society|stealth|survival|thievery|perception|flat";
+
+/**
+ * Turn conventional rules phrasing in AI ability text into PF2e inline
+ * enrichers so damage, saves, checks, and area templates are all clickable
+ * on the sheet and in chat ("just click" — no manual rolling). Scale words
+ * (extreme/high/moderate/low) resolve to real numbers from the GM Core
+ * tables for the creature's level.
+ */
+export function enrichDescription(text, level) {
+  const dcFor = (scale) => T.lookup(T.SPELL_DC, level, scale.toLowerCase(), ["high", "moderate"]);
+  const damageFor = (scale) => T.lookup(T.STRIKE_DAMAGE, level, scale.toLowerCase());
+  let out = String(text);
+
+  // "2d6 fire damage", "1d4 persistent bleed damage" (literal dice + type)
+  out = out.replace(
+    new RegExp(`\\b(\\d+d\\d+(?:[+-]\\d+)?)\\s+(persistent\\s+)?(${DAMAGE_TYPES})\\s+damage\\b`, "gi"),
+    (_, dice, persistent, type) =>
+      `@Damage[${dice}[${persistent ? "persistent," : ""}${type.toLowerCase()}]] damage`
+  );
+
+  // "high damage", "moderate fire damage", "low persistent bleed damage"
+  out = out.replace(
+    new RegExp(`\\b(extreme|high|moderate|low)\\s+(persistent\\s+)?(?:(${DAMAGE_TYPES})\\s+)?damage\\b`, "gi"),
+    (_, scale, persistent, type) => {
+      const dice = damageFor(scale);
+      const damageType = type ? type.toLowerCase() : persistent ? "untyped" : null;
+      const suffix = damageType ? `[${persistent ? "persistent," : ""}${damageType}]` : "";
+      return `@Damage[${dice}${suffix}] damage`;
+    }
+  );
+
+  // "basic high Reflex save", "moderate Fortitude save"
+  out = out.replace(
+    new RegExp(`\\b(basic\\s+)?(extreme|high|moderate)\\s+(?:DC\\s+)?(${SAVE_TYPES})\\s+save\\b`, "gi"),
+    (_, basic, scale, save) =>
+      `@Check[type:${save.toLowerCase()}|dc:${dcFor(scale)}${basic ? "|basic:true" : ""}] save`
+  );
+
+  // "DC 21 basic Reflex save" (literal DC the model wrote anyway)
+  out = out.replace(
+    new RegExp(`\\bDC\\s+(\\d+)\\s+(basic\\s+)?(${SAVE_TYPES})\\s+save\\b`, "gi"),
+    (_, dc, basic, save) =>
+      `@Check[type:${save.toLowerCase()}|dc:${dc}${basic ? "|basic:true" : ""}] save`
+  );
+
+  // "high DC Athletics check"
+  out = out.replace(
+    new RegExp(`\\b(extreme|high|moderate)\\s+DC\\s+(${CHECK_TYPES})\\s+check\\b`, "gi"),
+    (_, scale, check) => `@Check[type:${check.toLowerCase()}|dc:${dcFor(scale)}] check`
+  );
+
+  // "30-foot cone" and friends become placeable templates
+  out = out.replace(
+    /\b(\d+)[-\s]foot\s+(cone|line|burst|emanation)\b/gi,
+    (_, distance, shape) => `@Template[type:${shape.toLowerCase()}|distance:${distance}]`
+  );
+
+  // Any leftover "<scale> DC" becomes a plain number so no scale words leak
+  out = out.replace(/\b(extreme|high|moderate)\s+DC\b/gi, (_, scale) => `DC ${dcFor(scale)}`);
+
+  return out;
+}
+
+/** Bold statblock keywords ("Trigger", "Effect", ...) in escaped ability text. */
+function boldKeywords(text) {
+  return text.replace(
+    /(^|; ?)(Frequency|Trigger|Requirements?|Effect|Critical Success|Success|Failure|Critical Failure)\b\s*/g,
+    (_, lead, keyword) => `${lead}<strong>${keyword}</strong> `
+  );
 }
 
 /**
@@ -321,6 +389,9 @@ export async function createActor(concept, resolved) {
       items.push(toItemData(doc));
       continue;
     }
+    const escaped = foundry.utils.escapeHTML
+      ? foundry.utils.escapeHTML(ability.description)
+      : ability.description;
     items.push({
       name: ability.name,
       type: "action",
@@ -330,9 +401,7 @@ export async function createActor(concept, resolved) {
         actions: { value: ability.actionType === "action" ? (ability.actions ?? 1) : null },
         category: "offensive",
         description: {
-          value: `<p>${foundry.utils.escapeHTML
-            ? foundry.utils.escapeHTML(substituteNumbers(ability.description, stats, concept.level))
-            : substituteNumbers(ability.description, stats, concept.level)}</p>`
+          value: `<p>${boldKeywords(enrichDescription(escaped, concept.level))}</p>`
         },
         traits: { value: ability.traits }
       }
