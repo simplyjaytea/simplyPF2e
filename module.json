@@ -2,7 +2,7 @@
   "id": "simplypf2e",
   "title": "SimplyPF2e – AI Creature Forge",
   "description": "Generate fully-statted Pathfinder 2e NPCs and monsters from a text prompt. An AI (DeepSeek, OpenAI, or any OpenAI-compatible API) invents the concept, abilities, spells and gear; the module computes every number from the official GM Core Building Creatures benchmark tables and pulls abilities, spells and equipment from the PF2e system compendiums.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "authors": [
     {
       "name": "simplyjaytea"

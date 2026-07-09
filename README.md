@@ -10,7 +10,7 @@ Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
 https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
 ```
 
-This link is **permanent** — it always resolves to the newest release, so Foundry will detect and offer updates automatically. You never need a new URL when the module updates.
+This link is **permanent** — it always resolves to the newest published release, so Foundry will detect and offer updates automatically. You never need a new URL when the module updates. (If it returns a 404, no release has been published yet — see [Releasing](#releasing-for-maintainers) below.)
 
 Requires Foundry VTT **v13+** and the **pf2e** game system (6.0.0+).
 
@@ -75,7 +75,12 @@ By default the Forge draws from the PF2e system packs (bestiary ability glossary
 
 ## Releasing (for maintainers)
 
-Publishing an update is one step: create a GitHub release with a tag like `v0.2.0`. A workflow stamps the version into `module.json`, builds `module.zip`, and attaches both to the release. Because the install link above points at `releases/latest`, existing users are offered the update automatically and the link never changes.
+Publishing an update is one step, done either way:
+
+- **From Actions:** go to **Actions → Release → Run workflow** and enter a version like `0.1.1`. The workflow creates the `v0.1.1` release itself.
+- **From Releases:** draft and publish a release by hand with a tag like `v0.1.1`.
+
+Either way the workflow stamps the version into `module.json`, builds `module.zip`, and attaches both to the release. Because the install link above points at `releases/latest`, existing users are offered the update automatically and the link never changes.
 
 ## Licensing & attribution
 
