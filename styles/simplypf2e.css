@@ -1,0 +1,205 @@
+.simplypf2e .simplypf2e-generator {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.simplypf2e .spf-inputs {
+  border: 1px solid var(--color-border, #7a7971);
+  border-radius: 4px;
+  padding: 0.5rem;
+}
+
+.simplypf2e .spf-inputs textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.simplypf2e .spf-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  margin: 0.5rem 0;
+}
+
+.simplypf2e .spf-row .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.simplypf2e .spf-row input[type="number"] {
+  width: 5rem;
+}
+
+.simplypf2e .spf-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.simplypf2e .spf-busy {
+  text-align: center;
+  padding: 0.75rem;
+  font-style: italic;
+}
+
+.simplypf2e .spf-model {
+  opacity: 0.7;
+  font-size: 0.9em;
+}
+
+/* Stat-block style preview */
+.simplypf2e .spf-preview {
+  border: 1px solid var(--color-border, #7a7971);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+}
+
+.simplypf2e .spf-statblock-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 2px solid currentColor;
+  margin-bottom: 0.25rem;
+}
+
+.simplypf2e .spf-statblock-header h2 {
+  margin: 0;
+  border: none;
+  font-variant: small-caps;
+}
+
+.simplypf2e .spf-level {
+  font-weight: bold;
+  text-transform: uppercase;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.simplypf2e .spf-blurb {
+  margin: 0.25rem 0;
+}
+
+.simplypf2e .spf-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.35rem 0;
+}
+
+.simplypf2e .spf-trait {
+  background: #58180d;
+  color: #fff;
+  border: 1px solid #d8c384;
+  padding: 0 0.4rem;
+  font-size: 0.72em;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.simplypf2e .spf-statline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  padding: 0.15rem 0;
+  border-bottom: 1px dotted var(--color-border, #7a7971);
+  font-size: 0.95em;
+}
+
+.simplypf2e .spf-strikes {
+  margin: 0.35rem 0;
+}
+
+.simplypf2e .spf-strike {
+  padding: 0.1rem 0;
+}
+
+.simplypf2e .spf-strike-traits {
+  opacity: 0.8;
+  font-size: 0.9em;
+}
+
+.simplypf2e .spf-preview h3 {
+  margin: 0.5rem 0 0.15rem 0;
+  border-bottom: 1px solid var(--color-border, #7a7971);
+  font-size: 1em;
+  font-variant: small-caps;
+}
+
+.simplypf2e .spf-spell-dc {
+  font-weight: normal;
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+
+.simplypf2e .spf-list {
+  margin: 0.15rem 0;
+  padding-left: 1.1rem;
+}
+
+.simplypf2e .spf-list.spf-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  list-style: none;
+  padding-left: 0;
+}
+
+.simplypf2e .spf-rank {
+  opacity: 0.75;
+  font-size: 0.9em;
+}
+
+.simplypf2e .spf-found {
+  font-size: 0.85em;
+  color: var(--color-text-hyperlink, #4a6741);
+}
+
+.simplypf2e .spf-custom {
+  font-size: 0.75em;
+  font-weight: bold;
+  text-transform: uppercase;
+  background: #4a6741;
+  color: #fff;
+  border-radius: 3px;
+  padding: 0 0.3rem;
+}
+
+.simplypf2e .spf-missing {
+  opacity: 0.65;
+}
+
+.simplypf2e .spf-missing i {
+  color: #b8860b;
+}
+
+.simplypf2e .spf-ability-desc {
+  font-size: 0.9em;
+  opacity: 0.9;
+  margin-left: 0.5rem;
+}
+
+.simplypf2e .spf-description {
+  font-size: 0.95em;
+}
+
+.simplypf2e .spf-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.simplypf2e .spf-actions button {
+  flex: 1;
+}
+
+/* Actors directory button */
+.spf-directory-button i {
+  color: inherit;
+}
