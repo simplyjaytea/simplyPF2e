@@ -1,14 +1,63 @@
 /**
- * Fuzzy lookups against the PF2e system compendiums so the AI can reference
- * abilities, spells and equipment by name and we pull the real documents.
+ * Fuzzy lookups against compendium packs so the AI can reference abilities,
+ * spells, feats and equipment by name and we pull the real documents. Which
+ * packs each category draws from is configurable (Compendium Sources menu);
+ * the PF2e system packs are the defaults.
  */
 
-export const PACKS = {
+import { SETTINGS, getSetting } from "./settings.mjs";
+
+export const CATEGORIES = ["abilities", "spells", "feats", "equipment"];
+
+export const DEFAULT_PACKS = {
   abilities: ["pf2e.bestiary-ability-glossary-srd", "pf2e.bestiary-family-ability-glossary-srd"],
   spells: ["pf2e.spells-srd"],
   equipment: ["pf2e.equipment-srd"],
   feats: ["pf2e.feats-srd"]
 };
+
+const EQUIPMENT_TYPES = new Set([
+  "weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit"
+]);
+
+/**
+ * Pack ids a category draws from: the GM's Compendium Sources selection, or
+ * the system defaults when the category is unset/empty. Missing packs
+ * (e.g. from an uninstalled module) are dropped.
+ */
+export function getPacksFor(category) {
+  const stored = getSetting(SETTINGS.sourcePacks) ?? {};
+  const ids = Array.isArray(stored[category]) && stored[category].length
+    ? stored[category]
+    : DEFAULT_PACKS[category];
+  return ids.filter((id) => game.packs.get(id));
+}
+
+let detectedPacks = null;
+
+/**
+ * Scan every Item compendium in the world and report which packs can serve
+ * each category, based on the item types they actually contain.
+ * @returns {Promise<Record<string, {id: string, title: string, package: string}[]>>}
+ */
+export async function detectAvailablePacks() {
+  if (detectedPacks) return detectedPacks;
+  const result = { abilities: [], spells: [], feats: [], equipment: [] };
+  for (const pack of game.packs) {
+    if (pack.metadata.type !== "Item") continue;
+    const entries = await getIndex(pack.collection);
+    if (!entries?.length) continue;
+    const types = new Set(entries.map((e) => e.type));
+    const info = { id: pack.collection, title: pack.title ?? pack.metadata.label, package: pack.metadata.packageName };
+    if (types.has("action")) result.abilities.push(info);
+    if (types.has("spell")) result.spells.push(info);
+    if (types.has("feat")) result.feats.push(info);
+    if ([...types].some((t) => EQUIPMENT_TYPES.has(t))) result.equipment.push(info);
+  }
+  for (const list of Object.values(result)) list.sort((a, b) => a.title.localeCompare(b.title));
+  detectedPacks = result;
+  return result;
+}
 
 const indexCache = new Map();
 
@@ -92,7 +141,8 @@ export async function getDocument(entry) {
  */
 export async function getSpellCandidates(tradition, maxRank) {
   const candidates = [];
-  for (const packId of PACKS.spells) {
+  const seen = new Set();
+  for (const packId of getPacksFor("spells")) {
     const entries = await getIndex(packId);
     if (!entries) continue;
     for (const entry of entries) {
@@ -103,6 +153,8 @@ export async function getSpellCandidates(tradition, maxRank) {
       const isCantrip = (entry.system?.traits?.value ?? []).includes("cantrip");
       const rank = isCantrip ? 0 : (entry.system?.level?.value ?? 1);
       if (rank > maxRank) continue;
+      if (seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
       candidates.push({ name: entry.name, rank });
     }
   }

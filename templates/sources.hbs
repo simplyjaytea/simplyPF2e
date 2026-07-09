@@ -1,0 +1,29 @@
+<div class="simplypf2e-sources">
+  <p class="spf-hint">{{localize "SIMPLYPF2E.Sources.Hint"}}</p>
+
+  {{#each categories}}
+    <fieldset class="spf-source-category">
+      <legend>{{localize this.label}}</legend>
+      {{#if this.packs.length}}
+        {{#each this.packs}}
+          <label class="spf-pack">
+            <input type="checkbox" data-category="{{../key}}" data-pack="{{this.id}}" {{#if this.checked}}checked{{/if}}>
+            <span class="spf-pack-title">{{this.title}}</span>
+            <span class="spf-pack-source">{{this.package}}{{#if this.isDefault}} &middot; {{localize "SIMPLYPF2E.Sources.Default"}}{{/if}}</span>
+          </label>
+        {{/each}}
+      {{else}}
+        <p class="spf-hint">{{localize "SIMPLYPF2E.Sources.NonePacksFound"}}</p>
+      {{/if}}
+    </fieldset>
+  {{/each}}
+
+  <footer class="spf-actions">
+    <button type="submit">
+      <i class="fa-solid fa-floppy-disk"></i> {{localize "SIMPLYPF2E.Sources.Save"}}
+    </button>
+    <button type="button" data-action="reset">
+      <i class="fa-solid fa-rotate-left"></i> {{localize "SIMPLYPF2E.Sources.Reset"}}
+    </button>
+  </footer>
+</div>

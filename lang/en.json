@@ -39,6 +39,23 @@
       "Created": "Created actor \"{name}\".",
       "NoApiKey": "No API key is configured. Set one in Module Settings → SimplyPF2e before generating."
     },
+    "Sources": {
+      "MenuName": "Compendium Sources",
+      "MenuLabel": "Configure Sources",
+      "MenuHint": "Choose which compendium packs the Creature Forge draws abilities, spells, feats, and equipment from.",
+      "Title": "Compendium Sources",
+      "Hint": "The Forge scanned this world's Item compendiums. Check the packs each category may draw from — homebrew and module packs work too. Leaving a category empty uses the PF2e system defaults.",
+      "Abilities": "Bestiary Abilities",
+      "Spells": "Spells",
+      "Feats": "Feats",
+      "Equipment": "Equipment",
+      "Default": "default",
+      "NonePacksFound": "No compendium packs with matching content were found in this world.",
+      "Save": "Save",
+      "Reset": "Reset to defaults",
+      "Saved": "Compendium sources saved.",
+      "ResetDone": "Compendium sources reset to the PF2e system defaults."
+    },
     "Rarity": {
       "Common": "Common",
       "Uncommon": "Uncommon",

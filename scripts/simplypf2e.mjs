@@ -1,5 +1,6 @@
 import { MODULE_ID, registerSettings } from "./settings.mjs";
 import { GeneratorApp } from "./generator-app.mjs";
+import { SourcesConfigApp } from "./sources-app.mjs";
 
 let app = null;
 
@@ -10,7 +11,7 @@ function openGenerator() {
 }
 
 Hooks.once("init", () => {
-  registerSettings();
+  registerSettings(SourcesConfigApp);
   if (!Handlebars.helpers.eq) {
     Handlebars.registerHelper("eq", (a, b) => a === b);
   }

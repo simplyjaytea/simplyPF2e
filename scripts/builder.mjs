@@ -1,5 +1,5 @@
 import * as T from "./tables.mjs";
-import { PACKS, findEntry, getDocument, toItemData } from "./compendium.mjs";
+import { getPacksFor, findEntry, getDocument, toItemData } from "./compendium.mjs";
 
 const SIZES = new Set(["tiny", "sm", "med", "lg", "huge", "grg"]);
 const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
@@ -142,15 +142,15 @@ export async function resolveConcept(concept) {
   const abilities = [];
   for (const ability of concept.specialAbilities) {
     let entry = null;
-    if (ability.glossary) entry = await findEntry(PACKS.abilities, ability.glossary);
-    if (!entry) entry = await findEntry(PACKS.abilities, ability.name);
+    if (ability.glossary) entry = await findEntry(getPacksFor("abilities"), ability.glossary);
+    if (!entry) entry = await findEntry(getPacksFor("abilities"), ability.name);
     abilities.push({ ability, entry });
   }
 
   const spells = [];
   if (concept.spellcasting) {
     for (const spell of concept.spellcasting.spells) {
-      const entry = await findEntry(PACKS.spells, spell.name, (e) => e.type === "spell");
+      const entry = await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
       spells.push({ spell, entry });
     }
   }
@@ -158,7 +158,7 @@ export async function resolveConcept(concept) {
   const feats = [];
   for (const name of concept.feats) {
     const entry = await findEntry(
-      PACKS.feats,
+      getPacksFor("feats"),
       name,
       (e) => e.type === "feat" && (e.system?.level?.value ?? 0) <= Math.max(concept.level, 1)
     );
@@ -167,7 +167,7 @@ export async function resolveConcept(concept) {
 
   const equipment = [];
   for (const name of concept.equipment) {
-    const entry = await findEntry(PACKS.equipment, name, (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0));
+    const entry = await findEntry(getPacksFor("equipment"), name, (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0));
     equipment.push({ name, entry });
   }
 

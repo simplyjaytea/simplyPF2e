@@ -5,10 +5,28 @@ export const SETTINGS = {
   apiKey: "apiKey",
   model: "model",
   temperature: "temperature",
-  maxTokens: "maxTokens"
+  maxTokens: "maxTokens",
+  sourcePacks: "sourcePacks"
 };
 
-export function registerSettings() {
+export function registerSettings(SourcesConfigApp) {
+  game.settings.registerMenu(MODULE_ID, "sourcesMenu", {
+    name: "SIMPLYPF2E.Sources.MenuName",
+    label: "SIMPLYPF2E.Sources.MenuLabel",
+    hint: "SIMPLYPF2E.Sources.MenuHint",
+    icon: "fa-solid fa-book-atlas",
+    type: SourcesConfigApp,
+    restricted: true
+  });
+
+  // Per-category pack selection, managed by the Compendium Sources menu.
+  // An unset or empty category means "use the PF2e system defaults".
+  game.settings.register(MODULE_ID, SETTINGS.sourcePacks, {
+    scope: "world",
+    config: false,
+    type: Object,
+    default: {}
+  });
   game.settings.register(MODULE_ID, SETTINGS.apiBaseUrl, {
     name: "SIMPLYPF2E.Settings.ApiBaseUrl.Name",
     hint: "SIMPLYPF2E.Settings.ApiBaseUrl.Hint",
