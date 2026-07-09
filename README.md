@@ -18,9 +18,14 @@ Requires Foundry VTT **v13+** and the **pf2e** game system (6.0.0+).
 
 Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a level, and get a complete creature: statistics, saves, strikes, skills, special abilities, spells, and gear. PF2e monsters normally take real prep time because everything has to be statted; the Forge does that work by splitting the job three ways:
 
-1. **The AI invents the concept.** An LLM (DeepSeek by default, or any OpenAI-compatible API) receives your prompt and returns a structured concept: name, flavor, traits, which statistics should be *extreme / high / moderate / low*, what its strikes and signature abilities are, and which standard abilities, spells, and equipment it uses.
+1. **The AI invents the concept.** An LLM (DeepSeek by default, or any OpenAI-compatible API) receives your prompt and returns a structured concept: name, flavor, traits, which statistics should be *extreme / high / moderate / low*, what its strikes and signature abilities are, and which standard abilities, feats, spells, and equipment it uses.
 2. **The module does the math.** Every number — AC, HP, saves, perception, skill modifiers, strike attack bonuses, damage dice, spell DCs — is looked up from the official GM Core **"Building Creatures"** benchmark tables for the level you chose. The AI never outputs numbers, so creatures are always mechanically sound for their level.
-3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, ...), spells, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom ability or flagged in the preview so you can decide.
+3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, ...), feats, spells, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom ability or flagged in the preview so you can decide.
+
+Two pieces of the concept get extra grounding:
+
+- **Spells are chosen *from* the compendium.** When a creature is a spellcaster, the module reads the actual spell list for its tradition (filtered to the ranks a creature of that level may cast) out of the PF2e compendium and hands that list to the AI, which picks from it. The AI can't invent spells that don't exist, and every pick lands as the real spell document on the sheet.
+- **Feats for trained creatures.** Creatures that would plausibly have class-like techniques — humanoid soldiers, monks, assassins — can be given real feats (Power Attack, Sudden Charge, ...), matched against the system's feats compendium and embedded on the NPC.
 
 ## Usage
 
@@ -55,6 +60,10 @@ Provider examples:
 - **OpenAI** – `https://api.openai.com/v1`, model `gpt-4o`
 - **OpenRouter** – `https://openrouter.ai/api/v1`, any hosted model
 - **Ollama (local)** – `http://localhost:11434/v1`, no key needed. Set `OLLAMA_ORIGINS=*` (or your Foundry origin) so the browser may call it.
+
+### Choosing compendium sources
+
+By default the Forge draws from the PF2e system packs (bestiary ability glossary, spells, feats, equipment). Under **Module Settings → SimplyPF2e → Compendium Sources** you can change that: the module scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you check the ones each category may use — so homebrew compendiums and content modules (e.g. adventure-path packs) become available to the AI. The grounded spell selection reads from your chosen spell packs too, meaning the AI literally sees and picks from your homebrew spell list. Leaving a category empty falls back to the system defaults.
 
 > **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is stored in world settings (visible to other GMs of the same world). Use a key you're comfortable with in that context.
 

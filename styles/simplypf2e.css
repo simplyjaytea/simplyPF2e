@@ -199,6 +199,50 @@
   flex: 1;
 }
 
+/* Compendium Sources menu */
+.simplypf2e .simplypf2e-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  overflow-y: auto;
+}
+
+.simplypf2e .spf-hint {
+  font-size: 0.9em;
+  opacity: 0.85;
+  margin: 0.25rem 0;
+}
+
+.simplypf2e .spf-source-category {
+  border: 1px solid var(--color-border, #7a7971);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+}
+
+.simplypf2e .spf-source-category legend {
+  font-weight: bold;
+  font-variant: small-caps;
+  padding: 0 0.3rem;
+}
+
+.simplypf2e .spf-pack {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.1rem 0;
+}
+
+.simplypf2e .spf-pack-title {
+  flex: 1;
+}
+
+.simplypf2e .spf-pack-source {
+  font-size: 0.8em;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
 /* Actors directory button */
 .spf-directory-button i {
   color: inherit;

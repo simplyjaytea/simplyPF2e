@@ -1,5 +1,6 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
-import { generateConcept } from "./ai.mjs";
+import { generateConcept, selectSpells } from "./ai.mjs";
+import { getSpellCandidates } from "./compendium.mjs";
 import { normalizeConcept, resolveConcept, computeStats, createActor } from "./builder.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -77,6 +78,10 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         rank: spell.rank,
         found: Boolean(entry)
       })),
+      feats: (this.#resolved?.feats ?? []).map(({ name, entry }) => ({
+        name: entry?.name ?? name,
+        found: Boolean(entry)
+      })),
       equipment: (this.#resolved?.equipment ?? []).map(({ name, entry }) => ({
         name: entry?.name ?? name,
         found: Boolean(entry)
@@ -118,6 +123,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         allowSpellcasting: this.#input.allowSpellcasting
       });
       this.#concept = normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity });
+      await this.#refineSpells();
       this.#resolved = await resolveConcept(this.#concept);
     } catch (err) {
       console.error(`${MODULE_ID} | generation failed`, err);
@@ -128,6 +134,26 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this.#busy = false;
       await this.render();
     }
+  }
+
+  /**
+   * Grounded spell selection: fetch the real spell list for the chosen
+   * tradition from the compendium and let the AI pick from it. Falls back to
+   * the first-draft spell names (still fuzzy-matched) if the pass fails.
+   */
+  async #refineSpells() {
+    const spellcasting = this.#concept?.spellcasting;
+    if (!spellcasting) return;
+    try {
+      const candidates = await getSpellCandidates(spellcasting.tradition, spellcasting.maxRank);
+      if (candidates.length) {
+        const spells = await selectSpells({ concept: this.#concept, candidates, maxRank: spellcasting.maxRank });
+        if (spells.length) spellcasting.spells = spells;
+      }
+    } catch (err) {
+      console.warn(`${MODULE_ID} | grounded spell selection failed, using first-draft spells`, err);
+    }
+    if (!spellcasting.spells.length) this.#concept.spellcasting = null;
   }
 
   static async #onCreateActor() {

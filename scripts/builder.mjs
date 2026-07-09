@@ -1,5 +1,5 @@
 import * as T from "./tables.mjs";
-import { PACKS, findEntry, getDocument, toItemData } from "./compendium.mjs";
+import { getPacksFor, findEntry, getDocument, toItemData } from "./compendium.mjs";
 
 const SIZES = new Set(["tiny", "sm", "med", "lg", "huge", "grg"]);
 const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
@@ -64,20 +64,21 @@ export function normalizeConcept(raw, { level, rarity }) {
   const maxSpellRank = Math.max(1, Math.ceil(clampedLevel / 2));
   let spellcasting = null;
   if (c.spellcasting && TRADITIONS.has(c.spellcasting.tradition)) {
+    // Spells may be empty at this point; the grounded compendium selection
+    // pass fills the final list, and empty spellcasting is dropped after it.
     const spells = (Array.isArray(c.spellcasting.spells) ? c.spellcasting.spells : [])
       .filter((s) => s?.name)
       .map((s) => ({
         name: String(s.name),
         rank: Math.min(Math.max(Math.round(Number(s.rank) || 0), 0), maxSpellRank)
       }));
-    if (spells.length) {
-      spellcasting = {
-        tradition: c.spellcasting.tradition,
-        dcScale: ["extreme", "high", "moderate"].includes(c.spellcasting.dcScale)
-          ? c.spellcasting.dcScale : "high",
-        spells
-      };
-    }
+    spellcasting = {
+      tradition: c.spellcasting.tradition,
+      dcScale: ["extreme", "high", "moderate"].includes(c.spellcasting.dcScale)
+        ? c.spellcasting.dcScale : "high",
+      maxRank: maxSpellRank,
+      spells
+    };
   }
 
   return {
@@ -123,6 +124,7 @@ export function normalizeConcept(raw, { level, rarity }) {
         traits: (Array.isArray(a.traits) ? a.traits : []).map(slugify).filter(Boolean)
       })),
     spellcasting,
+    feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 4),
     equipment: (Array.isArray(c.equipment) ? c.equipment : []).map((e) => String(e)).filter(Boolean).slice(0, 12),
     resistances: (Array.isArray(c.resistances) ? c.resistances : [])
       .map((r) => slugify(r?.type ?? r)).filter(Boolean).slice(0, 4),
@@ -140,26 +142,36 @@ export async function resolveConcept(concept) {
   const abilities = [];
   for (const ability of concept.specialAbilities) {
     let entry = null;
-    if (ability.glossary) entry = await findEntry(PACKS.abilities, ability.glossary);
-    if (!entry) entry = await findEntry(PACKS.abilities, ability.name);
+    if (ability.glossary) entry = await findEntry(getPacksFor("abilities"), ability.glossary);
+    if (!entry) entry = await findEntry(getPacksFor("abilities"), ability.name);
     abilities.push({ ability, entry });
   }
 
   const spells = [];
   if (concept.spellcasting) {
     for (const spell of concept.spellcasting.spells) {
-      const entry = await findEntry(PACKS.spells, spell.name, (e) => e.type === "spell");
+      const entry = await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
       spells.push({ spell, entry });
     }
   }
 
+  const feats = [];
+  for (const name of concept.feats) {
+    const entry = await findEntry(
+      getPacksFor("feats"),
+      name,
+      (e) => e.type === "feat" && (e.system?.level?.value ?? 0) <= Math.max(concept.level, 1)
+    );
+    feats.push({ name, entry });
+  }
+
   const equipment = [];
   for (const name of concept.equipment) {
-    const entry = await findEntry(PACKS.equipment, name, (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0));
+    const entry = await findEntry(getPacksFor("equipment"), name, (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0));
     equipment.push({ name, entry });
   }
 
-  return { abilities, spells, equipment };
+  return { abilities, spells, feats, equipment };
 }
 
 /** Compute the final numeric stat block (also used by the preview). */
@@ -291,8 +303,15 @@ export async function createActor(concept, resolved) {
     });
   }
 
-  // Spellcasting entry + spells
-  if (concept.spellcasting) {
+  // Feats (class-like trained techniques for humanoid-style creatures)
+  for (const { entry } of resolved.feats) {
+    const doc = await getDocument(entry);
+    if (!doc) continue;
+    items.push(toItemData(doc));
+  }
+
+  // Spellcasting entry + spells (skipped when no spell resolved to a document)
+  if (concept.spellcasting && resolved.spells.some((s) => s.entry)) {
     const entryId = foundry.utils.randomID();
     const ranksUsed = new Set(resolved.spells.filter((s) => s.entry).map((s) => s.spell.rank));
     const slots = {};

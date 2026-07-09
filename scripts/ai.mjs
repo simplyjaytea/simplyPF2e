@@ -53,8 +53,9 @@ JSON schema (all keys required unless marked optional):
   "spellcasting": null | {
     "tradition": "arcane"|"divine"|"occult"|"primal",
     "dcScale": "extreme"|"high"|"moderate",
-    "spells": [ { "name": string, "rank": number } ]   // rank 0 = cantrip; ONLY real PF2e spell names; max rank = ceil(level/2); 4-10 spells for a dedicated caster, 2-4 for a hybrid
+    "spells": [ { "name": string, "rank": number } ]   // rank 0 = cantrip; real PF2e spell names as a first draft (the final list is chosen from the compendium in a second step); max rank = ceil(level/2)
   },
+  "feats": string[],                    // EXACT published PF2e feat names (e.g. "Power Attack", "Sudden Charge") for creatures with class-like training such as humanoid soldiers, monks or assassins; [] for beasts, mindless creatures, and anything without trained techniques; max 3
   "equipment": string[],                // real PF2e equipment item names carried/worn, [] for beasts
   "resistances": [ { "type": string } ],   // damage types only, values computed from tables; [] if none
   "weaknesses": [ { "type": string } ],
@@ -122,6 +123,80 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
   const content = data?.choices?.[0]?.message?.content;
   if (!content) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"));
   return parseConceptJSON(content);
+}
+
+/**
+ * Second pass: given the real spell list from the compendium, have the model
+ * pick the creature's spells. Names it returns are guaranteed to exist (and
+ * are still fuzzy-matched afterwards as a safety net).
+ * @param {object} args
+ * @param {object} args.concept       normalized concept (for context)
+ * @param {{name: string, rank: number}[]} args.candidates
+ * @param {number} args.maxRank
+ * @returns {Promise<{name: string, rank: number}[]>}
+ */
+export async function selectSpells({ concept, candidates, maxRank }) {
+  const apiKey = getSetting(SETTINGS.apiKey);
+  const baseUrl = String(getSetting(SETTINGS.apiBaseUrl) ?? "").replace(/\/+$/, "");
+
+  const byRank = new Map();
+  for (const c of candidates) {
+    if (!byRank.has(c.rank)) byRank.set(c.rank, []);
+    byRank.get(c.rank).push(c.name);
+  }
+  const list = [...byRank.entries()]
+    .map(([rank, names]) => `${rank === 0 ? "Cantrips" : `Rank ${rank}`}: ${names.join("; ")}`)
+    .join("\n");
+
+  const system = `You are selecting spells for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written. Respond with a single JSON object and nothing else:
+{ "spells": [ { "name": string, "rank": number } ] }
+"rank" is the slot the creature casts it from: 0 for cantrips, otherwise at least the listed rank and at most ${maxRank} (choose higher to heighten a spell only when that clearly helps it).
+Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward the highest ranks. Favor spells that express the creature's theme and tactics.`;
+
+  const user = [
+    `Creature: ${concept.name} (level ${concept.level})`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.description ? `Description: ${concept.description}` : null,
+    `Traits: ${concept.traits.join(", ")}`,
+    `Tradition: ${concept.spellcasting.tradition}. Maximum spell rank: ${maxRank}.`,
+    concept.spellcasting.spells.length
+      ? `First-draft spell ideas (use as inspiration, but the final picks MUST come from the list): ${concept.spellcasting.spells.map((s) => s.name).join(", ")}`
+      : null,
+    "",
+    "Available spells:",
+    list
+  ].filter((line) => line !== null).join("\n");
+
+  const body = {
+    model: getSetting(SETTINGS.model),
+    temperature: Number(getSetting(SETTINGS.temperature)) || 0.8,
+    max_tokens: Number(getSetting(SETTINGS.maxTokens)) || 4000,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user }
+    ],
+    response_format: { type: "json_object" }
+  };
+
+  let response = await postChatCompletion(baseUrl, apiKey, body);
+  if (response.status === 400) {
+    delete body.response_format;
+    response = await postChatCompletion(baseUrl, apiKey, body);
+  }
+  if (!response.ok) {
+    const detail = await safeErrorDetail(response);
+    throw new AIRequestError(
+      game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
+    );
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"));
+  const parsed = parseConceptJSON(content);
+  return (Array.isArray(parsed.spells) ? parsed.spells : [])
+    .filter((s) => s?.name)
+    .map((s) => ({ name: String(s.name), rank: Math.min(Math.max(Math.round(Number(s.rank) || 0), 0), maxRank) }));
 }
 
 async function postChatCompletion(baseUrl, apiKey, body) {
