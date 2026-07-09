@@ -224,6 +224,42 @@ function substituteNumbers(text, stats, level) {
       `${T.lookup(T.STRIKE_DAMAGE, level, s.toLowerCase())} damage`);
 }
 
+/**
+ * Item types the PF2e system allows on NPC actors (its NPCPF2e.allowedItemTypes
+ * plus creature-level types). Anything else embedded on an NPC breaks the
+ * sheet, so createActor() filters against this list as a final safety net.
+ */
+const NPC_ITEM_TYPES = new Set([
+  "action", "lore", "melee", "spell", "spellcastingEntry",
+  "weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit",
+  "condition", "effect"
+]);
+
+/**
+ * NPCs may not embed feat items (the system forbids the type and the sheet
+ * fails to render), so a matched feat becomes an NPC action item carrying the
+ * feat's cost, rules text and automation — the same way bestiary statblocks
+ * present feat-based abilities like Goblin Scuttle or Attack of Opportunity.
+ */
+export function featToAction(feat) {
+  const actionType = feat.system?.actionType?.value ?? "passive";
+  return {
+    name: feat.name,
+    type: "action",
+    img: feat.img ?? actionIcon(actionType),
+    system: {
+      actionType: { value: actionType },
+      actions: { value: actionType === "action" ? (feat.system?.actions?.value ?? 1) : null },
+      category: "offensive",
+      description: { value: feat.system?.description?.value ?? "" },
+      traits: { value: feat.system?.traits?.value ?? [] },
+      rules: feat.system?.rules ?? [],
+      slug: feat.system?.slug ?? null,
+      selfEffect: feat.system?.selfEffect ?? null
+    }
+  };
+}
+
 function actionIcon(actionType) {
   return {
     action: "systems/pf2e/icons/actions/OneAction.webp",
@@ -303,11 +339,11 @@ export async function createActor(concept, resolved) {
     });
   }
 
-  // Feats (class-like trained techniques for humanoid-style creatures)
+  // Feats (class-like trained techniques) become NPC action items
   for (const { entry } of resolved.feats) {
     const doc = await getDocument(entry);
     if (!doc) continue;
-    items.push(toItemData(doc));
+    items.push(featToAction(doc.toObject()));
   }
 
   // Spellcasting entry + spells (skipped when no spell resolved to a document)
@@ -348,6 +384,14 @@ export async function createActor(concept, resolved) {
     items.push(toItemData(doc));
   }
 
+  // Final safety net: never embed an item type the NPC schema rejects — a
+  // single illegal item renders the whole sheet unopenable.
+  const safeItems = items.filter((item) => {
+    if (NPC_ITEM_TYPES.has(item.type)) return true;
+    console.warn(`simplypf2e | dropped "${item.name}": item type "${item.type}" is not allowed on NPC actors`);
+    return false;
+  });
+
   const description = concept.description
     ? `<p>${concept.description.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).join("</p><p>")}</p>`
     : "";
@@ -355,7 +399,7 @@ export async function createActor(concept, resolved) {
   const actorData = {
     name: concept.name,
     type: "npc",
-    items,
+    items: safeItems,
     system: {
       abilities: Object.fromEntries(
         Object.entries(stats.abilities).map(([k, mod]) => [k, { mod }])
