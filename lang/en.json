@@ -1,0 +1,83 @@
+{
+  "SIMPLYPF2E": {
+    "Settings": {
+      "ApiBaseUrl": {
+        "Name": "API Base URL",
+        "Hint": "Base URL of an OpenAI-compatible API. DeepSeek: https://api.deepseek.com/v1 — OpenAI: https://api.openai.com/v1 — OpenRouter: https://openrouter.ai/api/v1 — Ollama (local): http://localhost:11434/v1"
+      },
+      "ApiKey": {
+        "Name": "API Key",
+        "Hint": "Your API key for the provider above. Stored in this world's settings and visible to other GMs of this world."
+      },
+      "Model": {
+        "Name": "Model",
+        "Hint": "Model identifier, e.g. deepseek-chat, deepseek-reasoner, gpt-4o, or any model your provider offers."
+      },
+      "Temperature": {
+        "Name": "Creativity (temperature)",
+        "Hint": "Higher values give more creative (and less predictable) concepts."
+      },
+      "MaxTokens": {
+        "Name": "Max response tokens",
+        "Hint": "Upper limit for the AI response length. Raise this if complex creatures come back truncated."
+      }
+    },
+    "Generator": {
+      "Title": "AI Creature Forge",
+      "OpenButton": "Creature Forge",
+      "ConceptLegend": "Creature Concept",
+      "Prompt": "Describe the creature",
+      "PromptPlaceholder": "e.g. A cunning swamp hag who brews poisons from drowned travelers, served by a swarm of leeches...",
+      "Level": "Level",
+      "Rarity": "Rarity",
+      "AllowSpellcasting": "Allow spellcasting",
+      "Generate": "Generate",
+      "Regenerate": "Regenerate",
+      "Busy": "Consulting the forge...",
+      "CreateActor": "Create Actor",
+      "Discard": "Discard",
+      "Created": "Created actor \"{name}\".",
+      "NoApiKey": "No API key is configured. Set one in Module Settings → SimplyPF2e before generating."
+    },
+    "Rarity": {
+      "Common": "Common",
+      "Uncommon": "Uncommon",
+      "Rare": "Rare",
+      "Unique": "Unique"
+    },
+    "Preview": {
+      "Perception": "Perception",
+      "Languages": "Languages",
+      "Skills": "Skills",
+      "Fort": "Fort",
+      "Ref": "Ref",
+      "Will": "Will",
+      "Speed": "Speed",
+      "Melee": "Melee",
+      "Ranged": "Ranged",
+      "Damage": "Damage",
+      "Abilities": "Abilities",
+      "Spells": "Spells",
+      "Attack": "attack",
+      "Rank": "rank",
+      "Cantrip": "cantrip",
+      "Equipment": "Equipment",
+      "Description": "Description",
+      "Immunities": "Immunities",
+      "Resistances": "Resistances",
+      "Weaknesses": "Weaknesses",
+      "FromCompendium": "Pulled from the PF2e bestiary ability glossary",
+      "Custom": "Custom",
+      "NotFound": "No compendium match found — this entry will be skipped"
+    },
+    "Errors": {
+      "NoPrompt": "Describe the creature first.",
+      "NoBaseUrl": "No API base URL is configured in the module settings.",
+      "ApiError": "The AI provider returned an error ({status}): {detail}",
+      "NetworkError": "Could not reach the AI provider: {message}. If you are using a local or self-hosted provider, make sure it allows requests from Foundry (CORS).",
+      "EmptyResponse": "The AI provider returned an empty response.",
+      "BadJson": "The AI response was not valid JSON. Try generating again.",
+      "WrongSystem": "SimplyPF2e requires the Pathfinder Second Edition (pf2e) game system."
+    }
+  }
+}
