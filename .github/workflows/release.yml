@@ -1,20 +1,29 @@
 name: Release
 
-# Publishes Foundry-installable assets whenever a GitHub release is published.
+# Publishes Foundry-installable assets. Two ways to ship an update:
+#
+#   1. Actions -> Release -> "Run workflow", enter a version like 0.1.1.
+#      The workflow creates the GitHub release itself and attaches assets.
+#   2. Draft and publish a release by hand with a tag like v0.1.1; the
+#      workflow fires on publish and attaches the assets.
 #
 # The manifest URL advertised to users never changes:
 #   https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
 # GitHub's "latest/download" redirect always serves the newest release, so the
-# install link in the README keeps working forever. Each release's module.json
-# gets its `download` pinned to that specific version, which lets Foundry
-# offer updates and lets users roll back to old versions if needed.
-#
-# To ship an update: bump nothing by hand — just create a release with a tag
-# like v0.2.0 and this workflow stamps the version into module.json for you.
+# install link in the README keeps working forever. (It only resolves once at
+# least one release exists.) Each release's module.json gets its `download`
+# pinned to that specific version, which lets Foundry offer updates and lets
+# users roll back to old versions if needed.
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, e.g. 0.1.1 (the tag becomes v0.1.1)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -25,12 +34,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Stamp version and download URL into module.json
+      - name: Determine release tag
+        id: tag
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="v${INPUT_VERSION#v}"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
+
+      - name: Stamp version and download URL into module.json
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
           jq --arg version "$VERSION" \
              --arg manifest "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/module.json" \
-             --arg download "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/module.zip" \
+             --arg download "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/module.zip" \
              '.version = $version | .manifest = $manifest | .download = $download' \
              module.json > module.json.tmp
           mv module.json.tmp module.json
@@ -41,4 +73,5 @@ jobs:
       - name: Attach assets to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" module.json module.zip --clobber
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" module.json module.zip --clobber
