@@ -45,7 +45,9 @@
       "Preset": "Preset",
       "Prompt": "Describe the creature",
       "PromptExample": "e.g.",
-      "RandomHint": "Random mode: just set a level and click Generate — the Forge invents the rest. Regenerate rolls a completely new creature.",
+      "RandomTooltip": "Random creature: ignores the description and invents something at this level. Every click rolls a new surprise.",
+      "MemberUp": "Add one",
+      "MemberDown": "Remove one (0 skips this creature)",
       "Level": "Level",
       "PartyLevel": "Party level",
       "PartySize": "Party size",
@@ -68,7 +70,6 @@
     },
     "Presets": {
       "None": "— No preset —",
-      "Random": "🎲 Random (just pick a level)",
       "Fighter": "Fighter",
       "Barbarian": "Barbarian",
       "Rogue": "Rogue",

@@ -58,7 +58,7 @@ JSON schema (all keys required unless marked optional):
     "spells": [ { "name": string, "rank": number } ]   // rank 0 = cantrip; real PF2e spell names as a first draft (the final list is chosen from the compendium in a second step); max rank = ceil(level/2)
   },
   "feats": string[],                    // EXACT published PF2e feat names (e.g. "Power Attack", "Sudden Charge") for creatures with class-like training such as humanoid soldiers, monks or assassins; [] for beasts, mindless creatures, and anything without trained techniques; max 3
-  "equipment": string[],                // real PF2e equipment item names carried/worn, [] for beasts
+  "equipment": [ { "name": string, "quantity": number } ],  // 2-6 logical carried items with EXACT PF2e item names: the weapons and armor it actually wields, plus consumables where sensible (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies). For creatures of level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
   "resistances": [ { "type": string } ],   // damage types only, values computed from tables; [] if none
   "weaknesses": [ { "type": string } ],
   "immunities": string[]                 // e.g. ["death-effects", "poison"], [] if none
@@ -71,6 +71,8 @@ DESCRIPTION CONVENTIONS for specialAbilities.description — the module converts
 - Fixed dice you choose yourself (for small riders): "2d6 fire damage", "1d4 persistent bleed damage".
 - Saving throws: "basic high Reflex save", "moderate Fortitude save", "extreme Will save" (optional "basic", scale word, save name, "save"). Basic saves are for plain damage effects.
 - Skill checks against the creature: "high DC Athletics check".
+- Healing: "regains 2d8 Hit Points" or "2d8 healing".
+- Flat checks: "DC 5 flat check".
 - Areas: "30-foot cone", "15-foot burst", "60-foot line", "10-foot emanation".
 - Structure activated abilities as "Frequency ...; Trigger ...; Effect ..." and requirements as "Requirements ...; Effect ...".
 - Never invent flat numeric DCs or attack bonuses; always use the scale words.

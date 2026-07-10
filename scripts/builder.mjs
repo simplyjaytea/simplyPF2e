@@ -127,7 +127,19 @@ export function normalizeConcept(raw, { level, rarity }) {
       })),
     spellcasting,
     feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 4),
-    equipment: (Array.isArray(c.equipment) ? c.equipment : []).map((e) => String(e)).filter(Boolean).slice(0, 12),
+    equipment: (Array.isArray(c.equipment) ? c.equipment : [])
+      .map((e) => {
+        if (typeof e === "string" && e) return { name: e, quantity: 1 };
+        if (e?.name) {
+          return {
+            name: String(e.name),
+            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10)
+          };
+        }
+        return null;
+      })
+      .filter(Boolean)
+      .slice(0, 12),
     resistances: (Array.isArray(c.resistances) ? c.resistances : [])
       .map((r) => slugify(r?.type ?? r)).filter(Boolean).slice(0, 4),
     weaknesses: (Array.isArray(c.weaknesses) ? c.weaknesses : [])
@@ -168,9 +180,16 @@ export async function resolveConcept(concept) {
   }
 
   const equipment = [];
-  for (const name of concept.equipment) {
-    const entry = await findEntry(getPacksFor("equipment"), name, (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0));
-    equipment.push({ name, entry });
+  for (const { name, quantity } of concept.equipment) {
+    // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
+    // item matches; the runes are re-applied as system data at creation.
+    const runes = parseRunes(name);
+    const entry = await findEntry(
+      getPacksFor("equipment"),
+      runes.base,
+      (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0)
+    );
+    equipment.push({ name, quantity, runes, entry });
   }
 
   return { abilities, spells, feats, equipment };
@@ -274,6 +293,18 @@ export function enrichDescription(text, level) {
     (_, scale, check) => `@Check[type:${check.toLowerCase()}|dc:${dcFor(scale)}] check`
   );
 
+  // "DC 20 Athletics check", "DC 5 flat check" (literal DCs)
+  out = out.replace(
+    new RegExp(`\\bDC\\s+(\\d+)\\s+(${CHECK_TYPES})\\s+check\\b`, "gi"),
+    (_, dc, check) => `@Check[type:${check.toLowerCase()}|dc:${dc}] check`
+  );
+
+  // "regains 2d8+4 Hit Points", "2d8 healing" become clickable healing rolls
+  out = out.replace(
+    /\b(\d+d\d+(?:[+-]\d+)?)\s+(?:hit points|healing)\b/gi,
+    (_, dice) => `@Damage[${dice}[healing]] Hit Points`
+  );
+
   // "30-foot cone" and friends become placeable templates
   out = out.replace(
     /\b(\d+)[-\s]foot\s+(cone|line|burst|emanation)\b/gi,
@@ -284,6 +315,39 @@ export function enrichDescription(text, level) {
   out = out.replace(/\b(extreme|high|moderate)\s+DC\b/gi, (_, scale) => `DC ${dcFor(scale)}`);
 
   return out;
+}
+
+const STRIKING_RUNES = { "major striking": 3, "greater striking": 2, "striking": 1 };
+const RESILIENT_RUNES = { "major resilient": 3, "greater resilient": 2, "resilient": 1 };
+
+/**
+ * Parse fundamental runes out of an item name like "+1 striking rapier" or
+ * "+2 greater resilient breastplate", so the base item can be found in the
+ * compendium and the runes applied as real system data.
+ */
+export function parseRunes(name) {
+  const result = { base: String(name).trim(), potency: 0, striking: 0, resilient: 0 };
+  const match = /^\s*\+(\d)\s+(.+)$/.exec(result.base);
+  if (!match) return result;
+  result.potency = Math.min(Number(match[1]), 3);
+  let rest = match[2].trim();
+  const lower = () => rest.toLowerCase();
+  for (const [rune, value] of Object.entries(STRIKING_RUNES)) {
+    if (lower().startsWith(`${rune} `)) {
+      result.striking = value;
+      rest = rest.slice(rune.length + 1);
+      break;
+    }
+  }
+  for (const [rune, value] of Object.entries(RESILIENT_RUNES)) {
+    if (lower().startsWith(`${rune} `)) {
+      result.resilient = value;
+      rest = rest.slice(rune.length + 1);
+      break;
+    }
+  }
+  result.base = rest.trim();
+  return result;
 }
 
 /* Which skill identifies a creature, by creature-type trait (Recall Knowledge). */
@@ -468,11 +532,34 @@ export async function createActor(concept, resolved, { img = null } = {}) {
     }
   }
 
-  // Equipment
-  for (const { entry } of resolved.equipment) {
+  // Equipment: apply quantities, fundamental runes, and sensible carry states
+  for (const { name, quantity, runes, entry } of resolved.equipment) {
     const doc = await getDocument(entry);
     if (!doc) continue;
-    items.push(toItemData(doc));
+    const data = toItemData(doc);
+    if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
+    if (data.type === "weapon") {
+      if (runes.potency || runes.striking) {
+        data.system.runes = {
+          ...data.system.runes,
+          potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
+          striking: Math.max(runes.striking, data.system.runes?.striking ?? 0)
+        };
+        data.name = capitalized(name);
+      }
+      data.system.equipped = { ...data.system.equipped, carryType: "held", handsHeld: 1 };
+    } else if (data.type === "armor") {
+      if (runes.potency || runes.resilient) {
+        data.system.runes = {
+          ...data.system.runes,
+          potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
+          resilient: Math.max(runes.resilient, data.system.runes?.resilient ?? 0)
+        };
+        data.name = capitalized(name);
+      }
+      data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
+    }
+    items.push(data);
   }
 
   // Final safety net: never embed an item type the NPC schema rejects — a

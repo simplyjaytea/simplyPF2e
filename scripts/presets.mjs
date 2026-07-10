@@ -175,9 +175,6 @@ export function examplePrompt(presetId, tick) {
   return pool[((tick % pool.length) + pool.length) % pool.length];
 }
 
-/** Special dropdown id for "random creature, just pick a level" mode. */
-export const RANDOM_PRESET_ID = "random";
-
 const RANDOM_TYPES = [
   "aberration", "animal", "beast", "construct", "dragon", "elemental", "fey",
   "fiend", "fungus", "giant", "humanoid", "monitor", "ooze", "plant", "undead"

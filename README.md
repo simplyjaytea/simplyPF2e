@@ -22,6 +22,8 @@ Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a le
 2. **The module does the math.** Every number — AC, HP, saves, perception, skill modifiers, strike attack bonuses, damage dice, spell DCs — is looked up from the official GM Core **"Building Creatures"** benchmark tables for the level you chose. The AI never outputs numbers, so creatures are always mechanically sound for their level.
 3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, ...), feats, spells, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom ability or flagged in the preview so you can decide.
 
+Inventories are real and logical: the AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically.
+
 Two pieces of the concept get extra grounding:
 
 - **Spells are chosen *from* the compendium.** When a creature is a spellcaster, the module reads the actual spell list for its tradition (filtered to the ranks a creature of that level may cast) out of the PF2e compendium and hands that list to the AI, which picks from it. The AI can't invent spells that don't exist, and every pick lands as the real spell document on the sheet.
@@ -41,13 +43,13 @@ You can also save your own: click **+** next to the dropdown, give the preset a 
 
 The description box's placeholder shows a different example concept each time you switch presets — five per preset — as inspiration for what that preset can build.
 
-### Random mode
+### Random creatures
 
-Pick **🎲 Random (just pick a level)** from the preset dropdown, set a level, and click Generate. The Forge rolls a surprise brief locally (creature type × combat role × home × twist — thousands of combinations) and the AI builds it. Every Regenerate rolls a brand-new brief, so it never converges on the same ideas — great for filling a dungeon room or sparking a session when you're out of prep.
+The dice button next to **Generate** rolls a surprise: it ignores the description box, rolls a brief locally (creature type × combat role × home × twist — thousands of combinations), and the AI builds it at the level you set. Every click rolls a brand-new brief, so it never converges on the same ideas — great for filling a dungeon room or sparking a session when you're out of prep.
 
 ### Encounter mode
 
-Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size, pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **Create All Actors** files the whole roster into a folder named after the encounter.
+Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size, pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter.
 
 ### Read-aloud text, Recall Knowledge, and portraits
 

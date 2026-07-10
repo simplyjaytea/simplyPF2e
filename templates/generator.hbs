@@ -37,10 +37,6 @@
       {{#if encounterMode}}
         <label>{{localize "SIMPLYPF2E.Generator.EncounterTheme"}}</label>
         <textarea name="prompt" rows="2" placeholder="{{localize 'SIMPLYPF2E.Generator.EncounterThemePlaceholder'}}">{{input.prompt}}</textarea>
-      {{else if randomSelected}}
-        <p class="spf-hint spf-random-hint">
-          <i class="fa-solid fa-dice"></i> {{localize "SIMPLYPF2E.Generator.RandomHint"}}
-        </p>
       {{else}}
         <label>{{localize "SIMPLYPF2E.Generator.Prompt"}}</label>
         <textarea name="prompt" rows="3" placeholder="{{promptPlaceholder}}">{{input.prompt}}</textarea>
@@ -89,10 +85,17 @@
         </label>
       </div>
     </div>
-    <button type="button" data-action="generate" {{#if busy}}disabled{{/if}}>
-      <i class="fa-solid fa-wand-sparkles"></i>
-      {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else if encounterPreview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
-    </button>
+    <div class="spf-generate-row">
+      <button type="button" data-action="generate" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-wand-sparkles"></i>
+        {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else if encounterPreview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
+      </button>
+      {{#unless encounterMode}}
+        <button type="button" class="spf-random-button" data-action="generateRandom" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RandomTooltip'}}" {{#if busy}}disabled{{/if}}>
+          <i class="fa-solid fa-dice"></i>
+        </button>
+      {{/unless}}
+    </div>
   </fieldset>
 
   {{#if busy}}
@@ -248,13 +251,22 @@
   <section class="spf-preview spf-encounter">
     <header class="spf-statblock-header">
       <h2>{{encounterPreview.name}}</h2>
-      <span class="spf-level">{{encounterPreview.spent}} / {{encounterPreview.budget}} XP</span>
+      <span class="spf-level {{#if encounterPreview.overBudget}}spf-over-budget{{/if}}">{{encounterPreview.spent}} / {{encounterPreview.budget}} XP</span>
     </header>
     <ul class="spf-encounter-members">
       {{#each encounterPreview.members}}
-        <li class="spf-encounter-member">
+        <li class="spf-encounter-member {{#if this.skipped}}spf-member-skipped{{/if}}">
           <div class="spf-member-head">
-            <strong>{{#if (eq this.count 1)}}{{this.name}}{{else}}{{this.count}} × {{this.name}}{{/if}}</strong>
+            <strong>{{this.name}}</strong>
+            <span class="spf-member-count">
+              <button type="button" data-action="memberDown" data-index="{{this.index}}" data-tooltip="{{localize 'SIMPLYPF2E.Generator.MemberDown'}}" {{#if @root.busy}}disabled{{/if}}>
+                <i class="fa-solid fa-minus"></i>
+              </button>
+              <span class="spf-member-count-value">×{{this.count}}</span>
+              <button type="button" data-action="memberUp" data-index="{{this.index}}" data-tooltip="{{localize 'SIMPLYPF2E.Generator.MemberUp'}}" {{#if @root.busy}}disabled{{/if}}>
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </span>
             <span class="spf-member-tag">{{localize "SIMPLYPF2E.Generator.Creature"}} {{this.level}} · {{localize this.role}}</span>
           </div>
           {{#if this.blurb}}<em>{{this.blurb}}</em>{{/if}}

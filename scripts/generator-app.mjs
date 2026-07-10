@@ -4,7 +4,7 @@ import { getSpellCandidates } from "./compendium.mjs";
 import { normalizeConcept, resolveConcept, computeStats, createActor } from "./builder.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset,
-  examplePrompt, randomBrief, RANDOM_PRESET_ID
+  examplePrompt, randomBrief
 } from "./presets.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
 import { resolveArt } from "./art.mjs";
@@ -27,12 +27,15 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     position: { width: 720, height: "auto" },
     actions: {
       generate: GeneratorApp.#onGenerate,
+      generateRandom: GeneratorApp.#onGenerateRandom,
       createActor: GeneratorApp.#onCreateActor,
       discard: GeneratorApp.#onDiscard,
       savePreset: GeneratorApp.#onSavePreset,
       deletePreset: GeneratorApp.#onDeletePreset,
       levelUp: GeneratorApp.#onLevelUp,
-      levelDown: GeneratorApp.#onLevelDown
+      levelDown: GeneratorApp.#onLevelDown,
+      memberUp: GeneratorApp.#onMemberUp,
+      memberDown: GeneratorApp.#onMemberDown
     }
   };
 
@@ -70,10 +73,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         { value: "unique", label: "SIMPLYPF2E.Rarity.Unique" }
       ],
       promptPlaceholder: `${game.i18n.localize("SIMPLYPF2E.Generator.PromptExample")} ${examplePrompt(this.#input.preset, this.#exampleTick)}...`,
-      randomSelected: this.#input.preset === RANDOM_PRESET_ID,
       presets: [
         { id: "", label: game.i18n.localize("SIMPLYPF2E.Presets.None"), selected: !this.#input.preset },
-        { id: RANDOM_PRESET_ID, label: game.i18n.localize("SIMPLYPF2E.Presets.Random"), selected: this.#input.preset === RANDOM_PRESET_ID },
         ...BUILT_IN_PRESETS.map((p) => ({
           id: p.id,
           label: game.i18n.localize(p.name),
@@ -103,11 +104,14 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       name: this.#encounter.name,
       budget: this.#encounter.budget,
       spent: this.#encounter.spent,
-      members: this.#encounter.members.map((member) => {
+      overBudget: this.#encounter.spent > this.#encounter.budget,
+      members: this.#encounter.members.map((member, index) => {
         const stats = computeStats(member.concept);
         const strike = stats.strikes[0];
         return {
+          index,
           count: member.count,
+          skipped: member.count === 0,
           role: `SIMPLYPF2E.Role.${member.role.charAt(0).toUpperCase()}${member.role.slice(1)}`,
           name: member.concept.name,
           level: member.concept.level,
@@ -148,8 +152,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         name: entry?.name ?? name,
         found: Boolean(entry)
       })),
-      equipment: (this.#resolved?.equipment ?? []).map(({ name, entry }) => ({
-        name: entry?.name ?? name,
+      equipment: (this.#resolved?.equipment ?? []).map(({ name, quantity, runes, entry }) => ({
+        name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
         found: Boolean(entry)
       })),
       missingSpells,
@@ -205,6 +209,23 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#stepLevel(-1);
   }
 
+  static async #onMemberUp(_event, target) {
+    await this.#stepMemberCount(Number(target.dataset.index), 1);
+  }
+
+  static async #onMemberDown(_event, target) {
+    await this.#stepMemberCount(Number(target.dataset.index), -1);
+  }
+
+  /** Adjust an encounter member's count (0 = skip it) and refresh XP math. */
+  async #stepMemberCount(index, delta) {
+    const member = this.#encounter?.members?.[index];
+    if (!member) return;
+    member.count = Math.min(8, Math.max(0, member.count + delta));
+    this.#encounter.spent = this.#encounter.members.reduce((sum, m) => sum + m.count * m.xpEach, 0);
+    await this.render();
+  }
+
   #stepLevel(delta) {
     const input = this.element.querySelector('input[name="level"]');
     if (!input) return;
@@ -256,9 +277,17 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   static async #onGenerate() {
+    return this.#runGeneration(false);
+  }
+
+  /** The dice button: same pipeline, module-rolled surprise brief as prompt. */
+  static async #onGenerateRandom() {
+    return this.#runGeneration(true);
+  }
+
+  async #runGeneration(isRandom) {
     this.#readForm();
     if (this.#input.mode === "encounter") return this.#generateEncounter();
-    const isRandom = this.#input.preset === RANDOM_PRESET_ID;
     if (!isRandom && !this.#input.prompt.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
       return;
@@ -426,6 +455,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       const folder = await Folder.create({ name: this.#encounter.name, type: "Actor" });
       let created = 0;
       for (const member of this.#encounter.members) {
+        if (member.count < 1) continue;
         const img = await resolveArt(member.concept, { allowGeneration: false });
         const actor = await createActor(member.concept, member.resolved, { img });
         await actor.update({ folder: folder.id });
