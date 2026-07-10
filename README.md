@@ -39,6 +39,12 @@ The preset dropdown shapes the *build* while your description drives the *flavor
 
 You can also save your own: click **+** next to the dropdown, give the preset a name and build guidance (written to the AI like the examples above), and it's stored in the world and appears in the dropdown marked with `*`. Select a custom preset and click the trash button to delete it.
 
+The description box's placeholder shows a different example concept each time you switch presets — five per preset — as inspiration for what that preset can build.
+
+### Random mode
+
+Pick **🎲 Random (just pick a level)** from the preset dropdown, set a level, and click Generate. The Forge rolls a surprise brief locally (creature type × combat role × home × twist — thousands of combinations) and the AI builds it. Every Regenerate rolls a brand-new brief, so it never converges on the same ideas — great for filling a dungeon room or sparking a session when you're out of prep.
+
 ### Iterating on a creature
 
 Generation is meant to be a conversation, not a one-shot:

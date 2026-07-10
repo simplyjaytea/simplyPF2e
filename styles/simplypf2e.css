@@ -35,6 +35,32 @@
   line-height: 1;
 }
 
+.simplypf2e .spf-level-controls {
+  display: flex;
+  gap: 0.2rem;
+  align-items: center;
+}
+
+.simplypf2e .spf-level-controls button {
+  flex: 0 0 auto;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  line-height: 1;
+}
+
+.simplypf2e .spf-level-controls input[type="number"] {
+  width: 3.5rem;
+  text-align: center;
+}
+
+.simplypf2e .spf-random-hint {
+  padding: 0.6rem;
+  border: 1px dashed var(--color-border, #7a7971);
+  border-radius: 4px;
+  text-align: center;
+}
+
 .simplypf2e .spf-row {
   display: flex;
   gap: 1rem;

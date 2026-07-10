@@ -2,7 +2,10 @@ import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
 import { generateConcept, selectSpells } from "./ai.mjs";
 import { getSpellCandidates } from "./compendium.mjs";
 import { normalizeConcept, resolveConcept, computeStats, createActor } from "./builder.mjs";
-import { BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset } from "./presets.mjs";
+import {
+  BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset,
+  examplePrompt, randomBrief, RANDOM_PRESET_ID
+} from "./presets.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
@@ -25,7 +28,9 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       createActor: GeneratorApp.#onCreateActor,
       discard: GeneratorApp.#onDiscard,
       savePreset: GeneratorApp.#onSavePreset,
-      deletePreset: GeneratorApp.#onDeletePreset
+      deletePreset: GeneratorApp.#onDeletePreset,
+      levelUp: GeneratorApp.#onLevelUp,
+      levelDown: GeneratorApp.#onLevelDown
     }
   };
 
@@ -40,6 +45,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   #concept = null;
   #resolved = null;
   #progress = null;
+  /** Cycles the example placeholder; starts randomly so reopening varies. */
+  #exampleTick = Math.floor(Math.random() * 5);
 
   async _prepareContext() {
     return {
@@ -55,8 +62,11 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         { value: "rare", label: "SIMPLYPF2E.Rarity.Rare" },
         { value: "unique", label: "SIMPLYPF2E.Rarity.Unique" }
       ],
+      promptPlaceholder: `${game.i18n.localize("SIMPLYPF2E.Generator.PromptExample")} ${examplePrompt(this.#input.preset, this.#exampleTick)}...`,
+      randomSelected: this.#input.preset === RANDOM_PRESET_ID,
       presets: [
         { id: "", label: game.i18n.localize("SIMPLYPF2E.Presets.None"), selected: !this.#input.preset },
+        { id: RANDOM_PRESET_ID, label: game.i18n.localize("SIMPLYPF2E.Presets.Random"), selected: this.#input.preset === RANDOM_PRESET_ID },
         ...BUILT_IN_PRESETS.map((p) => ({
           id: p.id,
           label: game.i18n.localize(p.name),
@@ -118,7 +128,9 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** Read the current form inputs into #input. */
   #readForm() {
     const form = this.element;
-    const prompt = form.querySelector('[name="prompt"]')?.value ?? "";
+    // The textarea is hidden in Random mode; keep the last typed prompt then.
+    const promptEl = form.querySelector('[name="prompt"]');
+    const prompt = promptEl ? promptEl.value : this.#input.prompt;
     const level = Number(form.querySelector('[name="level"]')?.value ?? 1);
     const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
     const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked ?? true;
@@ -126,13 +138,32 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#input = { prompt, level, rarity, allowSpellcasting, preset };
   }
 
-  /** Re-render when the preset selection changes so the delete button tracks it. */
+  /**
+   * Re-render when the preset selection changes so the delete button, the
+   * Random-mode form, and the cycling example placeholder all track it.
+   */
   _onRender(context, options) {
     super._onRender?.(context, options);
     this.element.querySelector('select[name="preset"]')?.addEventListener("change", () => {
       this.#readForm();
+      this.#exampleTick++;
       this.render();
     });
+  }
+
+  static #onLevelUp() {
+    this.#stepLevel(1);
+  }
+
+  static #onLevelDown() {
+    this.#stepLevel(-1);
+  }
+
+  #stepLevel(delta) {
+    const input = this.element.querySelector('input[name="level"]');
+    if (!input) return;
+    const current = Number.parseInt(input.value, 10);
+    input.value = Math.min(24, Math.max(-1, (Number.isNaN(current) ? 1 : current) + delta));
   }
 
   /** Initialize the step list shown while generating. */
@@ -185,7 +216,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static async #onGenerate() {
     this.#readForm();
-    if (!this.#input.prompt.trim()) {
+    const isRandom = this.#input.preset === RANDOM_PRESET_ID;
+    if (!isRandom && !this.#input.prompt.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
       return;
     }
@@ -195,11 +227,13 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     try {
       await this.#setStep("concept");
       const raw = await generateConcept({
-        prompt: this.#input.prompt,
+        // Random mode rolls a fresh local brief each generation, so
+        // Regenerate gives a genuinely different creature every time.
+        prompt: isRandom ? randomBrief() : this.#input.prompt,
         level: this.#input.level,
         rarity: this.#input.rarity,
         allowSpellcasting: this.#input.allowSpellcasting,
-        preset: findPreset(this.#input.preset)?.prompt ?? null,
+        preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
         onProgress: (p) => this.#onAIProgress(p)
       });
       this.#concept = normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity });

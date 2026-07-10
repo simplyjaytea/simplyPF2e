@@ -22,13 +22,27 @@
       </div>
     </div>
     <div class="form-group stacked">
-      <label>{{localize "SIMPLYPF2E.Generator.Prompt"}}</label>
-      <textarea name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.Generator.PromptPlaceholder'}}">{{input.prompt}}</textarea>
+      {{#if randomSelected}}
+        <p class="spf-hint spf-random-hint">
+          <i class="fa-solid fa-dice"></i> {{localize "SIMPLYPF2E.Generator.RandomHint"}}
+        </p>
+      {{else}}
+        <label>{{localize "SIMPLYPF2E.Generator.Prompt"}}</label>
+        <textarea name="prompt" rows="3" placeholder="{{promptPlaceholder}}">{{input.prompt}}</textarea>
+      {{/if}}
     </div>
     <div class="spf-row">
       <div class="form-group">
         <label>{{localize "SIMPLYPF2E.Generator.Level"}}</label>
-        <input type="number" name="level" min="-1" max="24" step="1" value="{{input.level}}">
+        <div class="spf-level-controls">
+          <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
+            <i class="fa-solid fa-minus"></i>
+          </button>
+          <input type="number" name="level" min="-1" max="24" step="1" value="{{input.level}}">
+          <button type="button" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
       </div>
       <div class="form-group">
         <label>{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
