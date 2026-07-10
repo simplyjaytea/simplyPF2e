@@ -2,8 +2,9 @@ import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
 import { generateConcept, selectSpells } from "./ai.mjs";
 import { getSpellCandidates } from "./compendium.mjs";
 import { normalizeConcept, resolveConcept, computeStats, createActor } from "./builder.mjs";
+import { BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset } from "./presets.mjs";
 
-const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
+const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 /**
  * The prompt → preview → create dialog.
@@ -22,7 +23,9 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     actions: {
       generate: GeneratorApp.#onGenerate,
       createActor: GeneratorApp.#onCreateActor,
-      discard: GeneratorApp.#onDiscard
+      discard: GeneratorApp.#onDiscard,
+      savePreset: GeneratorApp.#onSavePreset,
+      deletePreset: GeneratorApp.#onDeletePreset
     }
   };
 
@@ -31,7 +34,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   /** Form values, kept across re-renders. */
-  #input = { prompt: "", level: 1, rarity: "common", allowSpellcasting: true };
+  #input = { prompt: "", level: 1, rarity: "common", allowSpellcasting: true, preset: "" };
   #busy = false;
   #error = null;
   #concept = null;
@@ -52,6 +55,20 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         { value: "rare", label: "SIMPLYPF2E.Rarity.Rare" },
         { value: "unique", label: "SIMPLYPF2E.Rarity.Unique" }
       ],
+      presets: [
+        { id: "", label: game.i18n.localize("SIMPLYPF2E.Presets.None"), selected: !this.#input.preset },
+        ...BUILT_IN_PRESETS.map((p) => ({
+          id: p.id,
+          label: game.i18n.localize(p.name),
+          selected: this.#input.preset === p.id
+        })),
+        ...getCustomPresets().map((p) => ({
+          id: p.id,
+          label: `${p.name} *`,
+          selected: this.#input.preset === p.id
+        }))
+      ],
+      selectedPresetIsCustom: Boolean(findPreset(this.#input.preset)?.custom),
       preview: this.#buildPreviewContext()
     };
   }
@@ -105,7 +122,17 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const level = Number(form.querySelector('[name="level"]')?.value ?? 1);
     const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
     const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked ?? true;
-    this.#input = { prompt, level, rarity, allowSpellcasting };
+    const preset = form.querySelector('[name="preset"]')?.value ?? "";
+    this.#input = { prompt, level, rarity, allowSpellcasting, preset };
+  }
+
+  /** Re-render when the preset selection changes so the delete button tracks it. */
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    this.element.querySelector('select[name="preset"]')?.addEventListener("change", () => {
+      this.#readForm();
+      this.render();
+    });
   }
 
   /** Initialize the step list shown while generating. */
@@ -172,6 +199,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         level: this.#input.level,
         rarity: this.#input.rarity,
         allowSpellcasting: this.#input.allowSpellcasting,
+        preset: findPreset(this.#input.preset)?.prompt ?? null,
         onProgress: (p) => this.#onAIProgress(p)
       });
       this.#concept = normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity });
@@ -240,6 +268,56 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#concept = null;
     this.#resolved = null;
     this.#error = null;
+    await this.render();
+  }
+
+  /** Dialog to save a new custom preset (name + guidance text). */
+  static async #onSavePreset() {
+    this.#readForm();
+    const content = `
+      <div class="form-group">
+        <label>${game.i18n.localize("SIMPLYPF2E.Presets.DialogName")}</label>
+        <input type="text" name="presetName" required placeholder="${game.i18n.localize("SIMPLYPF2E.Presets.DialogNamePlaceholder")}">
+      </div>
+      <div class="form-group stacked">
+        <label>${game.i18n.localize("SIMPLYPF2E.Presets.DialogGuidance")}</label>
+        <textarea name="presetPrompt" rows="6" placeholder="${game.i18n.localize("SIMPLYPF2E.Presets.DialogGuidancePlaceholder")}"></textarea>
+      </div>`;
+    const result = await DialogV2.prompt({
+      window: { title: "SIMPLYPF2E.Presets.DialogTitle", icon: "fa-solid fa-bookmark" },
+      position: { width: 480 },
+      content,
+      ok: {
+        label: "SIMPLYPF2E.Presets.DialogSave",
+        icon: "fa-solid fa-floppy-disk",
+        callback: (_event, button) => ({
+          name: button.form.elements.presetName.value.trim(),
+          prompt: button.form.elements.presetPrompt.value.trim()
+        })
+      },
+      rejectClose: false
+    });
+    if (!result?.name || !result?.prompt) return;
+    const preset = await addCustomPreset(result.name, result.prompt);
+    this.#input.preset = preset.id;
+    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: preset.name }));
+    await this.render();
+  }
+
+  /** Delete the currently selected custom preset (after confirmation). */
+  static async #onDeletePreset() {
+    this.#readForm();
+    const preset = findPreset(this.#input.preset);
+    if (!preset?.custom) return;
+    const confirmed = await DialogV2.confirm({
+      window: { title: "SIMPLYPF2E.Presets.DeleteTitle" },
+      content: `<p>${game.i18n.format("SIMPLYPF2E.Presets.DeleteConfirm", { name: preset.name })}</p>`,
+      rejectClose: false
+    });
+    if (!confirmed) return;
+    await deleteCustomPreset(preset.id);
+    this.#input.preset = "";
+    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Deleted", { name: preset.name }));
     await this.render();
   }
 }

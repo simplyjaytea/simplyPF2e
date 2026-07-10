@@ -7,7 +7,8 @@ export const SETTINGS = {
   temperature: "temperature",
   maxTokens: "maxTokens",
   requestTimeout: "requestTimeout",
-  sourcePacks: "sourcePacks"
+  sourcePacks: "sourcePacks",
+  customPresets: "customPresets"
 };
 
 export function registerSettings(SourcesConfigApp) {
@@ -27,6 +28,14 @@ export function registerSettings(SourcesConfigApp) {
     config: false,
     type: Object,
     default: {}
+  });
+
+  // GM-created generation presets, managed from the generator dialog.
+  game.settings.register(MODULE_ID, SETTINGS.customPresets, {
+    scope: "world",
+    config: false,
+    type: Array,
+    default: []
   });
   game.settings.register(MODULE_ID, SETTINGS.apiBaseUrl, {
     name: "SIMPLYPF2E.Settings.ApiBaseUrl.Name",

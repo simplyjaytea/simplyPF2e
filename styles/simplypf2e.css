@@ -19,6 +19,22 @@
   font-family: inherit;
 }
 
+.simplypf2e .spf-preset-controls {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.simplypf2e .spf-preset-controls select {
+  flex: 1;
+}
+
+.simplypf2e .spf-preset-controls button {
+  flex: 0 0 auto;
+  width: 2.2rem;
+  line-height: 1;
+}
+
 .simplypf2e .spf-row {
   display: flex;
   gap: 1rem;
