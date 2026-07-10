@@ -88,7 +88,30 @@ Design guidance (GM Core road maps):
 - Use standard glossary abilities (Grab, Push, Knockdown, Trample, Swallow Whole, Frightful Presence, Regeneration, ...) where they fit, and invent 1-2 signature custom abilities that make the creature memorable.
 - Traits, languages, senses and speeds must follow PF2e conventions.`;
 
-export class AIRequestError extends Error {}
+export class AIRequestError extends Error {
+  constructor(message, { retryable = false } = {}) {
+    super(message);
+    this.retryable = retryable;
+  }
+}
+
+/**
+ * Request a completion and parse it as JSON, retrying once on the transient
+ * failure modes (empty content, truncated/unparseable JSON) before giving up.
+ */
+async function requestJSON(args) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return parseConceptJSON(await requestCompletion(args));
+    } catch (err) {
+      if (!(err instanceof AIRequestError) || !err.retryable) throw err;
+      lastError = err;
+      if (attempt === 0) console.warn("simplypf2e | generation attempt failed, retrying once:", err.message);
+    }
+  }
+  throw lastError;
+}
 
 /**
  * Ask the configured model for a creature concept.
@@ -104,12 +127,11 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
     `Concept from the GM: ${prompt}`
   ].filter((line) => line !== null).join("\n");
 
-  const content = await requestCompletion({
+  return requestJSON({
     system: SYSTEM_PROMPT,
     user: userPrompt,
     onProgress
   });
-  return parseConceptJSON(content);
 }
 
 /**
@@ -151,8 +173,7 @@ Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward 
     list
   ].filter((line) => line !== null).join("\n");
 
-  const content = await requestCompletion({ system, user, onProgress });
-  const parsed = parseConceptJSON(content);
+  const parsed = await requestJSON({ system, user, onProgress });
   return (Array.isArray(parsed.spells) ? parsed.spells : [])
     .filter((s) => s?.name)
     .map((s) => ({ name: String(s.name), rank: Math.min(Math.max(Math.round(Number(s.rank) || 0), 0), maxRank) }));
@@ -182,8 +203,7 @@ Respond with a single JSON object and nothing else:
     slotLines
   ].join("\n");
 
-  const content = await requestCompletion({ system, user, onProgress });
-  const parsed = parseConceptJSON(content);
+  const parsed = await requestJSON({ system, user, onProgress });
   const briefs = Array.isArray(parsed.briefs) ? parsed.briefs.map((b) => String(b)) : [];
   return {
     name: String(parsed.name || "Encounter"),
@@ -289,14 +309,26 @@ async function requestCompletion({ system, user, onProgress }) {
 
     const contentType = response.headers.get("content-type") ?? "";
     let content;
+    let finishReason = null;
     if (contentType.includes("text/event-stream") && response.body) {
-      content = await readEventStream(response, { onProgress, resetIdle });
+      ({ content, finishReason } = await readEventStream(response, { onProgress, resetIdle }));
     } else {
       resetIdle();
       const data = await response.json();
       content = data?.choices?.[0]?.message?.content;
+      finishReason = data?.choices?.[0]?.finish_reason ?? null;
     }
-    if (!content) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"));
+    if (!content) {
+      // Reasoning models can burn the whole token budget "thinking" and
+      // return no content at all — tell the user exactly what to fix.
+      if (finishReason === "length") {
+        throw new AIRequestError(
+          game.i18n.format("SIMPLYPF2E.Errors.Truncated", { max: body.max_tokens }),
+          { retryable: true }
+        );
+      }
+      throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"), { retryable: true });
+    }
     return content;
   } catch (err) {
     if (err.name === "AbortError" || controller.signal.aborted) {
@@ -315,6 +347,7 @@ async function readEventStream(response, { onProgress, resetIdle }) {
   let buffer = "";
   let content = "";
   let reasoningChars = 0;
+  let finishReason = null;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -333,7 +366,9 @@ async function readEventStream(response, { onProgress, resetIdle }) {
       } catch {
         continue; // partial keep-alive noise
       }
-      const delta = chunk?.choices?.[0]?.delta ?? {};
+      const choice = chunk?.choices?.[0] ?? {};
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+      const delta = choice.delta ?? {};
       // DeepSeek reasoning models stream their chain of thought first
       if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
         reasoningChars += delta.reasoning_content.length;
@@ -345,7 +380,7 @@ async function readEventStream(response, { onProgress, resetIdle }) {
       }
     }
   }
-  return content;
+  return { content, finishReason };
 }
 
 async function postChatCompletion(baseUrl, apiKey, body, signal) {
@@ -379,20 +414,78 @@ async function safeErrorDetail(response) {
   }
 }
 
-/** Parse model output into JSON, tolerating markdown fences and stray prose. */
+/**
+ * Parse model output into JSON, tolerating markdown fences, stray prose, and
+ * truncation (a response cut off by the token limit is repaired by closing
+ * open strings/brackets at the last parseable point).
+ */
 export function parseConceptJSON(content) {
   let text = content.trim();
   const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
   if (fenced) text = fenced[1].trim();
   const start = text.indexOf("{");
+  if (start === -1) {
+    throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.BadJson"), { retryable: true });
+  }
   const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
-    throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.BadJson"));
+  if (end > start) {
+    try {
+      return JSON.parse(text.slice(start, end + 1));
+    } catch {
+      // fall through to truncation repair
+    }
   }
-  try {
-    return JSON.parse(text.slice(start, end + 1));
-  } catch (err) {
-    console.error("simplypf2e | Failed to parse AI response:", content);
-    throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.BadJson"));
+  const repaired = repairTruncatedJSON(text.slice(start));
+  if (repaired !== null) {
+    console.warn("simplypf2e | AI response was truncated; salvaged a partial concept");
+    return repaired;
   }
+  console.error("simplypf2e | Failed to parse AI response:", content);
+  throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.BadJson"), { retryable: true });
+}
+
+/** Append the closers a truncated JSON string needs to become parseable. */
+function closeBrackets(text) {
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+  for (const char of text) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = inString;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === "{" || char === "[") stack.push(char === "{" ? "}" : "]");
+    else if (char === "}" || char === "]") {
+      if (stack.pop() !== char) return null; // mismatched — not salvageable here
+    }
+  }
+  return text + (inString ? '"' : "") + stack.reverse().join("");
+}
+
+/**
+ * Backtrack from the cut point until closing the open brackets yields valid
+ * JSON — recovering the complete prefix of a token-limit-truncated object.
+ */
+function repairTruncatedJSON(text) {
+  const minEnd = Math.max(1, text.length - 2000);
+  for (let end = text.length; end >= minEnd; end--) {
+    const candidate = closeBrackets(text.slice(0, end));
+    if (candidate === null) continue;
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      // keep backtracking
+    }
+  }
+  return null;
 }

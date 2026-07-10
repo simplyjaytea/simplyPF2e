@@ -19,7 +19,7 @@
       },
       "MaxTokens": {
         "Name": "Max response tokens",
-        "Hint": "Upper limit for the AI response length. Raise this if complex creatures come back truncated."
+        "Hint": "Upper limit for the AI response length. Reasoning models (like DeepSeek's) spend part of this budget thinking before they write, so keep it generous — raise it if you see truncation errors."
       },
       "RequestTimeout": {
         "Name": "Request timeout (seconds)",
@@ -173,7 +173,8 @@
       "NoBaseUrl": "No API base URL is configured in the module settings.",
       "ApiError": "The AI provider returned an error ({status}): {detail}",
       "NetworkError": "Could not reach the AI provider: {message}. If you are using a local or self-hosted provider, make sure it allows requests from Foundry (CORS).",
-      "EmptyResponse": "The AI provider returned an empty response.",
+      "EmptyResponse": "The AI provider returned an empty response. This was retried once already — check the provider's status page and your model name.",
+      "Truncated": "The AI ran out of tokens before finishing its answer ({max} allowed). Raise \"Max response tokens\" in the module settings — reasoning models spend part of the budget thinking before they write.",
       "NoImageModel": "No image model is configured in the module settings.",
       "Timeout": "The AI provider sent no data for {seconds} seconds and the request was aborted. Check the model name and provider status, or raise the timeout in the module settings.",
       "BadJson": "The AI response was not valid JSON. Try generating again.",
