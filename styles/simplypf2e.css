@@ -120,11 +120,46 @@
   text-align: center;
 }
 
-.simplypf2e .spf-random-hint {
-  padding: 0.6rem;
-  border: 1px dashed var(--color-border, #7a7971);
-  border-radius: 4px;
+.simplypf2e .spf-generate-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.simplypf2e .spf-generate-row button[data-action="generate"] {
+  flex: 1;
+}
+
+.simplypf2e .spf-random-button {
+  flex: 0 0 auto;
+  width: 2.6rem;
+}
+
+.simplypf2e .spf-member-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.simplypf2e .spf-member-count button {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  line-height: 1;
+  font-size: 0.75em;
+}
+
+.simplypf2e .spf-member-count-value {
+  min-width: 1.6rem;
   text-align: center;
+  font-weight: bold;
+}
+
+.simplypf2e .spf-member-skipped {
+  opacity: 0.45;
+}
+
+.simplypf2e .spf-over-budget {
+  color: #b0413e;
 }
 
 .simplypf2e .spf-row {
