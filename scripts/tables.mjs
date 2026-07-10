@@ -107,6 +107,18 @@ export const SPELL_ATTACK = {
   moderate: [5,  5,  6,  7,  9, 10, 11, 13, 14, 15, 17, 18, 19, 21, 22, 23, 25, 26, 27, 29, 30, 31, 33, 34, 35, 37]
 };
 
+/* Level-based DCs (GM Core), used for Recall Knowledge checks. */
+export const LEVEL_DC = {
+  dc: [13, 14, 15, 16, 18, 19, 20, 22, 23, 24, 26, 27, 28, 30, 31, 32, 34, 35, 36, 38, 39, 40, 42, 44, 46, 48]
+};
+
+export const RARITY_DC_ADJUSTMENT = { common: 0, uncommon: 2, rare: 5, unique: 10 };
+
+/** The DC to identify/recall knowledge about a creature of this level+rarity. */
+export function identificationDC(level, rarity = "common") {
+  return lookup(LEVEL_DC, level, "dc", []) + (RARITY_DC_ADJUSTMENT[rarity] ?? 0);
+}
+
 export const RESISTANCE = {
   maximum: [1, 3, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 23, 24, 24, 26],
   minimum: [1, 1, 2, 2, 3, 4, 4, 5,  5,  6,  6,  7,  7,  8,  8,  9,  9,  9, 10, 10, 10, 11, 11, 11, 12, 12]
