@@ -30,8 +30,14 @@ Two pieces of the concept get extra grounding:
 ## Usage
 
 1. Open the **Actors** sidebar tab and click **Creature Forge** (GM only), or run `game.modules.get("simplypf2e").api.open()` from a macro.
-2. Describe the creature, set its level (−1 to 24) and rarity, choose whether spellcasting is allowed, and click **Generate**.
+2. Optionally pick a **preset** from the dropdown, describe the creature, set its level (−1 to 24) and rarity, choose whether spellcasting is allowed, and click **Generate**.
 3. Review the stat-block preview, then click **Create Actor**. The finished NPC opens on its sheet, ready to drop onto the canvas.
+
+### Presets
+
+The preset dropdown shapes the *build* while your description drives the *flavor*. Built-in presets cover the standard fantasy classes — Fighter, Barbarian, Rogue, Ranger, Monk, Cleric, Druid, Wizard, Sorcerer, Bard, Champion, and Alchemist — each encoding a GM Core-style road map (stat scales, techniques, casting tradition). "Level 5 hobgoblin veteran" + the Fighter preset gives a disciplined soldier; the same prompt with the Barbarian preset gives a reckless brute.
+
+You can also save your own: click **+** next to the dropdown, give the preset a name and build guidance (written to the AI like the examples above), and it's stored in the world and appears in the dropdown marked with `*`. Select a custom preset and click the trash button to delete it.
 
 ### Iterating on a creature
 
@@ -74,19 +80,24 @@ By default the Forge draws from the PF2e system packs (bestiary ability glossary
 
 > **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is stored in world settings (visible to other GMs of the same world). Use a key you're comfortable with in that context.
 
-## Known limitations (v0.1)
+## Known limitations (v0.2)
 
 - Generated spellcasters use a spontaneous-style entry with 2 slots per rank; adjust on the sheet if you want prepared or innate casting.
 - The benchmark tables were transcribed by hand from GM Core. If you spot a value that disagrees with the book, please open an issue.
 - Matched feats are converted to NPC action items (the PF2e system does not allow feat items on NPC actors) — they keep the feat's cost, rules text, and automation.
+- Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions; if a phrase slips through unconverted, it stays as readable plain text (regenerate or edit the ability to fix it).
+- Presets guide the AI rather than hard-constrain it — an occasional generation may drift from the chosen road map; regenerating usually lands it.
+- Carried equipment is level-appropriate but not priced against treasure-budget tables yet (see roadmap).
 
 ## To do / Roadmap
 
+- [x] **Templates / presets** — ✅ v0.2.0: built-in class presets (Fighter through Alchemist) plus user-created custom presets in a dropdown.
+- [x] **Clickable rolls** — ✅ v0.1.4: damage, saves, checks, and area templates in custom abilities are inline roll links.
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
 - [ ] **Batch mode** — "four themed guards for this warlord" in one generation, sharing a single concept call.
 - [ ] **Treasure** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.
-- [ ] **Templates / presets** — GM Core road-map presets (Brute, Sneak, Skirmisher, Spellcaster, ...) and "reskin an existing creature" as a starting template.
 - [ ] **Full PC-power-level characters** — generate complete character-class-strength NPCs (villains, rivals, pregens) built to player-character power budgets.
+- [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.
 - [ ] Elite/weak adjustments and level shifting for existing creatures.
 - [ ] Focus spells for spellcasters.
 

@@ -90,14 +90,15 @@ export class AIRequestError extends Error {}
  * Ask the configured model for a creature concept.
  * @returns {Promise<object>} parsed concept JSON
  */
-export async function generateConcept({ prompt, level, rarity, allowSpellcasting, onProgress }) {
+export async function generateConcept({ prompt, level, rarity, allowSpellcasting, preset, onProgress }) {
   const userPrompt = [
     `Creature level: ${level}`,
     `Rarity: ${rarity}`,
     `Spellcasting allowed: ${allowSpellcasting ? "yes, if it fits the concept" : "NO - do not include spellcasting"}`,
+    preset ? `Build preset (follow this road map; the concept below drives flavor): ${preset}` : null,
     "",
     `Concept from the GM: ${prompt}`
-  ].join("\n");
+  ].filter((line) => line !== null).join("\n");
 
   const content = await requestCompletion({
     system: SYSTEM_PROMPT,
