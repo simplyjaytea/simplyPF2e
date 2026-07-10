@@ -88,7 +88,7 @@ export function registerSettings(SourcesConfigApp) {
     config: true,
     restricted: true,
     type: Number,
-    default: 4000
+    default: 8000
   });
 
   game.settings.register(MODULE_ID, SETTINGS.requestTimeout, {
