@@ -45,6 +45,18 @@ The description box's placeholder shows a different example concept each time yo
 
 Pick **🎲 Random (just pick a level)** from the preset dropdown, set a level, and click Generate. The Forge rolls a surprise brief locally (creature type × combat role × home × twist — thousands of combinations) and the AI builds it. Every Regenerate rolls a brand-new brief, so it never converges on the same ideas — great for filling a dungeon room or sparking a session when you're out of prep.
 
+### Encounter mode
+
+Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size, pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **Create All Actors** files the whole roster into a folder named after the encounter.
+
+### Read-aloud text, Recall Knowledge, and portraits
+
+Every creature now comes with GM support baked into its notes:
+
+- A **read-aloud block** — two or three sensory sentences for theater of the mind, shown as a quote at the top of the description.
+- A **Recall Knowledge line** — the correct identification skill for the creature type, a clickable check at the level- and rarity-based DC, and a short nugget of what a player learns on a success (its weakness, its most dangerous trick).
+- **Art**: if you configure an image model in settings (any OpenAI-compatible `/images/generations` endpoint, e.g. OpenAI's `gpt-image-1` — DeepSeek doesn't offer images, so this can be a different provider than your text one), the Forge generates a portrait from the read-aloud text and uses it for the sheet and token. With no image model configured, it borrows art from the closest bestiary creature by type, size, and level instead. Encounter members always use bestiary art (no per-member image calls).
+
 ### Iterating on a creature
 
 Generation is meant to be a conversation, not a one-shot:
@@ -99,10 +111,13 @@ By default the Forge draws from the PF2e system packs (bestiary ability glossary
 
 - [x] **Templates / presets** — ✅ v0.2.0: built-in class presets (Fighter through Alchemist) plus user-created custom presets in a dropdown.
 - [x] **Clickable rolls** — ✅ v0.1.4: damage, saves, checks, and area templates in custom abilities are inline roll links.
+- [x] **Encounter mode** — ✅ v0.3.0: themed encounters built to the GM Core XP budget (threat level × party size × party level), created as a folder of actors. Covers the old "batch mode" idea.
+- [x] **Recall Knowledge & read-aloud** — ✅ v0.3.0: theater-of-the-mind read-aloud block and a clickable Recall Knowledge check with a player-facing info nugget.
+- [x] **Creature art** — ✅ v0.3.0: optional AI portrait generation, with closest-bestiary-match art as the no-API fallback.
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
-- [ ] **Batch mode** — "four themed guards for this warlord" in one generation, sharing a single concept call.
 - [ ] **Treasure** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.
 - [ ] **Full PC-power-level characters** — generate complete character-class-strength NPCs (villains, rivals, pregens) built to player-character power budgets.
+- [ ] **Preset sharing** — export/import custom presets as JSON to trade with other GMs.
 - [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.
 - [ ] Elite/weak adjustments and level shifting for existing creatures.
 - [ ] Focus spells for spellcasters.

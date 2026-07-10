@@ -85,6 +85,8 @@ export function normalizeConcept(raw, { level, rarity }) {
     name: String(c.name || "Unnamed Creature").slice(0, 120),
     blurb: String(c.blurb ?? ""),
     description: String(c.description ?? ""),
+    readAloud: String(c.readAloud ?? ""),
+    recallKnowledge: String(c.recallKnowledge ?? ""),
     level: clampedLevel,
     rarity: RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common",
     size: SIZES.has(c.size) ? c.size : "med",
@@ -284,6 +286,24 @@ export function enrichDescription(text, level) {
   return out;
 }
 
+/* Which skill identifies a creature, by creature-type trait (Recall Knowledge). */
+const RECALL_KNOWLEDGE_SKILLS = {
+  aberration: "occultism", animal: "nature", astral: "occultism", beast: "nature",
+  celestial: "religion", construct: "crafting", dragon: "arcana", dream: "occultism",
+  elemental: "nature", ethereal: "occultism", fey: "nature", fiend: "religion",
+  fungus: "nature", giant: "society", humanoid: "society", monitor: "religion",
+  ooze: "occultism", plant: "nature", shade: "religion", spirit: "occultism",
+  time: "occultism", undead: "religion"
+};
+
+/** The Recall Knowledge skill for a concept's creature-type traits. */
+export function recallKnowledgeSkill(traits) {
+  for (const trait of traits) {
+    if (RECALL_KNOWLEDGE_SKILLS[trait]) return RECALL_KNOWLEDGE_SKILLS[trait];
+  }
+  return "occultism";
+}
+
 /** Bold statblock keywords ("Trigger", "Effect", ...) in escaped ability text. */
 function boldKeywords(text) {
   return text.replace(
@@ -339,9 +359,11 @@ function actionIcon(actionType) {
 
 /**
  * Build the full actor + embedded item data and create the NPC actor.
+ * @param {object} [options]
+ * @param {string|null} [options.img]  portrait/token image path
  * @returns {Promise<Actor>}
  */
-export async function createActor(concept, resolved) {
+export async function createActor(concept, resolved, { img = null } = {}) {
   const stats = computeStats(concept);
   const items = [];
 
@@ -461,9 +483,22 @@ export async function createActor(concept, resolved) {
     return false;
   });
 
-  const description = concept.description
-    ? `<p>${concept.description.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).join("</p><p>")}</p>`
-    : "";
+  const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
+  const notesParts = [];
+  if (concept.readAloud) {
+    notesParts.push(`<blockquote class="spf-read-aloud"><em>${esc(concept.readAloud)}</em></blockquote>`);
+  }
+  if (concept.description) {
+    notesParts.push(`<p>${concept.description.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).join("</p><p>")}</p>`);
+  }
+  if (concept.recallKnowledge) {
+    const skill = recallKnowledgeSkill(concept.traits);
+    const dc = T.identificationDC(concept.level, concept.rarity);
+    notesParts.push(
+      `<h3>Recall Knowledge</h3><p><strong>${capitalized(skill)}</strong> @Check[type:${skill}|dc:${dc}]: ${esc(concept.recallKnowledge)}</p>`
+    );
+  }
+  const description = notesParts.join("\n");
 
   const actorData = {
     name: concept.name,
@@ -518,6 +553,10 @@ export async function createActor(concept, resolved) {
       displayBars: CONST.TOKEN_DISPLAY_MODES.OWNER_HOVER
     }
   };
+  if (img) {
+    actorData.img = img;
+    actorData.prototypeToken.texture = { src: img };
+  }
 
   return Actor.create(actorData);
 }

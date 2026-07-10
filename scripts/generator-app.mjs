@@ -1,11 +1,13 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
-import { generateConcept, selectSpells } from "./ai.mjs";
+import { generateConcept, selectSpells, designEncounter } from "./ai.mjs";
 import { getSpellCandidates } from "./compendium.mjs";
 import { normalizeConcept, resolveConcept, computeStats, createActor } from "./builder.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset,
   examplePrompt, randomBrief, RANDOM_PRESET_ID
 } from "./presets.mjs";
+import { composeEncounter, THREATS } from "./encounter.mjs";
+import { resolveArt } from "./art.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
@@ -39,11 +41,16 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   };
 
   /** Form values, kept across re-renders. */
-  #input = { prompt: "", level: 1, rarity: "common", allowSpellcasting: true, preset: "" };
+  #input = {
+    mode: "single", prompt: "", level: 1, rarity: "common",
+    allowSpellcasting: true, preset: "", partySize: 4, threat: "moderate"
+  };
   #busy = false;
   #error = null;
   #concept = null;
   #resolved = null;
+  /** Encounter mode result: {name, budget, spent, members: [...]}. */
+  #encounter = null;
   #progress = null;
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
@@ -79,7 +86,37 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         }))
       ],
       selectedPresetIsCustom: Boolean(findPreset(this.#input.preset)?.custom),
-      preview: this.#buildPreviewContext()
+      encounterMode: this.#input.mode === "encounter",
+      threats: Object.keys(THREATS).map((key) => ({
+        value: key,
+        label: `SIMPLYPF2E.Threat.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
+        selected: this.#input.threat === key
+      })),
+      preview: this.#buildPreviewContext(),
+      encounterPreview: this.#buildEncounterPreviewContext()
+    };
+  }
+
+  #buildEncounterPreviewContext() {
+    if (!this.#encounter) return null;
+    return {
+      name: this.#encounter.name,
+      budget: this.#encounter.budget,
+      spent: this.#encounter.spent,
+      members: this.#encounter.members.map((member) => {
+        const stats = computeStats(member.concept);
+        const strike = stats.strikes[0];
+        return {
+          count: member.count,
+          role: `SIMPLYPF2E.Role.${member.role.charAt(0).toUpperCase()}${member.role.slice(1)}`,
+          name: member.concept.name,
+          level: member.concept.level,
+          blurb: member.concept.blurb,
+          statline: `AC ${stats.ac}, HP ${stats.hp}, Per +${stats.perception}`
+            + (strike ? `, ${strike.name} +${strike.bonus} (${strike.damage})` : "")
+            + (stats.spellDC ? `, ${game.i18n.localize("SIMPLYPF2E.Preview.Spells")} DC ${stats.spellDC}` : "")
+        };
+      })
     };
   }
 
@@ -135,12 +172,15 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
     const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked ?? true;
     const preset = form.querySelector('[name="preset"]')?.value ?? "";
-    this.#input = { prompt, level, rarity, allowSpellcasting, preset };
+    const mode = form.querySelector('[name="mode"]:checked')?.value ?? this.#input.mode;
+    const partySize = Math.min(8, Math.max(1, Number(form.querySelector('[name="partySize"]')?.value ?? 4)));
+    const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
+    this.#input = { mode, prompt, level, rarity, allowSpellcasting, preset, partySize, threat };
   }
 
   /**
-   * Re-render when the preset selection changes so the delete button, the
-   * Random-mode form, and the cycling example placeholder all track it.
+   * Re-render when the preset or mode changes so the delete button, the
+   * Random/Encounter forms, and the cycling example placeholder track them.
    */
   _onRender(context, options) {
     super._onRender?.(context, options);
@@ -149,6 +189,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this.#exampleTick++;
       this.render();
     });
+    for (const radio of this.element.querySelectorAll('input[name="mode"]')) {
+      radio.addEventListener("change", () => {
+        this.#readForm();
+        this.render();
+      });
+    }
   }
 
   static #onLevelUp() {
@@ -167,12 +213,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /** Initialize the step list shown while generating. */
-  #beginProgress(includeSpells) {
-    const defs = [
-      ["concept", "SIMPLYPF2E.Progress.Concept"],
-      ...(includeSpells ? [["spells", "SIMPLYPF2E.Progress.Spells"]] : []),
-      ["match", "SIMPLYPF2E.Progress.Match"]
-    ];
+  #beginProgress(defs) {
     this.#progress = {
       steps: defs.map(([key, label]) => ({ key, label, state: "pending" })),
       detail: "",
@@ -216,6 +257,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static async #onGenerate() {
     this.#readForm();
+    if (this.#input.mode === "encounter") return this.#generateEncounter();
     const isRandom = this.#input.preset === RANDOM_PRESET_ID;
     if (!isRandom && !this.#input.prompt.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
@@ -223,7 +265,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     this.#busy = true;
     this.#error = null;
-    this.#beginProgress(this.#input.allowSpellcasting);
+    this.#encounter = null;
+    this.#beginProgress([
+      ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept")],
+      ...(this.#input.allowSpellcasting ? [["spells", game.i18n.localize("SIMPLYPF2E.Progress.Spells")]] : []),
+      ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
+    ]);
     try {
       await this.#setStep("concept");
       const raw = await generateConcept({
@@ -238,7 +285,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       });
       this.#concept = normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity });
       if (this.#concept.spellcasting) await this.#setStep("spells");
-      await this.#refineSpells();
+      await this.#refineSpells(this.#concept);
       await this.#setStep("match");
       this.#resolved = await resolveConcept(this.#concept);
     } catch (err) {
@@ -254,18 +301,86 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /**
+   * Encounter mode: the module fixes the composition to the XP budget, the
+   * AI names the encounter and briefs each slot, then every member runs
+   * through the normal single-creature pipeline.
+   */
+  async #generateEncounter() {
+    this.#busy = true;
+    this.#error = null;
+    this.#concept = null;
+    this.#resolved = null;
+    const { level: partyLevel, partySize, threat } = this.#input;
+    const composition = composeEncounter(threat, partySize, partyLevel);
+    const memberLabel = (i) => game.i18n.format("SIMPLYPF2E.Progress.Member", {
+      index: i + 1, total: composition.members.length
+    });
+    this.#beginProgress([
+      ["design", game.i18n.localize("SIMPLYPF2E.Progress.Design")],
+      ...composition.members.map((_, i) => [`member${i}`, memberLabel(i)]),
+      ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
+    ]);
+    try {
+      await this.#setStep("design");
+      const theme = this.#input.prompt.trim() || randomBrief();
+      const design = await designEncounter({
+        theme,
+        partyLevel,
+        slots: composition.members,
+        onProgress: (p) => this.#onAIProgress(p)
+      });
+
+      const members = [];
+      for (let i = 0; i < composition.members.length; i++) {
+        const slot = composition.members[i];
+        await this.#setStep(`member${i}`);
+        const raw = await generateConcept({
+          prompt: `${design.briefs[i]} (Part of the encounter "${design.name}": ${theme})`,
+          level: slot.level,
+          rarity: "common",
+          allowSpellcasting: this.#input.allowSpellcasting,
+          preset: null,
+          onProgress: (p) => this.#onAIProgress(p)
+        });
+        const concept = normalizeConcept(raw, { level: slot.level, rarity: "common" });
+        await this.#refineSpells(concept);
+        members.push({ ...slot, concept });
+      }
+
+      await this.#setStep("match");
+      for (const member of members) {
+        member.resolved = await resolveConcept(member.concept);
+      }
+      this.#encounter = {
+        name: design.name,
+        budget: composition.budget,
+        spent: composition.spent,
+        members
+      };
+    } catch (err) {
+      console.error(`${MODULE_ID} | encounter generation failed`, err);
+      this.#error = err.message;
+      this.#encounter = null;
+    } finally {
+      this.#busy = false;
+      this.#progress = null;
+      await this.render();
+    }
+  }
+
+  /**
    * Grounded spell selection: fetch the real spell list for the chosen
    * tradition from the compendium and let the AI pick from it. Falls back to
    * the first-draft spell names (still fuzzy-matched) if the pass fails.
    */
-  async #refineSpells() {
-    const spellcasting = this.#concept?.spellcasting;
+  async #refineSpells(concept) {
+    const spellcasting = concept?.spellcasting;
     if (!spellcasting) return;
     try {
       const candidates = await getSpellCandidates(spellcasting.tradition, spellcasting.maxRank);
       if (candidates.length) {
         const spells = await selectSpells({
-          concept: this.#concept,
+          concept,
           candidates,
           maxRank: spellcasting.maxRank,
           onProgress: (p) => this.#onAIProgress(p)
@@ -275,15 +390,20 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     } catch (err) {
       console.warn(`${MODULE_ID} | grounded spell selection failed, using first-draft spells`, err);
     }
-    if (!spellcasting.spells.length) this.#concept.spellcasting = null;
+    if (!spellcasting.spells.length) concept.spellcasting = null;
   }
 
   static async #onCreateActor() {
-    if (!this.#concept || this.#busy) return;
+    if (this.#busy) return;
+    if (this.#input.mode === "encounter" || this.#encounter) return this.#createEncounterActors();
+    if (!this.#concept) return;
     this.#busy = true;
     await this.render();
     try {
-      const actor = await createActor(this.#concept, this.#resolved);
+      // Portrait: AI-generated when an image model is configured, otherwise
+      // borrowed from the closest bestiary creature.
+      const img = await resolveArt(this.#concept);
+      const actor = await createActor(this.#concept, this.#resolved, { img });
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
       actor.sheet.render(true);
       this.#concept = null;
@@ -297,10 +417,38 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  /** Create every encounter member (bestiary art only — no per-member image calls). */
+  async #createEncounterActors() {
+    if (!this.#encounter) return;
+    this.#busy = true;
+    await this.render();
+    try {
+      const folder = await Folder.create({ name: this.#encounter.name, type: "Actor" });
+      let created = 0;
+      for (const member of this.#encounter.members) {
+        const img = await resolveArt(member.concept, { allowGeneration: false });
+        const actor = await createActor(member.concept, member.resolved, { img });
+        await actor.update({ folder: folder.id });
+        created++;
+      }
+      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.CreatedAll", {
+        count: created, name: this.#encounter.name
+      }));
+      this.#encounter = null;
+    } catch (err) {
+      console.error(`${MODULE_ID} | encounter creation failed`, err);
+      this.#error = err.message;
+    } finally {
+      this.#busy = false;
+      await this.render();
+    }
+  }
+
   static async #onDiscard() {
     this.#readForm();
     this.#concept = null;
     this.#resolved = null;
+    this.#encounter = null;
     this.#error = null;
     await this.render();
   }

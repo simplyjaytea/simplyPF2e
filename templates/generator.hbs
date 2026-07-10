@@ -5,6 +5,17 @@
 
   <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
     <legend>{{localize "SIMPLYPF2E.Generator.ConceptLegend"}}</legend>
+    <div class="spf-mode-toggle">
+      <label class="{{#unless encounterMode}}spf-mode-active{{/unless}}">
+        <input type="radio" name="mode" value="single" {{#unless encounterMode}}checked{{/unless}}>
+        <i class="fa-solid fa-dragon"></i> {{localize "SIMPLYPF2E.Mode.Single"}}
+      </label>
+      <label class="{{#if encounterMode}}spf-mode-active{{/if}}">
+        <input type="radio" name="mode" value="encounter" {{#if encounterMode}}checked{{/if}}>
+        <i class="fa-solid fa-people-group"></i> {{localize "SIMPLYPF2E.Mode.Encounter"}}
+      </label>
+    </div>
+    {{#unless encounterMode}}
     <div class="form-group spf-preset">
       <label>{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
       <div class="spf-preset-controls">
@@ -21,8 +32,12 @@
         </button>
       </div>
     </div>
+    {{/unless}}
     <div class="form-group stacked">
-      {{#if randomSelected}}
+      {{#if encounterMode}}
+        <label>{{localize "SIMPLYPF2E.Generator.EncounterTheme"}}</label>
+        <textarea name="prompt" rows="2" placeholder="{{localize 'SIMPLYPF2E.Generator.EncounterThemePlaceholder'}}">{{input.prompt}}</textarea>
+      {{else if randomSelected}}
         <p class="spf-hint spf-random-hint">
           <i class="fa-solid fa-dice"></i> {{localize "SIMPLYPF2E.Generator.RandomHint"}}
         </p>
@@ -33,7 +48,7 @@
     </div>
     <div class="spf-row">
       <div class="form-group">
-        <label>{{localize "SIMPLYPF2E.Generator.Level"}}</label>
+        <label>{{#if encounterMode}}{{localize "SIMPLYPF2E.Generator.PartyLevel"}}{{else}}{{localize "SIMPLYPF2E.Generator.Level"}}{{/if}}</label>
         <div class="spf-level-controls">
           <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
             <i class="fa-solid fa-minus"></i>
@@ -44,14 +59,29 @@
           </button>
         </div>
       </div>
-      <div class="form-group">
-        <label>{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
-        <select name="rarity">
-          {{#each rarities}}
-            <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
-          {{/each}}
-        </select>
-      </div>
+      {{#if encounterMode}}
+        <div class="form-group">
+          <label>{{localize "SIMPLYPF2E.Generator.PartySize"}}</label>
+          <input type="number" name="partySize" min="1" max="8" step="1" value="{{input.partySize}}">
+        </div>
+        <div class="form-group">
+          <label>{{localize "SIMPLYPF2E.Generator.Threat"}}</label>
+          <select name="threat">
+            {{#each threats}}
+              <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{localize this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+      {{else}}
+        <div class="form-group">
+          <label>{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
+          <select name="rarity">
+            {{#each rarities}}
+              <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+      {{/if}}
       <div class="form-group spf-checkbox">
         <label>
           <input type="checkbox" name="allowSpellcasting" {{#if input.allowSpellcasting}}checked{{/if}}>
@@ -61,7 +91,7 @@
     </div>
     <button type="button" data-action="generate" {{#if busy}}disabled{{/if}}>
       <i class="fa-solid fa-wand-sparkles"></i>
-      {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
+      {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else if encounterPreview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
     </button>
   </fieldset>
 
@@ -206,6 +236,35 @@
     <footer class="spf-actions">
       <button type="button" data-action="createActor" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-user-plus"></i> {{localize "SIMPLYPF2E.Generator.CreateActor"}}
+      </button>
+      <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-trash"></i> {{localize "SIMPLYPF2E.Generator.Discard"}}
+      </button>
+    </footer>
+  </section>
+  {{/if}}
+
+  {{#if encounterPreview}}
+  <section class="spf-preview spf-encounter">
+    <header class="spf-statblock-header">
+      <h2>{{encounterPreview.name}}</h2>
+      <span class="spf-level">{{encounterPreview.spent}} / {{encounterPreview.budget}} XP</span>
+    </header>
+    <ul class="spf-encounter-members">
+      {{#each encounterPreview.members}}
+        <li class="spf-encounter-member">
+          <div class="spf-member-head">
+            <strong>{{#if (eq this.count 1)}}{{this.name}}{{else}}{{this.count}} × {{this.name}}{{/if}}</strong>
+            <span class="spf-member-tag">{{localize "SIMPLYPF2E.Generator.Creature"}} {{this.level}} · {{localize this.role}}</span>
+          </div>
+          {{#if this.blurb}}<em>{{this.blurb}}</em>{{/if}}
+          <div class="spf-member-stats">{{this.statline}}</div>
+        </li>
+      {{/each}}
+    </ul>
+    <footer class="spf-actions">
+      <button type="button" data-action="createActor" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-users"></i> {{localize "SIMPLYPF2E.Generator.CreateAll"}}
       </button>
       <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-trash"></i> {{localize "SIMPLYPF2E.Generator.Discard"}}

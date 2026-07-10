@@ -15,6 +15,8 @@ JSON schema (all keys required unless marked optional):
   "name": string,                       // evocative creature name
   "blurb": string,                      // one-line tagline
   "description": string,               // 1-2 paragraphs of flavor & tactics, plain text
+  "readAloud": string,                 // 2-3 vivid sensory sentences to read aloud when players first encounter it (sight, sound, smell, movement). Theater-of-the-mind prose; NO game statistics or numbers.
+  "recallKnowledge": string,           // 1-2 sentences: the single most useful thing a player learns about this creature on a successful Recall Knowledge check (key weakness, most dangerous ability, or exploitable habit)
   "size": "tiny"|"sm"|"med"|"lg"|"huge"|"grg",
   "traits": string[],                   // PF2e creature traits, lowercase (e.g. "undead", "fiend", "humanoid"). Include exactly one creature type trait.
   "languages": string[],                // lowercase, [] if none
@@ -152,6 +154,74 @@ Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward 
   return (Array.isArray(parsed.spells) ? parsed.spells : [])
     .filter((s) => s?.name)
     .map((s) => ({ name: String(s.name), rank: Math.min(Math.max(Math.round(Number(s.rank) || 0), 0), maxRank) }));
+}
+
+/**
+ * Encounter design pass: given a theme and a budget-fixed composition, name
+ * the encounter and write a one-sentence creature brief per slot. Each brief
+ * then runs through the normal single-creature pipeline.
+ * @returns {Promise<{name: string, briefs: string[]}>} briefs indexed by slot
+ */
+export async function designEncounter({ theme, partyLevel, slots, onProgress }) {
+  const slotLines = slots.map((s, i) =>
+    `Slot ${i + 1}: ${s.count} creature${s.count > 1 ? "s" : ""} of level ${s.level} (${s.role})`
+  ).join("\n");
+
+  const system = `You are designing a themed Pathfinder 2e encounter. The composition (levels and counts) is FIXED by the XP budget; you decide who these creatures are so they feel like they belong together (a leader and its followers, a predator and its symbiotes, cultists and their summon, ...).
+Respond with a single JSON object and nothing else:
+{ "name": string, "briefs": string[] }
+"name" is a short evocative encounter name. "briefs" has EXACTLY one entry per slot in order: a 1-2 sentence creature concept for that slot (all creatures of a slot share one concept). Vary roles and tactics; make the boss memorable.`;
+
+  const user = [
+    `Party level: ${partyLevel}`,
+    `Theme from the GM: ${theme}`,
+    "",
+    "Composition (fixed):",
+    slotLines
+  ].join("\n");
+
+  const content = await requestCompletion({ system, user, onProgress });
+  const parsed = parseConceptJSON(content);
+  const briefs = Array.isArray(parsed.briefs) ? parsed.briefs.map((b) => String(b)) : [];
+  return {
+    name: String(parsed.name || "Encounter"),
+    briefs: slots.map((s, i) => briefs[i] ?? `${theme} — a level ${s.level} ${s.role}`)
+  };
+}
+
+/**
+ * Generate a portrait via an OpenAI-compatible /images/generations endpoint.
+ * Uses the dedicated image settings, falling back to the text provider's
+ * base URL/key. Returns base64 PNG data, or a URL if that's all we get.
+ * @returns {Promise<{b64?: string, url?: string}>}
+ */
+export async function generateImage({ prompt }) {
+  const model = getSetting(SETTINGS.imageModel);
+  if (!model) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoImageModel"));
+  const baseUrl = String(getSetting(SETTINGS.imageBaseUrl) || getSetting(SETTINGS.apiBaseUrl) || "").replace(/\/+$/, "");
+  const apiKey = getSetting(SETTINGS.imageApiKey) || getSetting(SETTINGS.apiKey);
+
+  const headers = { "Content-Type": "application/json" };
+  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/images/generations`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model, prompt, n: 1, size: "1024x1024" })
+    });
+  } catch (err) {
+    throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.NetworkError", { message: err.message }));
+  }
+  if (!response.ok) {
+    const detail = await safeErrorDetail(response);
+    throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail }));
+  }
+  const data = await response.json();
+  const image = data?.data?.[0] ?? {};
+  if (image.b64_json) return { b64: image.b64_json };
+  if (image.url) return { url: image.url };
+  throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"));
 }
 
 /**
