@@ -59,7 +59,7 @@ JSON schema (all keys required unless marked optional):
     "spells": [ { "name": string, "rank": number } ] // rank 0 = cantrip; real PF2e spell names as a first draft (the final list is chosen from the compendium in a second step); max rank = ceil(level/2)
   },
   "feats": string[], // EXACT published PF2e feat names (e.g. "Power Attack", "Sudden Charge") for creatures with class-like training (soldiers, monks, assassins); [] for beasts, mindless creatures, and anything untrained; max 3. IMPORTANT: when a feat grants a distinct attack or Strike-based action (Power Attack, Sudden Charge, Ki Strike, ...), ALSO add a strike named after the feat to "strikes" — same weapon and damageType as the base strike it modifies, damageScale one step higher (extreme stays extreme), plus the feat's traits — and keep the feat in "feats" too.
-  "equipment": [ { "name": string, "quantity": number, "value": number } ], // 3-8 logical carried items with EXACT PF2e item names, drawn from: the weapons it wields; sensible consumables (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies); and everyday adventuring gear it would plausibly carry (rope, torches, rations, thieves' tools, a crowbar). "value" is the approximate gp price of ONE unit, used only as a fallback when the name finds no compendium match. Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its AC and level. At level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
+  "equipment": [ { "name": string, "quantity": number, "value": number } ], // 3-8 logical carried items with EXACT PF2e item names, drawn from: the weapons it wields; sensible consumables (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies); and everyday adventuring gear it would plausibly carry (rope, torches, rations, thieves' tools, a crowbar). NO coins or currency here — those belong only in "loot". "value" is the approximate gp price of ONE unit, used only as a fallback when the name finds no compendium match. Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its AC and level. At level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
   "loot": [ { "name": string, "quantity": number, "value": number } ], // ${LOOT_GUIDE}
   "resistances": [ { "type": string } ], // damage types only, values computed from tables; [] if none
   "weaknesses": [ { "type": string } ],
@@ -84,10 +84,10 @@ Design guidance (GM Core road maps):
 - Brute: low perception; moderate+ AC; high Fort, low Ref/Will; high HP; high attack & damage.
 - Sneak: high dex; low Fort, high Ref; high stealth; moderate HP.
 - Skirmisher: high Ref, fast speeds, moderate everything else.
-- Soldier: high AC, high Fort, high attack with moderate damage.
+- Soldier: high AC, high Fort, high attack with moderate damage; disciplined soldiers/guards/knights should usually get the Attack of Opportunity glossary reaction.
 - Spellcaster: casting tradition matching key ability at high or extreme; low-or-moderate AC, HP and attack; DC one scale above attacks.
 - Include spellcasting only when it truly fits the concept and the user allows it.
-- Use standard glossary abilities (Grab, Push, Knockdown, Trample, Swallow Whole, Frightful Presence, Regeneration, ...) where they fit, and invent 1-2 signature custom abilities that make the creature memorable.
+- Use standard glossary abilities (Grab, Push, Knockdown, Trample, Swallow Whole, Frightful Presence, Regeneration, Attack of Opportunity, ...) where they fit, and invent 1-2 signature custom abilities that make the creature memorable.
 - Traits, languages, senses and speeds must follow PF2e conventions.`;
 
 export class AIRequestError extends Error {

@@ -139,7 +139,9 @@ export function normalizeConcept(raw, { level, rarity }) {
         }
         return null;
       })
-      .filter(Boolean)
+      // Coins belong in loot only; drop any that slip into equipment
+      // (parseCoins recognizes "Gold Coins", "150 gold pieces", "20 gp", ...).
+      .filter((e) => e && !parseCoins(e.name))
       .slice(0, 12),
     loot: normalizeLoot(c.loot),
     resistances: (Array.isArray(c.resistances) ? c.resistances : [])
