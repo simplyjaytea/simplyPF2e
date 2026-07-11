@@ -157,8 +157,10 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
         found: Boolean(entry)
       })),
-      loot: (this.#resolved?.loot ?? []).map(({ name, quantity, runes, entry }) => ({
-        name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
+      loot: (this.#resolved?.loot ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
+        name: (scroll && entry
+          ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
+          : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
         found: Boolean(entry)
       })),
       missingSpells,

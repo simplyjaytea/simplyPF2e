@@ -189,13 +189,32 @@ export function normalizeLoot(raw) {
     .slice(0, 12);
 }
 
+/** Recognize scroll loot like "Scroll of Fireball" or "Scroll of Fireball (Rank 3)". */
+export function parseScroll(name) {
+  const match = /^\s*scroll of\s+(.+?)\s*(?:\(\s*rank\s*(\d+)\s*\))?\s*$/i.exec(String(name ?? ""));
+  if (!match) return null;
+  return { spellName: match[1], rank: match[2] ? Number(match[2]) : null };
+}
+
 /**
  * Resolve loot names against the equipment packs. Loot may sit a little above
  * the creature's level — treasure rewards run ahead of encounter level.
+ * Scrolls resolve their SPELL instead (PF2e ships no premade scroll items);
+ * the scroll consumable is assembled from the rank template at creation.
  */
 export async function resolveLoot(concept) {
   const loot = [];
   for (const { name, quantity } of concept.loot) {
+    const scroll = parseScroll(name);
+    if (scroll) {
+      const entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
+        e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !e.system?.ritual
+      );
+      const baseRank = entry?.system?.level?.value ?? 1;
+      const rank = Math.min(Math.max(scroll.rank ?? baseRank, baseRank), 10);
+      loot.push({ name, quantity, runes: parseRunes(name), entry, scroll: { rank } });
+      continue;
+    }
     const runes = parseRunes(name);
     const entry = await findEntry(
       getPacksFor("equipment"),
@@ -205,6 +224,37 @@ export async function resolveLoot(concept) {
     loot.push({ name, quantity, runes, entry });
   }
   return loot;
+}
+
+const RANK_ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
+
+/**
+ * Assemble a scroll consumable the way the PF2e system does on spell drag:
+ * clone the "Scroll of Nth-rank Spell" template and embed the real spell.
+ * @param {object} spellEntry  index entry of the spell (from resolveLoot)
+ * @param {number} rank        rank the scroll casts the spell at
+ * @returns {Promise<object|null>} item data, or null when spell/template is missing
+ */
+async function buildScrollItem(spellEntry, rank) {
+  const spellDoc = await getDocument(spellEntry);
+  if (!spellDoc) return null;
+  const ordinal = RANK_ORDINALS[rank - 1] ?? "1st";
+  // Remaster naming first, pre-remaster "level" naming as fallback
+  const template =
+    (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-rank Spell`, (e) => e.type === "consumable"))
+    ?? (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-level Spell`, (e) => e.type === "consumable"));
+  const templateDoc = await getDocument(template);
+  if (!templateDoc) return null;
+  const data = toItemData(templateDoc);
+  const spell = spellDoc.toObject();
+  delete spell._id;
+  spell.system.location = { ...(spell.system.location ?? {}), heightenedLevel: rank };
+  data.name = `Scroll of ${spellDoc.name} (Rank ${rank})`;
+  data.system.spell = spell;
+  const traditions = spellDoc.system?.traits?.traditions ?? [];
+  data.system.traits ??= { value: [] };
+  data.system.traits.value = [...new Set([...(data.system.traits.value ?? []), ...traditions])];
+  return data;
 }
 
 /**
@@ -624,7 +674,14 @@ export async function createActor(concept, resolved, { img = null } = {}) {
   }
 
   // Loot: apply quantities and runes (unequipped, in inventory)
-  for (const { name, quantity, runes, entry } of resolved.loot) {
+  for (const { name, quantity, runes, entry, scroll } of resolved.loot) {
+    if (scroll) {
+      const data = await buildScrollItem(entry, scroll.rank);
+      if (!data) continue;
+      if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
+      items.push(data);
+      continue;
+    }
     const doc = await getDocument(entry);
     if (!doc) continue;
     const data = toItemData(doc);
