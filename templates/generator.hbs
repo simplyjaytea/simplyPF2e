@@ -58,7 +58,15 @@
       {{#if encounterMode}}
         <div class="form-group">
           <label>{{localize "SIMPLYPF2E.Generator.PartySize"}}</label>
-          <input type="number" name="partySize" min="1" max="8" step="1" value="{{input.partySize}}">
+          <div class="spf-level-controls">
+            <button type="button" data-action="partyDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.PartySizeDown'}}">
+              <i class="fa-solid fa-minus"></i>
+            </button>
+            <input type="number" name="partySize" min="1" max="8" step="1" value="{{input.partySize}}">
+            <button type="button" data-action="partyUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.PartySizeUp'}}">
+              <i class="fa-solid fa-plus"></i>
+            </button>
+          </div>
         </div>
         <div class="form-group">
           <label>{{localize "SIMPLYPF2E.Generator.Threat"}}</label>
@@ -107,9 +115,12 @@
         <ol class="spf-progress-steps">
           {{#each progress.steps}}
             <li class="spf-step-{{this.state}}">
-              {{#if (eq this.state "done")}}<i class="fa-solid fa-check"></i>{{/if}}
-              {{#if (eq this.state "active")}}<i class="fa-solid fa-spinner fa-spin"></i>{{/if}}
-              {{localize this.label}}
+              <span class="spf-step-label">
+                {{#if (eq this.state "done")}}<i class="fa-solid fa-check"></i>{{/if}}
+                {{#if (eq this.state "active")}}<i class="fa-solid fa-spinner fa-spin"></i>{{/if}}
+                {{localize this.label}}
+              </span>
+              <div class="spf-step-bar"><div class="spf-step-bar-fill"></div></div>
             </li>
           {{/each}}
         </ol>
@@ -248,6 +259,18 @@
       <p class="spf-description">{{preview.concept.description}}</p>
     {{/if}}
 
+    {{#if tokenReport}}
+      <div class="spf-token-report">
+        <h3>{{localize "SIMPLYPF2E.Tokens.Heading"}}</h3>
+        <ul>
+          {{#each tokenReport.steps}}
+            <li><strong>{{this.label}}</strong> — {{this.text}}</li>
+          {{/each}}
+        </ul>
+        <p class="spf-token-total">{{tokenReport.totalText}}</p>
+      </div>
+    {{/if}}
+
     <footer class="spf-actions">
       <button type="button" data-action="createActor" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-user-plus"></i> {{localize "SIMPLYPF2E.Generator.CreateActor"}}
@@ -291,6 +314,17 @@
         </li>
       {{/each}}
     </ul>
+    {{#if tokenReport}}
+      <div class="spf-token-report">
+        <h3>{{localize "SIMPLYPF2E.Tokens.Heading"}}</h3>
+        <ul>
+          {{#each tokenReport.steps}}
+            <li><strong>{{this.label}}</strong> — {{this.text}}</li>
+          {{/each}}
+        </ul>
+        <p class="spf-token-total">{{tokenReport.totalText}}</p>
+      </div>
+    {{/if}}
     <footer class="spf-actions">
       <button type="button" data-action="createActor" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-users"></i> {{localize "SIMPLYPF2E.Generator.CreateAll"}}

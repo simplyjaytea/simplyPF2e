@@ -29,7 +29,7 @@ Hooks.once("ready", () => {
   module.api = { open: openGenerator };
 });
 
-/* Add a "Creature Forge" button to the Actors directory header (GM only). */
+/* Add a "SimplyPF2e" button to the Actors directory header (GM only). */
 Hooks.on("renderActorDirectory", (_directory, html) => {
   if (!game.user.isGM || game.system.id !== "pf2e") return;
   const root = html instanceof HTMLElement ? html : html[0];
