@@ -95,7 +95,7 @@ The dice button next to **Generate** rolls a surprise: it ignores the descriptio
 
 ### Encounter mode
 
-Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size (both with +/− steppers), pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter.
+Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size (both with +/− steppers), pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter — every copy of a duplicated member is created as its own actor, numbered so they stay distinguishable ("Goblin Skirmisher 1", "Goblin Skirmisher 2", ...).
 
 ### Read-aloud text, Recall Knowledge, and art
 
@@ -107,7 +107,7 @@ Every creature comes with GM support baked into its notes:
 
 ### Loot
 
-The preview shows the creature's loot — coins, consumables, scrolls, and treasure — with anything that failed to match the compendium flagged so you can decide before creating. Happy with the creature but not the haul? Click **Reroll Loot**: it regenerates only the treasure with a fresh AI pass, leaving the concept, stats, and gear untouched.
+The preview shows the creature's loot — coins, consumables, scrolls, and treasure — with anything that failed to match the compendium flagged so you can decide before creating. Happy with the creature but not the haul? Click **Reroll Loot**: it regenerates only the treasure with a fresh AI pass, leaving the concept, stats, and gear untouched. Loot volume follows your framing: a typical creature drops a modest 3-8 items, but describe it as guarding a hoard or ask for "lots of loot" and the haul scales up to match — both on initial generation and on reroll.
 
 ### Iterating on a creature
 
