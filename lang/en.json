@@ -49,6 +49,8 @@
       "PartySizeUp": "Increase party size",
       "PartySizeDown": "Decrease party size",
       "Rarity": "Rarity",
+      "TreasureAmount": "Treasure amount",
+      "TreasureReadoutTooltip": "Total loot value across all members vs. the treasure budget (per-creature budget × count, from the GM Core Treasure by Level table)",
       "AllowSpellcasting": "Allow spellcasting",
       "Generate": "Generate",
       "Regenerate": "Regenerate",
@@ -97,6 +99,11 @@
       "Moderate": "Moderate",
       "Severe": "Severe",
       "Extreme": "Extreme"
+    },
+    "TreasureAmount": {
+      "Stingy": "Stingy",
+      "Standard": "Standard",
+      "Generous": "Generous"
     },
     "Role": {
       "Boss": "Boss",
