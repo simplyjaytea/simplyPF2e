@@ -76,7 +76,7 @@ The dice button next to **Generate** rolls a surprise: it ignores the descriptio
 
 ### Encounter mode
 
-Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size, pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter.
+Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size (both with +/− steppers), pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter.
 
 ### Read-aloud text, Recall Knowledge, and portraits
 
@@ -104,7 +104,8 @@ Generation is meant to be a conversation, not a one-shot:
 
 Slow or stuck generations:
 
-- Responses are **streamed**: while generating you'll see a live progress bar with the current step and an estimated token count. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
+- Responses are **streamed**: while generating you'll see a progress bar per step (concept, spell selection, compendium matching, ...) plus a live token ticker. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
+- After generation the preview shows a **token usage report**: the exact prompt/completion tokens each AI call used (concept, spell selection, encounter design, each member, loot rerolls) and the total. If a provider doesn't report usage, the step falls back to a clearly-marked estimate.
 - The **request timeout** setting (default 90 s) aborts the request only if the provider sends *no data* at all for that long, so slow-but-alive generations are never cut off. If you get timeout errors, check the provider's status page and your model name.
 - Make sure **Model** is the exact API identifier from your provider's documentation (for DeepSeek e.g. `deepseek-chat` or `deepseek-reasoner`) — marketing names don't always match the API id. A wrong id normally returns an immediate error, not a hang.
 - Spellcasters make **two** AI calls (concept, then grounded spell selection), so they take roughly twice as long as martial creatures.
