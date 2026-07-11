@@ -1,7 +1,7 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
 import { generateConcept, generateLoot, selectSpells, designEncounter } from "./ai.mjs";
-import { getSpellCandidates, findEntry, getPacksFor } from "./compendium.mjs";
-import { normalizeConcept, resolveConcept, computeStats, createActor, parseRunes } from "./builder.mjs";
+import { getSpellCandidates } from "./compendium.mjs";
+import { normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor } from "./builder.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset,
   examplePrompt, randomBrief
@@ -490,18 +490,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         concept: this.#concept,
         onProgress: (p) => this.#onAIProgress(p)
       });
-      this.#concept.loot = lootResult.loot || [];
-      const lootResolved = [];
-      for (const { name, quantity } of this.#concept.loot) {
-        const runes = parseRunes(name);
-        const entry = await findEntry(
-          getPacksFor("equipment"),
-          runes.base,
-          (e) => (e.system?.level?.value ?? 0) <= Math.max(this.#concept.level, 0)
-        );
-        lootResolved.push({ name, quantity, runes, entry });
-      }
-      this.#resolved.loot = lootResolved;
+      this.#concept.loot = normalizeLoot(lootResult.loot);
+      this.#resolved.loot = await resolveLoot(this.#concept);
     } catch (err) {
       console.error(`${MODULE_ID} | loot reroll failed`, err);
       this.#error = err.message;

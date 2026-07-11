@@ -140,25 +140,71 @@ export function normalizeConcept(raw, { level, rarity }) {
       })
       .filter(Boolean)
       .slice(0, 12),
-    loot: (Array.isArray(c.loot) ? c.loot : [])
-      .map((e) => {
-        if (typeof e === "string" && e) return { name: e, quantity: 1 };
-        if (e?.name) {
-          return {
-            name: String(e.name),
-            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10)
-          };
-        }
-        return null;
-      })
-      .filter(Boolean)
-      .slice(0, 12),
+    loot: normalizeLoot(c.loot),
     resistances: (Array.isArray(c.resistances) ? c.resistances : [])
       .map((r) => slugify(r?.type ?? r)).filter(Boolean).slice(0, 4),
     weaknesses: (Array.isArray(c.weaknesses) ? c.weaknesses : [])
       .map((w) => slugify(w?.type ?? w)).filter(Boolean).slice(0, 4),
     immunities: (Array.isArray(c.immunities) ? c.immunities : []).map(slugify).filter(Boolean).slice(0, 8)
   };
+}
+
+const COIN_ITEM_NAMES = {
+  pp: "Platinum Pieces", platinum: "Platinum Pieces",
+  gp: "Gold Pieces", gold: "Gold Pieces",
+  sp: "Silver Pieces", silver: "Silver Pieces",
+  cp: "Copper Pieces", copper: "Copper Pieces"
+};
+
+/**
+ * Recognize coin loot like "Gold Coins", "150 gold pieces" or "20 gp" and map
+ * it to the canonical PF2e treasure item, which the sheet displays as
+ * currency. Returns null for anything that isn't purely coins.
+ */
+export function parseCoins(name) {
+  const match = /^\s*(\d+)?\s*(platinum|gold|silver|copper|pp|gp|sp|cp)\s*(?:coins?|pieces?)?\s*$/i
+    .exec(String(name ?? ""));
+  if (!match) return null;
+  return { name: COIN_ITEM_NAMES[match[2].toLowerCase()], count: match[1] ? Number(match[1]) : null };
+}
+
+/**
+ * Coerce a raw AI loot array into {name, quantity} entries. Coin entries are
+ * folded into their canonical treasure item name and may carry the large
+ * quantities coins need; everything else keeps the equipment quantity cap.
+ */
+export function normalizeLoot(raw) {
+  return (Array.isArray(raw) ? raw : [])
+    .map((e) => {
+      const name = typeof e === "string" ? e : e?.name;
+      if (!name) return null;
+      const quantity = Math.max(Math.round(Number(e?.quantity) || 1), 1);
+      const coins = parseCoins(name);
+      if (coins) {
+        return { name: coins.name, quantity: Math.min(coins.count ? coins.count * quantity : quantity, 100000) };
+      }
+      return { name: String(name), quantity: Math.min(quantity, 10) };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+/**
+ * Resolve loot names against the equipment packs. Loot may sit a little above
+ * the creature's level — treasure rewards run ahead of encounter level.
+ */
+export async function resolveLoot(concept) {
+  const loot = [];
+  for (const { name, quantity } of concept.loot) {
+    const runes = parseRunes(name);
+    const entry = await findEntry(
+      getPacksFor("equipment"),
+      runes.base,
+      (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level + 2, 0)
+    );
+    loot.push({ name, quantity, runes, entry });
+  }
+  return loot;
 }
 
 /**
@@ -205,16 +251,7 @@ export async function resolveConcept(concept) {
     equipment.push({ name, quantity, runes, entry });
   }
 
-  const loot = [];
-  for (const { name, quantity } of concept.loot) {
-    const runes = parseRunes(name);
-    const entry = await findEntry(
-      getPacksFor("equipment"),
-      runes.base,
-      (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0)
-    );
-    loot.push({ name, quantity, runes, entry });
-  }
+  const loot = await resolveLoot(concept);
 
   return { abilities, spells, feats, equipment, loot };
 }
