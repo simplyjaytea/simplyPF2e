@@ -21,6 +21,7 @@ Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a le
 - **Grounded, not hallucinated.** Spells, feats, abilities, and equipment are matched against your actual compendiums — see [Grounding in the compendium](#grounding-in-the-compendium) for how each category stays honest.
 - **Real currency and treasure.** Loot generates as actual PF2e coin items, consumables, scrolls, and magic items — not text you have to convert by hand.
 - **Encounter mode.** Describe a theme, get a whole cohesive group built to the GM Core XP budget in one pass.
+- **Item forge.** Describe a wondrous magic item and get a real Foundry item with *working* passive automation — its Rule Elements are cloned from published items, never invented (see [Item forge](#item-forge)).
 - **Presets that shape the build.** Twelve built-in class road maps, plus save your own.
 - **Nothing touches your world until you say so.** Every generation is a preview — regenerate, edit the prompt, reroll just the loot, or discard, freely.
 - **Full visibility into cost.** Streamed progress per step and an exact token-usage report after every generation.
@@ -98,6 +99,18 @@ The dice button next to **Generate** rolls a surprise: it ignores the descriptio
 
 Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size (both with +/− steppers), pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter — every copy of a duplicated member is created as its own actor, numbered so they stay distinguishable ("Goblin Skirmisher 1", "Goblin Skirmisher 2", ...).
 
+### Item forge
+
+Open the **Items** sidebar tab and click **Item Forge** (GM only), or run `game.modules.get("simplypf2e").api.openItemForge()`. Describe a wondrous item ("a charred iron circlet that shields the wearer's mind and lets it see in the dark"), pick a level and rarity, and **Generate**. The preview shows the item's usage, bulk, price, traits, and a plain-English list of its effects; **Create Item** places it in the Items directory with its sheet open, ready to drag onto a character sheet — where the effects *just work*, no manual setup.
+
+Phase 1 covers **passive** effects: item bonuses (AC, perception, saves, skills), resistances, weaknesses, immunities, senses (darkvision, scent, ...), and speed grants (fly/swim/climb/burrow). What makes them trustworthy is the same grounding philosophy as the rest of the module:
+
+- **Rule Elements are cloned from real published items, never written from memory.** Foundry fails *silently* when a Rule Element has a wrong key or field name — the ring simply doesn't do anything. So the forge scans your installed compendiums for published items that already carry each kind of rule (e.g. Hellfire Boots for a resistance), clones that working rule, and substitutes only the value, statistic, or damage type. If your world has no real example of some effect kind, that kind simply isn't offered to the AI — the forge never falls back to hand-writing a rule.
+- **Prices are empirical.** The gp price is the median real compendium price of items at the chosen level (widened to neighboring levels when a level has few priced items), scaled up for uncommon/rare/unique — not a remembered price table.
+- **Usage strings are harvested from real gear** ("worn", "wornshoes", "held-in-one-hand", ...), so the item slots correctly on a sheet.
+
+Activated abilities (charges, once-per-day effects, spell-like activations) and rune-based magic weapons/armor are deliberately **not** in Phase 1 — they're the Phase 2 and Phase 3 roadmap items below. Describe an activated concept and the forge builds the closest always-on version instead.
+
 ### Read-aloud text, Recall Knowledge, and art
 
 Every creature comes with GM support baked into its notes:
@@ -146,6 +159,7 @@ Odd generation results:
 - A custom (non-glossary) passive ability is only as interactive as its phrasing — anything outside the standard damage/save/check/heal/area conventions is flavor text the table applies by hand rather than a live automated effect.
 - Presets guide the AI rather than hard-constrain it — an occasional generation may drift from the chosen road map; regenerating usually lands it.
 - Loot value is budgeted against the GM Core Treasure by Level table, but only the coin entries flex to hit the target — a haul whose named items alone already exceed the budget is left as-is (with a console note) rather than losing items. Carried gear (weapons, armor, adventuring kit) is not counted against the treasure budget.
+- The item forge only builds **passive** effects in this phase — activated abilities, charges, and rune-based weapons/armor are roadmap items (see below). Effect kinds also depend on your installed compendiums: each kind needs at least one published item carrying that rule to serve as a template (all six kinds have one in the standard PF2e equipment/bestiary packs), and a kind with no real example in your world is not offered rather than guessed at.
 - A named weapon, armor, or gear item that doesn't match anything in the compendium becomes a generic placeholder item at the AI's estimated price rather than a functional weapon/armor — it won't carry real mechanical bonuses. Carried gear is now picked from a real compendium candidate list (see [Grounding in the compendium](#grounding-in-the-compendium)), so this should be uncommon — mostly the fallback path when the grounded pass fails or a pick is copied imperfectly — but if you see one, swap in the intended item from the compendium by hand.
 
 ## Roadmap
@@ -155,6 +169,9 @@ Odd generation results:
 - [x] **Encounter mode** — ✅ v0.3.0: themed encounters built to the GM Core XP budget (threat level × party size × party level), created as a folder of actors. Covers the old "batch mode" idea.
 - [x] **Recall Knowledge & read-aloud** — ✅ v0.3.0: theater-of-the-mind read-aloud block and a clickable Recall Knowledge check with a player-facing info nugget.
 - [x] **Loot** — ✅ v0.3.3: AI-generated treasure (coins as real currency, consumables, scrolls built from spells, magic items) with a Reroll Loot button in the preview.
+- [x] **Item forge (Phase 1: passive items)** — ✅ unreleased: describe a wondrous item, get a real Foundry item whose passive Rule Elements are cloned from published exemplars (item bonuses, resistances, weaknesses, immunities, senses, speeds), priced from empirical compendium medians.
+- [ ] **Item forge Phase 2: activated items** — macro/action-based activated effects (charges, once-per-day, spell-like activations).
+- [ ] **Item forge Phase 3: rune weapons & armor** — generated magic weapons/armor built from fundamental and property runes.
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
 - [x] **Grounded equipment matching** — ✅ unreleased: mirrors the spell-selection approach — the AI picks carried gear from a real, level-capped candidate list out of the equipment compendium instead of naming items from memory.
 - [x] **Treasure budgets** — ✅ unreleased: loot is priced against the GM Core Treasure by Level table (level + rarity scaled, with a per-generation Stingy/Standard/Generous control); coin entries flex to land the haul on budget, and encounter mode reports the group's total treasure value alongside the XP math.
