@@ -34,6 +34,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       deletePreset: GeneratorApp.#onDeletePreset,
       levelUp: GeneratorApp.#onLevelUp,
       levelDown: GeneratorApp.#onLevelDown,
+      partyUp: GeneratorApp.#onPartyUp,
+      partyDown: GeneratorApp.#onPartyDown,
       memberUp: GeneratorApp.#onMemberUp,
       memberDown: GeneratorApp.#onMemberDown,
       rerollLoot: GeneratorApp.#onRerollLoot
@@ -56,6 +58,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** Encounter mode result: {name, budget, spent, members: [...]}. */
   #encounter = null;
   #progress = null;
+  /** Exact token usage per AI call of the last generation: [{label, usage}]. */
+  #tokenUsage = [];
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
 
@@ -95,7 +99,36 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         selected: this.#input.threat === key
       })),
       preview: this.#buildPreviewContext(),
-      encounterPreview: this.#buildEncounterPreviewContext()
+      encounterPreview: this.#buildEncounterPreviewContext(),
+      tokenReport: this.#buildTokenReport()
+    };
+  }
+
+  /** Record one AI call's token usage under a step label. */
+  #recordTokens(label, usage) {
+    if (usage) this.#tokenUsage.push({ label, usage });
+  }
+
+  /** Per-step token usage lines plus a total, ready for the template. */
+  #buildTokenReport() {
+    if (!this.#tokenUsage.length) return null;
+    const total = this.#tokenUsage.reduce((sum, e) => sum + (e.usage.total || 0), 0);
+    const anyEstimated = this.#tokenUsage.some((e) => e.usage.estimated);
+    return {
+      steps: this.#tokenUsage.map(({ label, usage }) => ({
+        label,
+        text: usage.estimated
+          ? game.i18n.format("SIMPLYPF2E.Tokens.StepEstimated", { total: usage.total.toLocaleString() })
+          : game.i18n.format("SIMPLYPF2E.Tokens.Step", {
+              prompt: usage.prompt.toLocaleString(),
+              completion: usage.completion.toLocaleString(),
+              total: usage.total.toLocaleString()
+            })
+      })),
+      totalText: game.i18n.format(
+        anyEstimated ? "SIMPLYPF2E.Tokens.TotalEstimated" : "SIMPLYPF2E.Tokens.Total",
+        { total: total.toLocaleString() }
+      )
     };
   }
 
@@ -241,6 +274,21 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     input.value = Math.min(24, Math.max(-1, (Number.isNaN(current) ? 1 : current) + delta));
   }
 
+  static #onPartyUp() {
+    this.#stepParty(1);
+  }
+
+  static #onPartyDown() {
+    this.#stepParty(-1);
+  }
+
+  #stepParty(delta) {
+    const input = this.element.querySelector('input[name="partySize"]');
+    if (!input) return;
+    const current = Number.parseInt(input.value, 10);
+    input.value = Math.min(8, Math.max(1, (Number.isNaN(current) ? 4 : current) + delta));
+  }
+
   /** Initialize the step list shown while generating. */
   #beginProgress(defs) {
     this.#progress = {
@@ -303,6 +351,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#busy = true;
     this.#error = null;
     this.#encounter = null;
+    this.#tokenUsage = [];
     this.#beginProgress([
       ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept")],
       ...(this.#input.allowSpellcasting ? [["spells", game.i18n.localize("SIMPLYPF2E.Progress.Spells")]] : []),
@@ -310,7 +359,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     ]);
     try {
       await this.#setStep("concept");
-      const raw = await generateConcept({
+      const { concept: raw, usage } = await generateConcept({
         // Random mode rolls a fresh local brief each generation, so
         // Regenerate gives a genuinely different creature every time.
         prompt: isRandom ? randomBrief() : this.#input.prompt,
@@ -320,11 +369,13 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
         onProgress: (p) => this.#onAIProgress(p)
       });
+      this.#recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Concept"), usage);
       this.#concept = normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity });
       if (this.#concept.spellcasting) await this.#setStep("spells");
       await this.#refineSpells(this.#concept);
       await this.#setStep("match");
       this.#resolved = await resolveConcept(this.#concept);
+      console.log(`${MODULE_ID} | token usage`, this.#tokenUsage);
     } catch (err) {
       console.error(`${MODULE_ID} | generation failed`, err);
       this.#error = err.message;
@@ -347,6 +398,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#error = null;
     this.#concept = null;
     this.#resolved = null;
+    this.#tokenUsage = [];
     const { level: partyLevel, partySize, threat } = this.#input;
     const composition = composeEncounter(threat, partySize, partyLevel);
     const memberLabel = (i) => game.i18n.format("SIMPLYPF2E.Progress.Member", {
@@ -366,12 +418,13 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         slots: composition.members,
         onProgress: (p) => this.#onAIProgress(p)
       });
+      this.#recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Design"), design.usage);
 
       const members = [];
       for (let i = 0; i < composition.members.length; i++) {
         const slot = composition.members[i];
         await this.#setStep(`member${i}`);
-        const raw = await generateConcept({
+        const { concept: raw, usage } = await generateConcept({
           prompt: `${design.briefs[i]} (Part of the encounter "${design.name}": ${theme})`,
           level: slot.level,
           rarity: "common",
@@ -379,6 +432,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
           preset: null,
           onProgress: (p) => this.#onAIProgress(p)
         });
+        this.#recordTokens(memberLabel(i), usage);
         const concept = normalizeConcept(raw, { level: slot.level, rarity: "common" });
         await this.#refineSpells(concept);
         members.push({ ...slot, concept });
@@ -394,6 +448,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         spent: composition.spent,
         members
       };
+      console.log(`${MODULE_ID} | token usage`, this.#tokenUsage);
     } catch (err) {
       console.error(`${MODULE_ID} | encounter generation failed`, err);
       this.#error = err.message;
@@ -416,12 +471,13 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     try {
       const candidates = await getSpellCandidates(spellcasting.tradition, spellcasting.maxRank);
       if (candidates.length) {
-        const spells = await selectSpells({
+        const { spells, usage } = await selectSpells({
           concept,
           candidates,
           maxRank: spellcasting.maxRank,
           onProgress: (p) => this.#onAIProgress(p)
         });
+        this.#recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);
         if (spells.length) spellcasting.spells = spells;
       }
     } catch (err) {
@@ -486,19 +542,22 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     if (this.#busy || !this.#concept) return;
     this.#busy = true;
     this.#error = null;
-    await this.render();
+    this.#beginProgress([["loot", game.i18n.localize("SIMPLYPF2E.Progress.Loot")]]);
     try {
-      const lootResult = await generateLoot({
+      await this.#setStep("loot");
+      const { loot, usage } = await generateLoot({
         concept: this.#concept,
         onProgress: (p) => this.#onAIProgress(p)
       });
-      this.#concept.loot = normalizeLoot(lootResult.loot);
+      this.#recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
+      this.#concept.loot = normalizeLoot(loot);
       this.#resolved.loot = await resolveLoot(this.#concept);
     } catch (err) {
       console.error(`${MODULE_ID} | loot reroll failed`, err);
       this.#error = err.message;
     } finally {
       this.#busy = false;
+      this.#progress = null;
       await this.render();
     }
   }
@@ -509,6 +568,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#resolved = null;
     this.#encounter = null;
     this.#error = null;
+    this.#tokenUsage = [];
     await this.render();
   }
 

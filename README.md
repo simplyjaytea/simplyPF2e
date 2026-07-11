@@ -1,10 +1,10 @@
-# SimplyPF2e – AI Creature Forge
+# SimplyPF2e
 
 Turn a one-sentence idea into a fully statted, ready-to-run Pathfinder 2e NPC or monster — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
 
 ## What it does
 
-Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a level, and get a complete creature: statistics, saves, strikes, skills, special abilities, spells, gear, and loot. PF2e monsters normally take real prep time because everything has to be statted; the Forge does that work by splitting the job three ways:
+Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a level, and get a complete creature: statistics, saves, strikes, skills, special abilities, spells, gear, and loot. PF2e monsters normally take real prep time because everything has to be statted; SimplyPF2e does that work by splitting the job three ways:
 
 1. **The AI invents the concept.** An LLM (DeepSeek by default, or any OpenAI-compatible API) receives your prompt and returns a structured concept: name, flavor, traits, which statistics should be *extreme / high / moderate / low*, what its strikes and signature abilities are, and which standard abilities, feats, spells, and equipment it uses.
 2. **The module does the math.** Every number — AC, HP, saves, perception, skill modifiers, strike attack bonuses, damage dice, spell DCs — is looked up from the official GM Core **"Building Creatures"** benchmark tables for the level you chose. The AI never outputs numbers, so creatures are always mechanically sound for their level.
@@ -54,11 +54,11 @@ Provider examples:
 
 ### Choosing compendium sources
 
-By default the Forge draws from the PF2e system packs (bestiary ability glossary, spells, feats, equipment). Under **Module Settings → SimplyPF2e → Compendium Sources** you can change that: the module scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you check the ones each category may use — so homebrew compendiums and content modules (e.g. adventure-path packs) become available to the AI. The grounded spell selection reads from your chosen spell packs too, meaning the AI literally sees and picks from your homebrew spell list. Leaving a category empty falls back to the system defaults.
+By default SimplyPF2e draws from the PF2e system packs (bestiary ability glossary, spells, feats, equipment). Under **Module Settings → SimplyPF2e → Compendium Sources** you can change that: the module scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you check the ones each category may use — so homebrew compendiums and content modules (e.g. adventure-path packs) become available to the AI. The grounded spell selection reads from your chosen spell packs too, meaning the AI literally sees and picks from your homebrew spell list. Leaving a category empty falls back to the system defaults.
 
 ## Usage
 
-1. Open the **Actors** sidebar tab and click **Creature Forge** (GM only), or run `game.modules.get("simplypf2e").api.open()` from a macro.
+1. Open the **Actors** sidebar tab and click **SimplyPF2e** (GM only), or run `game.modules.get("simplypf2e").api.open()` from a macro.
 2. Optionally pick a **preset** from the dropdown, describe the creature, set its level (−1 to 24) and rarity, choose whether spellcasting is allowed, and click **Generate**.
 3. Review the stat-block preview, then click **Create Actor**. The finished NPC opens on its sheet, ready to drop onto the canvas.
 
@@ -76,7 +76,7 @@ The dice button next to **Generate** rolls a surprise: it ignores the descriptio
 
 ### Encounter mode
 
-Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size, pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter.
+Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size (both with +/− steppers), pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter.
 
 ### Read-aloud text, Recall Knowledge, and portraits
 
@@ -84,7 +84,7 @@ Every creature comes with GM support baked into its notes:
 
 - A **read-aloud block** — two or three sensory sentences for theater of the mind, shown as a quote at the top of the description.
 - A **Recall Knowledge line** — the correct identification skill for the creature type, a clickable check at the level- and rarity-based DC, and a short nugget of what a player learns on a success (its weakness, its most dangerous trick).
-- **Art**: if you configure an image model in settings (any OpenAI-compatible `/images/generations` endpoint, e.g. OpenAI's `gpt-image-1` — DeepSeek doesn't offer images, so this can be a different provider than your text one), the Forge generates a portrait from the read-aloud text and uses it for the sheet and token. With no image model configured, it borrows art from the closest bestiary creature by type, size, and level instead. Encounter members always use bestiary art (no per-member image calls).
+- **Art**: if you configure an image model in settings (any OpenAI-compatible `/images/generations` endpoint, e.g. OpenAI's `gpt-image-1` — DeepSeek doesn't offer images, so this can be a different provider than your text one), SimplyPF2e generates a portrait from the read-aloud text and uses it for the sheet and token. With no image model configured, it borrows art from the closest bestiary creature by type, size, and level instead. Encounter members always use bestiary art (no per-member image calls).
 
 ### Loot
 
@@ -104,7 +104,8 @@ Generation is meant to be a conversation, not a one-shot:
 
 Slow or stuck generations:
 
-- Responses are **streamed**: while generating you'll see a live progress bar with the current step and an estimated token count. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
+- Responses are **streamed**: while generating you'll see a progress bar per step (concept, spell selection, compendium matching, ...) plus a live token ticker. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
+- After generation the preview shows a **token usage report**: the exact prompt/completion tokens each AI call used (concept, spell selection, encounter design, each member, loot rerolls) and the total. If a provider doesn't report usage, the step falls back to a clearly-marked estimate.
 - The **request timeout** setting (default 90 s) aborts the request only if the provider sends *no data* at all for that long, so slow-but-alive generations are never cut off. If you get timeout errors, check the provider's status page and your model name.
 - Make sure **Model** is the exact API identifier from your provider's documentation (for DeepSeek e.g. `deepseek-chat` or `deepseek-reasoner`) — marketing names don't always match the API id. A wrong id normally returns an immediate error, not a hang.
 - Spellcasters make **two** AI calls (concept, then grounded spell selection), so they take roughly twice as long as martial creatures.

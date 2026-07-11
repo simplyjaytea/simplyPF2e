@@ -102,12 +102,14 @@ export class AIRequestError extends Error {
 /**
  * Request a completion and parse it as JSON, retrying once on the transient
  * failure modes (empty content, truncated/unparseable JSON) before giving up.
+ * @returns {Promise<{data: object, usage: object}>} parsed JSON plus token usage
  */
 async function requestJSON(args) {
   let lastError = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return parseConceptJSON(await requestCompletion(args));
+      const { content, usage } = await requestCompletion(args);
+      return { data: parseConceptJSON(content), usage };
     } catch (err) {
       if (!(err instanceof AIRequestError) || !err.retryable) throw err;
       lastError = err;
@@ -115,6 +117,23 @@ async function requestJSON(args) {
     }
   }
   throw lastError;
+}
+
+/**
+ * Shape the provider's usage block into {prompt, completion, total, estimated}.
+ * When the provider sent no usage at all, fall back to a ~4 chars/token
+ * estimate of the completion so the report never comes up empty.
+ */
+function normalizeUsage(usage, content) {
+  const prompt = Number(usage?.prompt_tokens);
+  const completion = Number(usage?.completion_tokens);
+  if (Number.isFinite(prompt) || Number.isFinite(completion)) {
+    const p = Number.isFinite(prompt) ? prompt : 0;
+    const c = Number.isFinite(completion) ? completion : 0;
+    return { prompt: p, completion: c, total: Number(usage?.total_tokens) || p + c, estimated: false };
+  }
+  const est = estimateTokens((content ?? "").length);
+  return { prompt: 0, completion: est, total: est, estimated: true };
 }
 
 /**
@@ -141,13 +160,13 @@ Loot should be ${LOOT_GUIDE}`;
     concept.description ? `Description: ${concept.description}` : null
   ].filter((line) => line !== null).join("\n");
 
-  const parsed = await requestJSON({ system, user, onProgress });
-  return { loot: (Array.isArray(parsed.loot) ? parsed.loot : []) };
+  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  return { loot: (Array.isArray(parsed.loot) ? parsed.loot : []), usage };
 }
 
 /**
  * Ask the configured model for a creature concept.
- * @returns {Promise<object>} parsed concept JSON
+ * @returns {Promise<{concept: object, usage: object}>} parsed concept JSON + token usage
  */
 export async function generateConcept({ prompt, level, rarity, allowSpellcasting, preset, onProgress }) {
   const userPrompt = [
@@ -159,11 +178,12 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
     `Concept from the GM: ${prompt}`
   ].filter((line) => line !== null).join("\n");
 
-  return requestJSON({
+  const { data, usage } = await requestJSON({
     system: SYSTEM_PROMPT,
     user: userPrompt,
     onProgress
   });
+  return { concept: data, usage };
 }
 
 /**
@@ -174,7 +194,7 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
  * @param {object} args.concept       normalized concept (for context)
  * @param {{name: string, rank: number}[]} args.candidates
  * @param {number} args.maxRank
- * @returns {Promise<{name: string, rank: number}[]>}
+ * @returns {Promise<{spells: {name: string, rank: number}[], usage: object}>}
  */
 export async function selectSpells({ concept, candidates, maxRank, onProgress }) {
   const byRank = new Map();
@@ -205,17 +225,18 @@ Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward 
     list
   ].filter((line) => line !== null).join("\n");
 
-  const parsed = await requestJSON({ system, user, onProgress });
-  return (Array.isArray(parsed.spells) ? parsed.spells : [])
+  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const spells = (Array.isArray(parsed.spells) ? parsed.spells : [])
     .filter((s) => s?.name)
     .map((s) => ({ name: String(s.name), rank: Math.min(Math.max(Math.round(Number(s.rank) || 0), 0), maxRank) }));
+  return { spells, usage };
 }
 
 /**
  * Encounter design pass: given a theme and a budget-fixed composition, name
  * the encounter and write a one-sentence creature brief per slot. Each brief
  * then runs through the normal single-creature pipeline.
- * @returns {Promise<{name: string, briefs: string[]}>} briefs indexed by slot
+ * @returns {Promise<{name: string, briefs: string[], usage: object}>} briefs indexed by slot
  */
 export async function designEncounter({ theme, partyLevel, slots, onProgress }) {
   const slotLines = slots.map((s, i) =>
@@ -235,11 +256,12 @@ Respond with a single JSON object and nothing else:
     slotLines
   ].join("\n");
 
-  const parsed = await requestJSON({ system, user, onProgress });
+  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
   const briefs = Array.isArray(parsed.briefs) ? parsed.briefs.map((b) => String(b)) : [];
   return {
     name: String(parsed.name || "Encounter"),
-    briefs: slots.map((s, i) => briefs[i] ?? `${theme} — a level ${s.level} ${s.role}`)
+    briefs: slots.map((s, i) => briefs[i] ?? `${theme} — a level ${s.level} ${s.role}`),
+    usage
   };
 }
 
@@ -290,7 +312,7 @@ export async function generateImage({ prompt }) {
  * @param {string} args.system
  * @param {string} args.user
  * @param {(p: {phase: "thinking"|"writing", tokens: number}) => void} [args.onProgress]
- * @returns {Promise<string>}
+ * @returns {Promise<{content: string, usage: object}>}
  */
 async function requestCompletion({ system, user, onProgress }) {
   const apiKey = getSetting(SETTINGS.apiKey);
@@ -302,6 +324,9 @@ async function requestCompletion({ system, user, onProgress }) {
     temperature: Number(getSetting(SETTINGS.temperature)) || 0.8,
     max_tokens: Number(getSetting(SETTINGS.maxTokens)) || 4000,
     stream: true,
+    // Ask for exact token usage in the final stream chunk (OpenAI-style;
+    // DeepSeek sends it regardless). Dropped first if the provider 400s.
+    stream_options: { include_usage: true },
     messages: [
       { role: "system", content: system },
       { role: "user", content: user }
@@ -320,8 +345,13 @@ async function requestCompletion({ system, user, onProgress }) {
   try {
     resetIdle();
     let response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
-    // Some OpenAI-compatible providers reject response_format or streaming;
-    // retry progressively less demanding.
+    // Some OpenAI-compatible providers reject stream_options, response_format
+    // or streaming; retry progressively less demanding.
+    if (response.status === 400) {
+      delete body.stream_options;
+      resetIdle();
+      response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
+    }
     if (response.status === 400) {
       delete body.response_format;
       resetIdle();
@@ -342,13 +372,15 @@ async function requestCompletion({ system, user, onProgress }) {
     const contentType = response.headers.get("content-type") ?? "";
     let content;
     let finishReason = null;
+    let usage = null;
     if (contentType.includes("text/event-stream") && response.body) {
-      ({ content, finishReason } = await readEventStream(response, { onProgress, resetIdle }));
+      ({ content, finishReason, usage } = await readEventStream(response, { onProgress, resetIdle }));
     } else {
       resetIdle();
       const data = await response.json();
       content = data?.choices?.[0]?.message?.content;
       finishReason = data?.choices?.[0]?.finish_reason ?? null;
+      usage = data?.usage ?? null;
     }
     if (!content) {
       // Reasoning models can burn the whole token budget "thinking" and
@@ -361,7 +393,7 @@ async function requestCompletion({ system, user, onProgress }) {
       }
       throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"), { retryable: true });
     }
-    return content;
+    return { content, usage: normalizeUsage(usage, content) };
   } catch (err) {
     if (err.name === "AbortError" || controller.signal.aborted) {
       throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.Timeout", { seconds: idleSeconds }));
@@ -387,6 +419,7 @@ async function readEventStream(response, { onProgress, resetIdle }) {
   let content = "";
   let reasoningChars = 0;
   let finishReason = null;
+  let usage = null;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -405,6 +438,7 @@ async function readEventStream(response, { onProgress, resetIdle }) {
       } catch {
         continue; // partial keep-alive noise
       }
+      if (chunk?.usage) usage = chunk.usage; // exact tokens, sent on the final chunk
       const choice = chunk?.choices?.[0] ?? {};
       if (choice.finish_reason) finishReason = choice.finish_reason;
       const delta = choice.delta ?? {};
@@ -419,7 +453,7 @@ async function readEventStream(response, { onProgress, resetIdle }) {
       }
     }
   }
-  return { content, finishReason };
+  return { content, finishReason, usage };
 }
 
 async function postChatCompletion(baseUrl, apiKey, body, signal) {
