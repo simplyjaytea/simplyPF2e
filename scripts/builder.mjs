@@ -179,11 +179,12 @@ export function normalizeLoot(raw) {
       const name = typeof e === "string" ? e : e?.name;
       if (!name) return null;
       const quantity = Math.max(Math.round(Number(e?.quantity) || 1), 1);
+      const value = Math.max(Number(e?.value) || 0, 0);
       const coins = parseCoins(name);
       if (coins) {
-        return { name: coins.name, quantity: Math.min(coins.count ? coins.count * quantity : quantity, 100000) };
+        return { name: coins.name, quantity: Math.min(coins.count ? coins.count * quantity : quantity, 100000), value };
       }
-      return { name: String(name), quantity: Math.min(quantity, 10) };
+      return { name: String(name), quantity: Math.min(quantity, 10), value };
     })
     .filter(Boolean)
     .slice(0, 12);
@@ -204,7 +205,7 @@ export function parseScroll(name) {
  */
 export async function resolveLoot(concept) {
   const loot = [];
-  for (const { name, quantity } of concept.loot) {
+  for (const { name, quantity, value } of concept.loot) {
     const scroll = parseScroll(name);
     if (scroll) {
       const entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
@@ -212,7 +213,7 @@ export async function resolveLoot(concept) {
       );
       const baseRank = entry?.system?.level?.value ?? 1;
       const rank = Math.min(Math.max(scroll.rank ?? baseRank, baseRank), 10);
-      loot.push({ name, quantity, runes: parseRunes(name), entry, scroll: { rank } });
+      loot.push({ name, quantity, value, runes: parseRunes(name), entry, scroll: { rank } });
       continue;
     }
     const runes = parseRunes(name);
@@ -221,7 +222,7 @@ export async function resolveLoot(concept) {
       runes.base,
       (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level + 2, 0)
     );
-    loot.push({ name, quantity, runes, entry });
+    loot.push({ name, quantity, value, runes, entry });
   }
   return loot;
 }
@@ -255,6 +256,25 @@ async function buildScrollItem(spellEntry, rank) {
   data.system.traits ??= { value: [] };
   data.system.traits.value = [...new Set([...(data.system.traits.value ?? []), ...traditions])];
   return data;
+}
+
+/**
+ * Fallback for loot with no compendium match: a custom treasure item carrying
+ * the AI's estimated value, so the haul keeps its worth instead of vanishing.
+ */
+function customTreasureItem(name, quantity, value) {
+  const gp = Math.max(Math.round(Number(value) || 0), 0);
+  const item = {
+    name: capitalized(name),
+    type: "treasure",
+    img: "icons/svg/item-bag.svg",
+    system: {
+      price: { value: { gp } },
+      description: { value: `<p>${game.i18n.localize("SIMPLYPF2E.Loot.CustomItem")}</p>` }
+    }
+  };
+  if (quantity > 1) item.system.quantity = quantity;
+  return item;
 }
 
 /**
@@ -673,17 +693,25 @@ export async function createActor(concept, resolved, { img = null } = {}) {
     items.push(data);
   }
 
-  // Loot: apply quantities and runes (unequipped, in inventory)
-  for (const { name, quantity, runes, entry, scroll } of resolved.loot) {
+  // Loot: apply quantities and runes (unequipped, in inventory). Anything
+  // without a compendium match becomes a custom treasure item at the AI's
+  // estimated value, so the haul keeps its worth instead of vanishing.
+  for (const { name, quantity, value, runes, entry, scroll } of resolved.loot) {
     if (scroll) {
       const data = await buildScrollItem(entry, scroll.rank);
-      if (!data) continue;
-      if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
-      items.push(data);
+      if (data) {
+        if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
+        items.push(data);
+      } else {
+        items.push(customTreasureItem(name, quantity, value));
+      }
       continue;
     }
     const doc = await getDocument(entry);
-    if (!doc) continue;
+    if (!doc) {
+      items.push(customTreasureItem(name, quantity, value));
+      continue;
+    }
     const data = toItemData(doc);
     if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
     if (data.type === "weapon" && (runes.potency || runes.striking)) {
