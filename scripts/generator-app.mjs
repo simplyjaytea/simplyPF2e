@@ -1,7 +1,7 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
 import { generateConcept, generateLoot, selectSpells, designEncounter } from "./ai.mjs";
-import { getSpellCandidates, findEntry, getPacksFor } from "./compendium.mjs";
-import { normalizeConcept, resolveConcept, computeStats, createActor, parseRunes } from "./builder.mjs";
+import { getSpellCandidates } from "./compendium.mjs";
+import { normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor } from "./builder.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset,
   examplePrompt, randomBrief
@@ -157,8 +157,10 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
         found: Boolean(entry)
       })),
-      loot: (this.#resolved?.loot ?? []).map(({ name, quantity, runes, entry }) => ({
-        name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
+      loot: (this.#resolved?.loot ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
+        name: (scroll && entry
+          ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
+          : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
         found: Boolean(entry)
       })),
       missingSpells,
@@ -271,12 +273,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
    * Streaming callback: updates the detail line directly in the DOM so the
    * counter ticks live without re-rendering the whole application.
    */
-  #onAIProgress({ phase, chars }) {
+  #onAIProgress({ phase, tokens }) {
     const progress = this.#progress;
     if (!progress) return;
     progress.detail = game.i18n.format(
       phase === "thinking" ? "SIMPLYPF2E.Progress.Thinking" : "SIMPLYPF2E.Progress.Writing",
-      { chars: chars.toLocaleString() }
+      { tokens: tokens.toLocaleString() }
     );
     const el = this.element?.querySelector(".spf-progress-detail");
     if (el) el.textContent = progress.detail;
@@ -490,18 +492,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         concept: this.#concept,
         onProgress: (p) => this.#onAIProgress(p)
       });
-      this.#concept.loot = lootResult.loot || [];
-      const lootResolved = [];
-      for (const { name, quantity } of this.#concept.loot) {
-        const runes = parseRunes(name);
-        const entry = await findEntry(
-          getPacksFor("equipment"),
-          runes.base,
-          (e) => (e.system?.level?.value ?? 0) <= Math.max(this.#concept.level, 0)
-        );
-        lootResolved.push({ name, quantity, runes, entry });
-      }
-      this.#resolved.loot = lootResolved;
+      this.#concept.loot = normalizeLoot(lootResult.loot);
+      this.#resolved.loot = await resolveLoot(this.#concept);
     } catch (err) {
       console.error(`${MODULE_ID} | loot reroll failed`, err);
       this.#error = err.message;

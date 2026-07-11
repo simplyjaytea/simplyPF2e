@@ -89,10 +89,14 @@ async function getIndex(packId) {
   return entries;
 }
 
+/* Filler words that shouldn't block a token match ("Potion of Invisibility"
+   must still find "Invisibility Potion"). */
+const STOPWORDS = new Set(["of", "the", "a", "an"]);
+
 function scoreMatch(query, candidate) {
   if (candidate === query) return 3;
   if (candidate.startsWith(query) || query.startsWith(candidate)) return 2;
-  const queryTokens = query.split(" ");
+  const queryTokens = query.split(" ").filter((t) => !STOPWORDS.has(t));
   const candidateTokens = new Set(candidate.split(" "));
   if (queryTokens.length && queryTokens.every((t) => candidateTokens.has(t))) return 1;
   return 0;

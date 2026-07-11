@@ -59,7 +59,7 @@ JSON schema (all keys required unless marked optional):
   },
   "feats": string[],                    // EXACT published PF2e feat names (e.g. "Power Attack", "Sudden Charge") for creatures with class-like training such as humanoid soldiers, monks or assassins; [] for beasts, mindless creatures, and anything without trained techniques; max 3
   "equipment": [ { "name": string, "quantity": number } ],  // 2-6 logical carried items with EXACT PF2e item names: the weapons and armor it actually wields, plus consumables where sensible (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies). For creatures of level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
-  "loot": [ { "name": string, "quantity": number } ],  // 3-8 items dropped on defeat with EXACT PF2e item names: treasure items, consumables (potions, scrolls, alchemical items), magical items appropriate to level/rarity. Scale gold coins and item rarity to the encounter's difficulty (higher rarity = more valuable loot). Include 1-2 coins items (e.g. "Gold Coins"), 1-2 consumable items (e.g. "Healing Potion", "Scroll of Phantom Steed"), and 1-2 treasure/magical items.
+  "loot": [ { "name": string, "quantity": number } ],  // 3-8 items dropped on defeat. Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the creature's level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published PF2e item names, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the creature's level or lower.
   "resistances": [ { "type": string } ],   // damage types only, values computed from tables; [] if none
   "weaknesses": [ { "type": string } ],
   "immunities": string[]                 // e.g. ["death-effects", "poison"], [] if none
@@ -129,7 +129,7 @@ JSON schema (loot key required):
   "loot": [ { "name": string, "quantity": number } ]
 }
 
-Loot should be 3-8 items with EXACT PF2e item names: treasure items, consumables (potions, scrolls, alchemical items), and magical items appropriate to level/rarity. Include 1-2 coins items (e.g. "Gold Coins"), 1-2 consumable items (e.g. "Healing Potion", "Scroll of Phantom Steed"), and 1-2 treasure/magical items. Scale rarity and quantity to the creature's level and rarity.`;
+Loot should be 3-8 items dropped on defeat. Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the creature's level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published PF2e item names, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the creature's level or lower.`;
 
   const user = [
     `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
@@ -286,7 +286,7 @@ export async function generateImage({ prompt }) {
  * @param {object} args
  * @param {string} args.system
  * @param {string} args.user
- * @param {(p: {phase: "thinking"|"writing", chars: number}) => void} [args.onProgress]
+ * @param {(p: {phase: "thinking"|"writing", tokens: number}) => void} [args.onProgress]
  * @returns {Promise<string>}
  */
 async function requestCompletion({ system, user, onProgress }) {
@@ -369,6 +369,13 @@ async function requestCompletion({ system, user, onProgress }) {
   }
 }
 
+/**
+ * Streaming responses carry no live token counts (providers send usage only
+ * at the very end, if at all), so progress is estimated from streamed text
+ * at the usual ~4 characters per token.
+ */
+const estimateTokens = (chars) => Math.max(1, Math.round(chars / 4));
+
 /** Consume an SSE chat-completions stream, reporting progress per chunk. */
 async function readEventStream(response, { onProgress, resetIdle }) {
   const reader = response.body.getReader();
@@ -401,11 +408,11 @@ async function readEventStream(response, { onProgress, resetIdle }) {
       // DeepSeek reasoning models stream their chain of thought first
       if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
         reasoningChars += delta.reasoning_content.length;
-        onProgress?.({ phase: "thinking", chars: reasoningChars });
+        onProgress?.({ phase: "thinking", tokens: estimateTokens(reasoningChars) });
       }
       if (typeof delta.content === "string" && delta.content) {
         content += delta.content;
-        onProgress?.({ phase: "writing", chars: content.length });
+        onProgress?.({ phase: "writing", tokens: estimateTokens(content.length) });
       }
     }
   }

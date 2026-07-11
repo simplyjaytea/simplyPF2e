@@ -2,6 +2,21 @@
 
 Turn a one-sentence idea into a fully statted, ready-to-run Pathfinder 2e NPC or monster — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
 
+## What it does
+
+Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a level, and get a complete creature: statistics, saves, strikes, skills, special abilities, spells, gear, and loot. PF2e monsters normally take real prep time because everything has to be statted; the Forge does that work by splitting the job three ways:
+
+1. **The AI invents the concept.** An LLM (DeepSeek by default, or any OpenAI-compatible API) receives your prompt and returns a structured concept: name, flavor, traits, which statistics should be *extreme / high / moderate / low*, what its strikes and signature abilities are, and which standard abilities, feats, spells, and equipment it uses.
+2. **The module does the math.** Every number — AC, HP, saves, perception, skill modifiers, strike attack bonuses, damage dice, spell DCs — is looked up from the official GM Core **"Building Creatures"** benchmark tables for the level you chose. The AI never outputs numbers, so creatures are always mechanically sound for their level.
+3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, ...), feats, spells, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom ability or flagged in the preview so you can decide.
+
+Several parts of the concept get extra grounding:
+
+- **Spells are chosen *from* the compendium.** When a creature is a spellcaster, the module reads the actual spell list for its tradition (filtered to the ranks a creature of that level may cast) out of the PF2e compendium and hands that list to the AI, which picks from it. The AI can't invent spells that don't exist, and every pick lands as the real spell document on the sheet.
+- **Feats for trained creatures.** Creatures that would plausibly have class-like techniques — humanoid soldiers, monks, assassins — can be given real feats (Power Attack, Sudden Charge, ...), matched against the system's feats compendium and embedded on the NPC.
+- **Real, logical inventories.** The AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically.
+- **Loot worth fighting for.** Creatures carry the treasure they drop on defeat: coins, consumables, and magic items contextual to the creature and scaled to its level and rarity, all matched against the equipment compendium. Coins ("Gold Coins", "150 silver pieces") become the real PF2e currency items, so they show up in the sheet's Currency section. Spell scrolls are assembled the same way the system builds them on spell drag-and-drop: the named spell is resolved from the spell compendium and embedded into the matching rank's scroll template, producing a fully usable consumable.
+
 ## Install
 
 Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
@@ -10,24 +25,36 @@ Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
 https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
 ```
 
-This link is **permanent** — it always resolves to the newest published release, so Foundry will detect and offer updates automatically. You never need a new URL when the module updates. (If it returns a 404, no release has been published yet — see [Releasing](#releasing-for-maintainers) below.)
+This link is **permanent** — it always resolves to the newest published release, so Foundry will detect and offer updates automatically. You never need a new URL when the module updates.
 
 Requires Foundry VTT **v13+** and the **pf2e** game system (6.0.0+).
 
-## What it does
+## Setup
 
-Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a level, and get a complete creature: statistics, saves, strikes, skills, special abilities, spells, and gear. PF2e monsters normally take real prep time because everything has to be statted; the Forge does that work by splitting the job three ways:
+Configure the AI provider under **Game Settings → Configure Settings → SimplyPF2e** (GM only):
 
-1. **The AI invents the concept.** An LLM (DeepSeek by default, or any OpenAI-compatible API) receives your prompt and returns a structured concept: name, flavor, traits, which statistics should be *extreme / high / moderate / low*, what its strikes and signature abilities are, and which standard abilities, feats, spells, and equipment it uses.
-2. **The module does the math.** Every number — AC, HP, saves, perception, skill modifiers, strike attack bonuses, damage dice, spell DCs — is looked up from the official GM Core **"Building Creatures"** benchmark tables for the level you chose. The AI never outputs numbers, so creatures are always mechanically sound for their level.
-3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, ...), feats, spells, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom ability or flagged in the preview so you can decide.
+| Setting | Description |
+| --- | --- |
+| API Base URL | Any OpenAI-compatible endpoint. Defaults to DeepSeek (`https://api.deepseek.com/v1`). |
+| API Key | Your provider API key. |
+| Model | e.g. `deepseek-chat`, `deepseek-reasoner`, `gpt-4o`, or whatever your provider offers. |
+| Creativity | Sampling temperature (0–2). |
+| Max response tokens | Raise if complex creatures come back truncated. |
+| Request timeout | Abort a generation if the provider sends *no data* for this long (default 90 s). |
+| Image model / base URL / key | Optional, for AI portraits — see [portraits](#read-aloud-text-recall-knowledge-and-portraits). |
 
-Inventories are real and logical: the AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically.
+Provider examples:
 
-Two pieces of the concept get extra grounding:
+- **DeepSeek** – `https://api.deepseek.com/v1`, model `deepseek-chat`
+- **OpenAI** – `https://api.openai.com/v1`, model `gpt-4o`
+- **OpenRouter** – `https://openrouter.ai/api/v1`, any hosted model
+- **Ollama (local)** – `http://localhost:11434/v1`, no key needed. Set `OLLAMA_ORIGINS=*` (or your Foundry origin) so the browser may call it.
 
-- **Spells are chosen *from* the compendium.** When a creature is a spellcaster, the module reads the actual spell list for its tradition (filtered to the ranks a creature of that level may cast) out of the PF2e compendium and hands that list to the AI, which picks from it. The AI can't invent spells that don't exist, and every pick lands as the real spell document on the sheet.
-- **Feats for trained creatures.** Creatures that would plausibly have class-like techniques — humanoid soldiers, monks, assassins — can be given real feats (Power Attack, Sudden Charge, ...), matched against the system's feats compendium and embedded on the NPC.
+> **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is stored in world settings (visible to other GMs of the same world). Use a key you're comfortable with in that context.
+
+### Choosing compendium sources
+
+By default the Forge draws from the PF2e system packs (bestiary ability glossary, spells, feats, equipment). Under **Module Settings → SimplyPF2e → Compendium Sources** you can change that: the module scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you check the ones each category may use — so homebrew compendiums and content modules (e.g. adventure-path packs) become available to the AI. The grounded spell selection reads from your chosen spell packs too, meaning the AI literally sees and picks from your homebrew spell list. Leaving a category empty falls back to the system defaults.
 
 ## Usage
 
@@ -53,11 +80,15 @@ Switch the toggle at the top of the dialog to **Encounter**, set your party's le
 
 ### Read-aloud text, Recall Knowledge, and portraits
 
-Every creature now comes with GM support baked into its notes:
+Every creature comes with GM support baked into its notes:
 
 - A **read-aloud block** — two or three sensory sentences for theater of the mind, shown as a quote at the top of the description.
 - A **Recall Knowledge line** — the correct identification skill for the creature type, a clickable check at the level- and rarity-based DC, and a short nugget of what a player learns on a success (its weakness, its most dangerous trick).
 - **Art**: if you configure an image model in settings (any OpenAI-compatible `/images/generations` endpoint, e.g. OpenAI's `gpt-image-1` — DeepSeek doesn't offer images, so this can be a different provider than your text one), the Forge generates a portrait from the read-aloud text and uses it for the sheet and token. With no image model configured, it borrows art from the closest bestiary creature by type, size, and level instead. Encounter members always use bestiary art (no per-member image calls).
+
+### Loot
+
+The preview shows the creature's loot — coins, consumables, scrolls, and treasure — with anything that failed to match the compendium flagged so you can decide before creating. Happy with the creature but not the haul? Click **Reroll Loot**: it regenerates only the treasure with a fresh AI pass, leaving the concept, stats, and gear untouched.
 
 ### Iterating on a creature
 
@@ -65,59 +96,38 @@ Generation is meant to be a conversation, not a one-shot:
 
 - **Regenerate** re-rolls the concept from the same prompt — same level and math, new take.
 - **Edit the prompt and regenerate** to steer it: add "make it a spellcaster", "give it a ranged attack", "less gear, more natural weapons", and so on.
+- **Reroll Loot** re-rolls just the treasure (see [Loot](#loot)).
 - **Discard** clears the preview without creating anything.
 - Nothing touches your world until you click **Create Actor**, so iterate freely — and after creation the result is a completely normal PF2e NPC you can keep editing on the sheet.
 
-## Setup
+## Troubleshooting
 
-Configure the AI provider under **Game Settings → Configure Settings → SimplyPF2e** (GM only):
+Slow or stuck generations:
 
-| Setting | Description |
-| --- | --- |
-| API Base URL | Any OpenAI-compatible endpoint. Defaults to DeepSeek (`https://api.deepseek.com/v1`). |
-| API Key | Your provider API key. |
-| Model | e.g. `deepseek-chat`, `deepseek-reasoner`, `gpt-4o`, or whatever your provider offers. |
-| Creativity | Sampling temperature (0–2). |
-| Max response tokens | Raise if complex creatures come back truncated. |
-
-Provider examples:
-
-- **DeepSeek** – `https://api.deepseek.com/v1`, model `deepseek-chat`
-- **OpenAI** – `https://api.openai.com/v1`, model `gpt-4o`
-- **OpenRouter** – `https://openrouter.ai/api/v1`, any hosted model
-- **Ollama (local)** – `http://localhost:11434/v1`, no key needed. Set `OLLAMA_ORIGINS=*` (or your Foundry origin) so the browser may call it.
-
-### Choosing compendium sources
-
-By default the Forge draws from the PF2e system packs (bestiary ability glossary, spells, feats, equipment). Under **Module Settings → SimplyPF2e → Compendium Sources** you can change that: the module scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you check the ones each category may use — so homebrew compendiums and content modules (e.g. adventure-path packs) become available to the AI. The grounded spell selection reads from your chosen spell packs too, meaning the AI literally sees and picks from your homebrew spell list. Leaving a category empty falls back to the system defaults.
-
-### Troubleshooting slow or stuck generations
-
-- Responses are **streamed**: while generating you'll see a live progress bar with the current step and a character counter. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
-- A **request timeout** setting (default 90 s) aborts the request only if the provider sends *no data* at all for that long, so slow-but-alive generations are never cut off. If you get timeout errors, check the provider's status page and your model name.
+- Responses are **streamed**: while generating you'll see a live progress bar with the current step and an estimated token count. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
+- The **request timeout** setting (default 90 s) aborts the request only if the provider sends *no data* at all for that long, so slow-but-alive generations are never cut off. If you get timeout errors, check the provider's status page and your model name.
 - Make sure **Model** is the exact API identifier from your provider's documentation (for DeepSeek e.g. `deepseek-chat` or `deepseek-reasoner`) — marketing names don't always match the API id. A wrong id normally returns an immediate error, not a hang.
 - Spellcasters make **two** AI calls (concept, then grounded spell selection), so they take roughly twice as long as martial creatures.
 
-> **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is stored in world settings (visible to other GMs of the same world). Use a key you're comfortable with in that context.
-
-## Known limitations (v0.2)
+## Known limitations
 
 - Generated spellcasters use a spontaneous-style entry with 2 slots per rank; adjust on the sheet if you want prepared or innate casting.
 - The benchmark tables were transcribed by hand from GM Core. If you spot a value that disagrees with the book, please open an issue.
 - Matched feats are converted to NPC action items (the PF2e system does not allow feat items on NPC actors) — they keep the feat's cost, rules text, and automation.
 - Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions; if a phrase slips through unconverted, it stays as readable plain text (regenerate or edit the ability to fix it).
 - Presets guide the AI rather than hard-constrain it — an occasional generation may drift from the chosen road map; regenerating usually lands it.
-- Carried equipment is level-appropriate but not priced against treasure-budget tables yet (see roadmap).
+- Loot and carried gear are level-appropriate, but their total value is not yet priced against the GM Core treasure-budget tables (see roadmap).
 
-## To do / Roadmap
+## Roadmap
 
 - [x] **Templates / presets** — ✅ v0.2.0: built-in class presets (Fighter through Alchemist) plus user-created custom presets in a dropdown.
 - [x] **Clickable rolls** — ✅ v0.1.4: damage, saves, checks, and area templates in custom abilities are inline roll links.
 - [x] **Encounter mode** — ✅ v0.3.0: themed encounters built to the GM Core XP budget (threat level × party size × party level), created as a folder of actors. Covers the old "batch mode" idea.
 - [x] **Recall Knowledge & read-aloud** — ✅ v0.3.0: theater-of-the-mind read-aloud block and a clickable Recall Knowledge check with a player-facing info nugget.
 - [x] **Creature art** — ✅ v0.3.0: optional AI portrait generation, with closest-bestiary-match art as the no-API fallback.
+- [x] **Loot** — ✅ v0.3.3: AI-generated treasure (coins as real currency, consumables, scrolls built from spells, magic items) with a Reroll Loot button in the preview.
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
-- [ ] **Treasure** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.
+- [ ] **Treasure budgets** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.
 - [ ] **Full PC-power-level characters** — generate complete character-class-strength NPCs (villains, rivals, pregens) built to player-character power budgets.
 - [ ] **Preset sharing** — export/import custom presets as JSON to trade with other GMs.
 - [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.
@@ -128,9 +138,9 @@ By default the Forge draws from the PF2e system packs (bestiary ability glossary
 
 Publishing an update is one step, done any of three ways:
 
-- **Push a tag:** `git tag v0.1.1 && git push origin v0.1.1`. The workflow creates the release itself.
-- **From Actions:** go to **Actions → Release → Run workflow** and enter a version like `0.1.1`.
-- **From Releases:** draft and publish a release by hand with a tag like `v0.1.1`.
+- **Push a tag:** `git tag v0.4.0 && git push origin v0.4.0`. The workflow creates the release itself.
+- **From Actions:** go to **Actions → Release → Run workflow** and enter a version like `0.4.0`.
+- **From Releases:** draft and publish a release by hand with a tag like `v0.4.0`.
 
 Either way the workflow stamps the version into `module.json`, builds `module.zip`, and attaches both to the release. Because the install link above points at `releases/latest`, existing users are offered the update automatically and the link never changes.
 
