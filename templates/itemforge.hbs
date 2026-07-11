@@ -100,7 +100,16 @@
         {{/each}}
       </ul>
     {{else}}
-      <p class="notification warning">{{localize "SIMPLYPF2E.ItemForge.NoEffects"}}</p>
+      {{#unless preview.activation}}
+        <p class="notification warning">{{localize "SIMPLYPF2E.ItemForge.NoEffects"}}</p>
+      {{/unless}}
+    {{/if}}
+
+    {{#if preview.activation}}
+      <h3>{{localize "SIMPLYPF2E.ItemForge.ActivationHeading"}}</h3>
+      <ul class="spf-list">
+        <li>{{preview.activation}}</li>
+      </ul>
     {{/if}}
 
     {{#if preview.concept.description}}

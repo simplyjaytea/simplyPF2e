@@ -1,4 +1,5 @@
 import { SETTINGS, getSetting } from "./settings.mjs";
+import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
 
 /**
  * Client for any OpenAI-compatible chat completions API (DeepSeek, OpenAI,
@@ -329,6 +330,23 @@ const ITEM_EFFECT_DOCS = {
   speed: `{ "kind": "speed", "type": "fly"|"swim"|"climb"|"burrow", "value": number } // speed in feet, multiple of 5 (20-40 typical); a passive permanent speed is powerful, fit it to the level`
 };
 
+/* Documentation for the optional `activation` field (item forge Phase 2): a
+ * single activated ability the player triggers via a generated macro. The four
+ * templates map to the four macro-templates.mjs builders. {dmg} and {dc} are
+ * filled with level-appropriate benchmark suggestions per generation. */
+function itemActivationDoc({ suggestedDamage, suggestedDC, effectDocs }) {
+  return `"activation": { // OPTIONAL — omit entirely (null) for a pure passive item. One activated ability the player clicks to use.
+    "template": "damage"|"heal"|"condition"|"selfBuff",
+    "actionCost": 1|2|3|"reaction"|"free",
+    "params": { // shape depends on "template":
+      // damage:   { "damageDice": "${suggestedDamage}", "damageType": DAMAGE_TYPE, "saveType": "fortitude"|"reflex"|"will"|null, "dc": ${suggestedDC}, "basicSave": boolean } // dice ~${suggestedDamage} for this level; DC ~${suggestedDC}; use a basic save for area/blast damage
+      // heal:     { "healDice": "${suggestedDamage}" } // Hit Points restored; heals a target or the user
+      // condition:{ "conditionSlug": "frightened"|"clumsy"|"slowed"|"sickened"|"off-guard"|"blinded"|"dazzled"|"prone"|"stupefied"|"enfeebled"|"drained"|..., "value": number|null, "duration": string|null, "saveType": "fortitude"|"reflex"|"will"|null, "dc": ${suggestedDC}, "basicSave": boolean } // value only for valued conditions (e.g. frightened 1); duration is short text like "1 minute"
+      // selfBuff: { "effectName": string, "description": string, "durationRounds": number|null, "durationMinutes": number|null, "ruleEffectKinds": [ /* 0-3 of the SAME passive effect shapes as "effects" above */ ] } // a temporary buff on the user only
+    }
+  }`;
+}
+
 /**
  * Ask the configured model for a wondrous magic item concept (item forge).
  * `availableKinds` MUST be the effect kinds rule-templates.mjs found real
@@ -341,12 +359,15 @@ const ITEM_EFFECT_DOCS = {
 export async function generateMagicItemConcept({ prompt, level, rarity, availableKinds, usageOptions, onProgress }) {
   const kinds = (availableKinds ?? []).filter((k) => ITEM_EFFECT_DOCS[k]);
   const effectDocs = kinds.map((k) => `    ${ITEM_EFFECT_DOCS[k]}`).join("\n");
+  const suggestedDamage = damageDiceForLevel(level);
+  const suggestedDC = saveDcForLevel(level, rarity);
+  const activationDoc = itemActivationDoc({ suggestedDamage, suggestedDC, effectDocs });
 
-  const system = `You are an expert Pathfinder 2e (remaster) magic item designer. You design wondrous item CONCEPTS with simple passive effects; the final price is computed elsewhere from real compendium benchmarks.
+  const system = `You are an expert Pathfinder 2e (remaster) magic item designer. You design wondrous item CONCEPTS; the final price is computed elsewhere from real compendium benchmarks.
 
 Respond with a SINGLE JSON object only. No markdown fences, no commentary.
 
-JSON schema (all keys required):
+JSON schema (all keys required unless marked OPTIONAL):
 {
   "name": string, // evocative item name in current PF2e Remaster style — an ORIGINAL item, not a copy of a published one
   "description": string, // 2-4 sentences of evocative flavor: appearance, history, feel. Plain text. Do NOT restate the mechanical effects — a mechanical summary is appended automatically.
@@ -356,15 +377,17 @@ JSON schema (all keys required):
   "traits": string[], // lowercase PF2e item traits; always include "magical", plus fitting descriptors (e.g. "fire", "air", "healing", "detection"); "invested" is handled separately
   "bulk": number, // 0 = negligible, 0.1 = light (L), 1+ = heavier items
   "invested": boolean, // true for most worn magic items (they must be invested to function); false for held items
-  "effects": [ // 1-3 passive effects, each one of these shapes ("kind" MUST be from this list):
+  "effects": [ // 0-3 ALWAYS-ON PASSIVE effects, each one of these shapes ("kind" MUST be from this list):
 ${effectDocs}
-  ]
+  ],
+  ${activationDoc}
 }
 
 DAMAGE_TYPE = "acid"|"bludgeoning"|"cold"|"electricity"|"fire"|"force"|"mental"|"piercing"|"poison"|"slashing"|"sonic"|"spirit"|"vitality"|"void"|"bleed".
 
 Design guidance:
-- Effects are ALWAYS-ON passives. No activated abilities, no charges, no once-per-day effects — if the concept implies activation, express the closest passive version instead.
+- The "effects" array is for ALWAYS-ON passives only. A once-per-day or triggered ability goes in the OPTIONAL "activation" field instead (the player clicks a generated macro to use it, once per day).
+- An item may have passive effects AND an activation, or just one, or (rarely) neither. Give the item at least ONE of the two unless the concept is purely a flavor trinket. Prefer a passive for "always" wording ("you can see in the dark", "resist fire"); prefer an activation for "once per day / when you / you can spend an action to" wording ("unleash a blast", "heal a wound", "frighten a foe", "gain a burst of speed").
 - Match power to level and rarity: one modest effect for low-level items, two or three (or one strong one) only for high-level or rare items.
 - The item should feel like it belongs in a published book: grounded flavor, a clear identity, one memorable image.`;
 

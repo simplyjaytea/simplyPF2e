@@ -56,6 +56,46 @@ Hooks.on("renderActorDirectory", (_directory, html) => {
   target.appendChild(button);
 });
 
+/*
+ * Clean up a forged item's companion activation macro when the item is
+ * deleted, so macros don't accumulate as orphans. Guarded so it ONLY ever
+ * touches a macro this module recorded on the item's own flag — it never
+ * looks at, or deletes, any other macro. Only the client that initiated the
+ * deletion runs the cleanup (userId check), avoiding duplicate deletes.
+ */
+Hooks.on("deleteItem", async (item, _options, userId) => {
+  if (userId !== game.user.id) return;
+  const uuid = item?.getFlag?.(MODULE_ID, "activationMacroUuid");
+  if (!uuid) return;
+  try {
+    const macro = await fromUuid(uuid);
+    if (macro?.documentName === "Macro") await macro.delete();
+  } catch (err) {
+    console.warn(`${MODULE_ID} | failed to clean up activation macro ${uuid}`, err);
+  }
+});
+
+/*
+ * Recharge forged 1/day items on a full night's rest (best-effort: this hook
+ * is fired by the PF2e "Rest for the Night" flow; if it never fires, charges
+ * simply don't auto-reset and the GM resets them manually). Only resets our
+ * own flag on the rested actor's own items, never anything else.
+ */
+Hooks.on("pf2e.restForTheNight", async (actor) => {
+  if (!game.user.isGM || !actor?.items) return;
+  const updates = [];
+  for (const item of actor.items) {
+    const forge = item.getFlag?.(MODULE_ID, "forge");
+    if (forge?.uses && typeof forge.uses.max === "number" && forge.uses.value !== forge.uses.max) {
+      updates.push({ _id: item.id, [`flags.${MODULE_ID}.forge.uses.value`]: forge.uses.max });
+    }
+  }
+  if (updates.length) {
+    try { await actor.updateEmbeddedDocuments("Item", updates); }
+    catch (err) { console.warn(`${MODULE_ID} | failed to recharge forged items on rest`, err); }
+  }
+});
+
 /* Add an "Item Forge" button to the Items directory header (GM only). */
 Hooks.on("renderItemDirectory", (_directory, html) => {
   if (!game.user.isGM || game.system.id !== "pf2e") return;
