@@ -579,10 +579,15 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       let created = 0;
       for (const member of this.#encounter.members) {
         if (member.count < 1) continue;
+        // Identical minions share one art lookup — same creature, same portrait.
         const img = await findBestiaryArt(member.concept);
-        const actor = await createActor(member.concept, member.resolved, { img });
-        await actor.update({ folder: folder.id });
-        created++;
+        for (let i = 0; i < member.count; i++) {
+          const actor = await createActor(member.concept, member.resolved, { img });
+          const update = { folder: folder.id };
+          if (member.count > 1) update.name = `${actor.name} ${i + 1}`;
+          await actor.update(update);
+          created++;
+        }
       }
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.CreatedAll", {
         count: created, name: this.#encounter.name

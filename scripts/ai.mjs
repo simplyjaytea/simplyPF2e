@@ -12,7 +12,7 @@ import { SETTINGS, getSetting } from "./settings.mjs";
 const REMASTER_NOTE = `using CURRENT PF2e REMASTER names, never the old pre-Remaster name — e.g. "Thunderstone" is now "Blasting Stone", the old "Bag of Holding" is now "Spacious Pouch"`;
 
 /* Loot rules shared between the concept prompt and the reroll-loot prompt. */
-const LOOT_GUIDE = `3-8 items dropped on defeat; "value" is the approximate price of ONE unit in gold pieces (used when an item has no compendium match). Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35, "value": 1}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the creature's level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published item names ${REMASTER_NOTE}, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the creature's level or lower.`;
+const LOOT_GUIDE = `3-8 items dropped on defeat; "value" is the approximate price of ONE unit in gold pieces (used when an item has no compendium match). Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35, "value": 1}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the creature's level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published item names ${REMASTER_NOTE}, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the creature's level or lower. EXCEPTION: if the creature's description or the GM's request explicitly calls for abundant loot (a hoard, riches, a wealthy creature, a dragon's hoard, "lots of loot", etc.), scale UP to roughly 12-20 items with proportionally more coin, treasure, and magic-item entries; otherwise stay in the 3-8 baseline.`;
 
 const SYSTEM_PROMPT = `You are an expert Pathfinder 2e (remaster) creature designer. You design creature CONCEPTS; numbers are computed elsewhere from the official Building Creatures benchmark tables, so choose only named scales, never numeric statistics.
 
@@ -160,6 +160,7 @@ Loot should be ${LOOT_GUIDE}`;
   const user = [
     `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.description ? `Description: ${concept.description}` : null,
     concept.traits.length ? `Traits: ${concept.traits.join(", ")}` : null
   ].filter((line) => line !== null).join("\n");
 

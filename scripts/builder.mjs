@@ -190,7 +190,7 @@ export function normalizeLoot(raw) {
       return { name: String(name), quantity: Math.min(quantity, 10), value };
     })
     .filter(Boolean)
-    .slice(0, 12);
+    .slice(0, 24); // fits LOOT_GUIDE's hoard guidance (~12-20 items) with headroom, still bounds runaway output
 }
 
 /** Recognize scroll loot like "Scroll of Fireball" or "Scroll of Fireball (Rank 3)". */
