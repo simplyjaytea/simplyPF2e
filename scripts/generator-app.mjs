@@ -1,7 +1,7 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
-import { generateConcept, selectSpells, designEncounter } from "./ai.mjs";
-import { getSpellCandidates } from "./compendium.mjs";
-import { normalizeConcept, resolveConcept, computeStats, createActor } from "./builder.mjs";
+import { generateConcept, generateLoot, selectSpells, designEncounter } from "./ai.mjs";
+import { getSpellCandidates, findEntry, getPacksFor } from "./compendium.mjs";
+import { normalizeConcept, resolveConcept, computeStats, createActor, parseRunes } from "./builder.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset,
   examplePrompt, randomBrief
@@ -35,7 +35,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       levelUp: GeneratorApp.#onLevelUp,
       levelDown: GeneratorApp.#onLevelDown,
       memberUp: GeneratorApp.#onMemberUp,
-      memberDown: GeneratorApp.#onMemberDown
+      memberDown: GeneratorApp.#onMemberDown,
+      rerollLoot: GeneratorApp.#onRerollLoot
     }
   };
 
@@ -156,8 +157,13 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
         found: Boolean(entry)
       })),
+      loot: (this.#resolved?.loot ?? []).map(({ name, quantity, runes, entry }) => ({
+        name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
+        found: Boolean(entry)
+      })),
       missingSpells,
       missingEquipment,
+      missingLoot: (this.#resolved?.loot ?? []).filter((l) => !l.entry).map((l) => l.name),
       iwr: {
         immunities: concept.immunities.join(", "),
         resistances: concept.resistances.map((r) => `${r} ${stats.resistanceValue}`).join(", "),
@@ -467,6 +473,37 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this.#encounter = null;
     } catch (err) {
       console.error(`${MODULE_ID} | encounter creation failed`, err);
+      this.#error = err.message;
+    } finally {
+      this.#busy = false;
+      await this.render();
+    }
+  }
+
+  static async #onRerollLoot() {
+    if (this.#busy || !this.#concept) return;
+    this.#busy = true;
+    this.#error = null;
+    await this.render();
+    try {
+      const lootResult = await generateLoot({
+        concept: this.#concept,
+        onProgress: (p) => this.#onAIProgress(p)
+      });
+      this.#concept.loot = lootResult.loot || [];
+      const lootResolved = [];
+      for (const { name, quantity } of this.#concept.loot) {
+        const runes = parseRunes(name);
+        const entry = await findEntry(
+          getPacksFor("equipment"),
+          runes.base,
+          (e) => (e.system?.level?.value ?? 0) <= Math.max(this.#concept.level, 0)
+        );
+        lootResolved.push({ name, quantity, runes, entry });
+      }
+      this.#resolved.loot = lootResolved;
+    } catch (err) {
+      console.error(`${MODULE_ID} | loot reroll failed`, err);
       this.#error = err.message;
     } finally {
       this.#busy = false;

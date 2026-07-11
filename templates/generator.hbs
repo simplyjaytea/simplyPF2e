@@ -231,6 +231,18 @@
       </ul>
     {{/if}}
 
+    {{#if preview.loot.length}}
+      <h3>{{localize "SIMPLYPF2E.Preview.Loot"}}</h3>
+      <ul class="spf-list spf-inline">
+        {{#each preview.loot}}
+          <li class="{{#unless this.found}}spf-missing{{/unless}}">
+            {{this.name}}
+            {{#unless this.found}}<i class="fa-solid fa-triangle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+          </li>
+        {{/each}}
+      </ul>
+    {{/if}}
+
     {{#if preview.concept.description}}
       <h3>{{localize "SIMPLYPF2E.Preview.Description"}}</h3>
       <p class="spf-description">{{preview.concept.description}}</p>
@@ -240,6 +252,11 @@
       <button type="button" data-action="createActor" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-user-plus"></i> {{localize "SIMPLYPF2E.Generator.CreateActor"}}
       </button>
+      {{#if preview.loot.length}}
+        <button type="button" data-action="rerollLoot" {{#if busy}}disabled{{/if}} data-tooltip="{{localize 'SIMPLYPF2E.Generator.RerollLootTooltip'}}">
+          <i class="fa-solid fa-dice-d20"></i> {{localize "SIMPLYPF2E.Generator.RerollLoot"}}
+        </button>
+      {{/if}}
       <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-trash"></i> {{localize "SIMPLYPF2E.Generator.Discard"}}
       </button>

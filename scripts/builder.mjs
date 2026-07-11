@@ -140,6 +140,19 @@ export function normalizeConcept(raw, { level, rarity }) {
       })
       .filter(Boolean)
       .slice(0, 12),
+    loot: (Array.isArray(c.loot) ? c.loot : [])
+      .map((e) => {
+        if (typeof e === "string" && e) return { name: e, quantity: 1 };
+        if (e?.name) {
+          return {
+            name: String(e.name),
+            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10)
+          };
+        }
+        return null;
+      })
+      .filter(Boolean)
+      .slice(0, 12),
     resistances: (Array.isArray(c.resistances) ? c.resistances : [])
       .map((r) => slugify(r?.type ?? r)).filter(Boolean).slice(0, 4),
     weaknesses: (Array.isArray(c.weaknesses) ? c.weaknesses : [])
@@ -192,7 +205,18 @@ export async function resolveConcept(concept) {
     equipment.push({ name, quantity, runes, entry });
   }
 
-  return { abilities, spells, feats, equipment };
+  const loot = [];
+  for (const { name, quantity } of concept.loot) {
+    const runes = parseRunes(name);
+    const entry = await findEntry(
+      getPacksFor("equipment"),
+      runes.base,
+      (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0)
+    );
+    loot.push({ name, quantity, runes, entry });
+  }
+
+  return { abilities, spells, feats, equipment, loot };
 }
 
 /** Compute the final numeric stat block (also used by the preview). */
@@ -558,6 +582,30 @@ export async function createActor(concept, resolved, { img = null } = {}) {
         data.name = capitalized(name);
       }
       data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
+    }
+    items.push(data);
+  }
+
+  // Loot: apply quantities and runes (unequipped, in inventory)
+  for (const { name, quantity, runes, entry } of resolved.loot) {
+    const doc = await getDocument(entry);
+    if (!doc) continue;
+    const data = toItemData(doc);
+    if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
+    if (data.type === "weapon" && (runes.potency || runes.striking)) {
+      data.system.runes = {
+        ...data.system.runes,
+        potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
+        striking: Math.max(runes.striking, data.system.runes?.striking ?? 0)
+      };
+      data.name = capitalized(name);
+    } else if (data.type === "armor" && (runes.potency || runes.resilient)) {
+      data.system.runes = {
+        ...data.system.runes,
+        potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
+        resilient: Math.max(runes.resilient, data.system.runes?.resilient ?? 0)
+      };
+      data.name = capitalized(name);
     }
     items.push(data);
   }
