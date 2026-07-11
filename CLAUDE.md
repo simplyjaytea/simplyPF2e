@@ -7,8 +7,9 @@ Foundry VTT module. AI generates PF2e (Remaster) NPC/monster concepts; module co
 1. `generateConcept()` (scripts/ai.mjs) — huge SYSTEM_PROMPT, one AI call, returns JSON concept (scales not numbers: str/dex/etc, AC/HP/save scales, strikes, specialAbilities, feats, equipment, loot, spellcasting draft).
 2. `normalizeConcept()` (builder.mjs) — coerce/clamp raw JSON into safe shape.
 3. Spells (if spellcasting): `chooseSpellFocus()` — tiny call, concept only, returns 3-6 keyword tags. Then `getSpellCandidates(tradition, maxRank, keywords)` (compendium.mjs) — pulls real tradition spells, filters by keyword match on traits/name, falls back to full list if filtered <12. Then `selectSpells()` — final AI pick from that narrowed list. 3 AI calls total for casters.
-4. `resolveConcept()` (builder.mjs) — fuzzy-match abilities/feats/equipment/loot names against compendium via `findEntry()`.
-5. `createActor()` (builder.mjs) — build real Foundry items, apply runes/quantities/carry state, create actor.
+4. Equipment (if any): `#refineEquipment()` (generator-app.mjs) — keywords tokenized locally from first-draft gear + strike names (no AI focus call), `getEquipmentCandidates(level, keywords)` (compendium.mjs) pulls real level-capped non-treasure items, `selectEquipment()` picks final gear. 1 extra AI call; any failure keeps first-draft names.
+5. `resolveConcept()` (builder.mjs) — fuzzy-match abilities/feats/equipment/loot names against compendium via `findEntry()`.
+6. `createActor()` (builder.mjs) — build real Foundry items, apply runes/quantities/carry state, create actor.
 
 Encounter mode: `designEncounter()` picks theme+briefs once, then full per-creature pipeline runs once per party member (N× system prompt cost).
 
@@ -28,12 +29,12 @@ Loot reroll: `generateLoot()` — separate small call, concept summary only (blu
 - Spell selection: 2-stage keyword-focus-then-pick (cuts unbounded spell-list token dump).
 - Equipment: added `value` field (gp estimate) end-to-end (prompt→normalizeConcept→resolveConcept→createActor); unmatched equipment now falls back to `customEquipmentItem()` (type "equipment") instead of vanishing; prompt broadened to explicit adventuring-gear category + armor-only-when-plausible guidance, count 2-6→3-8.
 - Token trims: SYSTEM_PROMPT wording tightened (~8% smaller), generateLoot context dropped full description.
-- Miss-rate logging added in generator-app.mjs (`equipment matches: X/Y` console log) to measure before building grounded equipment-candidate pass (not yet built — roadmap item).
+- Miss-rate logging added in generator-app.mjs (`equipment matches: X/Y` console log) to measure before building grounded equipment-candidate pass (kept as sanity check now that grounding is built — see the equipment-grounding bullet below).
 - AI image/portrait generation removed entirely (branch `remove/ai-image-generation`): `generateImage` (ai.mjs), `generatePortrait`/`resolveArt`/image settings all gone. Bestiary-art matching (`findBestiaryArt` in art.mjs) is now the only art path.
+- Equipment grounding (branch `feat/grounded-equipment-matching`): 1-stage pick-from-real-candidates (no focus call — keywords tokenized locally from first-draft gear + strike names). `getEquipmentCandidates(level, keywords)` (compendium.mjs) excludes treasure, caps item level at creature level (matches resolveConcept's equipment filter exactly so every candidate resolves), keyword-filter fallback threshold 20. `selectEquipment()` (ai.mjs) picks 3-8; `#refineEquipment()` (generator-app.mjs) try/catch-falls-back to first-draft names, skips creatures with empty equipment. New `Progress.Equipment` step (single mode; folded into member steps in encounter mode, like spells).
 
 ## Known gaps / roadmap next
 
-- Equipment not yet grounded against real compendium candidates like spells are (model names from memory, fuzzy-matched after). Measure miss rate first via console log before building.
 - Treasure-budget pricing not implemented.
 - Chat command, preset sharing, reskin-existing-creature: unbuilt roadmap items.
 
