@@ -271,13 +271,23 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.#stepMemberCount(Number(target.dataset.index), -1);
   }
 
-  /** Adjust an encounter member's count (0 = skip it) and refresh XP math. */
+  /** Adjust an encounter member's count (0 = skip it) and refresh XP + treasure math. */
   async #stepMemberCount(index, delta) {
     const member = this.#encounter?.members?.[index];
     if (!member) return;
     member.count = Math.min(8, Math.max(0, member.count + delta));
     this.#encounter.spent = this.#encounter.members.reduce((sum, m) => sum + m.count * m.xpEach, 0);
-    // Both treasure totals are per-creature × count, so they track the steppers.
+    // The group's treasure share (treasureGroupBudget) stays constant; only
+    // the per-copy split changes, so re-nudge the shared loot toward the new
+    // split (applyTreasureBudget re-targets from whatever the loot currently
+    // holds, so calling it again is safe) and refresh that member's actuals.
+    if (member.treasureGroupBudget != null) {
+      member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
+      member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
+      member.treasureEach = lootValueGp(member.resolved.loot);
+    }
+    // Both treasure totals are per-creature × count, which now nets back to
+    // each group's constant share regardless of how the stepper is set.
     this.#encounter.treasureBudget = this.#encounter.members.reduce((sum, m) => sum + m.count * (m.treasureBudgetEach ?? 0), 0);
     this.#encounter.treasureSpent = this.#encounter.members.reduce((sum, m) => sum + m.count * (m.treasureEach ?? 0), 0);
     await this.render();
@@ -474,10 +484,14 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       for (const member of members) {
         member.resolved = await resolveConcept(member.concept);
         // Treasure is calibrated to the PARTY level (it is awarded to players
-        // of that level), not the member's own creature level. Each copy of a
-        // member carries a full per-creature budget; totals below multiply by
-        // count, so the readout matches what the party actually collects.
-        member.treasureBudgetEach = treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount);
+        // of that level), not the member's own creature level. The GROUP as a
+        // whole gets ONE share of treasure regardless of how many copies it
+        // has — treasureGroupBudget is that constant share; treasureBudgetEach
+        // is the group's share divided across its current copies, so the
+        // group's total stays flat as the count stepper changes (see
+        // #stepMemberCount, which recomputes the per-copy split the same way).
+        member.treasureGroupBudget = treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount);
+        member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
         member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
         member.treasureEach = lootValueGp(member.resolved.loot);
       }
