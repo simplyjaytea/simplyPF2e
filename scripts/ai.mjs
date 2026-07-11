@@ -286,7 +286,7 @@ export async function generateImage({ prompt }) {
  * @param {object} args
  * @param {string} args.system
  * @param {string} args.user
- * @param {(p: {phase: "thinking"|"writing", chars: number}) => void} [args.onProgress]
+ * @param {(p: {phase: "thinking"|"writing", tokens: number}) => void} [args.onProgress]
  * @returns {Promise<string>}
  */
 async function requestCompletion({ system, user, onProgress }) {
@@ -369,6 +369,13 @@ async function requestCompletion({ system, user, onProgress }) {
   }
 }
 
+/**
+ * Streaming responses carry no live token counts (providers send usage only
+ * at the very end, if at all), so progress is estimated from streamed text
+ * at the usual ~4 characters per token.
+ */
+const estimateTokens = (chars) => Math.max(1, Math.round(chars / 4));
+
 /** Consume an SSE chat-completions stream, reporting progress per chunk. */
 async function readEventStream(response, { onProgress, resetIdle }) {
   const reader = response.body.getReader();
@@ -401,11 +408,11 @@ async function readEventStream(response, { onProgress, resetIdle }) {
       // DeepSeek reasoning models stream their chain of thought first
       if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
         reasoningChars += delta.reasoning_content.length;
-        onProgress?.({ phase: "thinking", chars: reasoningChars });
+        onProgress?.({ phase: "thinking", tokens: estimateTokens(reasoningChars) });
       }
       if (typeof delta.content === "string" && delta.content) {
         content += delta.content;
-        onProgress?.({ phase: "writing", chars: content.length });
+        onProgress?.({ phase: "writing", tokens: estimateTokens(content.length) });
       }
     }
   }

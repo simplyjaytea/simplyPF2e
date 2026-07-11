@@ -273,12 +273,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
    * Streaming callback: updates the detail line directly in the DOM so the
    * counter ticks live without re-rendering the whole application.
    */
-  #onAIProgress({ phase, chars }) {
+  #onAIProgress({ phase, tokens }) {
     const progress = this.#progress;
     if (!progress) return;
     progress.detail = game.i18n.format(
       phase === "thinking" ? "SIMPLYPF2E.Progress.Thinking" : "SIMPLYPF2E.Progress.Writing",
-      { chars: chars.toLocaleString() }
+      { tokens: tokens.toLocaleString() }
     );
     const el = this.element?.querySelector(".spf-progress-detail");
     if (el) el.textContent = progress.detail;

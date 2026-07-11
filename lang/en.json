@@ -118,8 +118,8 @@
       "Match": "Compendium matching",
       "Design": "Encounter design",
       "Member": "Member {index}/{total}",
-      "Thinking": "The model is thinking… ({chars} characters of reasoning)",
-      "Writing": "Receiving the stat block… ({chars} characters)"
+      "Thinking": "The model is thinking… (~{tokens} tokens of reasoning)",
+      "Writing": "Receiving the stat block… (~{tokens} tokens)"
     },
     "Sources": {
       "MenuName": "Compendium Sources",
