@@ -24,6 +24,8 @@ Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a le
 
 Inventories are real and logical: the AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically.
 
+Creatures also carry **loot** — the treasure they drop on defeat. The AI picks coins, consumables, and magic items contextual to the creature and scaled to its level and rarity; everything is matched against the equipment compendium before it lands on the sheet. Coins ("Gold Coins", "150 silver pieces") become the real PF2e currency items, so they show up in the sheet's Currency section. Spell scrolls are assembled the same way the system builds them on spell drag-and-drop: the named spell is resolved from the spell compendium and embedded into the matching rank's scroll template, producing a fully usable consumable.
+
 Two pieces of the concept get extra grounding:
 
 - **Spells are chosen *from* the compendium.** When a creature is a spellcaster, the module reads the actual spell list for its tradition (filtered to the ranks a creature of that level may cast) out of the PF2e compendium and hands that list to the AI, which picks from it. The AI can't invent spells that don't exist, and every pick lands as the real spell document on the sheet.
@@ -53,11 +55,15 @@ Switch the toggle at the top of the dialog to **Encounter**, set your party's le
 
 ### Read-aloud text, Recall Knowledge, and portraits
 
-Every creature now comes with GM support baked into its notes:
+Every creature comes with GM support baked into its notes:
 
 - A **read-aloud block** — two or three sensory sentences for theater of the mind, shown as a quote at the top of the description.
 - A **Recall Knowledge line** — the correct identification skill for the creature type, a clickable check at the level- and rarity-based DC, and a short nugget of what a player learns on a success (its weakness, its most dangerous trick).
 - **Art**: if you configure an image model in settings (any OpenAI-compatible `/images/generations` endpoint, e.g. OpenAI's `gpt-image-1` — DeepSeek doesn't offer images, so this can be a different provider than your text one), the Forge generates a portrait from the read-aloud text and uses it for the sheet and token. With no image model configured, it borrows art from the closest bestiary creature by type, size, and level instead. Encounter members always use bestiary art (no per-member image calls).
+
+### Loot
+
+The preview shows the creature's loot — coins, consumables, scrolls, and treasure — with anything that failed to match the compendium flagged so you can decide before creating. Happy with the creature but not the haul? Click **Reroll Loot**: it regenerates only the treasure with a fresh AI pass, leaving the concept, stats, and gear untouched.
 
 ### Iterating on a creature
 
@@ -65,6 +71,7 @@ Generation is meant to be a conversation, not a one-shot:
 
 - **Regenerate** re-rolls the concept from the same prompt — same level and math, new take.
 - **Edit the prompt and regenerate** to steer it: add "make it a spellcaster", "give it a ranged attack", "less gear, more natural weapons", and so on.
+- **Reroll Loot** re-rolls just the treasure (see [Loot](#loot)).
 - **Discard** clears the preview without creating anything.
 - Nothing touches your world until you click **Create Actor**, so iterate freely — and after creation the result is a completely normal PF2e NPC you can keep editing on the sheet.
 
@@ -93,21 +100,21 @@ By default the Forge draws from the PF2e system packs (bestiary ability glossary
 
 ### Troubleshooting slow or stuck generations
 
-- Responses are **streamed**: while generating you'll see a live progress bar with the current step and a character counter. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
+- Responses are **streamed**: while generating you'll see a live progress bar with the current step and an estimated token count. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
 - A **request timeout** setting (default 90 s) aborts the request only if the provider sends *no data* at all for that long, so slow-but-alive generations are never cut off. If you get timeout errors, check the provider's status page and your model name.
 - Make sure **Model** is the exact API identifier from your provider's documentation (for DeepSeek e.g. `deepseek-chat` or `deepseek-reasoner`) — marketing names don't always match the API id. A wrong id normally returns an immediate error, not a hang.
 - Spellcasters make **two** AI calls (concept, then grounded spell selection), so they take roughly twice as long as martial creatures.
 
 > **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is stored in world settings (visible to other GMs of the same world). Use a key you're comfortable with in that context.
 
-## Known limitations (v0.2)
+## Known limitations
 
 - Generated spellcasters use a spontaneous-style entry with 2 slots per rank; adjust on the sheet if you want prepared or innate casting.
 - The benchmark tables were transcribed by hand from GM Core. If you spot a value that disagrees with the book, please open an issue.
 - Matched feats are converted to NPC action items (the PF2e system does not allow feat items on NPC actors) — they keep the feat's cost, rules text, and automation.
 - Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions; if a phrase slips through unconverted, it stays as readable plain text (regenerate or edit the ability to fix it).
 - Presets guide the AI rather than hard-constrain it — an occasional generation may drift from the chosen road map; regenerating usually lands it.
-- Carried equipment is level-appropriate but not priced against treasure-budget tables yet (see roadmap).
+- Loot and carried gear are level-appropriate, but their total value is not yet priced against the GM Core treasure-budget tables (see roadmap).
 
 ## To do / Roadmap
 
@@ -116,8 +123,9 @@ By default the Forge draws from the PF2e system packs (bestiary ability glossary
 - [x] **Encounter mode** — ✅ v0.3.0: themed encounters built to the GM Core XP budget (threat level × party size × party level), created as a folder of actors. Covers the old "batch mode" idea.
 - [x] **Recall Knowledge & read-aloud** — ✅ v0.3.0: theater-of-the-mind read-aloud block and a clickable Recall Knowledge check with a player-facing info nugget.
 - [x] **Creature art** — ✅ v0.3.0: optional AI portrait generation, with closest-bestiary-match art as the no-API fallback.
+- [x] **Loot** — ✅: AI-generated treasure (coins as real currency, consumables, scrolls built from spells, magic items) with a Reroll Loot button in the preview.
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
-- [ ] **Treasure** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.
+- [ ] **Treasure budgets** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.
 - [ ] **Full PC-power-level characters** — generate complete character-class-strength NPCs (villains, rivals, pregens) built to player-character power budgets.
 - [ ] **Preset sharing** — export/import custom presets as JSON to trade with other GMs.
 - [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.
