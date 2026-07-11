@@ -9,86 +9,84 @@ import { SETTINGS, getSetting } from "./settings.mjs";
 /* Loot rules shared between the concept prompt and the reroll-loot prompt. */
 const LOOT_GUIDE = `3-8 items dropped on defeat; "value" is the approximate price of ONE unit in gold pieces (used when an item has no compendium match). Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35, "value": 1}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the creature's level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published item names using CURRENT PF2e REMASTER names — the Remaster renamed many classics (e.g. the old Bag of Holding is now "Spacious Pouch") — including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the creature's level or lower.`;
 
-const SYSTEM_PROMPT = `You are an expert Pathfinder 2e (remaster) creature designer. You design creature CONCEPTS; the numbers are computed elsewhere from the official Building Creatures benchmark tables, so you only ever choose named scales, never numeric statistics.
+const SYSTEM_PROMPT = `You are an expert Pathfinder 2e (remaster) creature designer. You design creature CONCEPTS; numbers are computed elsewhere from the official Building Creatures benchmark tables, so choose only named scales, never numeric statistics.
 
-Respond with a SINGLE JSON object and nothing else. No markdown fences, no commentary.
+Respond with a SINGLE JSON object only. No markdown fences, no commentary.
 
 JSON schema (all keys required unless marked optional):
 {
-  "name": string,                       // evocative creature name
-  "blurb": string,                      // one-line tagline
-  "description": string,               // 1-2 paragraphs of flavor & tactics, plain text
-  "readAloud": string,                 // 2-3 vivid sensory sentences to read aloud when players first encounter it (sight, sound, smell, movement). Theater-of-the-mind prose; NO game statistics or numbers.
-  "recallKnowledge": string,           // 1-2 sentences: the single most useful thing a player learns about this creature on a successful Recall Knowledge check (key weakness, most dangerous ability, or exploitable habit)
+  "name": string, // evocative creature name
+  "blurb": string, // one-line tagline
+  "description": string, // 1-2 paragraphs of flavor & tactics, plain text
+  "readAloud": string, // 2-3 vivid sensory sentences read aloud when players first encounter it (sight, sound, smell, movement); theater-of-the-mind prose, NO game statistics or numbers
+  "recallKnowledge": string, // 1-2 sentences: the most useful thing a player learns on a successful Recall Knowledge check (key weakness, most dangerous ability, or exploitable habit)
   "size": "tiny"|"sm"|"med"|"lg"|"huge"|"grg",
-  "traits": string[],                   // PF2e creature traits, lowercase (e.g. "undead", "fiend", "humanoid"). Include exactly one creature type trait.
-  "languages": string[],                // lowercase, [] if none
-  "abilityScales": {                    // one scale per ability
-    "str": SCALE, "dex": SCALE, "con": SCALE, "int": SCALE, "wis": SCALE, "cha": SCALE
-  },
+  "traits": string[], // lowercase PF2e creature traits (e.g. "undead", "fiend", "humanoid"); include exactly one creature type trait
+  "languages": string[], // lowercase, [] if none
+  "abilityScales": { "str": SCALE, "dex": SCALE, "con": SCALE, "int": SCALE, "wis": SCALE, "cha": SCALE },
   "acScale": SCALE,
   "hpScale": "high"|"moderate"|"low",
   "perceptionScale": SCALE5,
   "saveScales": { "fortitude": SCALE5, "reflex": SCALE5, "will": SCALE5 },
-  "speeds": [ { "type": "land"|"fly"|"swim"|"climb"|"burrow", "value": number } ],  // multiples of 5, include land unless immobile
-  "senses": [ { "type": string, "acuity": "precise"|"imprecise"|"vague"|null, "range": number|null } ],  // e.g. darkvision, scent
-  "skills": [ { "name": string, "scale": "extreme"|"high"|"moderate"|"low" } ],     // 2-5 skills; standard skill names or "<Topic> Lore"
-  "strikes": [                          // 1-4 strikes (including any feat attacks — see "feats")
+  "speeds": [ { "type": "land"|"fly"|"swim"|"climb"|"burrow", "value": number } ], // multiples of 5; include land unless immobile
+  "senses": [ { "type": string, "acuity": "precise"|"imprecise"|"vague"|null, "range": number|null } ], // e.g. darkvision, scent
+  "skills": [ { "name": string, "scale": "extreme"|"high"|"moderate"|"low" } ], // 2-5; standard skill names or "<Topic> Lore"
+  "strikes": [ // 1-4 strikes (including any feat attacks — see "feats")
     {
-      "name": string,                   // e.g. "jaws", "rusted glaive"
+      "name": string, // e.g. "jaws", "rusted glaive"
       "type": "melee"|"ranged",
       "attackScale": "extreme"|"high"|"moderate"|"low",
       "damageScale": "extreme"|"high"|"moderate"|"low",
-      "damageType": string,             // e.g. "piercing", "fire"
-      "traits": string[],               // strike traits like "agile", "reach-10", "deadly-d8"; [] if none
-      "range": number|null,             // range increment in feet for ranged strikes
-      "attackEffects": string[]         // e.g. ["grab"], [] if none
+      "damageType": string, // e.g. "piercing", "fire"
+      "traits": string[], // e.g. "agile", "reach-10", "deadly-d8"; [] if none
+      "range": number|null, // range increment in feet for ranged strikes
+      "attackEffects": string[] // e.g. ["grab"], [] if none
     }
   ],
-  "specialAbilities": [                 // 1-4 abilities
+  "specialAbilities": [ // 1-4 abilities
     {
       "name": string,
-      "glossary": string|null,          // EXACT name of a standard PF2e bestiary glossary ability (e.g. "Grab", "Knockdown", "Frightful Presence", "Attack of Opportunity") if this is one, else null
+      "glossary": string|null, // EXACT standard PF2e bestiary glossary ability name (e.g. "Grab", "Knockdown", "Frightful Presence", "Attack of Opportunity") if this is one, else null
       "actionType": "action"|"reaction"|"free"|"passive",
-      "actions": 1|2|3|null,            // action cost, null unless actionType is "action"
-      "description": string,            // full rules text following the DESCRIPTION CONVENTIONS below
+      "actions": 1|2|3|null, // action cost; null unless actionType is "action"
+      "description": string, // full rules text following the DESCRIPTION CONVENTIONS below
       "traits": string[]
     }
   ],
   "spellcasting": null | {
     "tradition": "arcane"|"divine"|"occult"|"primal",
     "dcScale": "extreme"|"high"|"moderate",
-    "spells": [ { "name": string, "rank": number } ]   // rank 0 = cantrip; real PF2e spell names as a first draft (the final list is chosen from the compendium in a second step); max rank = ceil(level/2)
+    "spells": [ { "name": string, "rank": number } ] // rank 0 = cantrip; real PF2e spell names as a first draft (the final list is chosen from the compendium in a second step); max rank = ceil(level/2)
   },
-  "feats": string[],                    // EXACT published PF2e feat names (e.g. "Power Attack", "Sudden Charge") for creatures with class-like training such as humanoid soldiers, monks or assassins; [] for beasts, mindless creatures, and anything without trained techniques; max 3. IMPORTANT: when a feat grants a distinct attack or Strike-based action (Power Attack, Sudden Charge, Ki Strike, ...), ALSO add a strike named after the feat to "strikes" — same weapon and damageType as the base strike it modifies, damageScale one step higher (or extreme if already extreme), plus the feat's traits — so it lands on the sheet as a fully automated attack with its own attack and damage rolls. Keep the feat listed in "feats" too.
-  "equipment": [ { "name": string, "quantity": number } ],  // 2-6 logical carried items with EXACT PF2e item names: the weapons and armor it actually wields, plus consumables where sensible (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies). For creatures of level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
-  "loot": [ { "name": string, "quantity": number, "value": number } ],  // ${LOOT_GUIDE}
-  "resistances": [ { "type": string } ],   // damage types only, values computed from tables; [] if none
+  "feats": string[], // EXACT published PF2e feat names (e.g. "Power Attack", "Sudden Charge") for creatures with class-like training (soldiers, monks, assassins); [] for beasts, mindless creatures, and anything untrained; max 3. IMPORTANT: when a feat grants a distinct attack or Strike-based action (Power Attack, Sudden Charge, Ki Strike, ...), ALSO add a strike named after the feat to "strikes" — same weapon and damageType as the base strike it modifies, damageScale one step higher (extreme stays extreme), plus the feat's traits — and keep the feat in "feats" too.
+  "equipment": [ { "name": string, "quantity": number, "value": number } ], // 3-8 logical carried items with EXACT PF2e item names, drawn from: the weapons it wields; sensible consumables (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies); and everyday adventuring gear it would plausibly carry (rope, torches, rations, thieves' tools, a crowbar). "value" is the approximate gp price of ONE unit, used only as a fallback when the name finds no compendium match. Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its AC and level. At level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
+  "loot": [ { "name": string, "quantity": number, "value": number } ], // ${LOOT_GUIDE}
+  "resistances": [ { "type": string } ], // damage types only, values computed from tables; [] if none
   "weaknesses": [ { "type": string } ],
-  "immunities": string[]                 // e.g. ["death-effects", "poison"], [] if none
+  "immunities": string[] // e.g. ["death-effects", "poison"], [] if none
 }
 
-SCALE = "extreme"|"high"|"moderate"|"low". SCALE5 additionally allows "terrible".
+SCALE = "extreme"|"high"|"moderate"|"low". SCALE5 also allows "terrible".
 
-DESCRIPTION CONVENTIONS for specialAbilities.description — the module converts these exact phrasings into clickable roll links, so follow them precisely:
-- Table-scaled damage: "high damage", "moderate fire damage", "low persistent bleed damage" (scale word, optional "persistent", optional damage type, then "damage"). Use for an ability's main damage so it scales with level.
-- Fixed dice you choose yourself (for small riders): "2d6 fire damage", "1d4 persistent bleed damage".
-- Saving throws: "basic high Reflex save", "moderate Fortitude save", "extreme Will save" (optional "basic", scale word, save name, "save"). Basic saves are for plain damage effects.
+DESCRIPTION CONVENTIONS for specialAbilities.description — these exact phrasings become clickable roll links, so follow them precisely:
+- Table-scaled damage (use for an ability's main damage so it scales with level): "high damage", "moderate fire damage", "low persistent bleed damage" (scale word, optional "persistent", optional damage type, then "damage").
+- Fixed dice for small riders: "2d6 fire damage", "1d4 persistent bleed damage".
+- Saving throws: "basic high Reflex save", "moderate Fortitude save", "extreme Will save" (optional "basic", scale word, save name, "save"); "basic" for plain damage effects.
 - Skill checks against the creature: "high DC Athletics check".
 - Healing: "regains 2d8 Hit Points" or "2d8 healing".
 - Flat checks: "DC 5 flat check".
 - Areas: "30-foot cone", "15-foot burst", "60-foot line", "10-foot emanation".
 - Structure activated abilities as "Frequency ...; Trigger ...; Effect ..." and requirements as "Requirements ...; Effect ...".
-- Never invent flat numeric DCs or attack bonuses; always use the scale words.
+- Never invent flat numeric DCs or attack bonuses; always use scale words.
 
 Design guidance (GM Core road maps):
-- Pick ONE stat at most to be extreme, and balance it with a low or terrible stat.
-- Brute: low perception; moderate-or-better AC; high Fort, low Ref/Will; high HP; high attack & damage.
+- At most ONE extreme stat, balanced by a low or terrible stat.
+- Brute: low perception; moderate+ AC; high Fort, low Ref/Will; high HP; high attack & damage.
 - Sneak: high dex; low Fort, high Ref; high stealth; moderate HP.
 - Skirmisher: high Ref, fast speeds, moderate everything else.
 - Soldier: high AC, high Fort, high attack with moderate damage.
 - Spellcaster: casting tradition matching key ability at high or extreme; low-or-moderate AC, HP and attack; DC one scale above attacks.
-- Only include spellcasting when it truly fits the concept and the user allows it.
+- Include spellcasting only when it truly fits the concept and the user allows it.
 - Use standard glossary abilities (Grab, Push, Knockdown, Trample, Swallow Whole, Frightful Presence, Regeneration, ...) where they fit, and invent 1-2 signature custom abilities that make the creature memorable.
 - Traits, languages, senses and speeds must follow PF2e conventions.`;
 
@@ -156,8 +154,7 @@ Loot should be ${LOOT_GUIDE}`;
   const user = [
     `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
-    concept.traits.length ? `Traits: ${concept.traits.join(", ")}` : null,
-    concept.description ? `Description: ${concept.description}` : null
+    concept.traits.length ? `Traits: ${concept.traits.join(", ")}` : null
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
@@ -184,6 +181,34 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
     onProgress
   });
   return { concept: data, usage };
+}
+
+/**
+ * First pass of spell selection: ask the model for a handful of thematic
+ * keywords (descriptor traits, damage types, general school-like concepts)
+ * that fit the creature, BEFORE we know the full spell list. Used to narrow
+ * the compendium query so the second pass (selectSpells) sees a small,
+ * relevant slice instead of every spell in the tradition.
+ * @returns {Promise<{keywords: string[], usage: object}>}
+ */
+export async function chooseSpellFocus({ concept, tradition, onProgress }) {
+  const system = `You are picking a thematic focus for a Pathfinder 2e creature's spell list, before the actual spell list is known. Respond with a single JSON object and nothing else:
+{ "keywords": string[] }
+Give 3-6 lowercase keywords describing the KINDS of spells that fit this creature: descriptor traits (e.g. "fire", "cold", "mental", "death", "poison", "illusion", "necromancy"), and/or general purpose words ("healing", "buff", "debuff", "control", "summon", "detection"). These will be used to filter a spell list, so keep them concrete and matchable, not vague.`;
+
+  const user = [
+    `Creature: ${concept.name} (level ${concept.level})`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.description ? `Description: ${concept.description}` : null,
+    `Traits: ${concept.traits.join(", ")}`,
+    `Tradition: ${tradition}`
+  ].filter((line) => line !== null).join("\n");
+
+  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const keywords = (Array.isArray(parsed.keywords) ? parsed.keywords : [])
+    .map((k) => String(k).toLowerCase().trim())
+    .filter(Boolean);
+  return { keywords, usage };
 }
 
 /**

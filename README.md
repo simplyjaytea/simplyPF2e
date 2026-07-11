@@ -12,9 +12,9 @@ Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a le
 
 Several parts of the concept get extra grounding:
 
-- **Spells are chosen *from* the compendium.** When a creature is a spellcaster, the module reads the actual spell list for its tradition (filtered to the ranks a creature of that level may cast) out of the PF2e compendium and hands that list to the AI, which picks from it. The AI can't invent spells that don't exist, and every pick lands as the real spell document on the sheet.
+- **Spells are chosen *from* the compendium, in two steps.** First a small pass asks the AI for a handful of thematic keywords (descriptor traits, damage types, "healing", "control", ...) that fit the creature. Those keywords narrow the actual spell list for its tradition and level down to a relevant slice before a second pass picks the final spells from it — the AI can't invent spells that don't exist, every pick lands as the real spell document on the sheet, and the narrowing keeps the second pass's prompt small instead of dumping the whole tradition's spell list on every generation.
 - **Feats for trained creatures.** Creatures that would plausibly have class-like techniques — humanoid soldiers, monks, assassins — can be given real feats (Power Attack, Sudden Charge, ...), matched against the system's feats compendium and embedded on the NPC.
-- **Real, logical inventories.** The AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically.
+- **Real, logical inventories.** The AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly, and only when the creature would plausibly wear armor), general adventuring gear (rope, torches, rations, thieves' tools, and the like), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically. Anything the AI names that doesn't match the compendium still becomes a real inventory item — a custom gear item at the AI's estimated price — instead of silently disappearing.
 - **Loot worth fighting for.** Creatures carry the treasure they drop on defeat: coins, consumables, and magic items contextual to the creature and scaled to its level and rarity, all matched against the equipment compendium. Coins ("Gold Coins", "150 silver pieces") become the real PF2e currency items, so they show up in the sheet's Currency section. Spell scrolls are assembled the same way the system builds them on spell drag-and-drop: the named spell is resolved from the spell compendium and embedded into the matching rank's scroll template, producing a fully usable consumable.
 
 ## Install
@@ -108,7 +108,7 @@ Slow or stuck generations:
 - After generation the preview shows a **token usage report**: the exact prompt/completion tokens each AI call used (concept, spell selection, encounter design, each member, loot rerolls) and the total. If a provider doesn't report usage, the step falls back to a clearly-marked estimate.
 - The **request timeout** setting (default 90 s) aborts the request only if the provider sends *no data* at all for that long, so slow-but-alive generations are never cut off. If you get timeout errors, check the provider's status page and your model name.
 - Make sure **Model** is the exact API identifier from your provider's documentation (for DeepSeek e.g. `deepseek-chat` or `deepseek-reasoner`) — marketing names don't always match the API id. A wrong id normally returns an immediate error, not a hang.
-- Spellcasters make **two** AI calls (concept, then grounded spell selection), so they take roughly twice as long as martial creatures.
+- Spellcasters make **three** AI calls (concept, then a small spell-focus pass, then grounded spell selection), so they take a bit longer than martial creatures — the focus pass is small and fast, most of the extra time is still the final selection pass.
 
 ## Known limitations
 
@@ -118,6 +118,7 @@ Slow or stuck generations:
 - Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions; if a phrase slips through unconverted, it stays as readable plain text (regenerate or edit the ability to fix it).
 - Presets guide the AI rather than hard-constrain it — an occasional generation may drift from the chosen road map; regenerating usually lands it.
 - Loot and carried gear are level-appropriate, but their total value is not yet priced against the GM Core treasure-budget tables (see roadmap).
+- A named weapon, armor, or gear item that doesn't match anything in the compendium becomes a generic placeholder item at the AI's estimated price rather than a functional weapon/armor — it won't carry real mechanical bonuses. This is rare (equipment is named from real PF2e items), but if you see one, swap in the intended item from the compendium by hand.
 
 ## Roadmap
 
@@ -129,6 +130,7 @@ Slow or stuck generations:
 - [x] **Loot** — ✅ v0.3.3: AI-generated treasure (coins as real currency, consumables, scrolls built from spells, magic items) with a Reroll Loot button in the preview.
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
 - [ ] **Treasure budgets** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.
+- [ ] **Grounded equipment matching** — mirror the spell-selection approach: hand the AI a real candidate list from the equipment compendium instead of matching named items after the fact, to further cut compendium misses.
 - [ ] **Full PC-power-level characters** — generate complete character-class-strength NPCs (villains, rivals, pregens) built to player-character power budgets.
 - [ ] **Preset sharing** — export/import custom presets as JSON to trade with other GMs.
 - [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.

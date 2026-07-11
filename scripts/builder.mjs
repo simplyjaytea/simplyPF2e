@@ -129,11 +129,12 @@ export function normalizeConcept(raw, { level, rarity }) {
     feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 4),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
-        if (typeof e === "string" && e) return { name: e, quantity: 1 };
+        if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
         if (e?.name) {
           return {
             name: String(e.name),
-            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10)
+            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10),
+            value: Math.max(Number(e.value) || 0, 0)
           };
         }
         return null;
@@ -278,6 +279,26 @@ function customTreasureItem(name, quantity, value) {
 }
 
 /**
+ * Fallback for carried equipment with no compendium match: a custom gear item
+ * (type "equipment", not "treasure") at the AI's estimated price, so gear the
+ * creature should be carrying doesn't silently vanish or masquerade as coins.
+ */
+function customEquipmentItem(name, quantity, value) {
+  const gp = Math.max(Math.round(Number(value) || 0), 0);
+  const item = {
+    name: capitalized(name),
+    type: "equipment",
+    img: "icons/svg/item-bag.svg",
+    system: {
+      price: { value: { gp } },
+      description: { value: `<p>${game.i18n.localize("SIMPLYPF2E.Equipment.CustomItem")}</p>` }
+    }
+  };
+  if (quantity > 1) item.system.quantity = quantity;
+  return item;
+}
+
+/**
  * Resolve every compendium reference in a concept. Returns lookup results so
  * the preview can show what was found and what will become a custom ability.
  */
@@ -309,7 +330,7 @@ export async function resolveConcept(concept) {
   }
 
   const equipment = [];
-  for (const { name, quantity } of concept.equipment) {
+  for (const { name, quantity, value } of concept.equipment) {
     // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
     // item matches; the runes are re-applied as system data at creation.
     const runes = parseRunes(name);
@@ -318,7 +339,7 @@ export async function resolveConcept(concept) {
       runes.base,
       (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0)
     );
-    equipment.push({ name, quantity, runes, entry });
+    equipment.push({ name, quantity, value, runes, entry });
   }
 
   const loot = await resolveLoot(concept);
@@ -663,10 +684,15 @@ export async function createActor(concept, resolved, { img = null } = {}) {
     }
   }
 
-  // Equipment: apply quantities, fundamental runes, and sensible carry states
-  for (const { name, quantity, runes, entry } of resolved.equipment) {
+  // Equipment: apply quantities, fundamental runes, and sensible carry states.
+  // Anything without a compendium match becomes a custom gear item at the AI's
+  // estimated price, so it doesn't silently vanish from the actor.
+  for (const { name, quantity, value, runes, entry } of resolved.equipment) {
     const doc = await getDocument(entry);
-    if (!doc) continue;
+    if (!doc) {
+      items.push(customEquipmentItem(name, quantity, value));
+      continue;
+    }
     const data = toItemData(doc);
     if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
     if (data.type === "weapon") {

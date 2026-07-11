@@ -138,12 +138,22 @@ export async function getDocument(entry) {
   return pack.getDocument(entry._id);
 }
 
+/** Below this many keyword-filtered results, the filter is discarded as too narrow. */
+const MIN_FILTERED_SPELLS = 12;
+
 /**
  * List real, castable spells of a tradition up to a maximum rank, so the AI
  * can choose from the compendium instead of naming spells from memory.
- * @returns {Promise<{name: string, rank: number}[]>} sorted by rank then name
+ *
+ * When `keywords` are given (descriptor traits / theme words from
+ * chooseSpellFocus), the list is narrowed to spells matching at least one
+ * keyword in their traits or name — keeping the final selection prompt small
+ * — unless that narrows things down to next to nothing, in which case the
+ * full tradition list is returned instead.
+ * @param {string[]} [keywords]
+ * @returns {Promise<{name: string, rank: number, traits: string[]}[]>} sorted by rank then name
  */
-export async function getSpellCandidates(tradition, maxRank) {
+export async function getSpellCandidates(tradition, maxRank, keywords = []) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("spells")) {
@@ -154,16 +164,22 @@ export async function getSpellCandidates(tradition, maxRank) {
       if (entry.system?.ritual) continue;
       const traditions = entry.system?.traits?.traditions ?? [];
       if (!traditions.includes(tradition)) continue;
-      const isCantrip = (entry.system?.traits?.value ?? []).includes("cantrip");
+      const traits = entry.system?.traits?.value ?? [];
+      const isCantrip = traits.includes("cantrip");
       const rank = isCantrip ? 0 : (entry.system?.level?.value ?? 1);
       if (rank > maxRank) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({ name: entry.name, rank });
+      candidates.push({ name: entry.name, rank, traits });
     }
   }
   candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
-  return candidates;
+  if (!keywords.length) return candidates;
+  const kw = keywords.map((k) => k.toLowerCase());
+  const filtered = candidates.filter((c) =>
+    kw.some((k) => c.traits.includes(k) || c.name.toLowerCase().includes(k))
+  );
+  return filtered.length >= MIN_FILTERED_SPELLS ? filtered : candidates;
 }
 
 /** Clone a compendium document into plain item data ready for embedding. */

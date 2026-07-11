@@ -1,5 +1,5 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
-import { generateConcept, generateLoot, selectSpells, designEncounter } from "./ai.mjs";
+import { generateConcept, generateLoot, selectSpells, chooseSpellFocus, designEncounter } from "./ai.mjs";
 import { getSpellCandidates } from "./compendium.mjs";
 import { normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor } from "./builder.mjs";
 import {
@@ -375,6 +375,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       await this.#refineSpells(this.#concept);
       await this.#setStep("match");
       this.#resolved = await resolveConcept(this.#concept);
+      const eq = this.#resolved.equipment;
+      if (eq.length) {
+        const misses = eq.filter((e) => !e.entry).map((e) => e.name);
+        console.log(`${MODULE_ID} | equipment matches: ${eq.length - misses.length}/${eq.length}`,
+          misses.length ? { missing: misses } : "");
+      }
       console.log(`${MODULE_ID} | token usage`, this.#tokenUsage);
     } catch (err) {
       console.error(`${MODULE_ID} | generation failed`, err);
@@ -442,6 +448,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       for (const member of members) {
         member.resolved = await resolveConcept(member.concept);
       }
+      const allEq = members.flatMap((m) => m.resolved.equipment);
+      if (allEq.length) {
+        const misses = allEq.filter((e) => !e.entry).map((e) => e.name);
+        console.log(`${MODULE_ID} | equipment matches: ${allEq.length - misses.length}/${allEq.length}`,
+          misses.length ? { missing: misses } : "");
+      }
       this.#encounter = {
         name: design.name,
         budget: composition.budget,
@@ -461,15 +473,29 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /**
-   * Grounded spell selection: fetch the real spell list for the chosen
-   * tradition from the compendium and let the AI pick from it. Falls back to
-   * the first-draft spell names (still fuzzy-matched) if the pass fails.
+   * Grounded spell selection: first ask the AI for a thematic focus (so the
+   * compendium query below can be narrowed instead of dumping every spell in
+   * the tradition), then fetch that narrowed, level-capped list and let the
+   * AI pick the actual spells from it. Falls back to the first-draft spell
+   * names (still fuzzy-matched) if either pass fails.
    */
   async #refineSpells(concept) {
     const spellcasting = concept?.spellcasting;
     if (!spellcasting) return;
     try {
-      const candidates = await getSpellCandidates(spellcasting.tradition, spellcasting.maxRank);
+      let keywords = [];
+      try {
+        const focus = await chooseSpellFocus({
+          concept,
+          tradition: spellcasting.tradition,
+          onProgress: (p) => this.#onAIProgress(p)
+        });
+        keywords = focus.keywords;
+        this.#recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.SpellFocus"), focus.usage);
+      } catch (err) {
+        console.warn(`${MODULE_ID} | spell focus selection failed, using unfiltered spell list`, err);
+      }
+      const candidates = await getSpellCandidates(spellcasting.tradition, spellcasting.maxRank, keywords);
       if (candidates.length) {
         const { spells, usage } = await selectSpells({
           concept,
