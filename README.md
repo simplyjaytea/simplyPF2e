@@ -1,6 +1,12 @@
 # SimplyPF2e
 
+[![Latest release](https://img.shields.io/github/v/release/simplyjaytea/simplyPF2e?label=release)](https://github.com/simplyjaytea/simplyPF2e/releases/latest)
+[![Foundry version](https://img.shields.io/badge/Foundry-v13%2B-informational)](https://foundryvtt.com)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Turn a one-sentence idea into a fully statted, ready-to-run Pathfinder 2e NPC or monster — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
+
+**[Install](#install)** · **[Setup](#setup)** · **[Usage](#usage)** · **[Troubleshooting](#troubleshooting)** · **[Known limitations](#known-limitations)** · **[Roadmap](#roadmap)**
 
 ## What it does
 
@@ -8,14 +14,27 @@ Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a le
 
 1. **The AI invents the concept.** An LLM (DeepSeek by default, or any OpenAI-compatible API) receives your prompt and returns a structured concept: name, flavor, traits, which statistics should be *extreme / high / moderate / low*, what its strikes and signature abilities are, and which standard abilities, feats, spells, and equipment it uses.
 2. **The module does the math.** Every number — AC, HP, saves, perception, skill modifiers, strike attack bonuses, damage dice, spell DCs — is looked up from the official GM Core **"Building Creatures"** benchmark tables for the level you chose. The AI never outputs numbers, so creatures are always mechanically sound for their level.
-3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, Attack of Opportunity, ...), feats, spells, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom ability or flagged in the preview so you can decide.
+3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, Attack of Opportunity, ...), feats, spells, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom item or flagged in the preview so you can decide.
 
-Several parts of the concept get extra grounding:
+### Highlights
 
-- **Spells are chosen *from* the compendium, in two steps.** First a small pass asks the AI for a handful of thematic keywords (descriptor traits, damage types, "healing", "control", ...) that fit the creature. Those keywords narrow the actual spell list for its tradition and level down to a relevant slice before a second pass picks the final spells from it — the AI can't invent spells that don't exist, every pick lands as the real spell document on the sheet, and the narrowing keeps the second pass's prompt small instead of dumping the whole tradition's spell list on every generation.
+- **Grounded, not hallucinated.** Spells, feats, abilities, and equipment are matched against your actual compendiums — see [Grounding in the compendium](#grounding-in-the-compendium) for how each category stays honest.
+- **Real currency and treasure.** Loot generates as actual PF2e coin items, consumables, scrolls, and magic items — not text you have to convert by hand.
+- **Encounter mode.** Describe a theme, get a whole cohesive group built to the GM Core XP budget in one pass.
+- **Presets that shape the build.** Twelve built-in class road maps, plus save your own.
+- **Nothing touches your world until you say so.** Every generation is a preview — regenerate, edit the prompt, reroll just the loot, or discard, freely.
+- **Full visibility into cost.** Streamed progress per step and an exact token-usage report after every generation.
+
+## Grounding in the compendium
+
+Several parts of the concept get extra grounding so the AI can't invent things that don't exist in your game:
+
+- **Spells are chosen *from* the compendium, in two steps.** First a small pass asks the AI for a handful of thematic keywords (descriptor traits, damage types, "healing", "control", ...) that fit the creature. Those keywords narrow the actual spell list for its tradition and level down to a relevant slice before a second pass picks the final spells from it — every pick lands as the real spell document on the sheet, and the narrowing keeps the second pass's prompt small instead of dumping the whole tradition's spell list on every generation.
 - **Feats for trained creatures.** Creatures that would plausibly have class-like techniques — humanoid soldiers, monks, assassins — can be given real feats (Power Attack, Sudden Charge, ...), matched against the system's feats compendium and embedded on the NPC.
-- **Real, logical inventories.** The AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly, and only when the creature would plausibly wear armor), general adventuring gear (rope, torches, rations, thieves' tools, and the like), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically. Anything the AI names that doesn't match the compendium still becomes a real inventory item — a custom gear item at the AI's estimated price — instead of silently disappearing. Coins never show up here — they're loot only (see below).
+- **Real, logical inventories.** The AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly, and only when the creature would plausibly wear armor), general adventuring gear (rope, torches, rations, thieves' tools, and the like), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically. Anything the AI names that doesn't match the compendium still becomes a real inventory item — a custom gear item at the AI's estimated price — instead of silently disappearing. Coins never show up here — they're loot only.
 - **Loot worth fighting for.** Creatures carry the treasure they drop on defeat: coins, consumables, and magic items contextual to the creature and scaled to its level and rarity, all matched against the equipment compendium. Coins ("Gold Coins", "150 silver pieces") become the real PF2e currency items, so they show up in the sheet's Currency section. Spell scrolls are assembled the same way the system builds them on spell drag-and-drop: the named spell is resolved from the spell compendium and embedded into the matching rank's scroll template, producing a fully usable consumable.
+- **Passives lean on real automation.** A passive ability that matches a standard PF2e glossary entry (Regeneration, All-Around Vision, ...) is cloned from the compendium wholesale, so it carries the system's own working automation instead of being descriptive text you have to remember to apply.
+- **Item names stay current.** Everything named — equipment, loot, scrolls — uses current PF2e Remaster terminology (e.g. "Blasting Stone", not the old "Thunderstone"), matched against your compendiums either way.
 
 ## Install
 
@@ -44,10 +63,10 @@ Configure the AI provider under **Game Settings → Configure Settings → Simpl
 
 Provider examples:
 
-- **DeepSeek** – `https://api.deepseek.com/v1`, model `deepseek-chat`
+- **DeepSeek** – `https://api.deepseek.com/v1`, model `deepseek-chat` — cheap, strong JSON output, the recommended default.
 - **OpenAI** – `https://api.openai.com/v1`, model `gpt-4o`
 - **OpenRouter** – `https://openrouter.ai/api/v1`, any hosted model
-- **Ollama (local)** – `http://localhost:11434/v1`, no key needed. Set `OLLAMA_ORIGINS=*` (or your Foundry origin) so the browser may call it.
+- **Ollama (local)** – `http://localhost:11434/v1`, no key needed. Set `OLLAMA_ORIGINS=*` (or your Foundry origin) so the browser may call it. Expect more retries/lower quality unless you're running a large model.
 
 > **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is stored in world settings (visible to other GMs of the same world). Use a key you're comfortable with in that context.
 
@@ -109,15 +128,21 @@ Slow or stuck generations:
 - Make sure **Model** is the exact API identifier from your provider's documentation (for DeepSeek e.g. `deepseek-chat` or `deepseek-reasoner`) — marketing names don't always match the API id. A wrong id normally returns an immediate error, not a hang.
 - Spellcasters make **three** AI calls (concept, then a small spell-focus pass, then grounded spell selection), so they take a bit longer than martial creatures — the focus pass is small and fast, most of the extra time is still the final selection pass.
 
+Odd generation results:
+
+- **A creature is missing an ability you expected** (e.g. Attack of Opportunity on a disciplined soldier) — the AI decides case by case whether a standard ability fits; regenerating or nudging the prompt ("give it Attack of Opportunity") usually gets it.
+- **An item name looks unfamiliar** — SimplyPF2e always targets current PF2e Remaster terminology; if a generation still surfaces an old pre-Remaster name, it'll simply fail to match the compendium and fall back to a flagged custom item (see [Known limitations](#known-limitations)) rather than break anything.
+
 ## Known limitations
 
 - Generated spellcasters use a spontaneous-style entry with 2 slots per rank; adjust on the sheet if you want prepared or innate casting.
 - The benchmark tables were transcribed by hand from GM Core. If you spot a value that disagrees with the book, please open an issue.
 - Matched feats are converted to NPC action items (the PF2e system does not allow feat items on NPC actors) — they keep the feat's cost, rules text, and automation.
 - Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions; if a phrase slips through unconverted, it stays as readable plain text (regenerate or edit the ability to fix it).
+- A custom (non-glossary) passive ability is only as interactive as its phrasing — anything outside the standard damage/save/check/heal/area conventions is flavor text the table applies by hand rather than a live automated effect.
 - Presets guide the AI rather than hard-constrain it — an occasional generation may drift from the chosen road map; regenerating usually lands it.
-- Loot and carried gear are level-appropriate, but their total value is not yet priced against the GM Core treasure-budget tables (see roadmap).
-- A named weapon, armor, or gear item that doesn't match anything in the compendium becomes a generic placeholder item at the AI's estimated price rather than a functional weapon/armor — it won't carry real mechanical bonuses. This is rare (equipment is named from real PF2e items), but if you see one, swap in the intended item from the compendium by hand.
+- Loot and carried gear are level-appropriate, but their total value is not yet priced against the GM Core treasure-budget tables (see [Roadmap](#roadmap)).
+- A named weapon, armor, or gear item that doesn't match anything in the compendium becomes a generic placeholder item at the AI's estimated price rather than a functional weapon/armor — it won't carry real mechanical bonuses. This is rare (equipment is named from real PF2e items and matched against your compendium, not invented), but if you see one, swap in the intended item from the compendium by hand.
 
 ## Roadmap
 
