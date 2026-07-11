@@ -188,7 +188,17 @@ for (const t of targets) {
       if (save && typeof save.roll === "function") {
         const outcome = await save.roll({ dc: { value: P.dc }, item: forgeItem, extraRollOptions: ["item:activation:" + META.forgeId] });
         const dos = outcome?.degreeOfSuccess ?? outcome?.options?.degreeOfSuccess;
-        if (typeof dos === "number" && dos >= 2) applies = false;
+        if (typeof dos === "number") {
+          if (dos >= 2) applies = false;
+        } else {
+          // The roll happened but its result shape wasn't what we expected —
+          // do NOT default to "applies" here, that would silently turn a
+          // save-negates effect into an always-hit one. Degrade the same way
+          // as a failed API call: tell the table to adjudicate it themselves.
+          console.warn(MODULE_ID + " | itemforge: could not read the save's degree of success; skipping auto-apply so the table can adjudicate manually");
+          ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: tActor }), content: tActor.name + " attempted a DC " + P.dc + " " + P.saveType + " save (result unclear to the macro) — apply " + P.conditionSlug + valueText + durationText + " manually if it failed." });
+          applies = false;
+        }
       } else { throw new Error("no '" + P.saveType + "' save statistic on actor"); }
     } catch (e) {
       console.error(MODULE_ID + " | itemforge: condition save roll failed", e);
