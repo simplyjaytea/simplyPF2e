@@ -3,8 +3,9 @@ import { generateMagicItemConcept } from "./ai.mjs";
 import { availableEffectKinds, EFFECT_KINDS } from "./rule-templates.mjs";
 import {
   normalizeMagicItemConcept, buildMagicItemData, priceForLevel, getUsageOptions, describeEffect,
-  MIN_ITEM_LEVEL, MAX_ITEM_LEVEL
+  describeActivation, MIN_ITEM_LEVEL, MAX_ITEM_LEVEL
 } from "./item-builder.mjs";
+import { createActivationMacro } from "./macro-templates.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -114,7 +115,8 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
       price: `${this.#price.toLocaleString()} gp`,
       invested: concept.invested,
       effects: concept.effects.map((e) => describeEffect(e)),
-      hasEffects: concept.effects.length > 0
+      hasEffects: concept.effects.length > 0,
+      activation: concept.activation ? describeActivation(concept.activation) : null
     };
   }
 
@@ -251,6 +253,16 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     try {
       const data = await buildMagicItemData(this.#concept);
       const item = await Item.create(data);
+      // Activated items get a companion click-to-run macro filed in a
+      // dedicated folder; a macro failure must not lose the created item.
+      if (this.#concept.activation) {
+        try {
+          await createActivationMacro({ item, concept: this.#concept });
+        } catch (err) {
+          console.error(`${MODULE_ID} | activation macro creation failed`, err);
+          ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.MacroFailed"));
+        }
+      }
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Created", { name: item.name }));
       item.sheet.render(true);
       this.#concept = null;

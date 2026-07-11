@@ -12,7 +12,10 @@
 
 import { getPacksFor, EQUIPMENT_TYPES } from "./compendium.mjs";
 import { priceToGp, slugify, capitalized } from "./builder.mjs";
-import { RARITY_TREASURE_MULTIPLIER, RESISTANCE, MAX_LEVEL, lookup } from "./tables.mjs";
+import {
+  RARITY_TREASURE_MULTIPLIER, RESISTANCE, MAX_LEVEL, lookup,
+  STRIKE_DAMAGE, SPELL_DC, RARITY_DC_ADJUSTMENT
+} from "./tables.mjs";
 import { findRuleExemplar, EFFECT_KINDS } from "./rule-templates.mjs";
 
 const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
@@ -47,6 +50,76 @@ export const SENSE_TYPES = new Set([
 
 /* BaseSpeed selectors for movement an item can grant. */
 export const SPEED_TYPES = new Set(["fly", "swim", "climb", "burrow"]);
+
+/* -------------------- activation (Phase 2) -------------------- */
+
+/* The four activated-effect templates the macro builder knows how to emit. */
+export const ACTIVATION_TEMPLATES = new Set(["damage", "heal", "condition", "selfBuff"]);
+
+/* Action costs an activation may declare. */
+const ACTION_COSTS = new Set([1, 2, 3, "reaction", "free"]);
+
+/* The three PF2e saving throws an activation may call for. */
+export const SAVE_TYPES = new Set(["fortitude", "reflex", "will"]);
+
+/* Conditions an activation may inflict — the standard PF2e condition slugs.
+ * Kept to conditions that apply cleanly to a creature via increaseCondition /
+ * toggleCondition; excludes book-keeping conditions (dying, wounded via death)
+ * that need special handling. */
+export const CONDITION_SLUGS = new Set([
+  "blinded", "clumsy", "confused", "controlled", "dazzled", "deafened", "doomed",
+  "drained", "enfeebled", "fascinated", "fatigued", "fleeing", "frightened",
+  "grabbed", "immobilized", "off-guard", "paralyzed", "petrified", "prone",
+  "quickened", "restrained", "sickened", "slowed", "stunned", "stupefied",
+  "unconscious", "wounded"
+]);
+
+/* Conditions that carry a numeric value (badge). Others are on/off. */
+const VALUED_CONDITIONS = new Set([
+  "clumsy", "doomed", "drained", "enfeebled", "frightened", "sickened",
+  "slowed", "stunned", "stupefied", "wounded"
+]);
+
+/** Strip a strike-damage formula down to its dice ("1d8+6" -> "1d8"). */
+function diceOnly(formula) {
+  return String(formula).match(/^\d+d\d+/)?.[0] ?? "1d6";
+}
+
+/**
+ * A level-appropriate damage-dice suggestion for an activated item, taken
+ * from the GM Core moderate Strike Damage row (dice only, no ability mod).
+ * Shared by the schema prompt (ai.mjs) and the normalize clamp so both agree.
+ */
+export function damageDiceForLevel(level) {
+  return diceOnly(lookup(STRIKE_DAMAGE, level, "moderate"));
+}
+
+/**
+ * A level-appropriate save DC for an activated item: the GM Core moderate
+ * Spell DC benchmark for the level, adjusted for rarity (same shape the
+ * creature spell DCs use). Reused by the schema prompt and the normalize clamp.
+ */
+export function saveDcForLevel(level, rarity = "common") {
+  return Math.round(lookup(SPELL_DC, level, "moderate") + (RARITY_DC_ADJUSTMENT[rarity] ?? 0));
+}
+
+/** Normalize a dice string ("4d6", "2d8+3"); null when it isn't a clean formula. */
+function normalizeDice(raw) {
+  const m = /^\s*(\d{1,2})d(4|6|8|10|12)\s*(?:\+\s*(\d{1,3}))?\s*$/i.exec(String(raw ?? ""));
+  if (!m) return null;
+  const count = Math.min(Math.max(Number(m[1]), 1), 12);
+  const faces = m[2];
+  const bonus = m[3] ? Math.min(Number(m[3]), 99) : 0;
+  return `${count}d${faces}${bonus ? `+${bonus}` : ""}`;
+}
+
+/** Clamp a save DC to a sane window around the level/rarity benchmark. */
+function clampDc(raw, level, rarity) {
+  const base = saveDcForLevel(level, rarity);
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n)) return base;
+  return Math.min(Math.max(n, base - 6), base + 6);
+}
 
 /* -------------------- shared pack index -------------------- */
 
@@ -234,17 +307,101 @@ export function normalizeMagicItemConcept(raw, { level, rarity, availableKinds, 
     .filter(Boolean)
     .slice(0, 3);
 
+  const resolvedRarity = RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common";
+  const activation = normalizeActivation(c.activation, {
+    level: clampedLevel, rarity: resolvedRarity, available
+  });
+
   return {
     name: String(c.name || "Unnamed Item").slice(0, 120),
     description: String(c.description ?? ""),
     level: clampedLevel,
-    rarity: RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common",
+    rarity: resolvedRarity,
     usage,
     traits: [...traits],
     bulk,
     invested,
-    effects
+    effects,
+    activation
   };
+}
+
+/**
+ * Validate and clamp the optional `activation` field into one of the four
+ * known macro templates, or null when absent/unrecognizable. Every numeric
+ * parameter is clamped to a level-appropriate benchmark and every enum is
+ * whitelisted — the AI supplies only numbers and slugs, never code, so the
+ * generated macro is assembled from a fixed, tested script body.
+ */
+function normalizeActivation(raw, { level, rarity, available }) {
+  if (!raw || typeof raw !== "object") return null;
+  const template = raw.template;
+  if (!ACTIVATION_TEMPLATES.has(template)) {
+    if (template) console.warn(`simplypf2e | itemforge: dropped activation of unknown template "${template}"`);
+    return null;
+  }
+
+  let ac = raw.actionCost;
+  if (typeof ac === "string" && /^[123]$/.test(ac)) ac = Number(ac);
+  const actionCost = ACTION_COSTS.has(ac) ? ac : 1;
+
+  const p = raw.params && typeof raw.params === "object" ? raw.params : {};
+  let params = null;
+
+  switch (template) {
+    case "damage": {
+      const saveType = SAVE_TYPES.has(p.saveType) ? p.saveType : null;
+      params = {
+        damageDice: normalizeDice(p.damageDice) ?? damageDiceForLevel(level),
+        damageType: DAMAGE_TYPES.has(slugify(p.damageType)) ? slugify(p.damageType) : "force",
+        saveType,
+        dc: clampDc(p.dc, level, rarity),
+        basicSave: saveType ? p.basicSave !== false : false
+      };
+      break;
+    }
+    case "heal": {
+      params = { healDice: normalizeDice(p.healDice) ?? damageDiceForLevel(level) };
+      break;
+    }
+    case "condition": {
+      const conditionSlug = slugify(p.conditionSlug);
+      if (!CONDITION_SLUGS.has(conditionSlug)) {
+        console.warn(`simplypf2e | itemforge: dropped condition activation with unknown condition "${p.conditionSlug}"`);
+        return null;
+      }
+      const saveType = SAVE_TYPES.has(p.saveType) ? p.saveType : null;
+      const duration = typeof p.duration === "string" && p.duration.trim()
+        ? p.duration.trim().slice(0, 40) : null;
+      params = {
+        conditionSlug,
+        value: VALUED_CONDITIONS.has(conditionSlug) ? clampInt(p.value, 1, 6, 1) : null,
+        duration,
+        saveType,
+        dc: saveType ? clampDc(p.dc, level, rarity) : null,
+        basicSave: saveType ? Boolean(p.basicSave) : false
+      };
+      break;
+    }
+    case "selfBuff": {
+      const rounds = Number(p.durationRounds) > 0 ? clampInt(p.durationRounds, 1, 100, null) : null;
+      const minutes = !rounds && Number(p.durationMinutes) > 0 ? clampInt(p.durationMinutes, 1, 600, null) : null;
+      const ruleEffectKinds = (Array.isArray(p.ruleEffectKinds) ? p.ruleEffectKinds : [])
+        .map((e) => normalizeEffect(e, { level, available }))
+        .filter(Boolean)
+        .slice(0, 3);
+      params = {
+        effectName: String(p.effectName || "Magic Effect").slice(0, 80),
+        description: String(p.description ?? "").slice(0, 600),
+        durationRounds: rounds,
+        durationMinutes: minutes,
+        ruleEffectKinds
+      };
+      break;
+    }
+  }
+
+  return { template, actionCost, params };
 }
 
 /** Validate and clamp one effect; null drops it (with a warning). */
@@ -322,7 +479,84 @@ export function describeEffect(effect) {
   }
 }
 
+/* Plain-English action-cost labels for an activation summary. */
+const ACTION_COST_LABEL = {
+  1: "1 action", 2: "2 actions", 3: "3 actions",
+  reaction: "reaction", free: "free action"
+};
+
+/**
+ * One readable "Activate (2 actions) — deal 4d6 fire damage, DC 22 basic
+ * Reflex save (1/day)" line, for the preview and the item description.
+ * @param {object} activation  normalized activation
+ * @param {object} [opts]
+ * @param {boolean} [opts.charged=true]  append the "(1/day)" frequency note
+ */
+export function describeActivation(activation, { charged = true } = {}) {
+  if (!activation) return "";
+  const cost = ACTION_COST_LABEL[activation.actionCost] ?? "1 action";
+  const p = activation.params ?? {};
+  let summary;
+  switch (activation.template) {
+    case "damage": {
+      const save = p.saveType ? `, DC ${p.dc} ${p.basicSave ? "basic " : ""}${p.saveType} save` : "";
+      summary = `deal ${p.damageDice} ${p.damageType} damage${save}`;
+      break;
+    }
+    case "heal":
+      summary = `restore ${p.healDice} Hit Points`;
+      break;
+    case "condition": {
+      const val = p.value ? ` ${p.value}` : "";
+      const dur = p.duration ? ` for ${p.duration}` : "";
+      const save = p.saveType && p.dc ? ` (DC ${p.dc} ${p.basicSave ? "basic " : ""}${p.saveType} negates)` : "";
+      summary = `inflict ${p.conditionSlug}${val}${dur}${save}`;
+      break;
+    }
+    case "selfBuff": {
+      const dur = p.durationRounds ? ` for ${p.durationRounds} round${p.durationRounds === 1 ? "" : "s"}`
+        : p.durationMinutes ? ` for ${p.durationMinutes} minute${p.durationMinutes === 1 ? "" : "s"}`
+        : "";
+      summary = `gain ${p.effectName}${dur}`;
+      break;
+    }
+    default:
+      summary = activation.template;
+  }
+  const freq = charged ? " (1/day)" : "";
+  return `${game.i18n.localize("SIMPLYPF2E.ItemForge.Activate")} (${cost}) — ${summary}${freq}`;
+}
+
 /* -------------------- rule cloning & item assembly -------------------- */
+
+/**
+ * Clone a real published Rule Element for every effect in `effects` and
+ * parameterize it (value/selector/damage-type only). Shared by both the
+ * passive item assembly below and the selfBuff activation macro, so the
+ * Phase 1 "clone, never hand-author" guarantee holds for activated buffs too.
+ * @returns {Promise<{rules: object[], applied: object[]}>}
+ */
+export async function cloneRulesForEffects(effects) {
+  const rules = [];
+  const applied = [];
+  for (const effect of effects ?? []) {
+    try {
+      const exemplar = await findRuleExemplar(effect.kind);
+      if (!exemplar) {
+        console.warn(`simplypf2e | itemforge: no exemplar for "${effect.kind}" — effect skipped`);
+        continue;
+      }
+      rules.push(parameterizeRule(structuredClone(exemplar.rule), effect));
+      applied.push(effect);
+      console.debug(
+        `simplypf2e | itemforge: "${effect.kind}" rule cloned from "${exemplar.sourceName}" (${exemplar.sourceUuid})`
+      );
+    } catch (err) {
+      console.warn(`simplypf2e | itemforge: failed to build "${effect.kind}" effect — skipped`, err);
+    }
+  }
+  return { rules, applied };
+}
 
 /**
  * Parameterize a cloned exemplar rule with the concept's effect. ONLY the
@@ -368,25 +602,7 @@ function parameterizeRule(rule, effect) {
  * @returns {Promise<object>} plain item data ready for Item.create()
  */
 export async function buildMagicItemData(concept) {
-  const rules = [];
-  const applied = [];
-  for (const effect of concept.effects ?? []) {
-    try {
-      const exemplar = await findRuleExemplar(effect.kind);
-      if (!exemplar) {
-        console.warn(`simplypf2e | itemforge: no exemplar for "${effect.kind}" — effect skipped`);
-        continue;
-      }
-      // Clone the real rule, substitute only the concept's parameters.
-      rules.push(parameterizeRule(structuredClone(exemplar.rule), effect));
-      applied.push(effect);
-      console.debug(
-        `simplypf2e | itemforge: "${effect.kind}" rule cloned from "${exemplar.sourceName}" (${exemplar.sourceUuid})`
-      );
-    } catch (err) {
-      console.warn(`simplypf2e | itemforge: failed to build "${effect.kind}" effect — skipped`, err);
-    }
-  }
+  const { rules, applied } = await cloneRulesForEffects(concept.effects);
 
   const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
   const paragraphs = String(concept.description ?? "")
@@ -400,18 +616,47 @@ export async function buildMagicItemData(concept) {
     );
   }
 
-  return {
+  const system = {
+    level: { value: concept.level },
+    description: { value: descriptionParts.join("\n") },
+    traits: { value: concept.traits, rarity: concept.rarity },
+    usage: { value: concept.usage },
+    bulk: { value: concept.bulk },
+    price: { value: { gp: await priceForLevel(concept.level, concept.rarity) } },
+    rules
+  };
+
+  const data = {
     name: capitalized(concept.name),
     type: "equipment",
     img: "icons/svg/item-bag.svg",
-    system: {
-      level: { value: concept.level },
-      description: { value: descriptionParts.join("\n") },
-      traits: { value: concept.traits, rarity: concept.rarity },
-      usage: { value: concept.usage },
-      bulk: { value: concept.bulk },
-      price: { value: { gp: await priceForLevel(concept.level, concept.rarity) } },
-      rules
-    }
+    system
   };
+
+  // An activated item carries: a per-copy forgeId (so its companion macro
+  // finds THIS actor's copy for charge-tracking), a 1/day charge counter the
+  // macro decrements, and a plain-English activation summary in the
+  // description. The clickable @UUID[Macro.…]{Activate} link is appended
+  // after the macro is created (see macro-templates.createActivationMacro).
+  if (concept.activation) {
+    descriptionParts.push(
+      `<hr /><p><strong>${game.i18n.localize("SIMPLYPF2E.ItemForge.ActivationHeading")}</strong> ${describeActivation(concept.activation)}.</p>`
+    );
+    system.description.value = descriptionParts.join("\n");
+    // Best-effort native frequency (for the sheet's own display); the
+    // authoritative per-copy counter lives in the module flag below, which
+    // the macro reads and decrements.
+    system.frequency = { max: 1, per: "day", value: 1 };
+    data.flags = {
+      simplypf2e: {
+        forge: {
+          forgeId: foundry.utils.randomID(),
+          template: concept.activation.template,
+          uses: { value: 1, max: 1, per: "day" }
+        }
+      }
+    };
+  }
+
+  return data;
 }
