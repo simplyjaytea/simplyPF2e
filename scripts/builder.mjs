@@ -201,10 +201,28 @@ export function parseScroll(name) {
 }
 
 /**
+ * Convert a PF2e price-value denomination object ({pp, gp, sp, cp}, any
+ * subset present) into a single gp number.
+ */
+export function priceToGp(price) {
+  if (!price || typeof price !== "object") return 0;
+  return (Number(price.pp) || 0) * 10
+    + (Number(price.gp) || 0)
+    + (Number(price.sp) || 0) / 10
+    + (Number(price.cp) || 0) / 100;
+}
+
+/**
  * Resolve loot names against the equipment packs. Loot may sit a little above
  * the creature's level — treasure rewards run ahead of encounter level.
  * Scrolls resolve their SPELL instead (PF2e ships no premade scroll items);
  * the scroll consumable is assembled from the rank template at creation.
+ *
+ * Each returned entry carries `resolvedValue`: the real per-unit gp price of
+ * the matched compendium item (or the rank template, for scrolls), falling
+ * back to the AI's own estimate when nothing matched or the match has no
+ * price. The treasure-budget enforcement sums these, so real prices beat the
+ * AI's guesses wherever a real item resolved.
  */
 export async function resolveLoot(concept) {
   const loot = [];
@@ -216,7 +234,14 @@ export async function resolveLoot(concept) {
       );
       const baseRank = entry?.system?.level?.value ?? 1;
       const rank = Math.min(Math.max(scroll.rank ?? baseRank, baseRank), 10);
-      loot.push({ name, quantity, value, runes: parseRunes(name), entry, scroll: { rank } });
+      // A scroll's real price lives on the rank template it will be built
+      // from at creation (there is no premade scroll item to price).
+      const templateDoc = await getDocument(await findScrollTemplate(rank));
+      const templateGp = priceToGp(templateDoc?.system?.price?.value);
+      loot.push({
+        name, quantity, value, runes: parseRunes(name), entry, scroll: { rank },
+        resolvedValue: templateGp > 0 ? templateGp : value
+      });
       continue;
     }
     const runes = parseRunes(name);
@@ -225,12 +250,109 @@ export async function resolveLoot(concept) {
       runes.base,
       (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level + 2, 0)
     );
-    loot.push({ name, quantity, value, runes, entry });
+    let resolvedValue = value;
+    if (entry) {
+      const doc = await getDocument(entry);
+      const gp = priceToGp(doc?.system?.price?.value);
+      if (gp > 0) {
+        // Rune-bearing names ("+1 striking rapier") only match the BASE item,
+        // whose price excludes the runes — the AI's estimate is closer there.
+        const hasRunes = runes.potency || runes.striking || runes.resilient;
+        resolvedValue = hasRunes && value > 0 ? value : gp;
+      }
+    }
+    loot.push({ name, quantity, value, runes, entry, resolvedValue });
   }
   return loot;
 }
 
+/** Total gp value of a resolved loot list (per-unit resolvedValue × quantity). */
+export function lootValueGp(loot) {
+  return (Array.isArray(loot) ? loot : []).reduce(
+    (sum, l) => sum + (Number(l?.resolvedValue) || 0) * (Number(l?.quantity) || 1),
+    0
+  );
+}
+
+/* gp per coin, used when a coin line resolved without a usable price. */
+const COIN_UNIT_GP = { "Platinum Pieces": 10, "Gold Pieces": 1, "Silver Pieces": 0.1, "Copper Pieces": 0.01 };
+
+const coinUnitGp = (line) => {
+  const coins = parseCoins(line.name);
+  if (!coins) return 0;
+  const resolved = Number(line.resolvedValue) || 0;
+  return resolved > 0 ? resolved : (COIN_UNIT_GP[coins.name] ?? 0);
+};
+
+/**
+ * Nudge a resolved loot list toward the target gp budget (from
+ * tables.treasureBudget). Only the fungible coin entries flex — the same
+ * lever published adventures use to pad treasure: if the haul is more than
+ * ~20% short, coins are added (or a Gold Pieces line is created) to close
+ * the gap; if more than ~20% over, coin quantities shrink, largest
+ * denomination first. Named items are NEVER deleted or shrunk to hit a
+ * budget — with no coins left to trim, an overshoot just gets a console
+ * note. Defensive by design: any failure returns the loot unchanged rather
+ * than blocking actor creation.
+ */
+export async function applyTreasureBudget(loot, targetGp) {
+  try {
+    if (!Array.isArray(loot) || !Number.isFinite(targetGp) || targetGp <= 0) return loot;
+    const total = lootValueGp(loot);
+    if (total >= targetGp * 0.8 && total <= targetGp * 1.2) return loot;
+
+    if (total < targetGp * 0.8) {
+      const gap = targetGp - total;
+      const gold = loot.find((l) => parseCoins(l.name)?.name === "Gold Pieces");
+      if (gold) {
+        const unit = coinUnitGp(gold) || 1;
+        gold.quantity = Math.min(gold.quantity + Math.max(Math.round(gap / unit), 1), 100000);
+      } else {
+        const entry = await findEntry(getPacksFor("equipment"), "Gold Pieces", (e) => e.type === "treasure");
+        loot.push({
+          name: "Gold Pieces",
+          quantity: Math.min(Math.max(Math.round(gap), 1), 100000),
+          value: 1,
+          runes: parseRunes("Gold Pieces"),
+          entry,
+          resolvedValue: 1
+        });
+      }
+      return loot;
+    }
+
+    // Overshoot: trim coins, biggest denomination first, never below zero.
+    let excess = total - targetGp;
+    const coinLines = loot.filter((l) => parseCoins(l.name)).sort((a, b) => coinUnitGp(b) - coinUnitGp(a));
+    for (const line of coinLines) {
+      if (excess <= 0) break;
+      const unit = coinUnitGp(line);
+      if (unit <= 0) continue;
+      const removable = Math.min(Number(line.quantity) || 0, Math.floor(excess / unit));
+      if (removable <= 0) continue;
+      line.quantity -= removable;
+      excess -= removable * unit;
+    }
+    if (excess > targetGp * 0.2) {
+      console.log(`simplypf2e | loot is ~${Math.round(excess)} gp over the treasure budget with no coins left to trim — named items are never removed to hit a budget`);
+    }
+    // Drop coin lines trimmed all the way to zero.
+    return loot.filter((l) => !(parseCoins(l.name) && (Number(l.quantity) || 0) <= 0));
+  } catch (err) {
+    console.warn("simplypf2e | treasure-budget enforcement failed, leaving loot unchanged", err);
+    return loot;
+  }
+}
+
 const RANK_ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
+
+/** Find the blank "Scroll of Nth-rank Spell" template item for a rank. */
+async function findScrollTemplate(rank) {
+  const ordinal = RANK_ORDINALS[rank - 1] ?? "1st";
+  // Remaster naming first, pre-remaster "level" naming as fallback
+  return (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-rank Spell`, (e) => e.type === "consumable"))
+    ?? (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-level Spell`, (e) => e.type === "consumable"));
+}
 
 /**
  * Assemble a scroll consumable the way the PF2e system does on spell drag:
@@ -242,11 +364,7 @@ const RANK_ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "
 async function buildScrollItem(spellEntry, rank) {
   const spellDoc = await getDocument(spellEntry);
   if (!spellDoc) return null;
-  const ordinal = RANK_ORDINALS[rank - 1] ?? "1st";
-  // Remaster naming first, pre-remaster "level" naming as fallback
-  const template =
-    (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-rank Spell`, (e) => e.type === "consumable"))
-    ?? (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-level Spell`, (e) => e.type === "consumable"));
+  const template = await findScrollTemplate(rank);
   const templateDoc = await getDocument(template);
   if (!templateDoc) return null;
   const data = toItemData(templateDoc);

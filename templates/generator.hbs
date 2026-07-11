@@ -86,6 +86,14 @@
           </select>
         </div>
       {{/if}}
+      <div class="form-group">
+        <label>{{localize "SIMPLYPF2E.Generator.TreasureAmount"}}</label>
+        <select name="treasureAmount">
+          {{#each treasureAmounts}}
+            <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{localize this.label}}</option>
+          {{/each}}
+        </select>
+      </div>
       <div class="form-group spf-checkbox">
         <label>
           <input type="checkbox" name="allowSpellcasting" {{#if input.allowSpellcasting}}checked{{/if}}>
@@ -292,6 +300,7 @@
     <header class="spf-statblock-header">
       <h2>{{encounterPreview.name}}</h2>
       <span class="spf-level {{#if encounterPreview.overBudget}}spf-over-budget{{/if}}">{{encounterPreview.spent}} / {{encounterPreview.budget}} XP</span>
+      <span class="spf-level" data-tooltip="{{localize 'SIMPLYPF2E.Generator.TreasureReadoutTooltip'}}">{{encounterPreview.treasureSpent}} / {{encounterPreview.treasureBudget}} gp</span>
     </header>
     <ul class="spf-encounter-members">
       {{#each encounterPreview.members}}

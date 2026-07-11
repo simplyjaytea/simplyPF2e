@@ -1,7 +1,11 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
 import { generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, designEncounter } from "./ai.mjs";
 import { getSpellCandidates, getEquipmentCandidates } from "./compendium.mjs";
-import { normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor } from "./builder.mjs";
+import {
+  normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
+  applyTreasureBudget, lootValueGp
+} from "./builder.mjs";
+import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset,
   examplePrompt, randomBrief
@@ -49,7 +53,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** Form values, kept across re-renders. */
   #input = {
     mode: "single", prompt: "", level: 1, rarity: "common",
-    allowSpellcasting: true, preset: "", partySize: 4, threat: "moderate"
+    allowSpellcasting: true, preset: "", partySize: 4, threat: "moderate",
+    treasureAmount: "standard"
   };
   #busy = false;
   #error = null;
@@ -98,6 +103,11 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         label: `SIMPLYPF2E.Threat.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
         selected: this.#input.threat === key
       })),
+      treasureAmounts: Object.keys(TREASURE_AMOUNT_MULTIPLIER).map((key) => ({
+        value: key,
+        label: `SIMPLYPF2E.TreasureAmount.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
+        selected: this.#input.treasureAmount === key
+      })),
       preview: this.#buildPreviewContext(),
       encounterPreview: this.#buildEncounterPreviewContext(),
       tokenReport: this.#buildTokenReport()
@@ -139,6 +149,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       budget: this.#encounter.budget,
       spent: this.#encounter.spent,
       overBudget: this.#encounter.spent > this.#encounter.budget,
+      treasureBudget: Math.round(this.#encounter.treasureBudget ?? 0),
+      treasureSpent: Math.round(this.#encounter.treasureSpent ?? 0),
       members: this.#encounter.members.map((member, index) => {
         const stats = computeStats(member.concept);
         const strike = stats.strikes[0];
@@ -220,7 +232,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const mode = form.querySelector('[name="mode"]:checked')?.value ?? this.#input.mode;
     const partySize = Math.min(8, Math.max(1, Number(form.querySelector('[name="partySize"]')?.value ?? 4)));
     const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
-    this.#input = { mode, prompt, level, rarity, allowSpellcasting, preset, partySize, threat };
+    const treasureAmount = form.querySelector('[name="treasureAmount"]')?.value ?? this.#input.treasureAmount;
+    this.#input = { mode, prompt, level, rarity, allowSpellcasting, preset, partySize, threat, treasureAmount };
   }
 
   /**
@@ -258,12 +271,25 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     await this.#stepMemberCount(Number(target.dataset.index), -1);
   }
 
-  /** Adjust an encounter member's count (0 = skip it) and refresh XP math. */
+  /** Adjust an encounter member's count (0 = skip it) and refresh XP + treasure math. */
   async #stepMemberCount(index, delta) {
     const member = this.#encounter?.members?.[index];
     if (!member) return;
     member.count = Math.min(8, Math.max(0, member.count + delta));
     this.#encounter.spent = this.#encounter.members.reduce((sum, m) => sum + m.count * m.xpEach, 0);
+    // The group's treasure share (treasureGroupBudget) stays constant; only
+    // the per-copy split changes, so re-nudge the shared loot toward the new
+    // split (applyTreasureBudget re-targets from whatever the loot currently
+    // holds, so calling it again is safe) and refresh that member's actuals.
+    if (member.treasureGroupBudget != null) {
+      member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
+      member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
+      member.treasureEach = lootValueGp(member.resolved.loot);
+    }
+    // Both treasure totals are per-creature × count, which now nets back to
+    // each group's constant share regardless of how the stepper is set.
+    this.#encounter.treasureBudget = this.#encounter.members.reduce((sum, m) => sum + m.count * (m.treasureBudgetEach ?? 0), 0);
+    this.#encounter.treasureSpent = this.#encounter.members.reduce((sum, m) => sum + m.count * (m.treasureEach ?? 0), 0);
     await this.render();
   }
 
@@ -378,6 +404,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       await this.#refineEquipment(this.#concept);
       await this.#setStep("match");
       this.#resolved = await resolveConcept(this.#concept);
+      // Treasure budget: the module owns the numbers (level + rarity from the
+      // tables, scaled by the Treasure amount control); only coins flex.
+      this.#resolved.loot = await applyTreasureBudget(
+        this.#resolved.loot,
+        treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)
+      );
       const eq = this.#resolved.equipment;
       if (eq.length) {
         const misses = eq.filter((e) => !e.entry).map((e) => e.name);
@@ -451,6 +483,17 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       await this.#setStep("match");
       for (const member of members) {
         member.resolved = await resolveConcept(member.concept);
+        // Treasure is calibrated to the PARTY level (it is awarded to players
+        // of that level), not the member's own creature level. The GROUP as a
+        // whole gets ONE share of treasure regardless of how many copies it
+        // has — treasureGroupBudget is that constant share; treasureBudgetEach
+        // is the group's share divided across its current copies, so the
+        // group's total stays flat as the count stepper changes (see
+        // #stepMemberCount, which recomputes the per-copy split the same way).
+        member.treasureGroupBudget = treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount);
+        member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
+        member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
+        member.treasureEach = lootValueGp(member.resolved.loot);
       }
       const allEq = members.flatMap((m) => m.resolved.equipment);
       if (allEq.length) {
@@ -462,6 +505,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         name: design.name,
         budget: composition.budget,
         spent: composition.spent,
+        treasureBudget: members.reduce((sum, m) => sum + m.count * (m.treasureBudgetEach ?? 0), 0),
+        treasureSpent: members.reduce((sum, m) => sum + m.count * (m.treasureEach ?? 0), 0),
         members
       };
       console.log(`${MODULE_ID} | token usage`, this.#tokenUsage);
@@ -615,7 +660,10 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       });
       this.#recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
       this.#concept.loot = normalizeLoot(loot);
-      this.#resolved.loot = await resolveLoot(this.#concept);
+      this.#resolved.loot = await applyTreasureBudget(
+        await resolveLoot(this.#concept),
+        treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)
+      );
     } catch (err) {
       console.error(`${MODULE_ID} | loot reroll failed`, err);
       this.#error = err.message;

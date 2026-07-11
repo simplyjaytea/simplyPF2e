@@ -34,6 +34,7 @@ Several parts of the concept get extra grounding so the AI can't invent things t
 - **Equipment is chosen *from* the compendium too.** After the concept lands, a follow-up pass hands the AI a real, level-capped list of items from your equipment compendium — narrowed by keywords taken from the concept's own gear ideas and strikes, so the prompt stays small — and the AI picks the creature's carried gear from it. Every pick is a name that actually exists, so it lands as the real item document on the sheet.
 - **Real, logical inventories.** The AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly, and only when the creature would plausibly wear armor), general adventuring gear (rope, torches, rations, thieves' tools, and the like), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically. Anything named that still doesn't match the compendium becomes a real inventory item — a custom gear item at the AI's estimated price — instead of silently disappearing. Coins never show up here — they're loot only.
 - **Loot worth fighting for.** Creatures carry the treasure they drop on defeat: coins, consumables, and magic items contextual to the creature and scaled to its level and rarity, all matched against the equipment compendium. Coins ("Gold Coins", "150 silver pieces") become the real PF2e currency items, so they show up in the sheet's Currency section. Spell scrolls are assembled the same way the system builds them on spell drag-and-drop: the named spell is resolved from the spell compendium and embedded into the matching rank's scroll template, producing a fully usable consumable.
+- **Loot is priced to a real budget.** The same authority split as the statistics: the module computes an expected gp value from the GM Core Treasure by Level table (scaled by creature rarity and your **Treasure amount** setting), the AI only themes and names items within it, and the loot's real compendium prices are summed against that target — if the haul lands meaningfully off budget, the coin entries flex to close the gap (named items are never added or removed to hit a number). Encounter mode shows the group's total treasure value against its budget, right next to the XP math.
 - **Passives lean on real automation.** A passive ability that matches a standard PF2e glossary entry (Regeneration, All-Around Vision, ...) is cloned from the compendium wholesale, so it carries the system's own working automation instead of being descriptive text you have to remember to apply.
 - **Item names stay current.** Everything named — equipment, loot, scrolls — uses current PF2e Remaster terminology (e.g. "Blasting Stone", not the old "Thunderstone"), matched against your compendiums either way.
 
@@ -78,7 +79,7 @@ By default SimplyPF2e draws from the PF2e system packs (bestiary ability glossar
 ## Usage
 
 1. Open the **Actors** sidebar tab and click **SimplyPF2e** (GM only), or run `game.modules.get("simplypf2e").api.open()` from a macro.
-2. Optionally pick a **preset** from the dropdown, describe the creature, set its level (−1 to 24) and rarity, choose whether spellcasting is allowed, and click **Generate**.
+2. Optionally pick a **preset** from the dropdown, describe the creature, set its level (−1 to 24) and rarity, pick a **Treasure amount** (Stingy / Standard / Generous — how rich the loot budget runs), choose whether spellcasting is allowed, and click **Generate**.
 3. Review the stat-block preview, then click **Create Actor**. The finished NPC opens on its sheet, ready to drop onto the canvas.
 
 ### Presets
@@ -108,6 +109,8 @@ Every creature comes with GM support baked into its notes:
 ### Loot
 
 The preview shows the creature's loot — coins, consumables, scrolls, and treasure — with anything that failed to match the compendium flagged so you can decide before creating. Happy with the creature but not the haul? Click **Reroll Loot**: it regenerates only the treasure with a fresh AI pass, leaving the concept, stats, and gear untouched. Loot volume follows your framing: a typical creature drops a modest 3-8 items, but describe it as guarding a hoard or ask for "lots of loot" and the haul scales up to match — both on initial generation and on reroll.
+
+The haul's *value* is budgeted, not guessed: the module computes a target gp value from the GM Core Treasure by Level table for the creature's level (party level in encounter mode), multiplied up for uncommon/rare/unique creatures and by the **Treasure amount** control (Stingy halves it, Generous adds half). The real compendium prices of the generated items are summed against that target, and the coin entries are adjusted to land the total on budget — so a level 5 creature drops level-5-appropriate wealth whether or not the AI guessed prices well.
 
 ### Iterating on a creature
 
@@ -142,7 +145,7 @@ Odd generation results:
 - Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions; if a phrase slips through unconverted, it stays as readable plain text (regenerate or edit the ability to fix it).
 - A custom (non-glossary) passive ability is only as interactive as its phrasing — anything outside the standard damage/save/check/heal/area conventions is flavor text the table applies by hand rather than a live automated effect.
 - Presets guide the AI rather than hard-constrain it — an occasional generation may drift from the chosen road map; regenerating usually lands it.
-- Loot and carried gear are level-appropriate, but their total value is not yet priced against the GM Core treasure-budget tables (see [Roadmap](#roadmap)).
+- Loot value is budgeted against the GM Core Treasure by Level table, but only the coin entries flex to hit the target — a haul whose named items alone already exceed the budget is left as-is (with a console note) rather than losing items. Carried gear (weapons, armor, adventuring kit) is not counted against the treasure budget.
 - A named weapon, armor, or gear item that doesn't match anything in the compendium becomes a generic placeholder item at the AI's estimated price rather than a functional weapon/armor — it won't carry real mechanical bonuses. Carried gear is now picked from a real compendium candidate list (see [Grounding in the compendium](#grounding-in-the-compendium)), so this should be uncommon — mostly the fallback path when the grounded pass fails or a pick is copied imperfectly — but if you see one, swap in the intended item from the compendium by hand.
 
 ## Roadmap
@@ -154,7 +157,7 @@ Odd generation results:
 - [x] **Loot** — ✅ v0.3.3: AI-generated treasure (coins as real currency, consumables, scrolls built from spells, magic items) with a Reroll Loot button in the preview.
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
 - [x] **Grounded equipment matching** — ✅ unreleased: mirrors the spell-selection approach — the AI picks carried gear from a real, level-capped candidate list out of the equipment compendium instead of naming items from memory.
-- [ ] **Treasure budgets** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.
+- [x] **Treasure budgets** — ✅ unreleased: loot is priced against the GM Core Treasure by Level table (level + rarity scaled, with a per-generation Stingy/Standard/Generous control); coin entries flex to land the haul on budget, and encounter mode reports the group's total treasure value alongside the XP math.
 - [ ] **Full PC-power-level characters** — generate complete character-class-strength NPCs (villains, rivals, pregens) built to player-character power budgets.
 - [ ] **Preset sharing** — export/import custom presets as JSON to trade with other GMs.
 - [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.

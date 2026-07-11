@@ -2,7 +2,8 @@
  * Benchmark tables from the Pathfinder 2e GM Core "Building Creatures" chapter
  * (Tables: Ability Modifier Scales, Perception, Skills, Armor Class, Saving
  * Throws, Hit Points, Strike Attack Bonus, Strike Damage, Spell DC & Attack,
- * Resistances & Weaknesses).
+ * Resistances & Weaknesses), plus Table 10-9 Treasure by Level from the
+ * GM Core treasure chapter.
  *
  * Every array is indexed by creature level, from -1 to 24 (use `idx(level)`).
  * Rules data used under the ORC License; see README for attribution.
@@ -123,6 +124,70 @@ export const RESISTANCE = {
   maximum: [1, 3, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21, 22, 23, 24, 24, 26],
   minimum: [1, 1, 2, 2, 3, 4, 4, 5,  5,  6,  6,  7,  7,  8,  8,  9,  9,  9, 10, 10, 10, 11, 11, 11, 12, 12]
 };
+
+/* ------------------------------------------------------------------ */
+/* Treasure budgets.
+ *
+ * PF2e GM Core / Core Rulebook Table 10-9 Treasure by Level (Total Value
+ * column), ORC-licensed reference data — see README attribution section,
+ * same as the other benchmark tables in this file.
+ *
+ * The published table covers CHARACTER levels 1-20 only (this is a
+ * party-progression table, not a creature table): it is the total treasure a
+ * party should accumulate across a whole level of play. The -1/0 and 21-24
+ * rows are OUR extrapolation so the table indexes like every other table in
+ * this file: level 0 ≈ half of level 1, level -1 ≈ half of level 0; levels
+ * 21-24 continue the late-game compounding curve at ~1.45x per level
+ * (consistent with the 17-19 trend). These edge rows are a reasoned
+ * assumption, not published data.
+ *
+ * Transcription-confidence note: levels 1-12 were recalled with high
+ * confidence; the exact digits for 13-20 are less certain (the order of
+ * magnitude and shape are right). One shape anomaly worth flagging rather
+ * than silently "fixing": the 19→20 step (355,000 → 490,000, ×1.38) breaks
+ * the accelerating ×1.55/×1.63/×1.71 run just before it. That may well be
+ * how the book prints it (level 20 is the campaign's final level), but if a
+ * high-level game feels off, this row is the one to re-check against the
+ * book. */
+export const TREASURE_BY_LEVEL = {
+  //      lvl  -1   0    1    2    3    4     5     6     7     8     9    10
+  total: [    45,  90, 175, 300, 500, 850, 1350, 2000, 2900, 4000, 5700, 8000,
+  //      lvl  11     12     13     14     15     16      17      18      19      20
+          11500, 16500, 25000, 36500, 54500, 82500, 128000, 208000, 355000, 490000,
+  //      lvl     21       22       23       24   (extrapolated, see above)
+          710000, 1030000, 1500000, 2200000]
+};
+
+/* Uncommon/rare/unique creatures carry above-average treasure for their
+ * level — module design choice layered on top of the level baseline. */
+export const RARITY_TREASURE_MULTIPLIER = { common: 1, uncommon: 1.5, rare: 2.5, unique: 4 };
+
+/* How many "significant", treasure-bearing encounters a party plays per
+ * level. GM Core's general pacing guidance is roughly 4; this converts the
+ * per-level total above into a per-encounter (per-creature) share. It is a
+ * reasoned pacing assumption, not a hard rule — adjust if treasure feels too
+ * rich or too thin. */
+export const ENCOUNTERS_PER_LEVEL = 4;
+
+/* The per-generation "Treasure amount" control (Stingy/Standard/Generous),
+ * applied on top of the level + rarity budget. */
+export const TREASURE_AMOUNT_MULTIPLIER = { stingy: 0.5, standard: 1, generous: 1.5 };
+
+/**
+ * Expected gp value of one creature's carried treasure: the per-encounter
+ * share of the level's total, scaled by creature rarity and the GM's
+ * per-generation Treasure amount setting. In encounter mode, pass the PARTY
+ * level (treasure is calibrated to the players receiving it), not each
+ * member's own creature level.
+ */
+export function treasureBudget(level, rarity = "common", amount = "standard") {
+  const perEncounter = lookup(TREASURE_BY_LEVEL, level, "total", []) / ENCOUNTERS_PER_LEVEL;
+  return Math.round(
+    perEncounter
+    * (RARITY_TREASURE_MULTIPLIER[rarity] ?? 1)
+    * (TREASURE_AMOUNT_MULTIPLIER[amount] ?? 1)
+  );
+}
 
 /* ------------------------------------------------------------------ */
 
