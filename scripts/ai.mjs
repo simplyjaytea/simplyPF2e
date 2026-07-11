@@ -317,6 +317,68 @@ Pick 3-8 logical items the creature would carry: the weapons it wields (match it
   return { equipment, usage };
 }
 
+/* Schema documentation per item-forge effect kind. Only the kinds that
+ * rule-templates.mjs actually found real exemplars for in this world are
+ * offered to the model — see generateMagicItemConcept(). */
+const ITEM_EFFECT_DOCS = {
+  itemBonus: `{ "kind": "itemBonus", "statistic": "ac"|"perception"|"fortitude"|"reflex"|"will"|"acrobatics"|"arcana"|"athletics"|"crafting"|"deception"|"diplomacy"|"intimidation"|"medicine"|"nature"|"occultism"|"performance"|"religion"|"society"|"stealth"|"survival"|"thievery", "value": number } // item bonus scaled like published items: +1 up to about level 9, +2 for levels 10-15, +3 for level 16+`,
+  resistance: `{ "kind": "resistance", "damageType": DAMAGE_TYPE, "value": number } // roughly half the item's level, minimum 2`,
+  weakness: `{ "kind": "weakness", "damageType": DAMAGE_TYPE, "value": number } // a drawback; use only when the concept calls for one`,
+  immunity: `{ "kind": "immunity", "damageType": DAMAGE_TYPE } // very strong; only for high-level (13+) or rare items`,
+  sense: `{ "kind": "sense", "type": "darkvision"|"greater-darkvision"|"low-light-vision"|"scent"|"tremorsense"|"echolocation"|"see-invisibility"|"truesight"|"lifesense"|"wavesense", "acuity": "precise"|"imprecise"|"vague"|null, "range": number|null } // acuity/range only for senses that need them (e.g. scent imprecise 30); null for vision senses`,
+  speed: `{ "kind": "speed", "type": "fly"|"swim"|"climb"|"burrow", "value": number } // speed in feet, multiple of 5 (20-40 typical); a passive permanent speed is powerful, fit it to the level`
+};
+
+/**
+ * Ask the configured model for a wondrous magic item concept (item forge).
+ * `availableKinds` MUST be the effect kinds rule-templates.mjs found real
+ * rule exemplars for — the schema shown to the model is built from that
+ * list, so it can never ask for an effect this world can't automate.
+ * `usageOptions` are real system.usage.value strings harvested from the
+ * equipment compendium (item-builder.getUsageOptions()).
+ * @returns {Promise<{concept: object, usage: object}>} raw concept JSON + token usage
+ */
+export async function generateMagicItemConcept({ prompt, level, rarity, availableKinds, usageOptions, onProgress }) {
+  const kinds = (availableKinds ?? []).filter((k) => ITEM_EFFECT_DOCS[k]);
+  const effectDocs = kinds.map((k) => `    ${ITEM_EFFECT_DOCS[k]}`).join("\n");
+
+  const system = `You are an expert Pathfinder 2e (remaster) magic item designer. You design wondrous item CONCEPTS with simple passive effects; the final price is computed elsewhere from real compendium benchmarks.
+
+Respond with a SINGLE JSON object only. No markdown fences, no commentary.
+
+JSON schema (all keys required):
+{
+  "name": string, // evocative item name in current PF2e Remaster style — an ORIGINAL item, not a copy of a published one
+  "description": string, // 2-4 sentences of evocative flavor: appearance, history, feel. Plain text. Do NOT restate the mechanical effects — a mechanical summary is appended automatically.
+  "level": number, // echo the requested item level
+  "rarity": "common"|"uncommon"|"rare"|"unique", // echo the requested rarity
+  "usage": string, // EXACTLY one of: ${usageOptions.join(", ")}
+  "traits": string[], // lowercase PF2e item traits; always include "magical", plus fitting descriptors (e.g. "fire", "air", "healing", "detection"); "invested" is handled separately
+  "bulk": number, // 0 = negligible, 0.1 = light (L), 1+ = heavier items
+  "invested": boolean, // true for most worn magic items (they must be invested to function); false for held items
+  "effects": [ // 1-3 passive effects, each one of these shapes ("kind" MUST be from this list):
+${effectDocs}
+  ]
+}
+
+DAMAGE_TYPE = "acid"|"bludgeoning"|"cold"|"electricity"|"fire"|"force"|"mental"|"piercing"|"poison"|"slashing"|"sonic"|"spirit"|"vitality"|"void"|"bleed".
+
+Design guidance:
+- Effects are ALWAYS-ON passives. No activated abilities, no charges, no once-per-day effects — if the concept implies activation, express the closest passive version instead.
+- Match power to level and rarity: one modest effect for low-level items, two or three (or one strong one) only for high-level or rare items.
+- The item should feel like it belongs in a published book: grounded flavor, a clear identity, one memorable image.`;
+
+  const user = [
+    `Item level: ${level}`,
+    `Rarity: ${rarity}`,
+    "",
+    `Item concept from the GM: ${prompt}`
+  ].join("\n");
+
+  const { data, usage } = await requestJSON({ system, user, onProgress });
+  return { concept: data, usage };
+}
+
 /**
  * Encounter design pass: given a theme and a budget-fixed composition, name
  * the encounter and write a one-sentence creature brief per slot. Each brief

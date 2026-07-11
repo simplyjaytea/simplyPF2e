@@ -13,7 +13,7 @@ const STANDARD_SKILLS = new Set([
   "society", "stealth", "survival", "thievery"
 ]);
 
-const slugify = (value) =>
+export const slugify = (value) =>
   String(value ?? "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 function scale4(value, fallback = "moderate") {
@@ -964,6 +964,6 @@ export async function createActor(concept, resolved, { img = null } = {}) {
   return Actor.create(actorData);
 }
 
-function capitalized(text) {
+export function capitalized(text) {
   return String(text).split(" ").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
 }

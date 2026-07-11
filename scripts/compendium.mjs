@@ -16,7 +16,7 @@ export const DEFAULT_PACKS = {
   feats: ["pf2e.feats-srd"]
 };
 
-const EQUIPMENT_TYPES = new Set([
+export const EQUIPMENT_TYPES = new Set([
   "weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit"
 ]);
 

@@ -1,0 +1,133 @@
+<div class="simplypf2e-generator">
+  {{#unless hasApiKey}}
+    <p class="notification warning">{{localize "SIMPLYPF2E.Generator.NoApiKey"}}</p>
+  {{/unless}}
+
+  <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
+    <legend>{{localize "SIMPLYPF2E.ItemForge.ConceptLegend"}}</legend>
+    <div class="form-group stacked">
+      <label>{{localize "SIMPLYPF2E.ItemForge.Prompt"}}</label>
+      <textarea name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.ItemForge.PromptPlaceholder'}}">{{input.prompt}}</textarea>
+    </div>
+    <div class="spf-row">
+      <div class="form-group">
+        <label>{{localize "SIMPLYPF2E.ItemForge.Level"}}</label>
+        <div class="spf-level-controls">
+          <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
+            <i class="fa-solid fa-minus"></i>
+          </button>
+          <input type="number" name="level" min="{{minLevel}}" max="{{maxLevel}}" step="1" value="{{input.level}}">
+          <button type="button" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
+        <select name="rarity">
+          {{#each rarities}}
+            <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
+          {{/each}}
+        </select>
+      </div>
+    </div>
+    <div class="spf-generate-row">
+      <button type="button" data-action="generate" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-wand-sparkles"></i>
+        {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
+      </button>
+    </div>
+  </fieldset>
+
+  {{#if unavailableNote}}
+    <p class="notification warning">{{unavailableNote}}</p>
+  {{/if}}
+
+  {{#if busy}}
+    {{#if progress}}
+      <div class="spf-progress">
+        <div class="spf-progress-bar">
+          <div class="spf-progress-fill" style="width: {{progress.percent}}%"></div>
+        </div>
+        <ol class="spf-progress-steps">
+          {{#each progress.steps}}
+            <li class="spf-step-{{this.state}}">
+              <span class="spf-step-label">
+                {{#if (eq this.state "done")}}<i class="fa-solid fa-check"></i>{{/if}}
+                {{#if (eq this.state "active")}}<i class="fa-solid fa-spinner fa-spin"></i>{{/if}}
+                {{localize this.label}}
+              </span>
+              <div class="spf-step-bar"><div class="spf-step-bar-fill"></div></div>
+            </li>
+          {{/each}}
+        </ol>
+        <p class="spf-progress-detail">{{progress.detail}}</p>
+        <p class="spf-model">{{model}}</p>
+      </div>
+    {{else}}
+      <div class="spf-busy">
+        <i class="fa-solid fa-spinner fa-spin"></i>
+        {{localize "SIMPLYPF2E.Generator.Busy"}} <span class="spf-model">({{model}})</span>
+      </div>
+    {{/if}}
+  {{/if}}
+
+  {{#if error}}
+    <p class="notification error">{{error}}</p>
+  {{/if}}
+
+  {{#if preview}}
+  <section class="spf-preview">
+    <header class="spf-statblock-header">
+      <h2>{{preview.concept.name}}</h2>
+      <span class="spf-level">{{localize "SIMPLYPF2E.ItemForge.Item"}} {{preview.concept.level}}</span>
+    </header>
+    <div class="spf-traits">
+      {{#each preview.traits}}<span class="spf-trait">{{this}}</span>{{/each}}
+    </div>
+
+    <div class="spf-statline">
+      <span><strong>{{localize "SIMPLYPF2E.ItemForge.Usage"}}</strong> {{preview.usage}}{{#if preview.invested}} ({{localize "SIMPLYPF2E.ItemForge.Invested"}}){{/if}}</span>
+      <span><strong>{{localize "SIMPLYPF2E.ItemForge.Bulk"}}</strong> {{preview.bulk}}</span>
+      <span><strong>{{localize "SIMPLYPF2E.ItemForge.Price"}}</strong> {{preview.price}}</span>
+    </div>
+
+    {{#if preview.hasEffects}}
+      <h3>{{localize "SIMPLYPF2E.ItemForge.EffectsHeading"}}</h3>
+      <ul class="spf-list">
+        {{#each preview.effects}}
+          <li>{{this}}</li>
+        {{/each}}
+      </ul>
+    {{else}}
+      <p class="notification warning">{{localize "SIMPLYPF2E.ItemForge.NoEffects"}}</p>
+    {{/if}}
+
+    {{#if preview.concept.description}}
+      <h3>{{localize "SIMPLYPF2E.Preview.Description"}}</h3>
+      <p class="spf-description">{{preview.concept.description}}</p>
+    {{/if}}
+
+    {{#if tokenReport}}
+      <div class="spf-token-report">
+        <h3>{{localize "SIMPLYPF2E.Tokens.Heading"}}</h3>
+        <ul>
+          {{#each tokenReport.steps}}
+            <li><strong>{{this.label}}</strong> — {{this.text}}</li>
+          {{/each}}
+        </ul>
+        <p class="spf-token-total">{{tokenReport.totalText}}</p>
+      </div>
+    {{/if}}
+
+    <footer class="spf-actions">
+      <button type="button" data-action="createItem" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-plus"></i> {{localize "SIMPLYPF2E.ItemForge.CreateItem"}}
+      </button>
+      <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-trash"></i> {{localize "SIMPLYPF2E.Generator.Discard"}}
+      </button>
+    </footer>
+  </section>
+  {{/if}}
+</div>

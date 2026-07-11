@@ -517,3 +517,8 @@
 .spf-directory-button i {
   color: inherit;
 }
+
+/* Items directory button (item forge) */
+.spf-itemforge-button i {
+  color: inherit;
+}
