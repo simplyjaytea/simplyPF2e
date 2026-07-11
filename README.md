@@ -41,7 +41,6 @@ Configure the AI provider under **Game Settings → Configure Settings → Simpl
 | Creativity | Sampling temperature (0–2). |
 | Max response tokens | Raise if complex creatures come back truncated. |
 | Request timeout | Abort a generation if the provider sends *no data* for this long (default 90 s). |
-| Image model / base URL / key | Optional, for AI portraits — see [portraits](#read-aloud-text-recall-knowledge-and-portraits). |
 
 Provider examples:
 
@@ -78,13 +77,13 @@ The dice button next to **Generate** rolls a surprise: it ignores the descriptio
 
 Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size (both with +/− steppers), pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats"). The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter.
 
-### Read-aloud text, Recall Knowledge, and portraits
+### Read-aloud text, Recall Knowledge, and art
 
 Every creature comes with GM support baked into its notes:
 
 - A **read-aloud block** — two or three sensory sentences for theater of the mind, shown as a quote at the top of the description.
 - A **Recall Knowledge line** — the correct identification skill for the creature type, a clickable check at the level- and rarity-based DC, and a short nugget of what a player learns on a success (its weakness, its most dangerous trick).
-- **Art**: if you configure an image model in settings (any OpenAI-compatible `/images/generations` endpoint, e.g. OpenAI's `gpt-image-1` — DeepSeek doesn't offer images, so this can be a different provider than your text one), SimplyPF2e generates a portrait from the read-aloud text and uses it for the sheet and token. With no image model configured, it borrows art from the closest bestiary creature by type, size, and level instead. Encounter members always use bestiary art (no per-member image calls).
+- **Art**: SimplyPF2e borrows art from the closest-matching bestiary creature — scored by shared creature-type traits, size, and level — and uses it for the sheet and token.
 
 ### Loot
 
@@ -126,7 +125,6 @@ Slow or stuck generations:
 - [x] **Clickable rolls** — ✅ v0.1.4: damage, saves, checks, and area templates in custom abilities are inline roll links.
 - [x] **Encounter mode** — ✅ v0.3.0: themed encounters built to the GM Core XP budget (threat level × party size × party level), created as a folder of actors. Covers the old "batch mode" idea.
 - [x] **Recall Knowledge & read-aloud** — ✅ v0.3.0: theater-of-the-mind read-aloud block and a clickable Recall Knowledge check with a player-facing info nugget.
-- [x] **Creature art** — ✅ v0.3.0: optional AI portrait generation, with closest-bestiary-match art as the no-API fallback.
 - [x] **Loot** — ✅ v0.3.3: AI-generated treasure (coins as real currency, consumables, scrolls built from spells, magic items) with a Reroll Loot button in the preview.
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
 - [ ] **Treasure budgets** — price carried gear and loot against the GM Core treasure-budget tables for the creature's level.

@@ -7,7 +7,7 @@ import {
   examplePrompt, randomBrief
 } from "./presets.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
-import { resolveArt } from "./art.mjs";
+import { findBestiaryArt } from "./art.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
@@ -519,9 +519,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#busy = true;
     await this.render();
     try {
-      // Portrait: AI-generated when an image model is configured, otherwise
-      // borrowed from the closest bestiary creature.
-      const img = await resolveArt(this.#concept);
+      // Art: borrowed from the closest-matching bestiary creature.
+      const img = await findBestiaryArt(this.#concept);
       const actor = await createActor(this.#concept, this.#resolved, { img });
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
       actor.sheet.render(true);
@@ -536,7 +535,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
-  /** Create every encounter member (bestiary art only — no per-member image calls). */
+  /** Create every encounter member, each with closest-match bestiary art. */
   async #createEncounterActors() {
     if (!this.#encounter) return;
     this.#busy = true;
@@ -546,7 +545,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       let created = 0;
       for (const member of this.#encounter.members) {
         if (member.count < 1) continue;
-        const img = await resolveArt(member.concept, { allowGeneration: false });
+        const img = await findBestiaryArt(member.concept);
         const actor = await createActor(member.concept, member.resolved, { img });
         await actor.update({ folder: folder.id });
         created++;

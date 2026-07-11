@@ -297,41 +297,6 @@ Respond with a single JSON object and nothing else:
 }
 
 /**
- * Generate a portrait via an OpenAI-compatible /images/generations endpoint.
- * Uses the dedicated image settings, falling back to the text provider's
- * base URL/key. Returns base64 PNG data, or a URL if that's all we get.
- * @returns {Promise<{b64?: string, url?: string}>}
- */
-export async function generateImage({ prompt }) {
-  const model = getSetting(SETTINGS.imageModel);
-  if (!model) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoImageModel"));
-  const baseUrl = String(getSetting(SETTINGS.imageBaseUrl) || getSetting(SETTINGS.apiBaseUrl) || "").replace(/\/+$/, "");
-  const apiKey = getSetting(SETTINGS.imageApiKey) || getSetting(SETTINGS.apiKey);
-
-  const headers = { "Content-Type": "application/json" };
-  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-  let response;
-  try {
-    response = await fetch(`${baseUrl}/images/generations`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ model, prompt, n: 1, size: "1024x1024" })
-    });
-  } catch (err) {
-    throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.NetworkError", { message: err.message }));
-  }
-  if (!response.ok) {
-    const detail = await safeErrorDetail(response);
-    throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail }));
-  }
-  const data = await response.json();
-  const image = data?.data?.[0] ?? {};
-  if (image.b64_json) return { b64: image.b64_json };
-  if (image.url) return { url: image.url };
-  throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"));
-}
-
-/**
  * Send one chat completion request and return the assistant's text content.
  *
  * Requests are streamed so slow (especially reasoning) models show progress
