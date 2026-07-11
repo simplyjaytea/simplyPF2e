@@ -182,6 +182,60 @@ export async function getSpellCandidates(tradition, maxRank, keywords = []) {
   return filtered.length >= MIN_FILTERED_SPELLS ? filtered : candidates;
 }
 
+/* Below this many keyword-filtered equipment results, the filter is discarded
+   as too narrow — a bit higher than spells since equipment spans many more
+   item families (weapons, armor, gear, consumables) at once. */
+const MIN_FILTERED_EQUIPMENT = 20;
+
+/**
+ * List real equipment items the creature could carry, so the AI can choose
+ * from the compendium instead of naming gear from memory — the equipment
+ * counterpart of getSpellCandidates().
+ *
+ * Treasure is excluded (coins and valuables belong only in loot). The item
+ * level is capped at the creature's level, matching resolveConcept()'s
+ * equipment filter exactly so every candidate offered can actually resolve.
+ *
+ * When `keywords` are given (tokens from the first-draft equipment names and
+ * strikes), the list is narrowed to items matching at least one keyword in
+ * their traits or name — keeping the selection prompt small — unless that
+ * narrows things down to next to nothing, in which case the full level-capped
+ * list is returned instead.
+ * @param {number} level creature level
+ * @param {string[]} [keywords]
+ * @returns {Promise<{name: string, type: string, level: number}[]>} sorted by level then name
+ */
+export async function getEquipmentCandidates(level, keywords = []) {
+  const maxLevel = Math.max(level, 0);
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("equipment")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (!EQUIPMENT_TYPES.has(entry.type) || entry.type === "treasure") continue;
+      const itemLevel = entry.system?.level?.value ?? 0;
+      if (itemLevel > maxLevel) continue;
+      if (seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push({
+        name: entry.name,
+        type: entry.type,
+        level: itemLevel,
+        traits: entry.system?.traits?.value ?? []
+      });
+    }
+  }
+  candidates.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+  const strip = ({ name, type, level: lv }) => ({ name, type, level: lv });
+  if (!keywords.length) return candidates.map(strip);
+  const kw = keywords.map((k) => k.toLowerCase());
+  const filtered = candidates.filter((c) =>
+    kw.some((k) => c.traits.includes(k) || c.name.toLowerCase().includes(k))
+  );
+  return (filtered.length >= MIN_FILTERED_EQUIPMENT ? filtered : candidates).map(strip);
+}
+
 /** Clone a compendium document into plain item data ready for embedding. */
 export function toItemData(doc) {
   const data = doc.toObject();

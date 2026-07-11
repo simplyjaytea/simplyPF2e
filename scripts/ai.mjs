@@ -264,6 +264,59 @@ Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward 
 }
 
 /**
+ * Grounded equipment pass: given real, level-capped equipment items from the
+ * compendium, have the model pick the creature's carried gear. Names it
+ * returns are guaranteed to exist (and are still fuzzy-matched afterwards as
+ * a safety net). One call — no separate focus pass like spells, since the
+ * concept already carries the theme and the first-draft gear.
+ * @param {object} args
+ * @param {object} args.concept       normalized concept (for context)
+ * @param {{name: string, type: string, level: number}[]} args.candidates
+ * @returns {Promise<{equipment: {name: string, quantity: number, value: number}[], usage: object}>}
+ */
+export async function selectEquipment({ concept, candidates, onProgress }) {
+  const byType = new Map();
+  for (const c of candidates) {
+    if (!byType.has(c.type)) byType.set(c.type, []);
+    byType.get(c.type).push(c.level > 0 ? `${c.name} (L${c.level})` : c.name);
+  }
+  const list = [...byType.entries()]
+    .map(([type, names]) => `${type}: ${names.join("; ")}`)
+    .join("\n");
+
+  const system = `You are selecting carried equipment for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written. Respond with a single JSON object and nothing else:
+{ "equipment": [ { "name": string, "quantity": number } ] }
+Pick 3-8 logical items the creature would carry: the weapons it wields (match its strikes), sensible consumables (healing potions, elixirs, bombs, talismans, poisons it applies), and everyday adventuring gear it would plausibly use (rope, torches, rations, tools). Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its role and level. NO coins or currency. "quantity" is usually 1; use 2-5 only for ammunition and stackable consumables.`;
+
+  const user = [
+    `Creature: ${concept.name} (level ${concept.level})`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.description ? `Description: ${concept.description}` : null,
+    `Traits: ${concept.traits.join(", ")}`,
+    concept.strikes.length
+      ? `Strikes: ${concept.strikes.map((s) => `${s.name} (${s.type})`).join(", ")}`
+      : null,
+    concept.equipment.length
+      ? `First-draft equipment ideas (use as inspiration, but the final picks MUST come from the list): ${concept.equipment.map((e) => e.name).join(", ")}`
+      : null,
+    "",
+    "Available items:",
+    list
+  ].filter((line) => line !== null).join("\n");
+
+  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const equipment = (Array.isArray(parsed.equipment) ? parsed.equipment : [])
+    .filter((e) => e?.name)
+    .map((e) => ({
+      name: String(e.name),
+      quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10),
+      // Picks come from the compendium, so no estimated fallback price is needed.
+      value: 0
+    }));
+  return { equipment, usage };
+}
+
+/**
  * Encounter design pass: given a theme and a budget-fixed composition, name
  * the encounter and write a one-sentence creature brief per slot. Each brief
  * then runs through the normal single-creature pipeline.

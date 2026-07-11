@@ -1,6 +1,6 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
-import { generateConcept, generateLoot, selectSpells, chooseSpellFocus, designEncounter } from "./ai.mjs";
-import { getSpellCandidates } from "./compendium.mjs";
+import { generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, designEncounter } from "./ai.mjs";
+import { getSpellCandidates, getEquipmentCandidates } from "./compendium.mjs";
 import { normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor } from "./builder.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, deleteCustomPreset,
@@ -355,6 +355,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#beginProgress([
       ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept")],
       ...(this.#input.allowSpellcasting ? [["spells", game.i18n.localize("SIMPLYPF2E.Progress.Spells")]] : []),
+      ["equipment", game.i18n.localize("SIMPLYPF2E.Progress.Equipment")],
       ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
     ]);
     try {
@@ -373,6 +374,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this.#concept = normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity });
       if (this.#concept.spellcasting) await this.#setStep("spells");
       await this.#refineSpells(this.#concept);
+      if (this.#concept.equipment.length) await this.#setStep("equipment");
+      await this.#refineEquipment(this.#concept);
       await this.#setStep("match");
       this.#resolved = await resolveConcept(this.#concept);
       const eq = this.#resolved.equipment;
@@ -441,6 +444,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         this.#recordTokens(memberLabel(i), usage);
         const concept = normalizeConcept(raw, { level: slot.level, rarity: "common" });
         await this.#refineSpells(concept);
+        await this.#refineEquipment(concept);
         members.push({ ...slot, concept });
       }
 
@@ -510,6 +514,36 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       console.warn(`${MODULE_ID} | grounded spell selection failed, using first-draft spells`, err);
     }
     if (!spellcasting.spells.length) concept.spellcasting = null;
+  }
+
+  /**
+   * Grounded equipment selection: fetch real, level-capped items from the
+   * equipment compendium (narrowed by keywords drawn from the first-draft
+   * gear names and strikes — no separate AI focus pass needed, unlike spells)
+   * and let the AI pick the creature's carried gear from that list. Falls
+   * back to the first-draft names (still fuzzy-matched) if anything fails.
+   * Creatures designed to carry nothing (beasts, mindless) are skipped.
+   */
+  async #refineEquipment(concept) {
+    if (!concept?.equipment?.length) return;
+    try {
+      const keywords = [...new Set(
+        [...concept.equipment.map((e) => e.name), ...concept.strikes.map((s) => s.name)]
+          .flatMap((name) => String(name).toLowerCase().split(/[^a-z0-9]+/))
+          .filter((token) => token.length > 2)
+      )];
+      const candidates = await getEquipmentCandidates(concept.level, keywords);
+      if (!candidates.length) return;
+      const { equipment, usage } = await selectEquipment({
+        concept,
+        candidates,
+        onProgress: (p) => this.#onAIProgress(p)
+      });
+      this.#recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Equipment"), usage);
+      if (equipment.length) concept.equipment = equipment;
+    } catch (err) {
+      console.warn(`${MODULE_ID} | grounded equipment selection failed, using first-draft equipment`, err);
+    }
   }
 
   static async #onCreateActor() {
