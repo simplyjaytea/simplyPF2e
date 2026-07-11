@@ -8,10 +8,7 @@ export const SETTINGS = {
   maxTokens: "maxTokens",
   requestTimeout: "requestTimeout",
   sourcePacks: "sourcePacks",
-  customPresets: "customPresets",
-  imageModel: "imageModel",
-  imageBaseUrl: "imageBaseUrl",
-  imageApiKey: "imageApiKey"
+  customPresets: "customPresets"
 };
 
 export function registerSettings(SourcesConfigApp) {
@@ -99,36 +96,6 @@ export function registerSettings(SourcesConfigApp) {
     restricted: true,
     type: Number,
     default: 90
-  });
-
-  game.settings.register(MODULE_ID, SETTINGS.imageModel, {
-    name: "SIMPLYPF2E.Settings.ImageModel.Name",
-    hint: "SIMPLYPF2E.Settings.ImageModel.Hint",
-    scope: "world",
-    config: true,
-    restricted: true,
-    type: String,
-    default: ""
-  });
-
-  game.settings.register(MODULE_ID, SETTINGS.imageBaseUrl, {
-    name: "SIMPLYPF2E.Settings.ImageBaseUrl.Name",
-    hint: "SIMPLYPF2E.Settings.ImageBaseUrl.Hint",
-    scope: "world",
-    config: true,
-    restricted: true,
-    type: String,
-    default: ""
-  });
-
-  game.settings.register(MODULE_ID, SETTINGS.imageApiKey, {
-    name: "SIMPLYPF2E.Settings.ImageApiKey.Name",
-    hint: "SIMPLYPF2E.Settings.ImageApiKey.Hint",
-    scope: "world",
-    config: true,
-    restricted: true,
-    type: String,
-    default: ""
   });
 }
 

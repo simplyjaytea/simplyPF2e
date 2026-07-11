@@ -29,6 +29,7 @@ Loot reroll: `generateLoot()` — separate small call, concept summary only (blu
 - Equipment: added `value` field (gp estimate) end-to-end (prompt→normalizeConcept→resolveConcept→createActor); unmatched equipment now falls back to `customEquipmentItem()` (type "equipment") instead of vanishing; prompt broadened to explicit adventuring-gear category + armor-only-when-plausible guidance, count 2-6→3-8.
 - Token trims: SYSTEM_PROMPT wording tightened (~8% smaller), generateLoot context dropped full description.
 - Miss-rate logging added in generator-app.mjs (`equipment matches: X/Y` console log) to measure before building grounded equipment-candidate pass (not yet built — roadmap item).
+- AI image/portrait generation removed entirely (branch `remove/ai-image-generation`): `generateImage` (ai.mjs), `generatePortrait`/`resolveArt`/image settings all gone. Bestiary-art matching (`findBestiaryArt` in art.mjs) is now the only art path.
 
 ## Known gaps / roadmap next
 
