@@ -59,6 +59,7 @@ JSON schema (all keys required unless marked optional):
   },
   "feats": string[],                    // EXACT published PF2e feat names (e.g. "Power Attack", "Sudden Charge") for creatures with class-like training such as humanoid soldiers, monks or assassins; [] for beasts, mindless creatures, and anything without trained techniques; max 3
   "equipment": [ { "name": string, "quantity": number } ],  // 2-6 logical carried items with EXACT PF2e item names: the weapons and armor it actually wields, plus consumables where sensible (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies). For creatures of level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
+  "loot": [ { "name": string, "quantity": number } ],  // 3-8 items dropped on defeat with EXACT PF2e item names: treasure items, consumables (potions, scrolls, alchemical items), magical items appropriate to level/rarity. Scale gold coins and item rarity to the encounter's difficulty (higher rarity = more valuable loot). Include 1-2 coins items (e.g. "Gold Coins"), 1-2 consumable items (e.g. "Healing Potion", "Scroll of Phantom Steed"), and 1-2 treasure/magical items.
   "resistances": [ { "type": string } ],   // damage types only, values computed from tables; [] if none
   "weaknesses": [ { "type": string } ],
   "immunities": string[]                 // e.g. ["death-effects", "poison"], [] if none
@@ -111,6 +112,34 @@ async function requestJSON(args) {
     }
   }
   throw lastError;
+}
+
+/**
+ * Generate just the loot field for a creature, given existing concept details.
+ * Used for the "Reroll Loot" feature to regenerate treasure without changing creature stats.
+ * @returns {Promise<{loot: Array}>}
+ */
+export async function generateLoot({ concept, onProgress }) {
+  const system = `You are a Pathfinder 2e loot designer. Given a creature, respond with ONLY a JSON object containing an appropriate loot array for it to drop when defeated.
+
+Respond with a SINGLE JSON object and nothing else. No markdown fences, no commentary.
+
+JSON schema (loot key required):
+{
+  "loot": [ { "name": string, "quantity": number } ]
+}
+
+Loot should be 3-8 items with EXACT PF2e item names: treasure items, consumables (potions, scrolls, alchemical items), and magical items appropriate to level/rarity. Include 1-2 coins items (e.g. "Gold Coins"), 1-2 consumable items (e.g. "Healing Potion", "Scroll of Phantom Steed"), and 1-2 treasure/magical items. Scale rarity and quantity to the creature's level and rarity.`;
+
+  const user = [
+    `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.traits.length ? `Traits: ${concept.traits.join(", ")}` : null,
+    concept.description ? `Description: ${concept.description}` : null
+  ].filter((line) => line !== null).join("\n");
+
+  const parsed = await requestJSON({ system, user, onProgress });
+  return { loot: (Array.isArray(parsed.loot) ? parsed.loot : []) };
 }
 
 /**

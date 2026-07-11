@@ -64,6 +64,8 @@
       "Regenerate": "Regenerate",
       "Busy": "Consulting the forge...",
       "CreateActor": "Create Actor",
+      "RerollLoot": "Reroll Loot",
+      "RerollLootTooltip": "Generate different loot without changing the creature",
       "Discard": "Discard",
       "Created": "Created actor \"{name}\".",
       "NoApiKey": "No API key is configured. Set one in Module Settings → SimplyPF2e before generating."
@@ -160,6 +162,7 @@
       "Cantrip": "cantrip",
       "Feats": "Feats",
       "Equipment": "Equipment",
+      "Loot": "Loot",
       "Description": "Description",
       "Immunities": "Immunities",
       "Resistances": "Resistances",
