@@ -129,12 +129,13 @@ export function normalizeConcept(raw, { level, rarity }) {
     feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 4),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
-        if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
+        if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0, flavor: "" };
         if (e?.name) {
           return {
             name: String(e.name),
             quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10),
-            value: Math.max(Number(e.value) || 0, 0)
+            value: Math.max(Number(e.value) || 0, 0),
+            flavor: clampFlavor(e.flavor)
           };
         }
         return null;
@@ -172,6 +173,14 @@ export function parseCoins(name) {
 }
 
 /**
+ * Clamp the AI's optional per-item "flavor" blurb (1-2 sentences of lore,
+ * used as the description of loot/equipment with no compendium match) to a
+ * plain, bounded string. The schema asks for ~160 characters; allow modest
+ * overshoot rather than cutting mid-sentence for a few extra words.
+ */
+const clampFlavor = (flavor) => String(flavor ?? "").trim().slice(0, 300);
+
+/**
  * Coerce a raw AI loot array into {name, quantity} entries. Coin entries are
  * folded into their canonical treasure item name and may carry the large
  * quantities coins need; everything else keeps the equipment quantity cap.
@@ -183,11 +192,12 @@ export function normalizeLoot(raw) {
       if (!name) return null;
       const quantity = Math.max(Math.round(Number(e?.quantity) || 1), 1);
       const value = Math.max(Number(e?.value) || 0, 0);
+      const flavor = typeof e === "string" ? "" : clampFlavor(e?.flavor);
       const coins = parseCoins(name);
       if (coins) {
-        return { name: coins.name, quantity: Math.min(coins.count ? coins.count * quantity : quantity, 100000), value };
+        return { name: coins.name, quantity: Math.min(coins.count ? coins.count * quantity : quantity, 100000), value, flavor };
       }
-      return { name: String(name), quantity: Math.min(quantity, 10), value };
+      return { name: String(name), quantity: Math.min(quantity, 10), value, flavor };
     })
     .filter(Boolean)
     .slice(0, 24); // fits LOOT_GUIDE's hoard guidance (~12-20 items) with headroom, still bounds runaway output
@@ -226,7 +236,7 @@ export function priceToGp(price) {
  */
 export async function resolveLoot(concept) {
   const loot = [];
-  for (const { name, quantity, value } of concept.loot) {
+  for (const { name, quantity, value, flavor } of concept.loot) {
     const scroll = parseScroll(name);
     if (scroll) {
       const entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
@@ -239,7 +249,7 @@ export async function resolveLoot(concept) {
       const templateDoc = await getDocument(await findScrollTemplate(rank));
       const templateGp = priceToGp(templateDoc?.system?.price?.value);
       loot.push({
-        name, quantity, value, runes: parseRunes(name), entry, scroll: { rank },
+        name, quantity, value, flavor, runes: parseRunes(name), entry, scroll: { rank },
         resolvedValue: templateGp > 0 ? templateGp : value
       });
       continue;
@@ -261,7 +271,7 @@ export async function resolveLoot(concept) {
         resolvedValue = hasRunes && value > 0 ? value : gp;
       }
     }
-    loot.push({ name, quantity, value, runes, entry, resolvedValue });
+    loot.push({ name, quantity, value, flavor, runes, entry, resolvedValue });
   }
   return loot;
 }
@@ -380,10 +390,25 @@ async function buildScrollItem(spellEntry, rank) {
 }
 
 /**
+ * Description body for a custom (no compendium match) item: the AI's flavor
+ * blurb as its own paragraph when there is one, then the boilerplate
+ * "no compendium match" disclaimer — kept (italicized, below the flavor)
+ * rather than replaced, so the GM still sees that the item is a stand-in.
+ * Flavor is AI-authored prose, so it gets escaped; not routed through
+ * enrichDescription(), which converts mechanical phrasing into roll links —
+ * a lore blurb has none.
+ */
+function customItemDescription(flavor, disclaimerKey) {
+  const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
+  const disclaimer = `<p><em>${game.i18n.localize(disclaimerKey)}</em></p>`;
+  return flavor ? `<p>${esc(flavor)}</p>${disclaimer}` : disclaimer;
+}
+
+/**
  * Fallback for loot with no compendium match: a custom treasure item carrying
  * the AI's estimated value, so the haul keeps its worth instead of vanishing.
  */
-function customTreasureItem(name, quantity, value) {
+function customTreasureItem(name, quantity, value, flavor = "") {
   const gp = Math.max(Math.round(Number(value) || 0), 0);
   const item = {
     name: capitalized(name),
@@ -391,7 +416,7 @@ function customTreasureItem(name, quantity, value) {
     img: "icons/svg/item-bag.svg",
     system: {
       price: { value: { gp } },
-      description: { value: `<p>${game.i18n.localize("SIMPLYPF2E.Loot.CustomItem")}</p>` }
+      description: { value: customItemDescription(flavor, "SIMPLYPF2E.Loot.CustomItem") }
     }
   };
   if (quantity > 1) item.system.quantity = quantity;
@@ -403,7 +428,7 @@ function customTreasureItem(name, quantity, value) {
  * (type "equipment", not "treasure") at the AI's estimated price, so gear the
  * creature should be carrying doesn't silently vanish or masquerade as coins.
  */
-function customEquipmentItem(name, quantity, value) {
+function customEquipmentItem(name, quantity, value, flavor = "") {
   const gp = Math.max(Math.round(Number(value) || 0), 0);
   const item = {
     name: capitalized(name),
@@ -411,7 +436,7 @@ function customEquipmentItem(name, quantity, value) {
     img: "icons/svg/item-bag.svg",
     system: {
       price: { value: { gp } },
-      description: { value: `<p>${game.i18n.localize("SIMPLYPF2E.Equipment.CustomItem")}</p>` }
+      description: { value: customItemDescription(flavor, "SIMPLYPF2E.Equipment.CustomItem") }
     }
   };
   if (quantity > 1) item.system.quantity = quantity;
@@ -450,7 +475,7 @@ export async function resolveConcept(concept) {
   }
 
   const equipment = [];
-  for (const { name, quantity, value } of concept.equipment) {
+  for (const { name, quantity, value, flavor } of concept.equipment) {
     // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
     // item matches; the runes are re-applied as system data at creation.
     const runes = parseRunes(name);
@@ -459,7 +484,7 @@ export async function resolveConcept(concept) {
       runes.base,
       (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0)
     );
-    equipment.push({ name, quantity, value, runes, entry });
+    equipment.push({ name, quantity, value, flavor, runes, entry });
   }
 
   const loot = await resolveLoot(concept);
@@ -807,10 +832,10 @@ export async function createActor(concept, resolved, { img = null } = {}) {
   // Equipment: apply quantities, fundamental runes, and sensible carry states.
   // Anything without a compendium match becomes a custom gear item at the AI's
   // estimated price, so it doesn't silently vanish from the actor.
-  for (const { name, quantity, value, runes, entry } of resolved.equipment) {
+  for (const { name, quantity, value, flavor, runes, entry } of resolved.equipment) {
     const doc = await getDocument(entry);
     if (!doc) {
-      items.push(customEquipmentItem(name, quantity, value));
+      items.push(customEquipmentItem(name, quantity, value, flavor));
       continue;
     }
     const data = toItemData(doc);
@@ -842,20 +867,20 @@ export async function createActor(concept, resolved, { img = null } = {}) {
   // Loot: apply quantities and runes (unequipped, in inventory). Anything
   // without a compendium match becomes a custom treasure item at the AI's
   // estimated value, so the haul keeps its worth instead of vanishing.
-  for (const { name, quantity, value, runes, entry, scroll } of resolved.loot) {
+  for (const { name, quantity, value, flavor, runes, entry, scroll } of resolved.loot) {
     if (scroll) {
       const data = await buildScrollItem(entry, scroll.rank);
       if (data) {
         if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
         items.push(data);
       } else {
-        items.push(customTreasureItem(name, quantity, value));
+        items.push(customTreasureItem(name, quantity, value, flavor));
       }
       continue;
     }
     const doc = await getDocument(entry);
     if (!doc) {
-      items.push(customTreasureItem(name, quantity, value));
+      items.push(customTreasureItem(name, quantity, value, flavor));
       continue;
     }
     const data = toItemData(doc);
