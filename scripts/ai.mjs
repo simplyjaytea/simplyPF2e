@@ -12,10 +12,32 @@ import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
    told otherwise every time. */
 const REMASTER_NOTE = `using CURRENT PF2e REMASTER names, never the old pre-Remaster name — e.g. "Thunderstone" is now "Blasting Stone", the old "Bag of Holding" is now "Spacious Pouch"`;
 
-/* Loot rules shared between the concept prompt and the reroll-loot prompt. */
-const LOOT_GUIDE = `3-8 items dropped on defeat; "value" is the approximate price of ONE unit in gold pieces (used when an item has no compendium match). Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35, "value": 1}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the creature's level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published item names ${REMASTER_NOTE}, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the creature's level or lower. EXCEPTION: if the creature's description or the GM's request explicitly calls for abundant loot (a hoard, riches, a wealthy creature, a dragon's hoard, "lots of loot", etc.), scale UP to roughly 12-20 items with proportionally more coin, treasure, and magic-item entries; otherwise stay in the 3-8 baseline.`;
+/* How the GM's Treasure amount setting (Stingy/Standard/Generous — see
+ * TREASURE_AMOUNT_MULTIPLIER in tables.mjs) should bend the item COUNT and
+ * richness the model writes, not just the post-hoc coin padding that
+ * applyTreasureBudget does. Without this, the model wrote the same 3-8-item,
+ * "1-2 magic items" baseline regardless of the slider, and named items are
+ * never trimmed after the fact — so Stingy and Generous looked identical
+ * except for the coin total. */
+const LOOT_AMOUNT_GUIDE = {
+  stingy: `This GM wants SPARSE loot: lean to the LOW end of every range below (2-3 items total), usually skip the magic-item entry entirely unless the concept specifically calls for one, and keep named items cheap/common.`,
+  standard: `Use the ranges below as written.`,
+  generous: `This GM wants GENEROUS loot: lean to the HIGH end of every range below (6-8 items total), always include at least one treasure or magic item, and prefer pricier named items when a few options fit the concept.`
+};
 
-const SYSTEM_PROMPT = `You are an expert Pathfinder 2e (remaster) creature designer. You design creature CONCEPTS; numbers are computed elsewhere from the official Building Creatures benchmark tables, so choose only named scales, never numeric statistics.
+/* Loot rules shared between the concept prompt and the reroll-loot prompt. */
+function lootGuide(amount) {
+  const amountNote = LOOT_AMOUNT_GUIDE[amount] ?? LOOT_AMOUNT_GUIDE.standard;
+  return `${amountNote} 3-8 items dropped on defeat; "value" is the approximate price of ONE unit in gold pieces (used when an item has no compendium match). Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35, "value": 1}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the creature's level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published item names ${REMASTER_NOTE}, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the creature's level or lower (adjusted per the amount guidance above). EXCEPTION: if the creature's description or the GM's request explicitly calls for abundant loot (a hoard, riches, a wealthy creature, a dragon's hoard, "lots of loot", etc.), scale UP to roughly 12-20 items with proportionally more coin, treasure, and magic-item entries regardless of the amount setting; otherwise stay within the guidance above.`;
+}
+
+/**
+ * The creature-concept schema prompt. A function (not a constant) because the
+ * "loot" schema field's guidance depends on the GM's Treasure amount setting
+ * — see lootGuide() above.
+ */
+function systemPrompt(amount) {
+  return `You are an expert Pathfinder 2e (remaster) creature designer. You design creature CONCEPTS; numbers are computed elsewhere from the official Building Creatures benchmark tables, so choose only named scales, never numeric statistics.
 
 Respond with a SINGLE JSON object only. No markdown fences, no commentary.
 
@@ -66,7 +88,7 @@ JSON schema (all keys required unless marked optional):
   },
   "feats": string[], // EXACT published PF2e feat names (e.g. "Power Attack", "Sudden Charge") for creatures with class-like training (soldiers, monks, assassins); [] for beasts, mindless creatures, and anything untrained; max 3. IMPORTANT: when a feat grants a distinct attack or Strike-based action (Power Attack, Sudden Charge, Ki Strike, ...), ALSO add a strike named after the feat to "strikes" — same weapon and damageType as the base strike it modifies, damageScale one step higher (extreme stays extreme), plus the feat's traits — and keep the feat in "feats" too.
   "equipment": [ { "name": string, "quantity": number, "value": number } ], // 3-8 logical carried items with EXACT PF2e item names (${REMASTER_NOTE}), drawn from: the weapons it wields; sensible consumables (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies); and everyday adventuring gear it would plausibly carry (rope, torches, rations, thieves' tools, a crowbar). NO coins or currency here — those belong only in "loot". "value" is the approximate gp price of ONE unit, used only as a fallback when the name finds no compendium match. Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its AC and level. At level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
-  "loot": [ { "name": string, "quantity": number, "value": number } ], // ${LOOT_GUIDE}
+  "loot": [ { "name": string, "quantity": number, "value": number } ], // ${lootGuide(amount)}
   "resistances": [ { "type": string } ], // damage types only, values computed from tables; [] if none
   "weaknesses": [ { "type": string } ],
   "immunities": string[] // e.g. ["death-effects", "poison"], [] if none
@@ -96,6 +118,7 @@ Design guidance (GM Core road maps):
 - Use standard glossary abilities (Grab, Push, Knockdown, Trample, Swallow Whole, Frightful Presence, Regeneration, Attack of Opportunity, ...) where they fit, and invent 1-2 signature custom abilities that make the creature memorable.
 - Passives especially should reuse a standard glossary ability instead of an invented equivalent — glossary abilities carry real working automation (Regeneration actually heals, All-Around Vision actually prevents flanking), while a custom passive is just prose the GM must remember to apply by hand. Reserve invented passives for narrative traits needing no mechanical tracking (a scent, a texture, an aura's flavor); if an invented passive DOES have a mechanical effect, phrase it with the DESCRIPTION CONVENTIONS above (an area, a save, a damage tick) so it stays clickable rather than inert prose.
 - Traits, languages, senses and speeds must follow PF2e conventions.`;
+}
 
 export class AIRequestError extends Error {
   constructor(message, { retryable = false } = {}) {
@@ -146,7 +169,7 @@ function normalizeUsage(usage, content) {
  * Used for the "Reroll Loot" feature to regenerate treasure without changing creature stats.
  * @returns {Promise<{loot: Array}>}
  */
-export async function generateLoot({ concept, onProgress }) {
+export async function generateLoot({ concept, amount = "standard", onProgress }) {
   const system = `You are a Pathfinder 2e loot designer. Given a creature, respond with ONLY a JSON object containing an appropriate loot array for it to drop when defeated.
 
 Respond with a SINGLE JSON object and nothing else. No markdown fences, no commentary.
@@ -156,7 +179,7 @@ JSON schema (loot key required):
   "loot": [ { "name": string, "quantity": number, "value": number } ]
 }
 
-Loot should be ${LOOT_GUIDE}`;
+Loot should be ${lootGuide(amount)}`;
 
   const user = [
     `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
@@ -173,7 +196,7 @@ Loot should be ${LOOT_GUIDE}`;
  * Ask the configured model for a creature concept.
  * @returns {Promise<{concept: object, usage: object}>} parsed concept JSON + token usage
  */
-export async function generateConcept({ prompt, level, rarity, allowSpellcasting, preset, onProgress }) {
+export async function generateConcept({ prompt, level, rarity, allowSpellcasting, preset, amount = "standard", onProgress }) {
   const userPrompt = [
     `Creature level: ${level}`,
     `Rarity: ${rarity}`,
@@ -184,7 +207,7 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
   ].filter((line) => line !== null).join("\n");
 
   const { data, usage } = await requestJSON({
-    system: SYSTEM_PROMPT,
+    system: systemPrompt(amount),
     user: userPrompt,
     onProgress
   });
