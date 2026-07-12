@@ -20,11 +20,26 @@ import { findRuleExemplar, EFFECT_KINDS } from "./rule-templates.mjs";
 
 const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
 
-/* "ghost-touch" -> "ghostTouch": the exact transform PF2e's own rune data
- * uses between a rune's kebab-case slug and its system.runes.property array
- * key (verified against foundryvtt/pf2e source: "flaming", "greaterFlaming",
- * "ghostTouch", "ancestralEchoing" all follow this convention). */
+/* "ghost-touch" -> "ghostTouch": the transform PF2e's own rune data uses
+ * between a rune's kebab-case slug and its system.runes.property array key
+ * (verified against foundryvtt/pf2e source: "flaming", "ghostTouch",
+ * "ancestralEchoing" all follow this convention). */
 const kebabToCamel = (s) => String(s).replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+
+/* Graded property runes ("Flaming (Greater)", "Fortification (Greater)")
+ * are the ONE case where the catalog name and the property-array key don't
+ * follow simple kebabToCamel: the grade moves from a trailing "(Greater)"/
+ * "(Major)" suffix to a LEADING key prefix — "Flaming (Greater)" is key
+ * "greaterFlaming", not "flamingGreater" (verified against multiple real
+ * examples in foundryvtt/pf2e's runes.ts: greaterFortification, greaterCorrosive,
+ * greaterInvisibility, majorQuenching, ...). */
+function propertyRuneKey(name) {
+  const match = /^(.+?)\s*\((Greater|Major)\)$/i.exec(String(name).trim());
+  if (!match) return kebabToCamel(slugify(name));
+  const grade = match[2].toLowerCase();
+  const base = kebabToCamel(slugify(match[1]));
+  return grade + base.charAt(0).toUpperCase() + base.slice(1);
+}
 
 /* Item levels the forge accepts (items start at 1; creature MAX_LEVEL caps it). */
 export const MIN_ITEM_LEVEL = 1;
@@ -303,6 +318,17 @@ export async function getBaseItemCandidates(kind, maxLevel) {
     .map((e) => ({ name: e.name, level: e.level }));
 }
 
+/* Fundamental rune items share the same "etched onto a weapon/armor" usage
+ * string as property runes (e.g. "Weapon Potency (+1)", "Striking (Greater)")
+ * — excluded by name so they never leak into the property-rune candidate
+ * list and get double-priced/double-picked alongside the dedicated
+ * potency/secondary-tier fields. */
+function fundamentalRuneNames(kind) {
+  const names = new Set([1, 2, 3].map((t) => slugify(POTENCY_CATALOG_NAME[kind](t))));
+  for (const t of [1, 2, 3]) names.add(slugify(SECONDARY_CATALOG_NAME[kind][t]));
+  return names;
+}
+
 /**
  * Real property rune items (by their "etched onto a weapon/armor" usage
  * string) at or below a target level.
@@ -310,9 +336,11 @@ export async function getBaseItemCandidates(kind, maxLevel) {
  */
 export async function getPropertyRuneCandidates(kind, maxLevel) {
   const usageSet = kind === "weapon" ? WEAPON_RUNE_USAGE : ARMOR_RUNE_USAGE;
+  const fundamentalNames = fundamentalRuneNames(kind);
   const entries = await getAllEquipmentEntries();
   return entries
-    .filter((e) => e.type === "equipment" && usageSet.has(e.usage) && e.level <= maxLevel)
+    .filter((e) => e.type === "equipment" && usageSet.has(e.usage) && e.level <= maxLevel
+      && !fundamentalNames.has(slugify(e.name)))
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
     .map((e) => ({ name: e.name, level: e.level }));
 }
@@ -423,7 +451,7 @@ export async function buildRunedItemData(concept) {
     ...(data.system.runes ?? {}),
     potency: concept.potency,
     [SECONDARY_RUNE_FIELD[concept.kind]]: concept.secondaryTier,
-    property: propertyDocs.map((d) => kebabToCamel(slugify(d.name)))
+    property: propertyDocs.map((d) => propertyRuneKey(d.name))
   };
 
   const gp = Math.round(
