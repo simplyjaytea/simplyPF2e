@@ -48,17 +48,27 @@ export function composeEncounter(threat, partySize, partyLevel) {
   members.push({ role: "boss", level: bossLevel, count: 1, xpEach: bossXP });
   spent += bossXP;
 
-  // Fill the remainder with a single kind of lesser creature. Prefer minions
-  // two levels down; fall back to weaker ones if the budget is tight.
+  // Fill the remainder with lesser creatures: try each relative tier in turn
+  // (strongest first) against whatever budget is left, each affordable tier
+  // becoming its own group. The fixed 3-entry tier list naturally caps the
+  // encounter at 4 groups (boss + 3 minion tiers); no extra constant needed.
+  // At low party levels clampLevel can collapse two tiers onto the same
+  // absolute level — merge into the existing group (respecting its 6-copy
+  // cap) instead of pushing a visually-duplicate second group.
   for (const rel of [-2, -3, -4]) {
     const level = clampLevel(partyLevel + rel);
     if (level >= bossLevel) continue;
     const xp = creatureXP(level, partyLevel);
     const count = Math.min(Math.floor((budget - spent) / xp), 6);
-    if (count >= 1) {
+    if (count < 1) continue;
+    const existing = members.find((m) => m.role === "minion" && m.level === level);
+    if (existing) {
+      const add = Math.min(count, 6 - existing.count);
+      existing.count += add;
+      spent += add * xp;
+    } else {
       members.push({ role: "minion", level, count, xpEach: xp });
       spent += count * xp;
-      break;
     }
   }
 

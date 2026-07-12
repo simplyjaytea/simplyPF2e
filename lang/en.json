@@ -118,6 +118,8 @@
       "Design": "Encounter design",
       "Member": "Member {index}/{total}",
       "Loot": "Loot reroll",
+      "CreatingActors": "Creating actors",
+      "CreatingActorDetail": "Creating actor {index}/{total}…",
       "Thinking": "The model is thinking… (~{tokens} tokens of reasoning)",
       "Writing": "Receiving the stat block… (~{tokens} tokens)"
     },

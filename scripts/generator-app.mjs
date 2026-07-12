@@ -634,12 +634,31 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  /**
+   * Actor-creation progress: writes the "actor N of M" detail line and the
+   * fill bar directly into the DOM, the same no-re-render technique
+   * #onAIProgress uses — a full encounter can create ~24 actors and a render
+   * per copy would make the loop visibly stutter.
+   */
+  #reportActorProgress(index, total) {
+    const progress = this.#progress;
+    if (!progress) return;
+    progress.detail = game.i18n.format("SIMPLYPF2E.Progress.CreatingActorDetail", { index, total });
+    progress.percent = total > 0 ? Math.round((index / total) * 100) : 0;
+    const el = this.element?.querySelector(".spf-progress-detail");
+    if (el) el.textContent = progress.detail;
+    const fill = this.element?.querySelector(".spf-progress-fill");
+    if (fill) fill.style.width = `${progress.percent}%`;
+  }
+
   /** Create every encounter member, each with closest-match bestiary art. */
   async #createEncounterActors() {
     if (!this.#encounter) return;
     this.#busy = true;
-    await this.render();
+    const total = this.#encounter.members.reduce((sum, m) => sum + Math.max(m.count, 0), 0);
+    this.#beginProgress([["create", game.i18n.localize("SIMPLYPF2E.Progress.CreatingActors")]]);
     try {
+      await this.#setStep("create");
       const folder = await Folder.create({ name: this.#encounter.name, type: "Actor" });
       let created = 0;
       for (const member of this.#encounter.members) {
@@ -647,6 +666,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         // Identical minions share one art lookup — same creature, same portrait.
         const img = await findBestiaryArt(member.concept);
         for (let i = 0; i < member.count; i++) {
+          this.#reportActorProgress(created + 1, total);
           const actor = await createActor(member.concept, member.resolved, { img });
           const update = { folder: folder.id };
           if (member.count > 1) update.name = `${actor.name} ${i + 1}`;
@@ -663,6 +683,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this.#error = err.message;
     } finally {
       this.#busy = false;
+      this.#progress = null;
       await this.render();
     }
   }
