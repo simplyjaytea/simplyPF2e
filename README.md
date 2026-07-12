@@ -21,7 +21,7 @@ Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a le
 - **Grounded, not hallucinated.** Spells, feats, abilities, and equipment are matched against your actual compendiums — see [Grounding in the compendium](#grounding-in-the-compendium) for how each category stays honest.
 - **Real currency and treasure.** Loot generates as actual PF2e coin items, consumables, scrolls, and magic items — not text you have to convert by hand.
 - **Encounter mode.** Describe a theme, get a whole cohesive group built to the GM Core XP budget in one pass.
-- **Item forge.** Describe a wondrous magic item and get a real Foundry item with *working* passive automation — its Rule Elements are cloned from published items, never invented (see [Item forge](#item-forge)).
+- **Item forge.** Describe a wondrous magic item and get a real Foundry item with *working* passive automation — its Rule Elements are cloned from published items, never invented. Or forge a magic weapon or suit of armor built from real fundamental and property runes, priced by summing the actual rune and base-item documents (see [Item forge](#item-forge)).
 - **Presets that shape the build.** Twelve built-in class road maps, plus save your own.
 - **Nothing touches your world until you say so.** Every generation is a preview — regenerate, edit the prompt, reroll just the loot, or discard, freely.
 - **Full visibility into cost.** Streamed progress per step and an exact token-usage report after every generation.
@@ -101,7 +101,11 @@ Switch the toggle at the top of the dialog to **Encounter**, set your party's le
 
 ### Item forge
 
-Open the **Items** sidebar tab and click **Item Forge** (GM only), or run `game.modules.get("simplypf2e").api.openItemForge()`. Describe a wondrous item ("a charred iron circlet that shields the wearer's mind and lets it see in the dark"), pick a level and rarity, and **Generate**. The preview shows the item's usage, bulk, price, traits, a plain-English list of its passive effects, and — if the concept calls for one — an activated ability; **Create Item** places it in the Items directory with its sheet open, ready to drag onto a character sheet — where the effects *just work*, no manual setup.
+Open the **Items** sidebar tab and click **Item Forge** (GM only), run `game.modules.get("simplypf2e").api.openItemForge()`, or click the **Item Forge** button next to the Single/Encounter toggle in the NPC generator window — all three open the same app. Pick an item type — **Wondrous Item**, **Weapon**, or **Armor** — describe the item, pick a level and rarity, and **Generate**.
+
+For a wondrous item ("a charred iron circlet that shields the wearer's mind and lets it see in the dark"), the preview shows usage, bulk, price, traits, a plain-English list of its passive effects, and — if the concept calls for one — an activated ability; **Create Item** places it in the Items directory with its sheet open, ready to drag onto a character sheet — where the effects *just work*, no manual setup.
+
+For a weapon or suit of armor, the forge switches to a rune-based pipeline: it harvests real candidates from your equipment compendium — base weapons/armor at or under the target level, property runes filtered by their real usage string (etched onto a weapon vs. onto light/medium-heavy armor), and fundamental rune tiers (potency, striking or resilient) whose real item level actually fits the target — and the AI picks a build only from those exact candidates, never inventing a rune or base item. The final item sums the real base item's and rune items' actual prices, and its overall level is the highest level among them (the real PF2e rule); the name follows the standard "+N [runes] [base name]" convention, assembled from the resolved documents' own names.
 
 The forge builds **passive** effects: item bonuses (AC, perception, saves, skills), resistances, weaknesses, immunities, senses (darkvision, scent, ...), and speed grants (fly/swim/climb/burrow). What makes them trustworthy is the same grounding philosophy as the rest of the module:
 
@@ -123,7 +127,7 @@ Every creature comes with GM support baked into its notes:
 
 The preview shows the creature's loot — coins, consumables, scrolls, and treasure — with anything that failed to match the compendium flagged so you can decide before creating. Happy with the creature but not the haul? Click **Reroll Loot**: it regenerates only the treasure with a fresh AI pass, leaving the concept, stats, and gear untouched. Loot volume follows your framing: a typical creature drops a modest 3-8 items, but describe it as guarding a hoard or ask for "lots of loot" and the haul scales up to match — both on initial generation and on reroll.
 
-The haul's *value* is budgeted, not guessed: the module computes a target gp value from the GM Core Treasure by Level table for the creature's level (party level in encounter mode), multiplied up for uncommon/rare/unique creatures and by the **Treasure amount** control (Stingy halves it, Generous adds half). The real compendium prices of the generated items are summed against that target, and the coin entries are adjusted to land the total on budget — so a level 5 creature drops level-5-appropriate wealth whether or not the AI guessed prices well.
+The **Treasure amount** control shapes the haul twice. Up front, it nudges what the AI proposes: Stingy leans toward the low end (2-3 cheap, common items, usually skipping the magic-item slot entirely), Standard uses the baseline 3-8 item guidance as written, and Generous leans toward the high end (6-8 items, always including at least one treasure or magic item). Then, after generation, the haul's *value* is budgeted, not guessed: the module computes a target gp value from the GM Core Treasure by Level table for the creature's level (party level in encounter mode), multiplied up for uncommon/rare/unique creatures and by the same Treasure amount setting (Stingy halves it, Generous adds half). The real compendium prices of the generated items are summed against that target, and the coin entries are adjusted to land the total on budget — so a level 5 creature drops level-5-appropriate wealth whether or not the AI guessed prices well.
 
 ### Iterating on a creature
 
@@ -159,7 +163,8 @@ Odd generation results:
 - A custom (non-glossary) passive ability is only as interactive as its phrasing — anything outside the standard damage/save/check/heal/area conventions is flavor text the table applies by hand rather than a live automated effect.
 - Presets guide the AI rather than hard-constrain it — an occasional generation may drift from the chosen road map; regenerating usually lands it.
 - Loot value is budgeted against the GM Core Treasure by Level table, but only the coin entries flex to hit the target — a haul whose named items alone already exceed the budget is left as-is (with a console note) rather than losing items. Carried gear (weapons, armor, adventuring kit) is not counted against the treasure budget.
-- The item forge builds **passive** effects and **1/day activated** abilities (damage, heal, condition, self-buff); rune-based weapons/armor are still a roadmap item (see below). Passive effect kinds depend on your installed compendiums: each needs at least one published item carrying that rule to serve as a template (all six kinds have one in the standard PF2e equipment/bestiary packs), and a kind with no real example in your world is not offered rather than guessed at.
+- The item forge builds **passive** effects, **1/day activated** abilities (damage, heal, condition, self-buff), and **rune-based weapons/armor**. Passive effect kinds depend on your installed compendiums: each needs at least one published item carrying that rule to serve as a template (all six kinds have one in the standard PF2e equipment/bestiary packs), and a kind with no real example in your world is not offered rather than guessed at. The rune-based weapon/armor path has its own gaps: nothing validates rune prerequisites or exclusivity (you can pick contradictory runes like Holy and Unholy on the same item — this is prompt guidance only, not enforced), armor property runes aren't filtered to the base armor's actual category (light vs. medium/heavy — all usage variants are offered regardless of which armor was picked), and shield- and ammunition-only runes are out of scope entirely.
+- The item forge — all three phases — has been built and independently reviewed, but not yet verified end-to-end on an actual character sheet in a live Foundry game. If a generated item looks structurally correct in the preview but doesn't behave as expected once it's on a sheet, that mismatch is the first thing to check.
 - Activated-item macros lean on the PF2e system's own APIs, which can change between system versions. Every call is wrapped so a failure degrades to a plain descriptive chat message ("deal 4d6 fire damage, DC 22 basic Reflex save — apply manually") rather than throwing. A few behaviours are **best-effort**: an inflicted condition's *duration* is shown as text but not auto-enforced (remove it by hand when it lapses); condition effects apply on a failed save, but if the save's degree of success can't be read the condition is skipped with a manual-adjudication chat message rather than applied automatically; and 1/day recharge relies on the PF2e "Rest for the Night" flow firing (otherwise reset the item's charge by hand). If a generated macro misbehaves in play, its script is readable in the macro folder — check the console for the logged fallback reason.
 - A named weapon, armor, or gear item that doesn't match anything in the compendium becomes a generic placeholder item at the AI's estimated price rather than a functional weapon/armor — it won't carry real mechanical bonuses. Carried gear is now picked from a real compendium candidate list (see [Grounding in the compendium](#grounding-in-the-compendium)), so this should be uncommon — mostly the fallback path when the grounded pass fails or a pick is copied imperfectly — but if you see one, swap in the intended item from the compendium by hand.
 
@@ -172,7 +177,7 @@ Odd generation results:
 - [x] **Loot** — ✅ v0.3.3: AI-generated treasure (coins as real currency, consumables, scrolls built from spells, magic items) with a Reroll Loot button in the preview.
 - [x] **Item forge (Phase 1: passive items)** — ✅ unreleased: describe a wondrous item, get a real Foundry item whose passive Rule Elements are cloned from published exemplars (item bonuses, resistances, weaknesses, immunities, senses, speeds), priced from empirical compendium medians.
 - [x] **Item forge (Phase 2: activated items)** — ✅ unreleased: 1/day activated abilities (damage, heal, condition, self-buff) delivered as a click-to-run companion macro, with per-copy charge tracking and a chat-card-first, plain-message-fallback design.
-- [ ] **Item forge Phase 3: rune weapons & armor** — generated magic weapons/armor built from fundamental and property runes.
+- [x] **Item forge (Phase 3: rune weapons & armor)** — ✅ v0.3.5.1: generated magic weapons/armor assembled from real base items plus real fundamental and property rune items pulled from the compendium, priced and leveled by summing the real documents — no memorized rune list or price table.
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
 - [x] **Grounded equipment matching** — ✅ unreleased: mirrors the spell-selection approach — the AI picks carried gear from a real, level-capped candidate list out of the equipment compendium instead of naming items from memory.
 - [x] **Treasure budgets** — ✅ unreleased: loot is priced against the GM Core Treasure by Level table (level + rarity scaled, with a per-generation Stingy/Standard/Generous control); coin entries flex to land the haul on budget, and encounter mode reports the group's total treasure value alongside the XP math.
@@ -184,13 +189,17 @@ Odd generation results:
 
 ## Releasing (for maintainers)
 
-Publishing an update is one step, done any of three ways:
+**Releases are automatic.** Every push to `main` triggers `.github/workflows/auto-release.yml`: it reads the latest git tag, bumps its last version segment (`v0.3.5.1` → `v0.3.5.2`), and calls `release.yml` directly as a reusable workflow to build and publish — no manual tag or dispatch step required.
 
-- **Push a tag:** `git tag v0.4.0 && git push origin v0.4.0`. The workflow creates the release itself.
+This changes the risk profile of merging: **merging a PR to `main` is no longer a quiet, reversible action.** It ships a public release immediately, and since the install link above points at `releases/latest`, every existing install is offered that update right away. Treat a main-bound merge with the same care you'd give a manual `gh release create`.
+
+The old manual paths still work as a fallback or override if you need to publish out-of-band (e.g. re-cutting a broken release):
+
+- **Push a tag:** `git tag v0.4.0 && git push origin v0.4.0`.
 - **From Actions:** go to **Actions → Release → Run workflow** and enter a version like `0.4.0`.
 - **From Releases:** draft and publish a release by hand with a tag like `v0.4.0`.
 
-Either way the workflow stamps the version into `module.json`, builds `module.zip`, and attaches both to the release. Because the install link above points at `releases/latest`, existing users are offered the update automatically and the link never changes.
+Any of these stamps the version into `module.json`, builds `module.zip`, and attaches both to the release.
 
 ## Licensing & attribution
 
