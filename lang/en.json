@@ -91,7 +91,8 @@
     },
     "Mode": {
       "Single": "Single Creature",
-      "Encounter": "Encounter"
+      "Encounter": "Encounter",
+      "ItemForge": "Item Forge"
     },
     "Threat": {
       "Trivial": "Trivial",

@@ -1,10 +1,8 @@
 import { MODULE_ID, registerSettings } from "./settings.mjs";
 import { GeneratorApp } from "./generator-app.mjs";
-import { ItemForgeApp } from "./itemforge-app.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 
 let app = null;
-let itemForgeApp = null;
 
 function openGenerator() {
   app ??= new GeneratorApp();
@@ -12,10 +10,13 @@ function openGenerator() {
   return app;
 }
 
+/* The item forge is a MODE of the generator window (like Single/Encounter),
+ * not a separate app — this opens the shared singleton already switched to
+ * that mode. */
 function openItemForge() {
-  itemForgeApp ??= new ItemForgeApp();
-  itemForgeApp.render(true);
-  return itemForgeApp;
+  app ??= new GeneratorApp();
+  app.openItemForge();
+  return app;
 }
 
 Hooks.once("init", () => {

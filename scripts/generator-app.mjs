@@ -1,5 +1,8 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
-import { generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, designEncounter } from "./ai.mjs";
+import {
+  generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, designEncounter,
+  generateMagicItemConcept, generateRunedItemConcept
+} from "./ai.mjs";
 import { getSpellCandidates, getEquipmentCandidates } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
@@ -12,6 +15,14 @@ import {
 } from "./presets.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryArt } from "./art.mjs";
+import { availableEffectKinds, EFFECT_KINDS } from "./rule-templates.mjs";
+import {
+  normalizeMagicItemConcept, buildMagicItemData, priceForLevel, getUsageOptions, describeEffect,
+  describeActivation, MIN_ITEM_LEVEL, MAX_ITEM_LEVEL,
+  getBaseItemCandidates, getPropertyRuneCandidates, getFundamentalRuneTiers,
+  normalizeRunedItemConcept, buildRunedItemData, SECONDARY_ADJECTIVE, RUNED_ITEM_KINDS
+} from "./item-builder.mjs";
+import { createActivationMacro } from "./macro-templates.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
@@ -42,8 +53,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       partyDown: GeneratorApp.#onPartyDown,
       memberUp: GeneratorApp.#onMemberUp,
       memberDown: GeneratorApp.#onMemberDown,
-      rerollLoot: GeneratorApp.#onRerollLoot,
-      openItemForge: GeneratorApp.#onOpenItemForge
+      rerollLoot: GeneratorApp.#onRerollLoot
     }
   };
 
@@ -51,11 +61,11 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     body: { template: `modules/${MODULE_ID}/templates/generator.hbs` }
   };
 
-  /** Form values, kept across re-renders. */
+  /** Form values, kept across re-renders. "mode": "single"|"encounter"|"itemforge". */
   #input = {
     mode: "single", prompt: "", level: 1, rarity: "common",
     allowSpellcasting: true, preset: "", partySize: 4, threat: "moderate",
-    treasureAmount: "standard"
+    treasureAmount: "standard", kind: "wondrous"
   };
   #busy = false;
   #error = null;
@@ -63,6 +73,18 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   #resolved = null;
   /** Encounter mode result: {name, budget, spent, members: [...]}. */
   #encounter = null;
+  /** Item forge state — independent of the creature/encounter state above,
+   * mirroring how #concept and #encounter survive mode switches. #itemKind is
+   * the pipeline the CURRENT item concept came from (set at generation time):
+   * "wondrous" previews from #itemConcept/#itemPrice, "weapon"/"armor" from
+   * the fully-resolved #itemData (see itemforge Phase 3 — a runed item's
+   * preview IS its final data). */
+  #itemKind = "wondrous";
+  #itemConcept = null;
+  #itemPrice = 0;
+  #itemData = null;
+  /** Effect kinds with no real exemplar in this world (set after first scan). */
+  #unavailableKinds = null;
   #progress = null;
   /** Exact token usage per AI call of the last generation: [{label, usage}]. */
   #tokenUsage = [];
@@ -98,7 +120,19 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         }))
       ],
       selectedPresetIsCustom: Boolean(findPreset(this.#input.preset)?.custom),
+      singleMode: this.#input.mode === "single",
       encounterMode: this.#input.mode === "encounter",
+      itemforgeMode: this.#input.mode === "itemforge",
+      itemforgeKinds: [
+        { value: "wondrous", label: "SIMPLYPF2E.ItemForge.KindWondrous" },
+        { value: "weapon", label: "SIMPLYPF2E.ItemForge.KindWeapon" },
+        { value: "armor", label: "SIMPLYPF2E.ItemForge.KindArmor" }
+      ],
+      minItemLevel: MIN_ITEM_LEVEL,
+      maxItemLevel: MAX_ITEM_LEVEL,
+      itemforgeUnavailableNote: this.#unavailableKinds?.length
+        ? game.i18n.format("SIMPLYPF2E.ItemForge.KindsUnavailable", { kinds: this.#unavailableKinds.join(", ") })
+        : null,
       threats: Object.keys(THREATS).map((key) => ({
         value: key,
         label: `SIMPLYPF2E.Threat.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
@@ -109,8 +143,13 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         label: `SIMPLYPF2E.TreasureAmount.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
         selected: this.#input.treasureAmount === key
       })),
-      preview: this.#buildPreviewContext(),
-      encounterPreview: this.#buildEncounterPreviewContext(),
+      // Preview state for INACTIVE modes is deliberately preserved (switching
+      // away and back restores it), but only the active mode's preview — and
+      // with it, its footer buttons — is ever rendered, so a parked preview
+      // from another mode can't sit under the wrong form or actions.
+      preview: this.#input.mode === "single" ? this.#buildPreviewContext() : null,
+      encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
+      itemforgePreview: this.#input.mode === "itemforge" ? this.#buildItemForgePreviewContext() : null,
       tokenReport: this.#buildTokenReport()
     };
   }
@@ -220,21 +259,72 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     };
   }
 
+  /** Item forge preview: dispatch on which pipeline produced the concept. */
+  #buildItemForgePreviewContext() {
+    return this.#itemKind === "wondrous"
+      ? this.#buildWondrousPreviewContext()
+      : this.#buildRunedPreviewContext();
+  }
+
+  #buildWondrousPreviewContext() {
+    if (!this.#itemConcept) return null;
+    const concept = this.#itemConcept;
+    return {
+      concept,
+      traits: [concept.rarity !== "common" ? concept.rarity : null, ...concept.traits].filter(Boolean),
+      usage: concept.usage,
+      bulk: concept.bulk === 0.1 ? "L" : concept.bulk === 0 ? "—" : String(concept.bulk),
+      price: `${this.#itemPrice.toLocaleString()} gp`,
+      invested: concept.invested,
+      effects: concept.effects.map((e) => describeEffect(e)),
+      hasEffects: concept.effects.length > 0,
+      activation: concept.activation ? describeActivation(concept.activation) : null
+    };
+  }
+
+  /** Preview context for a runed weapon/armor concept (built from #itemData). */
+  #buildRunedPreviewContext() {
+    if (!this.#itemData) return null;
+    const data = this.#itemData;
+    const runes = data.system.runes ?? {};
+    const secondaryField = this.#itemKind === "weapon" ? "striking" : "resilient";
+    const secondaryTier = runes[secondaryField] ?? 0;
+    return {
+      concept: { name: data.name, level: data.system.level.value, description: this.#itemConcept?.description ?? "" },
+      traits: [data.system.traits.rarity !== "common" ? data.system.traits.rarity : null, ...data.system.traits.value].filter(Boolean),
+      price: `${(data.system.price.value.gp ?? 0).toLocaleString()} gp`,
+      runed: true,
+      potency: runes.potency ?? 0,
+      secondary: secondaryTier ? SECONDARY_ADJECTIVE[this.#itemKind][secondaryTier] : null,
+      propertyRunes: this.#itemConcept?.propertyRunes ?? []
+    };
+  }
+
   /** Read the current form inputs into #input. */
   #readForm() {
     const form = this.element;
     // The textarea is hidden in Random mode; keep the last typed prompt then.
     const promptEl = form.querySelector('[name="prompt"]');
     const prompt = promptEl ? promptEl.value : this.#input.prompt;
-    const level = Number(form.querySelector('[name="level"]')?.value ?? 1);
-    const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
-    const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked ?? true;
-    const preset = form.querySelector('[name="preset"]')?.value ?? "";
     const mode = form.querySelector('[name="mode"]:checked')?.value ?? this.#input.mode;
+    // Level is shared across modes; item forge has its own valid range
+    // (items start at level 1, creatures at -1), so clamp mode-aware.
+    const rawLevel = Number(form.querySelector('[name="level"]')?.value ?? 1);
+    const level = mode === "itemforge"
+      ? Math.min(MAX_ITEM_LEVEL, Math.max(MIN_ITEM_LEVEL, rawLevel))
+      : rawLevel;
+    const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
+    // The checkbox is hidden in itemforge mode; keep the last choice then
+    // rather than silently resetting it to checked.
+    const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked
+      ?? this.#input.allowSpellcasting;
+    const preset = form.querySelector('[name="preset"]')?.value ?? this.#input.preset;
     const partySize = Math.min(8, Math.max(1, Number(form.querySelector('[name="partySize"]')?.value ?? 4)));
     const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
     const treasureAmount = form.querySelector('[name="treasureAmount"]')?.value ?? this.#input.treasureAmount;
-    this.#input = { mode, prompt, level, rarity, allowSpellcasting, preset, partySize, threat, treasureAmount };
+    const rawKind = form.querySelector('[name="kind"]')?.value ?? this.#input.kind;
+    const kind = rawKind === "wondrous" || RUNED_ITEM_KINDS.has(rawKind) ? rawKind : "wondrous";
+    this.#input = { mode, prompt, level, rarity, allowSpellcasting, preset, partySize, threat, treasureAmount, kind };
   }
 
   /**
@@ -256,12 +346,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
-  /** Open the item forge (a separate app) — not a mode of this app, so it
-   * doesn't touch #input.mode. Lives next to the Single/Encounter toggle so
-   * the item forge is discoverable from the same window GMs already have
-   * open, in addition to its Items-directory sidebar button. */
-  static #onOpenItemForge() {
-    game.modules.get(MODULE_ID).api.openItemForge();
+  /** Open this window directly in Item Forge mode — used by the module API
+   * (Items-directory sidebar button, macros) so callers land in the right
+   * mode without reaching into private state. */
+  async openItemForge() {
+    this.#input.mode = "itemforge";
+    return this.render(true);
   }
 
   static #onLevelUp() {
@@ -305,8 +395,11 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   #stepLevel(delta) {
     const input = this.element.querySelector('input[name="level"]');
     if (!input) return;
+    // Item levels start at 1; creature (and party) levels at -1.
+    const min = this.#input.mode === "itemforge" ? MIN_ITEM_LEVEL : -1;
+    const max = this.#input.mode === "itemforge" ? MAX_ITEM_LEVEL : 24;
     const current = Number.parseInt(input.value, 10);
-    input.value = Math.min(24, Math.max(-1, (Number.isNaN(current) ? 1 : current) + delta));
+    input.value = Math.min(max, Math.max(min, (Number.isNaN(current) ? 1 : current) + delta));
   }
 
   static #onPartyUp() {
@@ -378,6 +471,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   async #runGeneration(isRandom) {
     this.#readForm();
+    if (this.#input.mode === "itemforge") return this.#generateItem();
     if (this.#input.mode === "encounter") return this.#generateEncounter();
     if (!isRandom && !this.#input.prompt.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
@@ -542,6 +636,144 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /**
+   * Item forge mode: dispatch to the wondrous or runed pipeline. Creature and
+   * encounter state is deliberately left alone — like the other modes' state,
+   * a parked item concept survives switching away and back (only Discard
+   * clears it), so generating an item must not eat an in-progress creature.
+   */
+  async #generateItem() {
+    if (!this.#input.prompt.trim()) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.NoPrompt"));
+      return;
+    }
+    this.#busy = true;
+    this.#error = null;
+    this.#tokenUsage = [];
+    this.#itemKind = this.#input.kind;
+    if (this.#itemKind === "wondrous") await this.#generateWondrousItem();
+    else await this.#generateRunedItem(this.#itemKind);
+  }
+
+  async #generateWondrousItem() {
+    this.#beginProgress([
+      ["templates", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressTemplates")],
+      ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")],
+      ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble")]
+    ]);
+    try {
+      // 1. Ground truth first: which effect kinds have real rule exemplars
+      // in this world's compendiums? Only those are offered to the AI.
+      await this.#setStep("templates");
+      const availableKinds = await availableEffectKinds();
+      this.#unavailableKinds = EFFECT_KINDS.filter((k) => !availableKinds.includes(k));
+      if (!availableKinds.length) {
+        throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.NoExemplars"));
+      }
+      const usageOptions = await getUsageOptions();
+
+      // 2. One AI call, constrained to the available kinds and real usages.
+      await this.#setStep("concept");
+      const { concept: raw, usage } = await generateMagicItemConcept({
+        prompt: this.#input.prompt,
+        level: this.#input.level,
+        rarity: this.#input.rarity,
+        availableKinds,
+        usageOptions,
+        onProgress: (p) => this.#onAIProgress(p)
+      });
+      this.#recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
+
+      // 3. Normalize defensively and price from the empirical benchmark.
+      await this.#setStep("assemble");
+      this.#itemData = null;
+      this.#itemConcept = normalizeMagicItemConcept(raw, {
+        level: this.#input.level,
+        rarity: this.#input.rarity,
+        availableKinds,
+        usageOptions
+      });
+      this.#itemPrice = await priceForLevel(this.#itemConcept.level, this.#itemConcept.rarity);
+      console.log(`${MODULE_ID} | token usage`, this.#tokenUsage);
+    } catch (err) {
+      console.error(`${MODULE_ID} | item generation failed`, err);
+      this.#error = err.message;
+      this.#itemConcept = null;
+    } finally {
+      this.#busy = false;
+      this.#progress = null;
+      await this.render();
+    }
+  }
+
+  /**
+   * Generate a runed weapon/armor (item forge Phase 3). Every choice the AI
+   * makes is picked from real compendium candidates harvested up front, and
+   * the final name/price/level are all resolved from those real component
+   * documents at generation time — see item-builder.mjs's buildRunedItemData.
+   */
+  async #generateRunedItem(kind) {
+    this.#beginProgress([
+      ["templates", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressCandidates")],
+      ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")],
+      ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble")]
+    ]);
+    try {
+      // 1. Ground truth first: real base items, real property runes, and
+      // which fundamental rune tiers actually fit under the target level.
+      await this.#setStep("templates");
+      const maxLevel = this.#input.level;
+      const [baseCandidates, runeCandidates, tiers] = await Promise.all([
+        getBaseItemCandidates(kind, maxLevel),
+        getPropertyRuneCandidates(kind, maxLevel),
+        getFundamentalRuneTiers(kind, maxLevel)
+      ]);
+      if (!baseCandidates.length) {
+        throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.NoBaseItems", { kind }));
+      }
+      if (!tiers.potencyTiers.length) {
+        throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.NoPotencyAvailable", {
+          kind, level: maxLevel, minLevel: tiers.minPotencyLevel
+        }));
+      }
+
+      // 2. One AI call, constrained to those real candidates.
+      await this.#setStep("concept");
+      const { concept: raw, usage } = await generateRunedItemConcept({
+        prompt: this.#input.prompt,
+        level: this.#input.level,
+        rarity: this.#input.rarity,
+        kind,
+        baseCandidates,
+        runeCandidates,
+        potencyTiers: tiers.potencyTiers,
+        secondaryTiers: tiers.secondaryTiers,
+        onProgress: (p) => this.#onAIProgress(p)
+      });
+      this.#recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
+
+      // 3. Normalize against the same candidate lists, then resolve the real
+      // documents to compute the final name/price/level right away — a runed
+      // item's preview IS its final data, there is no separate build step.
+      await this.#setStep("assemble");
+      this.#itemConcept = normalizeRunedItemConcept(raw, {
+        kind, rarity: this.#input.rarity, baseCandidates, runeCandidates,
+        potencyTiers: tiers.potencyTiers, secondaryTiers: tiers.secondaryTiers
+      });
+      this.#itemData = await buildRunedItemData(this.#itemConcept);
+      console.log(`${MODULE_ID} | token usage`, this.#tokenUsage);
+    } catch (err) {
+      console.error(`${MODULE_ID} | runed item generation failed`, err);
+      this.#error = err.message;
+      this.#itemConcept = null;
+      this.#itemData = null;
+    } finally {
+      this.#busy = false;
+      this.#progress = null;
+      await this.render();
+    }
+  }
+
+  /**
    * Grounded spell selection: first ask the AI for a thematic focus (so the
    * compendium query below can be narrowed instead of dumping every spell in
    * the tradition), then fetch that narrowed, level-capped list and let the
@@ -613,7 +845,12 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   static async #onCreateActor() {
     if (this.#busy) return;
-    if (this.#input.mode === "encounter" || this.#encounter) return this.#createEncounterActors();
+    // Route on the ACTIVE MODE alone, never on which private state happens to
+    // be non-null — every mode's preview state deliberately survives switching
+    // away and back, so an `|| this.#encounter`-style fallback would hijack
+    // the button for a mode the user has since left.
+    if (this.#input.mode === "itemforge") return this.#createItem();
+    if (this.#input.mode === "encounter") return this.#createEncounterActors();
     if (!this.#concept) return;
     this.#busy = true;
     await this.render();
@@ -688,6 +925,45 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
 
+  /** Create the previewed forge item as a real Item document. */
+  async #createItem() {
+    if (this.#itemKind === "wondrous" ? !this.#itemConcept : !this.#itemData) return;
+    this.#busy = true;
+    await this.render();
+    try {
+      if (this.#itemKind === "wondrous") {
+        const data = await buildMagicItemData(this.#itemConcept);
+        const item = await Item.create(data);
+        // Activated items get a companion click-to-run macro filed in a
+        // dedicated folder; a macro failure must not lose the created item.
+        if (this.#itemConcept.activation) {
+          try {
+            await createActivationMacro({ item, concept: this.#itemConcept });
+          } catch (err) {
+            console.error(`${MODULE_ID} | activation macro creation failed`, err);
+            ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.MacroFailed"));
+          }
+        }
+        ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Created", { name: item.name }));
+        item.sheet.render(true);
+      } else {
+        // Runed weapons/armor have no activation step — #itemData was fully
+        // resolved (name/price/level/runes) back at generation time.
+        const item = await Item.create(this.#itemData);
+        ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Created", { name: item.name }));
+        item.sheet.render(true);
+      }
+      this.#itemConcept = null;
+      this.#itemData = null;
+    } catch (err) {
+      console.error(`${MODULE_ID} | item creation failed`, err);
+      this.#error = err.message;
+    } finally {
+      this.#busy = false;
+      await this.render();
+    }
+  }
+
   static async #onRerollLoot() {
     if (this.#busy || !this.#concept) return;
     this.#busy = true;
@@ -721,6 +997,9 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#concept = null;
     this.#resolved = null;
     this.#encounter = null;
+    this.#itemConcept = null;
+    this.#itemData = null;
+    this.#itemPrice = 0;
     this.#error = null;
     this.#tokenUsage = [];
     await this.render();
