@@ -3,13 +3,21 @@ name: Auto Release
 # Every push to main gets its own release — no manual tag/version step ever
 # needed. Computes the next version by bumping the LAST dot-segment of the
 # latest existing tag (works whether that tag is "vX.Y.Z" or this repo's
-# "vX.Y.Z.W" hotfix style, e.g. v0.3.4.5 -> v0.3.4.6), then pushes that tag.
-# Pushing the tag triggers the existing release.yml (on: push: tags: v*),
-# which builds and publishes the release — this workflow does nothing else.
+# "vX.Y.Z.W" hotfix style, e.g. v0.3.5.1 -> v0.3.5.2), then calls release.yml
+# as a reusable workflow with that version.
+#
+# IMPORTANT: this calls release.yml via `workflow_call` rather than pushing a
+# tag and letting release.yml's own `push: tags` trigger pick it up — a tag
+# pushed BY a workflow run using the default GITHUB_TOKEN does NOT fire other
+# workflows' event triggers (GitHub suppresses this to prevent trigger
+# loops), so a push-a-tag-and-hope approach silently never publishes
+# anything. The reusable-workflow call runs in the same run graph as this
+# workflow, so it isn't subject to that restriction. release.yml itself
+# creates the actual git tag (via `gh release create`) once it runs.
 #
 # Runs queued (concurrency, no cancel-in-progress) so two merges landing
-# close together compute/push tags one at a time instead of racing on the
-# same "latest tag".
+# close together compute versions one at a time instead of racing on the
+# same "latest tag" read.
 
 on:
   push:
@@ -23,16 +31,17 @@ permissions:
   contents: write
 
 jobs:
-  tag:
+  compute-version:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Compute and push next version tag
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Compute next version
+        id: next
         run: |
           set -euo pipefail
           git fetch --tags --force
@@ -42,5 +51,12 @@ jobs:
           LAST="${LATEST##*.}"
           NEW_TAG="${BASE}.$((LAST + 1))"
           echo "Latest tag: $LATEST -> new tag: $NEW_TAG"
-          git tag "$NEW_TAG"
-          git push origin "$NEW_TAG"
+          echo "version=${NEW_TAG#v}" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: compute-version
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.compute-version.outputs.version }}
