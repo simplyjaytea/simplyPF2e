@@ -168,7 +168,13 @@ export const RARITY_TREASURE_MULTIPLIER = { common: 1, uncommon: 1.5, rare: 2.5,
  * THREATS.moderate) — 1000/80 = 12.5 encounters. This converts the per-level
  * treasure total above into a per-encounter (per-creature) share. Previously
  * hardcoded to 4 as a "reasoned pacing assumption", which overpaid treasure
- * per encounter by ~3x — bug caught in live play testing. */
+ * per encounter by ~3x — bug caught in live play testing. CAVEAT: GM Core
+ * also publishes a "Treasure by Encounter" table directly (not derived); an
+ * independent audit recalled it running maybe 20-25% richer than this /12.5
+ * derivation, since not all 1,000 XP/level comes from treasure-bearing
+ * fights. Medium confidence, unverified against the book — if loot still
+ * feels thin after this fix, check that table before nudging this constant
+ * back up. */
 export const ENCOUNTERS_PER_LEVEL = 1000 / 80;
 
 /* The per-generation "Treasure amount" control (Stingy/Standard/Generous),
