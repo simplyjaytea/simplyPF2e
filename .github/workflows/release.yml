@@ -59,7 +59,14 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
+          # Branch on whether a "version" input was actually supplied, NOT on
+          # github.event_name — inside a workflow_call'd run, event_name is
+          # the CALLER's original triggering event (e.g. "push" for
+          # auto-release.yml), not "workflow_call", so an event_name check
+          # falls through to $GITHUB_REF_NAME here and picks up the pushing
+          # BRANCH name ("main") instead of a version. Confirmed live: this
+          # is exactly what shipped a release tagged "main" before this fix.
+          if [ -n "$INPUT_VERSION" ]; then
             TAG="v${INPUT_VERSION#v}"
           else
             TAG="$GITHUB_REF_NAME"
