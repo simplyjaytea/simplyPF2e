@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes Foundry-installable assets. Three ways to ship an update:
+# Publishes Foundry-installable assets. Four ways to ship an update:
 #
 #   1. Push a tag like v0.1.1. The workflow creates the GitHub release
 #      itself and attaches assets.
@@ -8,6 +8,15 @@ name: Release
 #      Same as above, without needing a local checkout.
 #   3. Draft and publish a release by hand with a tag like v0.1.1; the
 #      workflow fires on publish and attaches the assets.
+#   4. Called as a reusable workflow (workflow_call, with a "version" input)
+#      by auto-release.yml on every merge to main. Reusable-workflow calls
+#      run in the SAME workflow-run graph as their caller, so this is the
+#      only one of the four paths a workflow can trigger on another
+#      workflow's behalf — a tag pushed BY a workflow using the default
+#      GITHUB_TOKEN does NOT fire this workflow's own `push: tags` trigger
+#      (GitHub suppresses event-triggered runs started by GITHUB_TOKEN, to
+#      stop infinite trigger loops), so auto-release.yml can't just push a
+#      tag and rely on path 1 — it has to call in via this path instead.
 #
 # The manifest URL advertised to users never changes:
 #   https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
@@ -29,6 +38,12 @@ on:
         description: "Version to publish, e.g. 0.1.1 (the tag becomes v0.1.1)"
         required: true
         type: string
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to publish, e.g. 0.1.1 (the tag becomes v0.1.1)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -44,7 +59,7 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
             TAG="v${INPUT_VERSION#v}"
           else
             TAG="$GITHUB_REF_NAME"
