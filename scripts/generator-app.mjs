@@ -394,6 +394,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         rarity: this.#input.rarity,
         allowSpellcasting: this.#input.allowSpellcasting,
         preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
+        amount: this.#input.treasureAmount,
         onProgress: (p) => this.#onAIProgress(p)
       });
       this.#recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Concept"), usage);
@@ -471,6 +472,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
           rarity: "common",
           allowSpellcasting: this.#input.allowSpellcasting,
           preset: null,
+          amount: this.#input.treasureAmount,
           onProgress: (p) => this.#onAIProgress(p)
         });
         this.#recordTokens(memberLabel(i), usage);
@@ -484,13 +486,22 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       for (const member of members) {
         member.resolved = await resolveConcept(member.concept);
         // Treasure is calibrated to the PARTY level (it is awarded to players
-        // of that level), not the member's own creature level. The GROUP as a
-        // whole gets ONE share of treasure regardless of how many copies it
-        // has — treasureGroupBudget is that constant share; treasureBudgetEach
-        // is the group's share divided across its current copies, so the
-        // group's total stays flat as the count stepper changes (see
-        // #stepMemberCount, which recomputes the per-copy split the same way).
-        member.treasureGroupBudget = treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount);
+        // of that level), not the member's own creature level, and to the
+        // WHOLE ENCOUNTER, not each group — treasureBudget() returns one
+        // encounter's total, so it's divided evenly across every group
+        // (members.length) before being treated as that group's share.
+        // (Rarity still weights a group's OWN cut relative to the others —
+        // a rare/unique group's per-group treasureBudget() call comes out
+        // higher before the /members.length split — but the SUM across
+        // groups is bounded to roughly one encounter's worth instead of one
+        // full share PER group.) The GROUP as a whole gets ONE share of
+        // treasure regardless of how many copies it has — treasureGroupBudget
+        // is that constant share; treasureBudgetEach is the group's share
+        // divided across its current copies, so the group's total stays flat
+        // as the count stepper changes (see #stepMemberCount, which
+        // recomputes the per-copy split the same way).
+        member.treasureGroupBudget =
+          treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / members.length;
         member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
         member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
         member.treasureEach = lootValueGp(member.resolved.loot);
@@ -656,6 +667,7 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       await this.#setStep("loot");
       const { loot, usage } = await generateLoot({
         concept: this.#concept,
+        amount: this.#input.treasureAmount,
         onProgress: (p) => this.#onAIProgress(p)
       });
       this.#recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
