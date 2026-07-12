@@ -403,6 +403,65 @@ Design guidance:
 }
 
 /**
+ * Ask the configured model for a runed magic weapon/armor concept (item
+ * forge Phase 3). Every choice — base item, potency, secondary rune tier,
+ * property runes — is picked from REAL candidate lists harvested from the
+ * compendium (item-builder.mjs); the system computes the mechanical name,
+ * price and item level from whichever real components get chosen, so the
+ * model never invents rune data.
+ * @param {object} args
+ * @param {"weapon"|"armor"} args.kind
+ * @param {{name: string, level: number}[]} args.baseCandidates
+ * @param {{name: string, level: number}[]} args.runeCandidates
+ * @param {number[]} args.potencyTiers      available potency tiers (1-3)
+ * @param {number[]} args.secondaryTiers    available striking/resilient tiers (1-3)
+ * @returns {Promise<{concept: object, usage: object}>} raw concept JSON + token usage
+ */
+export async function generateRunedItemConcept({
+  prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyTiers, secondaryTiers, onProgress
+}) {
+  const secondaryLabel = kind === "weapon" ? "striking" : "resilient";
+  const baseList = baseCandidates.map((c) => (c.level > 0 ? `${c.name} (L${c.level})` : c.name)).join("; ");
+  const runeList = runeCandidates.length
+    ? runeCandidates.map((c) => `${c.name} (L${c.level})`).join("; ")
+    : "(none available at this level)";
+
+  const system = `You are an expert Pathfinder 2e (remaster) magic ${kind} designer. You choose real components; the system computes the mechanical name, price and item level from whatever you pick.
+
+Respond with a SINGLE JSON object only. No markdown fences, no commentary.
+
+JSON schema:
+{
+  "baseItemName": string, // EXACTLY one name from the base ${kind} list below, copied exactly
+  "potency": number, // one of: ${potencyTiers.join(", ")} — the fundamental potency rune tier (+N)
+  "secondaryTier": number, // one of: 0, ${secondaryTiers.join(", ")} — 0 for no ${secondaryLabel} rune, else the tier (1=normal, 2=greater, 3=major)
+  "propertyRunes": string[], // 0 to ${Math.max(...potencyTiers)} names copied EXACTLY from the property rune list below — never more than the chosen "potency" value
+  "description": string // 2-4 sentences of evocative flavor: appearance, history, feel. Plain text. Do NOT restate the mechanical runes — a mechanical summary is appended automatically.
+}
+
+Base ${kind}s available (name (item level)):
+${baseList}
+
+Property runes available (name (rune level)):
+${runeList}
+
+Design guidance:
+- Pick a base ${kind} and runes that together tell a clear, thematic story for the GM's concept.
+- Avoid combining runes that are thematically opposed (e.g. never pick both Holy and Unholy, or both Anarchic and Axiomatic) unless the concept explicitly wants that tension.
+- "propertyRunes" length must never exceed "potency" (potency N grants N property rune slots) — prefer fewer, more thematic runes over maxing out every slot.`;
+
+  const user = [
+    `${kind === "weapon" ? "Weapon" : "Armor"} target level: ${level}`,
+    `Rarity: ${rarity}`,
+    "",
+    `Item concept from the GM: ${prompt}`
+  ].join("\n");
+
+  const { data, usage } = await requestJSON({ system, user, onProgress });
+  return { concept: data, usage };
+}
+
+/**
  * Encounter design pass: given a theme and a budget-fixed composition, name
  * the encounter and write a one-sentence creature brief per slot. Each brief
  * then runs through the normal single-creature pipeline.

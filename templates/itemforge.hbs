@@ -5,6 +5,14 @@
 
   <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
     <legend>{{localize "SIMPLYPF2E.ItemForge.ConceptLegend"}}</legend>
+    <div class="form-group">
+      <label>{{localize "SIMPLYPF2E.ItemForge.Kind"}}</label>
+      <select name="kind">
+        {{#each kinds}}
+          <option value="{{this.value}}" {{#if (eq this.value @root.input.kind)}}selected{{/if}}>{{localize this.label}}</option>
+        {{/each}}
+      </select>
+    </div>
     <div class="form-group stacked">
       <label>{{localize "SIMPLYPF2E.ItemForge.Prompt"}}</label>
       <textarea name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.ItemForge.PromptPlaceholder'}}">{{input.prompt}}</textarea>
@@ -86,30 +94,45 @@
       {{#each preview.traits}}<span class="spf-trait">{{this}}</span>{{/each}}
     </div>
 
-    <div class="spf-statline">
-      <span><strong>{{localize "SIMPLYPF2E.ItemForge.Usage"}}</strong> {{preview.usage}}{{#if preview.invested}} ({{localize "SIMPLYPF2E.ItemForge.Invested"}}){{/if}}</span>
-      <span><strong>{{localize "SIMPLYPF2E.ItemForge.Bulk"}}</strong> {{preview.bulk}}</span>
-      <span><strong>{{localize "SIMPLYPF2E.ItemForge.Price"}}</strong> {{preview.price}}</span>
-    </div>
+    {{#if preview.runed}}
+      <div class="spf-statline">
+        <span><strong>{{localize "SIMPLYPF2E.ItemForge.Price"}}</strong> {{preview.price}}</span>
+      </div>
 
-    {{#if preview.hasEffects}}
-      <h3>{{localize "SIMPLYPF2E.ItemForge.EffectsHeading"}}</h3>
+      <h3>{{localize "SIMPLYPF2E.ItemForge.RunesHeading"}}</h3>
       <ul class="spf-list">
-        {{#each preview.effects}}
+        <li>{{localize "SIMPLYPF2E.ItemForge.Potency"}} +{{preview.potency}}</li>
+        {{#if preview.secondary}}<li>{{localize "SIMPLYPF2E.ItemForge.SecondaryTier"}} {{preview.secondary}}</li>{{/if}}
+        {{#each preview.propertyRunes}}
           <li>{{this}}</li>
         {{/each}}
       </ul>
     {{else}}
-      {{#unless preview.activation}}
-        <p class="notification warning">{{localize "SIMPLYPF2E.ItemForge.NoEffects"}}</p>
-      {{/unless}}
-    {{/if}}
+      <div class="spf-statline">
+        <span><strong>{{localize "SIMPLYPF2E.ItemForge.Usage"}}</strong> {{preview.usage}}{{#if preview.invested}} ({{localize "SIMPLYPF2E.ItemForge.Invested"}}){{/if}}</span>
+        <span><strong>{{localize "SIMPLYPF2E.ItemForge.Bulk"}}</strong> {{preview.bulk}}</span>
+        <span><strong>{{localize "SIMPLYPF2E.ItemForge.Price"}}</strong> {{preview.price}}</span>
+      </div>
 
-    {{#if preview.activation}}
-      <h3>{{localize "SIMPLYPF2E.ItemForge.ActivationHeading"}}</h3>
-      <ul class="spf-list">
-        <li>{{preview.activation}}</li>
-      </ul>
+      {{#if preview.hasEffects}}
+        <h3>{{localize "SIMPLYPF2E.ItemForge.EffectsHeading"}}</h3>
+        <ul class="spf-list">
+          {{#each preview.effects}}
+            <li>{{this}}</li>
+          {{/each}}
+        </ul>
+      {{else}}
+        {{#unless preview.activation}}
+          <p class="notification warning">{{localize "SIMPLYPF2E.ItemForge.NoEffects"}}</p>
+        {{/unless}}
+      {{/if}}
+
+      {{#if preview.activation}}
+        <h3>{{localize "SIMPLYPF2E.ItemForge.ActivationHeading"}}</h3>
+        <ul class="spf-list">
+          <li>{{preview.activation}}</li>
+        </ul>
+      {{/if}}
     {{/if}}
 
     {{#if preview.concept.description}}
