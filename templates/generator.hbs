@@ -14,6 +14,9 @@
         <input type="radio" name="mode" value="encounter" {{#if encounterMode}}checked{{/if}}>
         <i class="fa-solid fa-people-group"></i> {{localize "SIMPLYPF2E.Mode.Encounter"}}
       </label>
+      <button type="button" class="spf-mode-toggle-action" data-action="openItemForge" data-tooltip="{{localize 'SIMPLYPF2E.ItemForge.OpenButton'}}">
+        <i class="fa-solid fa-ring"></i> {{localize "SIMPLYPF2E.ItemForge.OpenButton"}}
+      </button>
     </div>
     {{#unless encounterMode}}
     <div class="form-group spf-preset">
