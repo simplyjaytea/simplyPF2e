@@ -42,7 +42,8 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
       partyDown: GeneratorApp.#onPartyDown,
       memberUp: GeneratorApp.#onMemberUp,
       memberDown: GeneratorApp.#onMemberDown,
-      rerollLoot: GeneratorApp.#onRerollLoot
+      rerollLoot: GeneratorApp.#onRerollLoot,
+      openItemForge: GeneratorApp.#onOpenItemForge
     }
   };
 
@@ -253,6 +254,14 @@ export class GeneratorApp extends HandlebarsApplicationMixin(ApplicationV2) {
         this.render();
       });
     }
+  }
+
+  /** Open the item forge (a separate app) — not a mode of this app, so it
+   * doesn't touch #input.mode. Lives next to the Single/Encounter toggle so
+   * the item forge is discoverable from the same window GMs already have
+   * open, in addition to its Items-directory sidebar button. */
+  static #onOpenItemForge() {
+    game.modules.get(MODULE_ID).api.openItemForge();
   }
 
   static #onLevelUp() {
