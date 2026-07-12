@@ -10,7 +10,7 @@
  *    of items at the concept's level, not a remembered price table.
  */
 
-import { getPacksFor, EQUIPMENT_TYPES } from "./compendium.mjs";
+import { getPacksFor, EQUIPMENT_TYPES, findEntry, getDocument, toItemData } from "./compendium.mjs";
 import { priceToGp, slugify, capitalized } from "./builder.mjs";
 import {
   RARITY_TREASURE_MULTIPLIER, RESISTANCE, MAX_LEVEL, lookup,
@@ -19,6 +19,12 @@ import {
 import { findRuleExemplar, EFFECT_KINDS } from "./rule-templates.mjs";
 
 const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
+
+/* "ghost-touch" -> "ghostTouch": the exact transform PF2e's own rune data
+ * uses between a rune's kebab-case slug and its system.runes.property array
+ * key (verified against foundryvtt/pf2e source: "flaming", "greaterFlaming",
+ * "ghostTouch", "ancestralEchoing" all follow this convention). */
+const kebabToCamel = (s) => String(s).replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 
 /* Item levels the forge accepts (items start at 1; creature MAX_LEVEL caps it). */
 export const MIN_ITEM_LEVEL = 1;
@@ -217,6 +223,250 @@ export async function priceForLevel(level, rarity = "common") {
     medianCache.set(lv, base);
   }
   return Math.round(medianCache.get(lv) * (RARITY_TREASURE_MULTIPLIER[rarity] ?? 1));
+}
+
+/* -------------------- runed weapons/armor (Phase 3) -------------------- */
+
+/**
+ * Fundamental and property runes are all just real Item documents in the
+ * equipment compendium (type "equipment", e.g. "Weapon Potency (+1)",
+ * "Striking (Greater)", "Flaming") with their own real level and price —
+ * verified against the published foundryvtt/pf2e system source. So a runed
+ * weapon/armor needs NO empirical price benchmark and NO memorized rune
+ * list: pick a real base item plus real rune items and SUM their real
+ * prices; the item's overall level is the MAX level among them (the actual
+ * PF2e rule). Same "assemble real pieces" principle as equipment grounding
+ * and Phase 1's cloned Rule Elements, applied to runes instead.
+ */
+export const RUNED_ITEM_KINDS = new Set(["weapon", "armor"]);
+
+/* Real system.usage.value strings that mark a property rune item as valid
+ * for a weapon vs. armor (verified against several published rune items;
+ * shield/ammunition-only runes are deliberately excluded — out of scope). */
+const WEAPON_RUNE_USAGE = new Set(["etched-onto-a-weapon"]);
+const ARMOR_RUNE_USAGE = new Set(["etched-onto-armor", "etched-onto-light-armor", "etched-onto-med-heavy-armor"]);
+
+/* Catalog names of the fundamental rune items, exactly as published. */
+const POTENCY_CATALOG_NAME = {
+  weapon: (tier) => `Weapon Potency (+${tier})`,
+  armor: (tier) => `Armor Potency (+${tier})`
+};
+const SECONDARY_CATALOG_NAME = {
+  weapon: { 1: "Striking", 2: "Striking (Greater)", 3: "Striking (Major)" },
+  armor: { 1: "Resilient", 2: "Resilient (Greater)", 3: "Resilient (Major)" }
+};
+/* Adjective form used when assembling the full item name ("+2 Greater
+ * Striking Flaming Rapier") — differs from the catalog search name above. */
+export const SECONDARY_ADJECTIVE = {
+  weapon: { 1: "Striking", 2: "Greater Striking", 3: "Major Striking" },
+  armor: { 1: "Resilient", 2: "Greater Resilient", 3: "Major Resilient" }
+};
+/* system.runes field the secondary tier lives on, per kind. */
+const SECONDARY_RUNE_FIELD = { weapon: "striking", armor: "resilient" };
+
+/* All equipment-pack index entries, deduped by name, cached. Reused by every
+ * candidate/tier lookup below — one scan serves base items, property runes
+ * and fundamental rune tiers alike. */
+let equipmentEntriesPromise = null;
+async function getAllEquipmentEntries() {
+  equipmentEntriesPromise ??= (async () => {
+    const entries = [];
+    const seen = new Set();
+    for (const packId of getPacksFor("equipment")) {
+      for (const entry of await getForgeIndex(packId)) {
+        const key = slugify(entry.name);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        entries.push({
+          name: entry.name,
+          type: entry.type,
+          level: entry.system?.level?.value ?? 0,
+          usage: entry.system?.usage?.value ?? null
+        });
+      }
+    }
+    return entries;
+  })();
+  return equipmentEntriesPromise;
+}
+
+/**
+ * Real base weapons/armor at or below a target level, so the AI picks a
+ * base item that exists instead of naming one from memory.
+ * @returns {Promise<{name: string, level: number}[]>}
+ */
+export async function getBaseItemCandidates(kind, maxLevel) {
+  const entries = await getAllEquipmentEntries();
+  return entries
+    .filter((e) => e.type === kind && e.level <= maxLevel)
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
+    .map((e) => ({ name: e.name, level: e.level }));
+}
+
+/**
+ * Real property rune items (by their "etched onto a weapon/armor" usage
+ * string) at or below a target level.
+ * @returns {Promise<{name: string, level: number}[]>}
+ */
+export async function getPropertyRuneCandidates(kind, maxLevel) {
+  const usageSet = kind === "weapon" ? WEAPON_RUNE_USAGE : ARMOR_RUNE_USAGE;
+  const entries = await getAllEquipmentEntries();
+  return entries
+    .filter((e) => e.type === "equipment" && usageSet.has(e.usage) && e.level <= maxLevel)
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
+    .map((e) => ({ name: e.name, level: e.level }));
+}
+
+/**
+ * Which potency/secondary fundamental-rune tiers fit under a target item
+ * level, resolved against each tier's REAL compendium item level (never a
+ * memorized threshold — a homebrew rune-price module would be picked up
+ * automatically). Tier 0 (no secondary rune) is always valid and implicit.
+ * `minPotencyLevel` is the level of the +1 potency rune regardless of the
+ * filter, so callers can report why no tiers are available at a low level.
+ * @returns {Promise<{potencyTiers: number[], secondaryTiers: number[], minPotencyLevel: number}>}
+ */
+export async function getFundamentalRuneTiers(kind, maxLevel) {
+  const entries = await getAllEquipmentEntries();
+  const byName = new Map(entries.map((e) => [slugify(e.name), e]));
+  const levelOf = (name) => byName.get(slugify(name))?.level ?? Infinity;
+  const potencyLevels = [1, 2, 3].map((t) => levelOf(POTENCY_CATALOG_NAME[kind](t)));
+  const secondaryLevels = [1, 2, 3].map((t) => levelOf(SECONDARY_CATALOG_NAME[kind][t]));
+  return {
+    potencyTiers: [1, 2, 3].filter((t) => potencyLevels[t - 1] <= maxLevel),
+    secondaryTiers: [1, 2, 3].filter((t) => secondaryLevels[t - 1] <= maxLevel),
+    minPotencyLevel: potencyLevels[0]
+  };
+}
+
+/**
+ * Coerce a raw AI runed-item concept into a safe shape. Every name is
+ * matched back against the real candidate lists the AI was shown — an
+ * unmatched property rune is dropped (with a warning), never invented.
+ */
+export function normalizeRunedItemConcept(raw, { kind, rarity, baseCandidates, runeCandidates, potencyTiers, secondaryTiers }) {
+  const c = typeof raw === "object" && raw !== null ? raw : {};
+  const findByName = (list, name) => list.find((x) => slugify(x.name) === slugify(name)) ?? null;
+
+  const base = findByName(baseCandidates, c.baseItemName) ?? baseCandidates[0] ?? null;
+
+  const rawPotency = Math.round(Number(c.potency));
+  const potency = potencyTiers.includes(rawPotency) ? rawPotency : potencyTiers[0];
+
+  const rawSecondary = Math.round(Number(c.secondaryTier));
+  const secondaryTier = secondaryTiers.includes(rawSecondary) ? rawSecondary : 0;
+
+  const propertyRunes = [];
+  const seen = new Set();
+  for (const name of Array.isArray(c.propertyRunes) ? c.propertyRunes : []) {
+    if (propertyRunes.length >= potency) break;
+    const match = findByName(runeCandidates, name);
+    if (!match) {
+      if (name) console.warn(`simplypf2e | itemforge: dropped unmatched property rune "${name}"`);
+      continue;
+    }
+    const key = slugify(match.name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    propertyRunes.push(match.name);
+  }
+
+  return {
+    kind,
+    baseItemName: base?.name ?? null,
+    potency,
+    secondaryTier,
+    propertyRunes,
+    rarity: RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common",
+    description: String(c.description ?? "").slice(0, 800)
+  };
+}
+
+/**
+ * Assemble the Foundry item data for a normalized runed-item concept: the
+ * REAL base item document, with system.runes set from the chosen tiers, a
+ * price that is the exact sum of every real component's own price, a level
+ * that is the max level among them, and a name built from the standard PF2e
+ * "+N [secondary] [property runes] [base name]" convention.
+ * @returns {Promise<object>} plain item data ready for Item.create()
+ */
+export async function buildRunedItemData(concept) {
+  const packs = getPacksFor("equipment");
+
+  const baseEntry = await findEntry(packs, concept.baseItemName, (e) => e.type === concept.kind);
+  const baseDoc = await getDocument(baseEntry);
+  if (!baseDoc) {
+    throw new Error(`Base ${concept.kind} "${concept.baseItemName}" could not be resolved against the compendium.`);
+  }
+
+  const potencyEntry = await findEntry(packs, POTENCY_CATALOG_NAME[concept.kind](concept.potency), (e) => e.type === "equipment");
+  const potencyDoc = await getDocument(potencyEntry);
+
+  let secondaryDoc = null;
+  if (concept.secondaryTier) {
+    const secondaryEntry = await findEntry(packs, SECONDARY_CATALOG_NAME[concept.kind][concept.secondaryTier], (e) => e.type === "equipment");
+    secondaryDoc = await getDocument(secondaryEntry);
+  }
+
+  const propertyDocs = [];
+  for (const name of concept.propertyRunes) {
+    const entry = await findEntry(packs, name, (e) => e.type === "equipment");
+    const doc = await getDocument(entry);
+    if (doc) propertyDocs.push(doc);
+    else console.warn(`simplypf2e | itemforge: property rune "${name}" could not be resolved — dropped`);
+  }
+
+  const data = toItemData(baseDoc);
+  const baseGp = priceToGp(data.system.price?.value);
+
+  data.system.runes = {
+    ...(data.system.runes ?? {}),
+    potency: concept.potency,
+    [SECONDARY_RUNE_FIELD[concept.kind]]: concept.secondaryTier,
+    property: propertyDocs.map((d) => kebabToCamel(slugify(d.name)))
+  };
+
+  const gp = Math.round(
+    baseGp
+    + (potencyDoc ? priceToGp(potencyDoc.system.price?.value) : 0)
+    + (secondaryDoc ? priceToGp(secondaryDoc.system.price?.value) : 0)
+    + propertyDocs.reduce((sum, d) => sum + priceToGp(d.system.price?.value), 0)
+  );
+  data.system.price = { value: { gp } };
+
+  const level = Math.max(
+    data.system.level?.value ?? 0,
+    potencyDoc?.system.level?.value ?? 0,
+    secondaryDoc?.system.level?.value ?? 0,
+    ...propertyDocs.map((d) => d.system.level?.value ?? 0)
+  );
+  data.system.level = { value: level };
+
+  const nameParts = [`+${concept.potency}`];
+  if (concept.secondaryTier) nameParts.push(SECONDARY_ADJECTIVE[concept.kind][concept.secondaryTier]);
+  nameParts.push(...propertyDocs.map((d) => d.name));
+  nameParts.push(baseDoc.name);
+  data.name = nameParts.join(" ");
+
+  const rarityRank = { common: 0, uncommon: 1, rare: 2, unique: 3 };
+  const baseRarity = data.system.traits?.rarity ?? "common";
+  const rarity = (rarityRank[concept.rarity] ?? 0) > (rarityRank[baseRarity] ?? 0) ? concept.rarity : baseRarity;
+  const traits = new Set(data.system.traits?.value ?? []);
+  traits.add("magical");
+  data.system.traits = { ...(data.system.traits ?? {}), value: [...traits], rarity };
+
+  const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
+  const paragraphs = String(concept.description ?? "")
+    .split(/\n{2,}/).map((p) => `<p>${esc(p.trim())}</p>`).filter((p) => p !== "<p></p>");
+  const runeSummary = [
+    `+${concept.potency} potency`,
+    concept.secondaryTier ? SECONDARY_ADJECTIVE[concept.kind][concept.secondaryTier] : null,
+    ...propertyDocs.map((d) => d.name)
+  ].filter(Boolean).join(", ");
+  paragraphs.push(`<hr /><p><strong>${game.i18n.localize("SIMPLYPF2E.ItemForge.RunesHeading")}</strong> ${runeSummary}.</p>`);
+  data.system.description = { value: paragraphs.join("\n") };
+
+  return data;
 }
 
 /* -------------------- grounded usage strings -------------------- */
