@@ -8,8 +8,7 @@ import {
   normalizeRunedItemConcept, buildRunedItemData, SECONDARY_ADJECTIVE, RUNED_ITEM_KINDS
 } from "./item-builder.mjs";
 import { createActivationMacro } from "./macro-templates.mjs";
-
-const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
+import { SpfApp } from "./app-base.mjs";
 
 /**
  * The item forge: describe a wondrous magic item → AI concept constrained to
@@ -17,7 +16,7 @@ const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
  * real Item document whose Rule Elements are clones of published rules
  * (see rule-templates.mjs for the grounding principle).
  */
-export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
+export class ItemForgeApp extends SpfApp {
   static DEFAULT_OPTIONS = {
     id: "simplypf2e-itemforge",
     tag: "form",
@@ -55,16 +54,13 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
   #itemData = null;
   /** Effect kinds with no real exemplar in this world (set after first scan). */
   #unavailableKinds = null;
-  #progress = null;
-  /** Exact token usage per AI call of the last generation: [{label, usage}]. */
-  #tokenUsage = [];
 
   async _prepareContext() {
     return {
       input: this.#input,
       busy: this.#busy,
       error: this.#error,
-      progress: this.#progress,
+      progress: this._progress,
       hasApiKey: Boolean(getSetting(SETTINGS.apiKey)),
       model: getSetting(SETTINGS.model),
       minLevel: MIN_ITEM_LEVEL,
@@ -84,35 +80,7 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
         ? game.i18n.format("SIMPLYPF2E.ItemForge.KindsUnavailable", { kinds: this.#unavailableKinds.join(", ") })
         : null,
       preview: this.#kind === "wondrous" ? this.#buildPreviewContext() : this.#buildRunedPreviewContext(),
-      tokenReport: this.#buildTokenReport()
-    };
-  }
-
-  /** Record one AI call's token usage under a step label. */
-  #recordTokens(label, usage) {
-    if (usage) this.#tokenUsage.push({ label, usage });
-  }
-
-  /** Per-step token usage lines plus a total, ready for the template. */
-  #buildTokenReport() {
-    if (!this.#tokenUsage.length) return null;
-    const total = this.#tokenUsage.reduce((sum, e) => sum + (e.usage.total || 0), 0);
-    const anyEstimated = this.#tokenUsage.some((e) => e.usage.estimated);
-    return {
-      steps: this.#tokenUsage.map(({ label, usage }) => ({
-        label,
-        text: usage.estimated
-          ? game.i18n.format("SIMPLYPF2E.Tokens.StepEstimated", { total: usage.total.toLocaleString() })
-          : game.i18n.format("SIMPLYPF2E.Tokens.Step", {
-              prompt: usage.prompt.toLocaleString(),
-              completion: usage.completion.toLocaleString(),
-              total: usage.total.toLocaleString()
-            })
-      })),
-      totalText: game.i18n.format(
-        anyEstimated ? "SIMPLYPF2E.Tokens.TotalEstimated" : "SIMPLYPF2E.Tokens.Total",
-        { total: total.toLocaleString() }
-      )
+      tokenReport: this._buildTokenReport()
     };
   }
 
@@ -177,49 +145,6 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     input.value = Math.min(MAX_ITEM_LEVEL, Math.max(MIN_ITEM_LEVEL, (Number.isNaN(current) ? 4 : current) + delta));
   }
 
-  /** Initialize the step list shown while generating. */
-  #beginProgress(defs) {
-    this.#progress = {
-      steps: defs.map(([key, label]) => ({ key, label, state: "pending" })),
-      detail: "",
-      percent: 0
-    };
-  }
-
-  /** Mark `key` active, everything before it done, and re-render. */
-  async #setStep(key) {
-    const progress = this.#progress;
-    if (!progress) return;
-    let reached = false;
-    for (const step of progress.steps) {
-      if (step.key === key) {
-        step.state = "active";
-        reached = true;
-      } else {
-        step.state = reached ? "pending" : "done";
-      }
-    }
-    const done = progress.steps.filter((s) => s.state === "done").length;
-    progress.percent = Math.round(((done + 0.5) / progress.steps.length) * 100);
-    progress.detail = "";
-    await this.render();
-  }
-
-  /**
-   * Streaming callback: updates the detail line directly in the DOM so the
-   * counter ticks live without re-rendering the whole application.
-   */
-  #onAIProgress({ phase, tokens }) {
-    const progress = this.#progress;
-    if (!progress) return;
-    progress.detail = game.i18n.format(
-      phase === "thinking" ? "SIMPLYPF2E.Progress.Thinking" : "SIMPLYPF2E.Progress.Writing",
-      { tokens: tokens.toLocaleString() }
-    );
-    const el = this.element?.querySelector(".spf-progress-detail");
-    if (el) el.textContent = progress.detail;
-  }
-
   static async #onGenerate() {
     this.#readForm();
     if (!this.#input.prompt.trim()) {
@@ -228,14 +153,14 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
     this.#busy = true;
     this.#error = null;
-    this.#tokenUsage = [];
+    this._tokenUsage = [];
     this.#kind = this.#input.kind;
     if (this.#kind === "wondrous") await this.#generateWondrous();
     else await this.#generateRuned(this.#kind);
   }
 
   async #generateWondrous() {
-    this.#beginProgress([
+    this._beginProgress([
       ["templates", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressTemplates")],
       ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")],
       ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble")]
@@ -243,7 +168,7 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     try {
       // 1. Ground truth first: which effect kinds have real rule exemplars
       // in this world's compendiums? Only those are offered to the AI.
-      await this.#setStep("templates");
+      await this._setStep("templates");
       const availableKinds = await availableEffectKinds();
       this.#unavailableKinds = EFFECT_KINDS.filter((k) => !availableKinds.includes(k));
       if (!availableKinds.length) {
@@ -252,19 +177,19 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
       const usageOptions = await getUsageOptions();
 
       // 2. One AI call, constrained to the available kinds and real usages.
-      await this.#setStep("concept");
+      await this._setStep("concept");
       const { concept: raw, usage } = await generateMagicItemConcept({
         prompt: this.#input.prompt,
         level: this.#input.level,
         rarity: this.#input.rarity,
         availableKinds,
         usageOptions,
-        onProgress: (p) => this.#onAIProgress(p)
+        onProgress: (p) => this._onAIProgress(p)
       });
-      this.#recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
 
       // 3. Normalize defensively and price from the empirical benchmark.
-      await this.#setStep("assemble");
+      await this._setStep("assemble");
       this.#itemData = null;
       this.#concept = normalizeMagicItemConcept(raw, {
         level: this.#input.level,
@@ -273,14 +198,14 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
         usageOptions
       });
       this.#price = await priceForLevel(this.#concept.level, this.#concept.rarity);
-      console.log(`${MODULE_ID} | token usage`, this.#tokenUsage);
+      console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
       console.error(`${MODULE_ID} | item generation failed`, err);
       this.#error = err.message;
       this.#concept = null;
     } finally {
       this.#busy = false;
-      this.#progress = null;
+      this._progress = null;
       await this.render();
     }
   }
@@ -292,7 +217,7 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
    * documents at generation time — see item-builder.mjs's buildRunedItemData.
    */
   async #generateRuned(kind) {
-    this.#beginProgress([
+    this._beginProgress([
       ["templates", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressCandidates")],
       ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")],
       ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble")]
@@ -300,7 +225,7 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     try {
       // 1. Ground truth first: real base items, real property runes, and
       // which fundamental rune tiers actually fit under the target level.
-      await this.#setStep("templates");
+      await this._setStep("templates");
       const maxLevel = this.#input.level;
       const [baseCandidates, runeCandidates, tiers] = await Promise.all([
         getBaseItemCandidates(kind, maxLevel),
@@ -317,7 +242,7 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
       }
 
       // 2. One AI call, constrained to those real candidates.
-      await this.#setStep("concept");
+      await this._setStep("concept");
       const { concept: raw, usage } = await generateRunedItemConcept({
         prompt: this.#input.prompt,
         level: this.#input.level,
@@ -327,20 +252,20 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
         runeCandidates,
         potencyTiers: tiers.potencyTiers,
         secondaryTiers: tiers.secondaryTiers,
-        onProgress: (p) => this.#onAIProgress(p)
+        onProgress: (p) => this._onAIProgress(p)
       });
-      this.#recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
 
       // 3. Normalize against the same candidate lists, then resolve the real
       // documents to compute the final name/price/level right away — a runed
       // item's preview IS its final data, there is no separate build step.
-      await this.#setStep("assemble");
+      await this._setStep("assemble");
       this.#concept = normalizeRunedItemConcept(raw, {
         kind, rarity: this.#input.rarity, baseCandidates, runeCandidates,
         potencyTiers: tiers.potencyTiers, secondaryTiers: tiers.secondaryTiers
       });
       this.#itemData = await buildRunedItemData(this.#concept);
-      console.log(`${MODULE_ID} | token usage`, this.#tokenUsage);
+      console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
       console.error(`${MODULE_ID} | runed item generation failed`, err);
       this.#error = err.message;
@@ -348,7 +273,7 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
       this.#itemData = null;
     } finally {
       this.#busy = false;
-      this.#progress = null;
+      this._progress = null;
       await this.render();
     }
   }
@@ -397,7 +322,7 @@ export class ItemForgeApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this.#concept = null;
     this.#itemData = null;
     this.#error = null;
-    this.#tokenUsage = [];
+    this._tokenUsage = [];
     await this.render();
   }
 }

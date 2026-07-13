@@ -694,6 +694,27 @@ function actionIcon(actionType) {
 }
 
 /**
+ * Apply parsed fundamental runes to weapon/armor item data in place and rename
+ * it to the runed name. The secondary rune is `striking` on weapons and
+ * `resilient` on armor; each field keeps whichever value is higher (the item's
+ * own or the parsed one). No-ops on other item types. Returns the item data.
+ */
+function applyRunes(data, runes, name) {
+  const secondaryField = data.type === "weapon" ? "striking"
+    : data.type === "armor" ? "resilient" : null;
+  if (!secondaryField) return data;
+  if (runes.potency || runes[secondaryField]) {
+    data.system.runes = {
+      ...data.system.runes,
+      potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
+      [secondaryField]: Math.max(runes[secondaryField], data.system.runes?.[secondaryField] ?? 0)
+    };
+    data.name = capitalized(name);
+  }
+  return data;
+}
+
+/**
  * Build the full actor + embedded item data and create the NPC actor.
  * @param {object} [options]
  * @param {string|null} [options.img]  portrait/token image path
@@ -815,25 +836,10 @@ export async function createActor(concept, resolved, { img = null } = {}) {
     }
     const data = toItemData(doc);
     if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
+    applyRunes(data, runes, name);
     if (data.type === "weapon") {
-      if (runes.potency || runes.striking) {
-        data.system.runes = {
-          ...data.system.runes,
-          potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
-          striking: Math.max(runes.striking, data.system.runes?.striking ?? 0)
-        };
-        data.name = capitalized(name);
-      }
       data.system.equipped = { ...data.system.equipped, carryType: "held", handsHeld: 1 };
     } else if (data.type === "armor") {
-      if (runes.potency || runes.resilient) {
-        data.system.runes = {
-          ...data.system.runes,
-          potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
-          resilient: Math.max(runes.resilient, data.system.runes?.resilient ?? 0)
-        };
-        data.name = capitalized(name);
-      }
       data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
     }
     items.push(data);
@@ -860,21 +866,7 @@ export async function createActor(concept, resolved, { img = null } = {}) {
     }
     const data = toItemData(doc);
     if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
-    if (data.type === "weapon" && (runes.potency || runes.striking)) {
-      data.system.runes = {
-        ...data.system.runes,
-        potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
-        striking: Math.max(runes.striking, data.system.runes?.striking ?? 0)
-      };
-      data.name = capitalized(name);
-    } else if (data.type === "armor" && (runes.potency || runes.resilient)) {
-      data.system.runes = {
-        ...data.system.runes,
-        potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
-        resilient: Math.max(runes.resilient, data.system.runes?.resilient ?? 0)
-      };
-      data.name = capitalized(name);
-    }
+    applyRunes(data, runes, name);
     items.push(data);
   }
 
