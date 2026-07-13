@@ -145,8 +145,6 @@ export class GeneratorApp extends SpfApp {
     if (!this.#concept) return null;
     const concept = this.#concept;
     const stats = computeStats(concept);
-    const missingSpells = (this.#resolved?.spells ?? []).filter((s) => !s.entry).map((s) => s.spell.name);
-    const missingEquipment = (this.#resolved?.equipment ?? []).filter((e) => !e.entry).map((e) => e.name);
     return {
       concept,
       stats,
@@ -179,9 +177,6 @@ export class GeneratorApp extends SpfApp {
           : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
         found: Boolean(entry)
       })),
-      missingSpells,
-      missingEquipment,
-      missingLoot: (this.#resolved?.loot ?? []).filter((l) => !l.entry).map((l) => l.name),
       iwr: {
         immunities: concept.immunities.join(", "),
         resistances: concept.resistances.map((r) => `${r} ${stats.resistanceValue}`).join(", "),
