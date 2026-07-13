@@ -102,20 +102,8 @@ Hooks.on("pf2e.restForTheNight", async (actor) => {
   }
 });
 
-/* Add an "Item Forge" button to the Items directory header (GM only). */
-Hooks.on("renderItemDirectory", (_directory, html) => {
-  if (!game.user.isGM || game.system.id !== "pf2e") return;
-  const root = html instanceof HTMLElement ? html : html[0];
-  if (!root || root.querySelector(".spf-itemforge-button")) return;
-
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "spf-itemforge-button";
-  button.innerHTML = `<i class="fa-solid fa-ring"></i> ${game.i18n.localize("SIMPLYPF2E.ItemForge.OpenButton")}`;
-  button.addEventListener("click", openItemForge);
-
-  const target = root.querySelector(".directory-header .header-actions")
-    ?? root.querySelector(".directory-header")
-    ?? root;
-  target.appendChild(button);
-});
+/* Item Forge UI entry points (Items directory button, generator window
+ * button) are deliberately removed for now — item generation is still
+ * unverified end-to-end in a live world. The app, its API access
+ * (module.api.openItemForge), and all underlying code are left intact so
+ * it's a one-line revert to re-expose once it's been tested. */

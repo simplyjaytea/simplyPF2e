@@ -90,8 +90,8 @@
       "Deleted": "Preset \"{name}\" deleted."
     },
     "Mode": {
-      "Single": "Single Creature",
-      "Encounter": "Encounter"
+      "Single": "Single",
+      "Encounter": "Encounters"
     },
     "Threat": {
       "Trivial": "Trivial",

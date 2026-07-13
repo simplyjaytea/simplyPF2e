@@ -1,9 +1,9 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
-import { generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, designEncounter } from "./ai.mjs";
-import { getSpellCandidates, getEquipmentCandidates } from "./compendium.mjs";
+import { generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter } from "./ai.mjs";
+import { getSpellCandidates, getEquipmentCandidates, getLootCandidates } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
-  applyTreasureBudget, lootValueGp
+  applyTreasureBudget, lootValueGp, parseCoins, parseScroll
 } from "./builder.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
 import {
@@ -271,7 +271,9 @@ export class GeneratorApp extends SpfApp {
     const input = this.element.querySelector('input[name="level"]');
     if (!input) return;
     const current = Number.parseInt(input.value, 10);
-    input.value = Math.min(24, Math.max(-1, (Number.isNaN(current) ? 1 : current) + delta));
+    // Party Level (encounter mode) is a PC level, 1-20; creature Level goes -1..24.
+    const [min, max] = this.#input.mode === "encounter" ? [1, 20] : [-1, 24];
+    input.value = Math.min(max, Math.max(min, (Number.isNaN(current) ? 1 : current) + delta));
   }
 
   static #onPartyUp() {
@@ -313,6 +315,7 @@ export class GeneratorApp extends SpfApp {
       ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept")],
       ...(this.#input.allowSpellcasting ? [["spells", game.i18n.localize("SIMPLYPF2E.Progress.Spells")]] : []),
       ["equipment", game.i18n.localize("SIMPLYPF2E.Progress.Equipment")],
+      ["loot", game.i18n.localize("SIMPLYPF2E.Progress.Loot")],
       ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
     ]);
     try {
@@ -334,6 +337,8 @@ export class GeneratorApp extends SpfApp {
       await this.#refineSpells(this.#concept);
       if (this.#concept.equipment.length) await this._setStep("equipment");
       await this.#refineEquipment(this.#concept);
+      if (this.#concept.loot.length) await this._setStep("loot");
+      await this.#refineLoot(this.#concept);
       await this._setStep("match");
       this.#resolved = await resolveConcept(this.#concept);
       // Treasure budget: the module owns the numbers (level + rarity from the
@@ -372,7 +377,7 @@ export class GeneratorApp extends SpfApp {
     this.#concept = null;
     this.#resolved = null;
     this._tokenUsage = [];
-    const { level: partyLevel, partySize, threat } = this.#input;
+    const { level: partyLevel, partySize, threat, rarity } = this.#input;
     const composition = composeEncounter(threat, partySize, partyLevel);
     const memberLabel = (i) => game.i18n.format("SIMPLYPF2E.Progress.Member", {
       index: i + 1, total: composition.members.length
@@ -400,16 +405,17 @@ export class GeneratorApp extends SpfApp {
         const { concept: raw, usage } = await generateConcept({
           prompt: `${design.briefs[i]} (Part of the encounter "${design.name}": ${theme})`,
           level: slot.level,
-          rarity: "common",
+          rarity,
           allowSpellcasting: this.#input.allowSpellcasting,
           preset: null,
           amount: this.#input.treasureAmount,
           onProgress: (p) => this._onAIProgress(p)
         });
         this._recordTokens(memberLabel(i), usage);
-        const concept = normalizeConcept(raw, { level: slot.level, rarity: "common" });
+        const concept = normalizeConcept(raw, { level: slot.level, rarity });
         await this.#refineSpells(concept);
         await this.#refineEquipment(concept);
+        await this.#refineLoot(concept);
         members.push({ ...slot, concept });
       }
 
@@ -540,6 +546,40 @@ export class GeneratorApp extends SpfApp {
     }
   }
 
+  /**
+   * Grounded loot selection: fetch real compendium items (treasure included)
+   * and have the AI re-pick the first-draft haul from that list — the loot
+   * counterpart of #refineEquipment(). Without it, a pre-Remaster name the
+   * model recalls ("Bag of Holding") never fuzzy-matches its Remaster item
+   * ("Spacious Pouch") and silently becomes a wrong-named custom treasure
+   * item. Coins and scrolls pass through free-form (parseCoins/parseScroll
+   * build them specially); a haul of ONLY coins/scrolls skips the AI call.
+   * Falls back to the first-draft names (still fuzzy-matched) if anything
+   * fails.
+   */
+  async #refineLoot(concept) {
+    if (!concept?.loot?.length) return;
+    if (concept.loot.every((l) => parseCoins(l.name) || parseScroll(l.name))) return;
+    try {
+      const keywords = [...new Set(
+        concept.loot.map((l) => l.name)
+          .flatMap((name) => String(name).toLowerCase().split(/[^a-z0-9]+/))
+          .filter((token) => token.length > 2)
+      )];
+      const candidates = await getLootCandidates(concept.level, keywords);
+      if (!candidates.length) return;
+      const { loot, usage } = await selectLoot({
+        concept,
+        candidates,
+        onProgress: (p) => this._onAIProgress(p)
+      });
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
+      if (loot.length) concept.loot = normalizeLoot(loot);
+    } catch (err) {
+      console.warn(`${MODULE_ID} | grounded loot selection failed, using first-draft loot`, err);
+    }
+  }
+
   static async #onCreateActor() {
     if (this.#busy) return;
     if (this.#input.mode === "encounter" || this.#encounter) return this.#createEncounterActors();
@@ -610,6 +650,9 @@ export class GeneratorApp extends SpfApp {
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
       this.#concept.loot = normalizeLoot(loot);
+      // Ground the fresh draft too — same Remaster-name protection as the
+      // main pipeline (a reroll is a new ungrounded draft).
+      await this.#refineLoot(this.#concept);
       this.#resolved.loot = await applyTreasureBudget(
         await resolveLoot(this.#concept),
         treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)

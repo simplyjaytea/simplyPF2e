@@ -212,9 +212,10 @@ const MIN_FILTERED_EQUIPMENT = 20;
  * list is returned instead.
  * @param {number} level creature level
  * @param {string[]} [keywords]
+ * @param {{treasure?: boolean}} [options] include treasure-type items (loot)
  * @returns {Promise<{name: string, type: string, level: number}[]>} sorted by level then name
  */
-export async function getEquipmentCandidates(level, keywords = []) {
+export async function getEquipmentCandidates(level, keywords = [], { treasure = false } = {}) {
   const maxLevel = Math.max(level, 0);
   const candidates = [];
   const seen = new Set();
@@ -222,7 +223,7 @@ export async function getEquipmentCandidates(level, keywords = []) {
     const entries = await getIndex(packId);
     if (!entries) continue;
     for (const entry of entries) {
-      if (!EQUIPMENT_TYPES.has(entry.type) || entry.type === "treasure") continue;
+      if (!EQUIPMENT_TYPES.has(entry.type) || (!treasure && entry.type === "treasure")) continue;
       const itemLevel = entry.system?.level?.value ?? 0;
       if (itemLevel > maxLevel) continue;
       if (seen.has(entry.normalized)) continue;
@@ -243,6 +244,15 @@ export async function getEquipmentCandidates(level, keywords = []) {
     kw.some((k) => c.traits.includes(k) || c.name.toLowerCase().includes(k))
   );
   return (filtered.length >= MIN_FILTERED_EQUIPMENT ? filtered : candidates).map(strip);
+}
+
+/**
+ * Loot counterpart of getEquipmentCandidates(): treasure INCLUDED (valuables
+ * belong in loot), item level capped at creature level + 2, matching
+ * resolveLoot()'s filter exactly so every candidate offered can resolve.
+ */
+export function getLootCandidates(level, keywords = []) {
+  return getEquipmentCandidates(level + 2, keywords, { treasure: true });
 }
 
 /** Clone a compendium document into plain item data ready for embedding. */

@@ -14,9 +14,6 @@
         <input type="radio" name="mode" value="encounter" {{#if encounterMode}}checked{{/if}}>
         <i class="fa-solid fa-people-group"></i> {{localize "SIMPLYPF2E.Mode.Encounter"}}
       </label>
-      <button type="button" class="spf-mode-toggle-action" data-action="openItemForge" data-tooltip="{{localize 'SIMPLYPF2E.ItemForge.OpenButton'}}">
-        <i class="fa-solid fa-ring"></i> {{localize "SIMPLYPF2E.ItemForge.OpenButton"}}
-      </button>
     </div>
     {{#unless encounterMode}}
     <div class="form-group spf-preset">
@@ -52,7 +49,7 @@
           <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
             <i class="fa-solid fa-minus"></i>
           </button>
-          <input type="number" name="level" min="-1" max="24" step="1" value="{{input.level}}">
+          <input type="number" name="level" min="{{#if encounterMode}}1{{else}}-1{{/if}}" max="{{#if encounterMode}}20{{else}}24{{/if}}" step="1" value="{{input.level}}">
           <button type="button" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
             <i class="fa-solid fa-plus"></i>
           </button>
@@ -76,6 +73,14 @@
           <select name="threat">
             {{#each threats}}
               <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{localize this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
+          <select name="rarity">
+            {{#each rarities}}
+              <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
             {{/each}}
           </select>
         </div>
