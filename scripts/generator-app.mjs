@@ -133,7 +133,7 @@ export class GeneratorApp extends SpfApp {
           name: member.concept.name,
           level: member.concept.level,
           blurb: member.concept.blurb,
-          statline: `AC ${stats.ac}, HP ${stats.hp}, Per +${stats.perception}`
+          statline: `AC ${stats.ac}, ${game.i18n.localize("SIMPLYPF2E.Preview.Fort")} +${stats.saves.fortitude}, ${game.i18n.localize("SIMPLYPF2E.Preview.Ref")} +${stats.saves.reflex}, ${game.i18n.localize("SIMPLYPF2E.Preview.Will")} +${stats.saves.will}, HP ${stats.hp}, Per +${stats.perception}`
             + (strike ? `, ${strike.name} +${strike.bonus} (${strike.damage})` : "")
             + (stats.spellDC ? `, ${game.i18n.localize("SIMPLYPF2E.Preview.Spells")} DC ${stats.spellDC}` : "")
         };
@@ -472,8 +472,11 @@ export class GeneratorApp extends SpfApp {
    * Grounded spell selection: first ask the AI for a thematic focus (so the
    * compendium query below can be narrowed instead of dumping every spell in
    * the tradition), then fetch that narrowed, level-capped list and let the
-   * AI pick the actual spells from it. Falls back to the first-draft spell
-   * names (still fuzzy-matched) if either pass fails.
+   * AI pick the actual spells from it. The first-draft spells from
+   * generateConcept() are UNCONSTRAINED (the AI free-invents plausible names
+   * as "inspiration" only) — if this grounded pass doesn't produce a real,
+   * compendium-backed list, spells are dropped rather than left as unvetted
+   * draft names, same fail-closed behavior as feats elsewhere in the pipeline.
    */
   async #refineSpells(concept) {
     const spellcasting = concept?.spellcasting;
@@ -492,7 +495,10 @@ export class GeneratorApp extends SpfApp {
         console.warn(`${MODULE_ID} | spell focus selection failed, using unfiltered spell list`, err);
       }
       const candidates = await getSpellCandidates(spellcasting.tradition, spellcasting.maxRank, keywords);
-      if (candidates.length) {
+      if (!candidates.length) {
+        console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
+        spellcasting.spells = [];
+      } else {
         const { spells, usage } = await selectSpells({
           concept,
           candidates,
@@ -500,10 +506,11 @@ export class GeneratorApp extends SpfApp {
           onProgress: (p) => this._onAIProgress(p)
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);
-        if (spells.length) spellcasting.spells = spells;
+        spellcasting.spells = spells;
       }
     } catch (err) {
-      console.warn(`${MODULE_ID} | grounded spell selection failed, using first-draft spells`, err);
+      console.warn(`${MODULE_ID} | grounded spell selection failed, dropping spellcasting (unconstrained first-draft spells discarded)`, err);
+      spellcasting.spells = [];
     }
     if (!spellcasting.spells.length) concept.spellcasting = null;
   }
