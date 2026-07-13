@@ -81,6 +81,17 @@ export function normalizeConcept(raw, { level, rarity }) {
     };
   }
 
+  // Traits are AI-free-invented; validate against the real installed PF2e
+  // trait list (CONFIG.PF2E.creatureTraits, same "derive from real data"
+  // discipline as abilities/feats/spells/equipment) when that global exists.
+  const draftTraits = (Array.isArray(c.traits) ? c.traits : []).map(slugify).filter(Boolean);
+  let validTraits = draftTraits;
+  if (typeof CONFIG !== "undefined" && CONFIG.PF2E?.creatureTraits) {
+    validTraits = draftTraits.filter((t) => t in CONFIG.PF2E.creatureTraits);
+    const dropped = draftTraits.filter((t) => !(t in CONFIG.PF2E.creatureTraits));
+    if (dropped.length) console.warn(`simplypf2e | dropped invalid creature traits: ${dropped.join(", ")}`);
+  }
+
   return {
     name: String(c.name || "Unnamed Creature").slice(0, 120),
     blurb: String(c.blurb ?? ""),
@@ -90,7 +101,7 @@ export function normalizeConcept(raw, { level, rarity }) {
     level: clampedLevel,
     rarity: RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common",
     size: SIZES.has(c.size) ? c.size : "med",
-    traits: (Array.isArray(c.traits) ? c.traits : []).map(slugify).filter(Boolean),
+    traits: validTraits,
     languages: (Array.isArray(c.languages) ? c.languages : []).map(slugify).filter(Boolean),
     abilityScales: abilities,
     acScale: scale4(c.acScale),
