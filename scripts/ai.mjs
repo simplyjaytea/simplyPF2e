@@ -341,6 +341,57 @@ Pick 3-8 logical items the creature would carry: the weapons it wields (match it
   return { equipment, usage };
 }
 
+/**
+ * Grounded loot pass: given real compendium items (treasure included, level
+ * capped like resolveLoot's filter), have the model re-pick the first-draft
+ * haul from names guaranteed to exist — the loot counterpart of
+ * selectEquipment(). Without this, a pre-Remaster name the model recalls
+ * ("Bag of Holding") never fuzzy-matches its Remaster item ("Spacious Pouch")
+ * and silently becomes a wrong-named custom treasure item. Coins and spell
+ * scrolls stay free-form: they are not plain compendium items
+ * (parseCoins/parseScroll in builder.mjs build them specially).
+ * @param {object} args
+ * @param {object} args.concept       normalized concept (for context)
+ * @param {{name: string, type: string, level: number}[]} args.candidates
+ * @returns {Promise<{loot: {name: string, quantity: number, value: number}[], usage: object}>}
+ */
+export async function selectLoot({ concept, candidates, onProgress }) {
+  const byType = new Map();
+  for (const c of candidates) {
+    if (!byType.has(c.type)) byType.set(c.type, []);
+    byType.get(c.type).push(c.level > 0 ? `${c.name} (L${c.level})` : c.name);
+  }
+  const list = [...byType.entries()]
+    .map(([type, names]) => `${type}: ${names.join("; ")}`)
+    .join("\n");
+
+  const system = `You are selecting dropped loot for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written — with two exceptions kept free-form because they are built specially: coin entries ("Gold Coins"/"Silver Coins" etc., quantity = the number of coins) and spell scrolls ("Scroll of {exact PF2e spell name} (Rank {n})"). Respond with a single JSON object and nothing else:
+{ "loot": [ { "name": string, "quantity": number } ] }
+Recreate the first-draft haul: keep its coin and scroll entries as they are, replace every other entry with its closest match from the list (the same item if it appears, otherwise the nearest equivalent in kind and value), and drop an entry only when nothing on the list comes close. Keep the draft's quantities.`;
+
+  const user = [
+    `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    `Traits: ${concept.traits.join(", ")}`,
+    `First-draft loot (recreate this haul from the list): ${concept.loot.map((l) => `${l.name} x${l.quantity}`).join(", ")}`,
+    "",
+    "Available items:",
+    list
+  ].filter((line) => line !== null).join("\n");
+
+  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const loot = (Array.isArray(parsed.loot) ? parsed.loot : [])
+    .filter((l) => l?.name)
+    .map((l) => ({
+      name: String(l.name),
+      // No upper cap here: coin quantities run large. normalizeLoot() clamps.
+      quantity: Math.max(Math.round(Number(l.quantity) || 1), 1),
+      // Picks come from the compendium, so no estimated fallback price is needed.
+      value: 0
+    }));
+  return { loot, usage };
+}
+
 /* Schema documentation per item-forge effect kind. Only the kinds that
  * rule-templates.mjs actually found real exemplars for in this world are
  * offered to the model — see generateMagicItemConcept(). */
