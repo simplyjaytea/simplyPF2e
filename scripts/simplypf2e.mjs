@@ -23,6 +23,12 @@ Hooks.once("init", () => {
   if (!Handlebars.helpers.eq) {
     Handlebars.registerHelper("eq", (a, b) => a === b);
   }
+  // Shared progress-bar markup between the generator and item forge windows —
+  // registered once here so both HandlebarsApplicationMixin apps can
+  // {{> simplypf2e-progress}} instead of duplicating the block.
+  foundry.applications.handlebars.loadTemplates({
+    "simplypf2e-progress": `modules/${MODULE_ID}/templates/_progress.hbs`
+  });
 });
 
 Hooks.once("ready", () => {

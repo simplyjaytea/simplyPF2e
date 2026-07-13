@@ -51,34 +51,7 @@
     <p class="notification warning">{{unavailableNote}}</p>
   {{/if}}
 
-  {{#if busy}}
-    {{#if progress}}
-      <div class="spf-progress">
-        <div class="spf-progress-bar">
-          <div class="spf-progress-fill" style="width: {{progress.percent}}%"></div>
-        </div>
-        <ol class="spf-progress-steps">
-          {{#each progress.steps}}
-            <li class="spf-step-{{this.state}}">
-              <span class="spf-step-label">
-                {{#if (eq this.state "done")}}<i class="fa-solid fa-check"></i>{{/if}}
-                {{#if (eq this.state "active")}}<i class="fa-solid fa-spinner fa-spin"></i>{{/if}}
-                {{localize this.label}}
-              </span>
-              <div class="spf-step-bar"><div class="spf-step-bar-fill"></div></div>
-            </li>
-          {{/each}}
-        </ol>
-        <p class="spf-progress-detail">{{progress.detail}}</p>
-        <p class="spf-model">{{model}}</p>
-      </div>
-    {{else}}
-      <div class="spf-busy">
-        <i class="fa-solid fa-spinner fa-spin"></i>
-        {{localize "SIMPLYPF2E.Generator.Busy"}} <span class="spf-model">({{model}})</span>
-      </div>
-    {{/if}}
-  {{/if}}
+  {{#if busy}}{{> simplypf2e-progress}}{{/if}}
 
   {{#if error}}
     <p class="notification error">{{error}}</p>

@@ -449,7 +449,7 @@
 
 .simplypf2e .spf-found {
   font-size: 0.85em;
-  color: var(--color-text-hyperlink, #4a6741);
+  color: var(--color-text-hyperlink);
 }
 
 .simplypf2e .spf-custom {
@@ -462,12 +462,17 @@
   padding: 0 0.3rem;
 }
 
-.simplypf2e .spf-missing {
+/* Spells/feats that failed to resolve are dropped from the actor entirely —
+   struck through and red to read as "won't appear", distinct from the
+   .spf-custom pill (equipment/loot instead), which still gets created. */
+.simplypf2e .spf-dropped {
   opacity: 0.65;
+  text-decoration: line-through;
 }
 
-.simplypf2e .spf-missing i {
-  color: #b8860b;
+.simplypf2e .spf-dropped i {
+  color: #b0413e;
+  text-decoration: none;
 }
 
 .simplypf2e .spf-ability-desc {
