@@ -22,15 +22,24 @@ export const EQUIPMENT_TYPES = new Set([
 
 /**
  * Pack ids a category draws from: the GM's Compendium Sources selection, or
- * the system defaults when the category is unset/empty. Missing packs
- * (e.g. from an uninstalled module) are dropped.
+ * the system defaults when the category is unset/empty. Missing packs (e.g.
+ * from an uninstalled module) are warned and dropped; if that empties the
+ * whole category, falls back to the (filtered) system defaults instead of
+ * silently starving downstream pipelines (spell/equipment candidates, etc.)
+ * with an empty list.
  */
 export function getPacksFor(category) {
   const stored = getSetting(SETTINGS.sourcePacks) ?? {};
   const ids = Array.isArray(stored[category]) && stored[category].length
     ? stored[category]
     : DEFAULT_PACKS[category];
-  return ids.filter((id) => game.packs.get(id));
+  for (const id of ids) {
+    if (!game.packs.get(id)) console.warn(`simplypf2e | configured ${category} pack "${id}" is not available (uninstalled/disabled?) — skipping`);
+  }
+  const packs = ids.filter((id) => game.packs.get(id));
+  if (packs.length || !DEFAULT_PACKS[category]) return packs;
+  console.warn(`simplypf2e | no configured ${category} packs are available, falling back to system defaults`);
+  return DEFAULT_PACKS[category].filter((id) => game.packs.get(id));
 }
 
 let detectedPacks = null;

@@ -117,34 +117,7 @@
     </div>
   </fieldset>
 
-  {{#if busy}}
-    {{#if progress}}
-      <div class="spf-progress">
-        <div class="spf-progress-bar">
-          <div class="spf-progress-fill" style="width: {{progress.percent}}%"></div>
-        </div>
-        <ol class="spf-progress-steps">
-          {{#each progress.steps}}
-            <li class="spf-step-{{this.state}}">
-              <span class="spf-step-label">
-                {{#if (eq this.state "done")}}<i class="fa-solid fa-check"></i>{{/if}}
-                {{#if (eq this.state "active")}}<i class="fa-solid fa-spinner fa-spin"></i>{{/if}}
-                {{localize this.label}}
-              </span>
-              <div class="spf-step-bar"><div class="spf-step-bar-fill"></div></div>
-            </li>
-          {{/each}}
-        </ol>
-        <p class="spf-progress-detail">{{progress.detail}}</p>
-        <p class="spf-model">{{model}}</p>
-      </div>
-    {{else}}
-      <div class="spf-busy">
-        <i class="fa-solid fa-spinner fa-spin"></i>
-        {{localize "SIMPLYPF2E.Generator.Busy"}} <span class="spf-model">({{model}})</span>
-      </div>
-    {{/if}}
-  {{/if}}
+  {{#if busy}}{{> simplypf2e-progress}}{{/if}}
 
   {{#if error}}
     <p class="notification error">{{error}}</p>
@@ -221,9 +194,9 @@
       </h3>
       <ul class="spf-list spf-inline">
         {{#each preview.spells}}
-          <li class="{{#unless this.found}}spf-missing{{/unless}}">
+          <li class="{{#unless this.found}}spf-dropped{{/unless}}">
             {{this.name}} <span class="spf-rank">({{#if this.rank}}{{localize "SIMPLYPF2E.Preview.Rank"}} {{this.rank}}{{else}}{{localize "SIMPLYPF2E.Preview.Cantrip"}}{{/if}})</span>
-            {{#unless this.found}}<i class="fa-solid fa-triangle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+            {{#unless this.found}}<i class="fa-solid fa-ban" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
           </li>
         {{/each}}
       </ul>
@@ -233,9 +206,9 @@
       <h3>{{localize "SIMPLYPF2E.Preview.Feats"}}</h3>
       <ul class="spf-list spf-inline">
         {{#each preview.feats}}
-          <li class="{{#unless this.found}}spf-missing{{/unless}}">
+          <li class="{{#unless this.found}}spf-dropped{{/unless}}">
             {{this.name}}
-            {{#unless this.found}}<i class="fa-solid fa-triangle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+            {{#unless this.found}}<i class="fa-solid fa-ban" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
           </li>
         {{/each}}
       </ul>
@@ -245,9 +218,9 @@
       <h3>{{localize "SIMPLYPF2E.Preview.Equipment"}}</h3>
       <ul class="spf-list spf-inline">
         {{#each preview.equipment}}
-          <li class="{{#unless this.found}}spf-missing{{/unless}}">
+          <li>
             {{this.name}}
-            {{#unless this.found}}<i class="fa-solid fa-triangle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.EquipmentCustom'}}"></i>{{/unless}}
+            {{#unless this.found}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.EquipmentCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/unless}}
           </li>
         {{/each}}
       </ul>
@@ -257,9 +230,9 @@
       <h3>{{localize "SIMPLYPF2E.Preview.Loot"}}</h3>
       <ul class="spf-list spf-inline">
         {{#each preview.loot}}
-          <li class="{{#unless this.found}}spf-missing{{/unless}}">
+          <li>
             {{this.name}}
-            {{#unless this.found}}<i class="fa-solid fa-triangle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.LootCustom'}}"></i>{{/unless}}
+            {{#unless this.found}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.LootCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/unless}}
           </li>
         {{/each}}
       </ul>
