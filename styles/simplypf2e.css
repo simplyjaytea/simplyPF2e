@@ -1,3 +1,12 @@
+/* Shared palette — the repeated brand/status colors used below. */
+.simplypf2e {
+  --spf-brand-dark: #58180d;
+  --spf-brand-accent: #a3512c;
+  --spf-trait-border: #d8c384;
+  --spf-success: #4a6741;
+  --spf-danger: #b0413e;
+}
+
 .simplypf2e .simplypf2e-generator {
   display: flex;
   flex-direction: column;
@@ -57,8 +66,8 @@
 .simplypf2e .spf-mode-toggle label.spf-mode-active {
   opacity: 1;
   font-weight: bold;
-  border-color: #a3512c;
-  box-shadow: inset 0 0 0 1px #a3512c;
+  border-color: var(--spf-brand-accent);
+  box-shadow: inset 0 0 0 1px var(--spf-brand-accent);
 }
 
 .simplypf2e .spf-mode-toggle input[type="radio"] {
@@ -180,7 +189,7 @@
 }
 
 .simplypf2e .spf-over-budget {
-  color: #b0413e;
+  color: var(--spf-danger);
 }
 
 .simplypf2e .spf-row {
@@ -237,7 +246,7 @@
 
 .simplypf2e .spf-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #58180d, #a3512c);
+  background: linear-gradient(90deg, var(--spf-brand-dark), var(--spf-brand-accent));
   border-radius: 0.3rem;
   transition: width 0.4s ease;
 }
@@ -279,7 +288,7 @@
 .simplypf2e .spf-step-bar-fill {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, #58180d, #a3512c);
+  background: linear-gradient(90deg, var(--spf-brand-dark), var(--spf-brand-accent));
   transition: width 0.3s ease;
 }
 
@@ -310,7 +319,7 @@
 }
 
 .simplypf2e .spf-step-done i {
-  color: #4a6741;
+  color: var(--spf-success);
 }
 
 .simplypf2e .spf-progress-detail {
@@ -384,9 +393,9 @@
 }
 
 .simplypf2e .spf-trait {
-  background: #58180d;
+  background: var(--spf-brand-dark);
   color: #fff;
-  border: 1px solid #d8c384;
+  border: 1px solid var(--spf-trait-border);
   padding: 0 0.4rem;
   font-size: 0.72em;
   font-weight: bold;
@@ -456,7 +465,7 @@
   font-size: 0.75em;
   font-weight: bold;
   text-transform: uppercase;
-  background: #4a6741;
+  background: var(--spf-success);
   color: #fff;
   border-radius: 3px;
   padding: 0 0.3rem;
@@ -471,7 +480,7 @@
 }
 
 .simplypf2e .spf-dropped i {
-  color: #b0413e;
+  color: var(--spf-danger);
   text-decoration: none;
 }
 

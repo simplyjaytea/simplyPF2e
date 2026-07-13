@@ -271,7 +271,9 @@ export class GeneratorApp extends SpfApp {
     const input = this.element.querySelector('input[name="level"]');
     if (!input) return;
     const current = Number.parseInt(input.value, 10);
-    input.value = Math.min(24, Math.max(-1, (Number.isNaN(current) ? 1 : current) + delta));
+    // Party Level (encounter mode) is a PC level, 1-20; creature Level goes -1..24.
+    const [min, max] = this.#input.mode === "encounter" ? [1, 20] : [-1, 24];
+    input.value = Math.min(max, Math.max(min, (Number.isNaN(current) ? 1 : current) + delta));
   }
 
   static #onPartyUp() {
@@ -375,7 +377,7 @@ export class GeneratorApp extends SpfApp {
     this.#concept = null;
     this.#resolved = null;
     this._tokenUsage = [];
-    const { level: partyLevel, partySize, threat } = this.#input;
+    const { level: partyLevel, partySize, threat, rarity } = this.#input;
     const composition = composeEncounter(threat, partySize, partyLevel);
     const memberLabel = (i) => game.i18n.format("SIMPLYPF2E.Progress.Member", {
       index: i + 1, total: composition.members.length
@@ -403,14 +405,14 @@ export class GeneratorApp extends SpfApp {
         const { concept: raw, usage } = await generateConcept({
           prompt: `${design.briefs[i]} (Part of the encounter "${design.name}": ${theme})`,
           level: slot.level,
-          rarity: "common",
+          rarity,
           allowSpellcasting: this.#input.allowSpellcasting,
           preset: null,
           amount: this.#input.treasureAmount,
           onProgress: (p) => this._onAIProgress(p)
         });
         this._recordTokens(memberLabel(i), usage);
-        const concept = normalizeConcept(raw, { level: slot.level, rarity: "common" });
+        const concept = normalizeConcept(raw, { level: slot.level, rarity });
         await this.#refineSpells(concept);
         await this.#refineEquipment(concept);
         await this.#refineLoot(concept);
