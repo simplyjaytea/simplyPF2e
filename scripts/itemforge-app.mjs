@@ -23,7 +23,7 @@ export class ItemForgeApp extends SpfApp {
     classes: ["simplypf2e"],
     window: {
       title: "SIMPLYPF2E.ItemForge.Title",
-      icon: "fa-solid fa-ring",
+      icon: "fa-solid fa-hammer",
       resizable: true
     },
     position: { width: 620, height: "auto" },
