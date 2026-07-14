@@ -73,9 +73,13 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   _onAIProgress({ phase, tokens }) {
     const progress = this._progress;
     if (!progress) return;
+    // Name the active step in the detail line — several different AI calls
+    // (spells, equipment, loot, encounter design, ...) share this callback,
+    // so a hardcoded "stat block" phrase would mislabel most of them.
+    const step = progress.steps.find((s) => s.state === "active");
     progress.detail = game.i18n.format(
       phase === "thinking" ? "SIMPLYPF2E.Progress.Thinking" : "SIMPLYPF2E.Progress.Writing",
-      { tokens: tokens.toLocaleString() }
+      { step: step?.label ?? "", tokens: tokens.toLocaleString() }
     );
     const el = this.element?.querySelector(".spf-progress-detail");
     if (el) el.textContent = progress.detail;

@@ -134,10 +134,21 @@ export class AIRequestError extends Error {
  */
 async function requestJSON(args) {
   let lastError = null;
+  // Tokens spent by failed attempts are still spent — sum usage across every
+  // attempt that returned one, so the report reflects the real total.
+  const total = { prompt: 0, completion: 0, total: 0, estimated: false };
+  const addUsage = (usage) => {
+    if (!usage) return;
+    total.prompt += usage.prompt || 0;
+    total.completion += usage.completion || 0;
+    total.total += usage.total || 0;
+    if (usage.estimated) total.estimated = true;
+  };
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const { content, usage } = await requestCompletion(args);
-      return { data: parseConceptJSON(content), usage };
+      addUsage(usage);
+      return { data: parseConceptJSON(content), usage: total };
     } catch (err) {
       if (!(err instanceof AIRequestError) || !err.retryable) throw err;
       lastError = err;
@@ -150,9 +161,11 @@ async function requestJSON(args) {
 /**
  * Shape the provider's usage block into {prompt, completion, total, estimated}.
  * When the provider sent no usage at all, fall back to a ~4 chars/token
- * estimate of the completion so the report never comes up empty.
+ * estimate of both sides — the completion from the streamed content, the
+ * prompt from the request's system+user text — so the report never comes up
+ * empty or pretends the prompt cost nothing.
  */
-function normalizeUsage(usage, content) {
+function normalizeUsage(usage, { content, system, user }) {
   const prompt = Number(usage?.prompt_tokens);
   const completion = Number(usage?.completion_tokens);
   if (Number.isFinite(prompt) || Number.isFinite(completion)) {
@@ -160,8 +173,9 @@ function normalizeUsage(usage, content) {
     const c = Number.isFinite(completion) ? completion : 0;
     return { prompt: p, completion: c, total: Number(usage?.total_tokens) || p + c, estimated: false };
   }
+  const promptEst = estimateTokens((system ?? "").length + (user ?? "").length);
   const est = estimateTokens((content ?? "").length);
-  return { prompt: 0, completion: est, total: est, estimated: true };
+  return { prompt: promptEst, completion: est, total: promptEst + est, estimated: true };
 }
 
 /**
@@ -661,7 +675,7 @@ async function requestCompletion({ system, user, onProgress }) {
       }
       throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"), { retryable: true });
     }
-    return { content, usage: normalizeUsage(usage, content) };
+    return { content, usage: normalizeUsage(usage, { content, system, user }) };
   } catch (err) {
     if (err.name === "AbortError" || controller.signal.aborted) {
       throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.Timeout", { seconds: idleSeconds }));

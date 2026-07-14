@@ -483,18 +483,28 @@ export class GeneratorApp extends SpfApp {
     const spellcasting = concept?.spellcasting;
     if (!spellcasting) return;
     try {
+      // Both AI calls below run under the single "Spell selection" step, so
+      // keep a running token total across them — otherwise the live counter
+      // visibly resets to zero when the second call starts.
+      let stepTokens = 0;
+      let lastTokens = 0;
+      const onProgress = (p) => {
+        lastTokens = p.tokens;
+        this._onAIProgress({ ...p, tokens: stepTokens + p.tokens });
+      };
       let keywords = [];
       try {
         const focus = await chooseSpellFocus({
           concept,
           tradition: spellcasting.tradition,
-          onProgress: (p) => this._onAIProgress(p)
+          onProgress
         });
         keywords = focus.keywords;
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.SpellFocus"), focus.usage);
       } catch (err) {
         console.warn(`${MODULE_ID} | spell focus selection failed, using unfiltered spell list`, err);
       }
+      stepTokens += lastTokens;
       const candidates = await getSpellCandidates(spellcasting.tradition, spellcasting.maxRank, keywords);
       if (!candidates.length) {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
@@ -504,7 +514,7 @@ export class GeneratorApp extends SpfApp {
           concept,
           candidates,
           maxRank: spellcasting.maxRank,
-          onProgress: (p) => this._onAIProgress(p)
+          onProgress
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);
         spellcasting.spells = spells;
@@ -640,7 +650,7 @@ export class GeneratorApp extends SpfApp {
     if (this.#busy || !this.#concept) return;
     this.#busy = true;
     this.#error = null;
-    this._beginProgress([["loot", game.i18n.localize("SIMPLYPF2E.Progress.Loot")]]);
+    this._beginProgress([["loot", game.i18n.localize("SIMPLYPF2E.Progress.LootReroll")]]);
     try {
       await this._setStep("loot");
       const { loot, usage } = await generateLoot({
@@ -648,7 +658,7 @@ export class GeneratorApp extends SpfApp {
         amount: this.#input.treasureAmount,
         onProgress: (p) => this._onAIProgress(p)
       });
-      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.LootReroll"), usage);
       this.#concept.loot = normalizeLoot(loot);
       // Ground the fresh draft too — same Remaster-name protection as the
       // main pipeline (a reroll is a new ungrounded draft).

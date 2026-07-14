@@ -117,9 +117,10 @@
       "Match": "Compendium matching",
       "Design": "Encounter design",
       "Member": "Member {index}/{total}",
-      "Loot": "Loot reroll",
-      "Thinking": "The model is thinking… (~{tokens} tokens of reasoning)",
-      "Writing": "Receiving the stat block… (~{tokens} tokens)"
+      "Loot": "Loot selection",
+      "LootReroll": "Loot reroll",
+      "Thinking": "{step}: the model is thinking… (~{tokens} tokens of reasoning)",
+      "Writing": "{step}: receiving… (~{tokens} tokens)"
     },
     "Tokens": {
       "Heading": "Token usage",
