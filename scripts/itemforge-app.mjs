@@ -26,7 +26,7 @@ export class ItemForgeApp extends SpfApp {
       icon: "fa-solid fa-hammer",
       resizable: true
     },
-    position: { width: 620, height: "auto" },
+    position: { width: 720, height: "auto" },
     actions: {
       generate: ItemForgeApp.#onGenerate,
       createItem: ItemForgeApp.#onCreateItem,
