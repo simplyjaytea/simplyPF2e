@@ -437,8 +437,8 @@ export async function resolveConcept(concept) {
   const abilities = [];
   for (const ability of concept.specialAbilities) {
     let entry = null;
-    if (ability.glossary) entry = await findEntry(getPacksFor("abilities"), ability.glossary);
-    if (!entry) entry = await findEntry(getPacksFor("abilities"), ability.name);
+    if (ability.glossary) entry = await findEntry(getPacksFor("abilities"), ability.glossary, (e) => e.type === "action");
+    if (!entry) entry = await findEntry(getPacksFor("abilities"), ability.name, (e) => e.type === "action");
     abilities.push({ ability, entry });
   }
 
