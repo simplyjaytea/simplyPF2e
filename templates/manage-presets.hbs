@@ -1,0 +1,36 @@
+<div class="simplypf2e-manage-presets">
+  {{#if presets.length}}
+    <ul class="spf-manage-list">
+      {{#each presets}}
+        <li>
+          <span class="spf-manage-name">{{this.name}}</span>
+          <span class="spf-manage-buttons">
+            <button type="button" data-action="editPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.EditTooltip'}}">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button type="button" data-action="duplicatePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}">
+              <i class="fa-solid fa-copy"></i>
+            </button>
+            <button type="button" data-action="exportPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ExportTooltip'}}">
+              <i class="fa-solid fa-file-export"></i>
+            </button>
+            <button type="button" data-action="deletePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </span>
+        </li>
+      {{/each}}
+    </ul>
+  {{else}}
+    <p class="spf-hint">{{localize "SIMPLYPF2E.Presets.ManageEmpty"}}</p>
+  {{/if}}
+
+  <footer class="spf-actions">
+    <button type="button" data-action="exportAll" {{#unless presets.length}}disabled{{/unless}}>
+      <i class="fa-solid fa-file-export"></i> {{localize "SIMPLYPF2E.Presets.ExportAll"}}
+    </button>
+    <button type="button" data-action="importPresets">
+      <i class="fa-solid fa-file-import"></i> {{localize "SIMPLYPF2E.Presets.Import"}}
+    </button>
+  </footer>
+</div>

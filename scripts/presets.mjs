@@ -1,4 +1,5 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
+import { TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
 
 /**
  * Generation presets: guidance text injected into the AI prompt that shapes
@@ -220,14 +221,46 @@ export function findPreset(id) {
   );
 }
 
-export async function addCustomPreset(name, prompt) {
+/** Value domains for the optional generator-default fields a preset may carry. */
+export const PRESET_RARITIES = ["common", "uncommon", "rare", "unique"];
+
+/**
+ * Pick only the valid optional generator defaults (rarity, allowSpellcasting,
+ * treasureAmount) out of `fields` — anything absent or out of domain is
+ * dropped, so older presets simply don't carry the field.
+ */
+function presetDefaults(fields = {}) {
+  const out = {};
+  if (PRESET_RARITIES.includes(fields.rarity)) out.rarity = fields.rarity;
+  if (typeof fields.allowSpellcasting === "boolean") out.allowSpellcasting = fields.allowSpellcasting;
+  if (Object.hasOwn(TREASURE_AMOUNT_MULTIPLIER, fields.treasureAmount ?? "")) out.treasureAmount = fields.treasureAmount;
+  return out;
+}
+
+export async function addCustomPreset(name, prompt, fields = {}) {
   const preset = {
     id: `custom-${foundry.utils.randomID(8)}`,
     name: String(name).slice(0, 60),
     prompt: String(prompt),
+    ...presetDefaults(fields),
     custom: true
   };
   await game.settings.set(MODULE_ID, SETTINGS.customPresets, [...getCustomPresets(), preset]);
+  return preset;
+}
+
+/** Merge new values into an existing custom preset (no-op if not found). */
+export async function updateCustomPreset(id, fields = {}) {
+  // Clone before mutating: getCustomPresets() hands back the live setting
+  // objects, and mutating them in place before settings.set could confuse
+  // Foundry's cached value.
+  const presets = getCustomPresets().map((p) => ({ ...p }));
+  const preset = presets.find((p) => p.id === id && p.custom);
+  if (!preset) return null;
+  if (typeof fields.name === "string" && fields.name.trim()) preset.name = fields.name.slice(0, 60);
+  if (typeof fields.prompt === "string" && fields.prompt.trim()) preset.prompt = fields.prompt;
+  Object.assign(preset, presetDefaults(fields));
+  await game.settings.set(MODULE_ID, SETTINGS.customPresets, presets);
   return preset;
 }
 
@@ -237,4 +270,40 @@ export async function deleteCustomPreset(id) {
     SETTINGS.customPresets,
     getCustomPresets().filter((p) => p.id !== id)
   );
+}
+
+/** Pretty JSON of the custom presets matching `ids` (all customs if omitted). */
+export function exportPresets(ids = null) {
+  const presets = getCustomPresets().filter((p) => !ids || ids.includes(p.id));
+  return JSON.stringify(presets, null, 2);
+}
+
+/**
+ * Import presets from a JSON string (a single preset object or an array).
+ * Each valid entry (non-empty name + prompt strings) is added as a NEW custom
+ * preset with a fresh id — imported ids are never trusted, avoiding
+ * collisions with existing presets. Malformed entries are silently skipped.
+ */
+export async function importPresets(json) {
+  let parsed;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return { added: 0, skipped: 1 };
+  }
+  const entries = Array.isArray(parsed) ? parsed : [parsed];
+  let added = 0;
+  let skipped = 0;
+  for (const entry of entries) {
+    const valid = entry
+      && typeof entry.name === "string" && entry.name.trim()
+      && typeof entry.prompt === "string" && entry.prompt.trim();
+    if (!valid) {
+      skipped++;
+      continue;
+    }
+    await addCustomPreset(entry.name.trim(), entry.prompt.trim(), entry);
+    added++;
+  }
+  return { added, skipped };
 }
