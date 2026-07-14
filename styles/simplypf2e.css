@@ -51,6 +51,46 @@
   line-height: 1;
 }
 
+.simplypf2e .simplypf2e-manage-presets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spf-space-md);
+  padding: var(--spf-space-xs);
+}
+
+.simplypf2e .spf-manage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.simplypf2e .spf-manage-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--spf-space-sm);
+  padding: var(--spf-space-xs) 0;
+  border-bottom: 1px solid var(--color-border, #7a7971);
+}
+
+.simplypf2e .spf-manage-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.simplypf2e .spf-manage-buttons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.simplypf2e .spf-manage-buttons button {
+  flex: 0 0 auto;
+  width: var(--spf-icon-btn);
+  height: var(--spf-icon-btn);
+  line-height: 1;
+}
+
 .simplypf2e .spf-mode-toggle {
   display: flex;
   gap: 0.35rem;

@@ -27,8 +27,14 @@
         <button type="button" data-action="savePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.SaveTooltip'}}">
           <i class="fa-solid fa-floppy-disk"></i>
         </button>
+        <button type="button" data-action="duplicatePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" {{#unless presetSelected}}disabled{{/unless}}>
+          <i class="fa-solid fa-copy"></i>
+        </button>
         <button type="button" data-action="deletePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" {{#unless selectedPresetIsCustom}}disabled{{/unless}}>
           <i class="fa-solid fa-trash"></i>
+        </button>
+        <button type="button" data-action="managePresets" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ManageTooltip'}}">
+          <i class="fa-solid fa-gear"></i>
         </button>
       </div>
     </div>

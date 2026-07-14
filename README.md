@@ -22,7 +22,7 @@ Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a le
 - **Real currency and treasure.** Loot generates as actual PF2e coin items, consumables, scrolls, and magic items — not text you have to convert by hand.
 - **Encounter mode.** Describe a theme, get a whole cohesive group built to the GM Core XP budget in one pass.
 - **Item forge.** Describe a wondrous magic item and get a real Foundry item with *working* passive automation — its Rule Elements are cloned from published items, never invented. Or forge a magic weapon or suit of armor built from real fundamental and property runes, priced by summing the actual rune and base-item documents (see [Item forge](#item-forge)).
-- **Presets that shape the build.** Twelve built-in class road maps, plus save your own.
+- **Presets that shape the build.** Twelve built-in class road maps, plus save, edit, duplicate, and share your own — see [Presets](#presets).
 - **Nothing touches your world until you say so.** Every generation is a preview — regenerate, edit the prompt, reroll just the loot, or discard, freely.
 - **Full visibility into cost.** Streamed progress per step and an exact token-usage report after every generation.
 
@@ -87,7 +87,12 @@ By default SimplyPF2e draws from the PF2e system packs (bestiary ability glossar
 
 The preset dropdown shapes the *build* while your description drives the *flavor*. Built-in presets cover the standard fantasy classes — Fighter, Barbarian, Rogue, Ranger, Monk, Cleric, Druid, Wizard, Sorcerer, Bard, Champion, and Alchemist — each encoding a GM Core-style road map (stat scales, techniques, casting tradition). "Level 5 hobgoblin veteran" + the Fighter preset gives a disciplined soldier; the same prompt with the Barbarian preset gives a reckless brute.
 
-You can also save your own: click **+** next to the dropdown, give the preset a name and build guidance (written to the AI like the examples above), and it's stored in the world and appears in the dropdown marked with `*`. Select a custom preset and click the trash button to delete it.
+A preset can also carry defaults for **rarity**, **allow spellcasting**, and **Treasure amount** — selecting one restores any of those three it defines, leaving fields it doesn't touch as you left them.
+
+- **Save** captures your *current* form — the build guidance you write plus whatever rarity/spellcasting/treasure amount are set right now — as a new custom preset (or, if a custom preset is already selected, updates that same preset in place instead of creating a duplicate). Custom presets are stored in the world and appear in the dropdown marked with `*`.
+- **Duplicate** starts a new custom preset pre-filled from whichever preset is currently selected — built-in or custom — so you can take "Fighter" and tweak it into your own house archetype without typing a guidance paragraph from scratch.
+- **Delete** removes the selected custom preset (built-ins can't be deleted).
+- **Manage Presets** opens a dialog listing all your custom presets with Edit, Duplicate, Export, and Delete on each row, plus **Export All** and **Import** at the bottom. Export writes a JSON file you can hand to another GM; Import reads one back in (invalid entries are skipped, valid ones always get a fresh internal id so they never collide with presets you already have) — this is how you trade presets between worlds or with other GMs.
 
 The description box's placeholder shows a different example concept each time you switch presets — five per preset — as inspiration for what that preset can build.
 
@@ -171,6 +176,7 @@ Odd generation results:
 ## Roadmap
 
 - [x] **Templates / presets** — ✅ v0.2.0: built-in class presets (Fighter through Alchemist) plus user-created custom presets in a dropdown.
+- [x] **Preset overhaul** — ✅ unreleased: presets now capture rarity/spellcasting/treasure-amount defaults alongside build guidance, Save edits an already-selected custom preset in place instead of always duplicating, Duplicate clones any preset (built-in or custom) as an editable starting point, and a Manage Presets dialog adds Edit/Export/Import — covers the **Preset sharing** roadmap item below via JSON export/import.
 - [x] **Clickable rolls** — ✅ v0.1.4: damage, saves, checks, and area templates in custom abilities are inline roll links.
 - [x] **Encounter mode** — ✅ v0.3.0: themed encounters built to the GM Core XP budget (threat level × party size × party level), created as a folder of actors. Covers the old "batch mode" idea.
 - [x] **Recall Knowledge & read-aloud** — ✅ v0.3.0: theater-of-the-mind read-aloud block and a clickable Recall Knowledge check with a player-facing info nugget.
@@ -182,7 +188,7 @@ Odd generation results:
 - [x] **Grounded equipment matching** — ✅ unreleased: mirrors the spell-selection approach — the AI picks carried gear from a real, level-capped candidate list out of the equipment compendium instead of naming items from memory.
 - [x] **Treasure budgets** — ✅ unreleased: loot is priced against the GM Core Treasure by Level table (level + rarity scaled, with a per-generation Stingy/Standard/Generous control); coin entries flex to land the haul on budget, and encounter mode reports the group's total treasure value alongside the XP math.
 - [ ] **Full PC-power-level characters** — generate complete character-class-strength NPCs (villains, rivals, pregens) built to player-character power budgets.
-- [ ] **Preset sharing** — export/import custom presets as JSON to trade with other GMs.
+- [x] **Preset sharing** — ✅ unreleased: see **Preset overhaul** above — export/import custom presets as JSON via the Manage Presets dialog.
 - [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.
 - [ ] Elite/weak adjustments and level shifting for existing creatures.
 - [ ] Focus spells for spellcasters.
