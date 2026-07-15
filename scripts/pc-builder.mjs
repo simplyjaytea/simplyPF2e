@@ -4,7 +4,7 @@ import {
   parseCoins, resolveLoot, resolveEquipment, buildScrollItem,
   customTreasureItem, customEquipmentItem, applyRunes, capitalized, slugify
 } from "./builder.mjs";
-import { ABILITY_BOOST_LEVELS, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
+import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
@@ -215,10 +215,19 @@ export async function resolvePCConcept(concept) {
 
 /**
  * Resolve ai.mjs's selectFeats() picks against each slot's own candidate
- * list — fail-closed: a slot whose pick doesn't resolve to a real feat
- * document (wrong name, hallucination) is simply skipped, same fail-closed
- * behavior as NPC feats elsewhere in this module.
- * @param {{type: string, level: number, candidates: object[]}[]} featSlots
+ * list. Unlike NPC feats (which fail closed — a creature is fine with fewer
+ * abilities), a PC feat SLOT is a real, level-gated entitlement the rules
+ * grant — leaving it permanently empty is a worse outcome than filling it
+ * with a plausible default the GM can swap out. So a slot whose pick is
+ * missing (the AI dropped it — selectFeats batches every slot into one call,
+ * and a large character can have 20+ slots) or doesn't resolve (hallucinated
+ * name) falls back to the first candidate from THAT SLOT's own already-
+ * validated list (issue #56 item 4) instead of being dropped. The AI's pick
+ * is also now matched with the SAME category filter (`system.category ===
+ * slot.type`) the candidate list itself was built with — previously a
+ * same-named-but-wrong-category feat elsewhere in the compendium could
+ * resolve in place of the slot's own intended pick.
+ * @param {{type: string, level: number, candidates: {name: string}[]}[]} featSlots
  * @param {{slot: number, name: string}[]} picks
  * @returns {Promise<{type: string, level: number, entry: object}[]>}
  */
@@ -227,21 +236,32 @@ export async function resolveFeatPicks(featSlots, picks) {
   const resolved = [];
   for (let i = 0; i < featSlots.length; i++) {
     const slot = featSlots[i];
-    const name = bySlot.get(i + 1) ?? null;
+    let name = bySlot.get(i + 1) ?? null;
     let entry = null;
     if (name) {
       entry = await findEntry(
         getPacksFor("feats"),
         name,
-        (e) => e.type === "feat" && (e.system?.level?.value ?? 0) <= slot.level
+        (e) => e.type === "feat" && e.system?.category === slot.type && (e.system?.level?.value ?? 0) <= slot.level
       );
       if (!entry) {
-        console.warn(`simplypf2e | feat pick "${name}" for slot ${i + 1} (${slot.type}, level ${slot.level}) did not resolve to a real feat — dropping`);
+        console.warn(`simplypf2e | feat pick "${name}" for slot ${i + 1} (${slot.type}, level ${slot.level}) did not resolve to a real feat for this slot`);
       }
     }
-    // entry stays null (dropped, same fail-closed behavior as NPC feats) when
-    // nothing was picked for this slot or the pick didn't resolve; the name
-    // is kept so the preview can still show what was requested.
+    if (!entry && slot.candidates?.length) {
+      // Fallback: the slot's own first candidate is guaranteed to be a real,
+      // already level/category/trait-filtered feat, so this always resolves.
+      name = slot.candidates[0].name;
+      entry = await findEntry(
+        getPacksFor("feats"),
+        name,
+        (e) => e.type === "feat" && e.system?.category === slot.type && (e.system?.level?.value ?? 0) <= slot.level
+      );
+      if (entry) console.warn(`simplypf2e | slot ${i + 1} (${slot.type}, level ${slot.level}) had no usable AI pick — defaulted to "${name}"`);
+    }
+    // entry can still be null only if the slot had no candidates at all
+    // (shouldn't happen — resolvePCConcept only creates slots with >=1
+    // candidate); the name is kept so the preview can still show intent.
     resolved.push({ type: slot.type, level: slot.level, name: name ?? `${slot.type} feat`, entry });
   }
   return resolved;
@@ -365,18 +385,61 @@ function resolveLanguages(names, ancestryDoc) {
 /** A `type:"lore"` skill item (shape verified against pf2e src/module/item/lore.ts:
  * `proficient.value` is the rank, 1 = trained). Background lore isn't a
  * system.skills entry — it needs its own embedded item (issue #50 item 3). */
-function loreItem(name) {
+function loreItem(name, rank = 1) {
   return {
     name: String(name),
     type: "lore",
     img: "icons/sundries/scrolls/scroll-symbol-sun-brown.webp",
     system: {
       mod: { value: 0 },
-      proficient: { value: 1 },
+      proficient: { value: rank },
       traits: { value: [], otherTags: [] },
       description: { value: "" }
     }
   };
+}
+
+/**
+ * Deterministic v1 skill-increase allocation (issue #56 item 5): a trained
+ * skill's `rank` never advances past Trained (1) on its own — the system has
+ * no build-tracking layer for skill increases the way it does for attribute
+ * boosts (verified: CharacterBuildData only carries `attributes`/`languages`,
+ * no `skills` — see the SCHEMA NOTE in createCharacterActor), so a skill increase, like an
+ * ability boost, has to be applied directly as a plain source value.
+ *
+ * Round-robins one +1 rank per SKILL_INCREASE_LEVELS entry <= the character's
+ * level across the already-trained skill/lore list (key-ability skills
+ * first, same priority spirit as assignAbilityBoosts), capped by the CRB's
+ * level gates (Expert any level once trained, Master requires level 7+,
+ * Legendary requires level 15+). Not a tailored build — a reasonable default
+ * a GM reviews, same spirit as assignAbilityBoosts/the trainedSkills.additional
+ * auto-pick above.
+ * @param {string[]} slugs skills/lore names already trained (rank 1)
+ * @param {string} keyAbility
+ * @param {number} level
+ * @returns {Map<string, number>} slug -> final rank (2-4 only; rank-1 entries omitted)
+ */
+function assignSkillRanks(slugs, keyAbility, level) {
+  const increases = SKILL_INCREASE_LEVELS.filter((lv) => lv <= level).length;
+  const maxRank = level >= 15 ? 4 : level >= 7 ? 3 : 2;
+  const order = [...slugs].sort((a, b) =>
+    ((SKILL_ATTRIBUTE[a] === keyAbility ? 0 : 1) - (SKILL_ATTRIBUTE[b] === keyAbility ? 0 : 1))
+    || a.localeCompare(b));
+  const ranks = new Map(order.map((s) => [s, 1]));
+  let remaining = increases;
+  while (remaining > 0) {
+    let advanced = false;
+    for (const slug of order) {
+      if (remaining <= 0) break;
+      if (ranks.get(slug) < maxRank) {
+        ranks.set(slug, ranks.get(slug) + 1);
+        remaining--;
+        advanced = true;
+      }
+    }
+    if (!advanced) break; // every skill already at this level's cap
+  }
+  return ranks;
 }
 
 /**
@@ -408,6 +471,41 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // item's own keyAbility.selected, the actor-level boosts, and details.keyability.
   const keyAbility = resolveKeyAbility(resolved.classDoc.system, concept.keyAbility);
 
+  // Trained skills: the background and class fixed skills are auto-applied by
+  // their own items, but the class's `additional` count of FREE trained skills
+  // is not (the system can't know which) — auto-pick deterministically: skills
+  // governed by the key ability first, then alphabetical (a sensible default a
+  // GM reviews, same spirit as assignAbilityBoosts). Fixes classes like Fighter
+  // (trainedSkills.value == [], all skills come from `additional`) showing zero
+  // trained skills (issue #50 item 3). ponytail: Int-mod bonus skills omitted;
+  // a GM can train more by hand.
+  const trained = new Set([
+    ...(resolved.backgroundDoc.system?.trainedSkills?.value ?? []),
+    ...(resolved.classDoc.system?.trainedSkills?.value ?? [])
+  ]);
+  const additional = Math.max(0, Math.round(Number(resolved.classDoc.system?.trainedSkills?.additional) || 0));
+  const untrained = Object.keys(SKILL_ATTRIBUTE)
+    .filter((s) => !trained.has(s))
+    .sort((a, b) =>
+      ((SKILL_ATTRIBUTE[a] === keyAbility ? 0 : 1) - (SKILL_ATTRIBUTE[b] === keyAbility ? 0 : 1))
+      || a.localeCompare(b));
+  for (const s of untrained.slice(0, additional)) trained.add(s);
+
+  // Background Lore's slug: joins the same skill-increase rotation as core
+  // skills below (issue #56 item 5) even though it lives on its own embedded
+  // item rather than in system.skills.
+  const loreName = resolved.backgroundDoc.system?.trainedSkills?.lore?.[0];
+  const loreSlug = loreName ? slugify(loreName) : null;
+
+  // Skill increases (issue #56 item 5): ranks never advanced past Trained
+  // before — see assignSkillRanks's doc comment for why this has to be a
+  // direct source write, same as ability boosts.
+  const skillRanks = assignSkillRanks(
+    [...trained, ...(loreSlug ? [loreSlug] : [])], keyAbility, concept.level
+  );
+  const skills = {};
+  for (const slug of trained) skills[slug] = { rank: skillRanks.get(slug) ?? 1 };
+
   // ABC boosts: without `selected` set on each item's boost slots, the system
   // applies none of them (issue #50 item 1) — set them on the cloned data.
   const ancestryData = toItemData(resolved.ancestryDoc);
@@ -425,8 +523,7 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   items.push(classData);
 
   // Background Lore: a real embedded lore item (not a system.skills entry).
-  const loreName = resolved.backgroundDoc.system?.trainedSkills?.lore?.[0];
-  if (loreName) items.push(loreItem(loreName));
+  if (loreName) items.push(loreItem(loreName, skillRanks.get(loreSlug) ?? 1));
 
   for (const grant of resolved.grants) {
     items.push(toItemData(grant));
@@ -548,27 +645,6 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // pc-tables.spontaneousSpellSlots) and per-generation starting WEALTH
   // (pcStartingWealthGp — flagged for a human wealth-table cross-check).
   // -----------------------------------------------------------------------
-  // Trained skills: the background and class fixed skills are auto-applied by
-  // their own items, but the class's `additional` count of FREE trained skills
-  // is not (the system can't know which) — auto-pick deterministically: skills
-  // governed by the key ability first, then alphabetical (a sensible default a
-  // GM reviews, same spirit as assignAbilityBoosts). Fixes classes like Fighter
-  // (trainedSkills.value == [], all skills come from `additional`) showing zero
-  // trained skills (issue #50 item 3). ponytail: Int-mod bonus skills omitted;
-  // a GM can train more by hand.
-  const trained = new Set([
-    ...(resolved.backgroundDoc.system?.trainedSkills?.value ?? []),
-    ...(resolved.classDoc.system?.trainedSkills?.value ?? [])
-  ]);
-  const additional = Math.max(0, Math.round(Number(resolved.classDoc.system?.trainedSkills?.additional) || 0));
-  const untrained = Object.keys(SKILL_ATTRIBUTE)
-    .filter((s) => !trained.has(s))
-    .sort((a, b) =>
-      ((SKILL_ATTRIBUTE[a] === keyAbility ? 0 : 1) - (SKILL_ATTRIBUTE[b] === keyAbility ? 0 : 1))
-      || a.localeCompare(b));
-  for (const s of untrained.slice(0, additional)) trained.add(s);
-  const skills = {};
-  for (const slug of trained) skills[slug] = { rank: 1 };
 
   const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
   const toHtml = (text) => text
