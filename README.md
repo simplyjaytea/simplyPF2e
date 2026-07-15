@@ -4,17 +4,22 @@
 [![Foundry version](https://img.shields.io/badge/Foundry-v13%2B-informational)](https://foundryvtt.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Turn a one-sentence idea into a fully statted, ready-to-run Pathfinder 2e NPC or monster — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
+Turn a one-sentence idea into a fully statted, ready-to-run Pathfinder 2e actor — NPC, monster, whole encounter, or (in review) player character — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
 
 **[Install](#install)** · **[Setup](#setup)** · **[Usage](#usage)** · **[Troubleshooting](#troubleshooting)** · **[Known limitations](#known-limitations)** · **[Roadmap](#roadmap)**
 
 ## What it does
 
-Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a level, and get a complete creature: statistics, saves, strikes, skills, special abilities, spells, gear, and loot. PF2e monsters normally take real prep time because everything has to be statted; SimplyPF2e does that work by splitting the job three ways:
+SimplyPF2e's scope is **any PF2e actor a GM needs, built correctly the first time**, not just monsters. Right now that's two generators sharing one grounding philosophy:
 
-1. **The AI invents the concept.** An LLM (DeepSeek by default, or any OpenAI-compatible API) receives your prompt and returns a structured concept: name, flavor, traits, which statistics should be *extreme / high / moderate / low*, what its strikes and signature abilities are, and which standard abilities, feats, spells, and equipment it uses.
-2. **The module does the math.** Every number — AC, HP, saves, perception, skill modifiers, strike attack bonuses, damage dice, spell DCs — is looked up from the official GM Core **"Building Creatures"** benchmark tables for the level you chose. The AI never outputs numbers, so creatures are always mechanically sound for their level.
-3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, Attack of Opportunity, ...), feats, spells, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom item or flagged in the preview so you can decide.
+- **NPCs & monsters** (the core, released feature). Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a level, and get a complete creature: statistics, saves, strikes, skills, special abilities, spells, gear, and loot — solo, or a whole themed **Encounter** built to the GM Core XP budget in one pass.
+- **Player characters** (new, in review — see [Player Character mode](#player-character-mode)). Same idea, different mechanism: a PC is a real Ancestry/Background/Class plus chosen feats, so the PF2e system itself computes the numbers once those real items are embedded, rather than a benchmark table.
+
+PF2e statblocks and character builds normally take real prep time because everything has to be correct *and* statted; SimplyPF2e does that work by splitting the job three ways:
+
+1. **The AI invents the concept.** An LLM (DeepSeek by default, or any OpenAI-compatible API) receives your prompt and returns a structured concept — for NPCs: name, flavor, traits, which statistics should be *extreme / high / moderate / low*, strikes and signature abilities; for PCs: ancestry/background/class leaning, personality, and a first-draft build wishlist.
+2. **The numbers are never the AI's job.** For NPCs, every stat — AC, HP, saves, perception, skill modifiers, strike attack bonuses, damage dice, spell DCs — is looked up from the official GM Core **"Building Creatures"** benchmark tables for the level you chose. For PCs, the PF2e system's own derived-data engine computes AC/HP/saves/proficiencies from the real embedded Ancestry/Background/Class/feat items. Either way, the AI never outputs a number, so builds are always mechanically sound for their level.
+3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, Attack of Opportunity, ...), feats, spells, ancestries, backgrounds, classes, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom item or flagged in the preview so you can decide (loot keeps a narrow, documented exception for coins and scrolls).
 
 ### Highlights
 
