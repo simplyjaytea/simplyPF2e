@@ -63,8 +63,12 @@ export function normalizePCConcept(raw, { level }) {
     description: String(c.backstory ?? ""), // #refineEquipment/#refineLoot read concept.description
     backstory: String(c.backstory ?? ""),
     appearance: String(c.appearance ?? ""),
+    age: String(c.age ?? "").slice(0, 40),
+    gender: String(c.gender ?? "").slice(0, 40),
     height: String(c.height ?? "").slice(0, 40),
     weight: String(c.weight ?? "").slice(0, 40),
+    ethnicity: String(c.ethnicity ?? "").slice(0, 60),
+    nationality: String(c.nationality ?? "").slice(0, 60),
     personality: String(c.personality ?? ""),
     alignmentFlavor: String(c.alignmentFlavor ?? ""),
     likes: String(c.likes ?? ""),
@@ -536,8 +540,9 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // foundryvtt/pf2e master source (character/data.ts + document.ts) when these
   // bugs were fixed: details.keyability.value, details.biography.{backstory,
   // appearance,attitude,beliefs,likes,dislikes,allies,enemies,organizations},
-  // details.height.value, details.weight.value, details.languages.{value,
-  // details}, build.attributes.boosts.{1,5,10,15,20}, skills.<slug>.rank,
+  // details.{age,gender,height,weight,ethnicity,nationality}.value,
+  // details.languages.{value,details}, build.attributes.boosts.{1,5,10,15,20},
+  // skills.<slug>.rank,
   // attributes.hp.{value,temp}. Remaining best-effort (see comments where
   // used): the spontaneous spell-slot COUNTS (rules-derived, not from source —
   // pc-tables.spontaneousSpellSlots) and per-generation starting WEALTH
@@ -584,12 +589,17 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
       details: {
         level: { value: concept.level },
         keyability: { value: keyAbility },
-        // Height/weight (issue #56.1) and languages (#56.2): field shapes
-        // verified against character/data.ts (details.height.value/
-        // details.weight.value are plain strings; details.languages.value is
-        // the array of chosen languages beyond the ancestry's automatic ones).
+        // Age/gender/height/weight/ethnicity/nationality (issue #56.1) and
+        // languages (#56.2): field shapes verified against character/data.ts
+        // (all plain strings under details.<field>.value except languages,
+        // whose .value is the array of chosen languages beyond the
+        // ancestry's automatic ones).
+        age: { value: concept.age },
+        gender: { value: concept.gender },
         height: { value: concept.height },
         weight: { value: concept.weight },
+        ethnicity: { value: concept.ethnicity },
+        nationality: { value: concept.nationality },
         languages: { value: languages, details: "" },
         // CharacterBiography has NO `.value` — the real fields (verified in
         // character/data.ts) are backstory/appearance (HTML), attitude/
