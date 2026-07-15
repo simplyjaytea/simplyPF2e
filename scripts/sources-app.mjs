@@ -7,7 +7,11 @@ const CATEGORY_LABELS = {
   abilities: "SIMPLYPF2E.Sources.Abilities",
   spells: "SIMPLYPF2E.Sources.Spells",
   feats: "SIMPLYPF2E.Sources.Feats",
-  equipment: "SIMPLYPF2E.Sources.Equipment"
+  equipment: "SIMPLYPF2E.Sources.Equipment",
+  ancestries: "SIMPLYPF2E.Sources.Ancestries",
+  backgrounds: "SIMPLYPF2E.Sources.Backgrounds",
+  classes: "SIMPLYPF2E.Sources.Classes",
+  heritages: "SIMPLYPF2E.Sources.Heritages"
 };
 
 /**

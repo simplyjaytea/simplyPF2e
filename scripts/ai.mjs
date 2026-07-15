@@ -229,6 +229,68 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
 }
 
 /**
+ * The player-character concept schema prompt. Unlike systemPrompt() (NPCs),
+ * this asks for NAMES only — no numeric/scale fields — because a PC's AC,
+ * HP, saves and proficiencies are computed by the PF2e system itself from
+ * real Ancestry/Background/Class items once those are embedded; this module's
+ * job is picking grounded, real choices, not doing that math.
+ */
+function pcSystemPrompt() {
+  return `You are an expert Pathfinder 2e (remaster) player character designer. You choose names and flavor only; the game system computes AC, HP, saves and proficiencies once real ancestry/background/class items are attached, so never invent numeric statistics.
+
+Respond with a SINGLE JSON object only. No markdown fences, no commentary.
+
+JSON schema (all keys required unless marked optional):
+{
+  "name": string, // character name
+  "ancestry": string, // EXACT published PF2e ancestry name ${REMASTER_NOTE} — first draft; the final pick is chosen from the real compendium list in a second step
+  "heritage": string|null, // EXACT published heritage name for that ancestry if one fits, else null — first draft, grounded later
+  "background": string, // EXACT published PF2e background name — first draft, grounded later
+  "class": string, // EXACT published PF2e class name — first draft, grounded later
+  "keyAbility": "str"|"dex"|"con"|"int"|"wis"|"cha", // the class's primary ability, matching the class you chose
+  "blurb": string, // one-line tagline
+  "backstory": string, // 1-2 paragraphs of backstory, plain text
+  "personality": string, // 1-2 sentences of personality/mannerisms
+  "alignmentFlavor": string, // 1 sentence describing the character's moral/ethical outlook in prose (no game term required)
+  "feats": string[], // 3-6 EXACT published PF2e feat names fitting the concept as a first draft wishlist — inspiration only, the final picks are chosen from real compendium lists per level in a second step
+  "spellcasting": null | {
+    "tradition": "arcane"|"divine"|"occult"|"primal",
+    "spells": [ { "name": string, "rank": number } ] // rank 0 = cantrip; real PF2e spell names as a first draft (${REMASTER_NOTE}; the final list is chosen from the compendium in a second step)
+  }, // null if the class you chose isn't a caster, or spellcasting is disallowed
+  "equipment": [ { "name": string, "quantity": number, "value": number } ] // 3-6 first-draft carried items with EXACT PF2e item names (${REMASTER_NOTE}) fitting the class and concept — inspiration only, the final picks are chosen from the compendium in a second step
+}
+
+Design guidance:
+- Pick an ancestry, background and class that together tell a coherent, thematic character matching the GM's concept.
+- "keyAbility" MUST be a legal key ability for the class you chose (e.g. Fighter is str or dex, Wizard is int, Cleric is wis).
+- Only include "spellcasting" for classes that actually cast spells (Wizard, Cleric, Druid, Sorcerer, Bard, Witch, Oracle, Magus, Summoner, ...) and only when spellcasting is allowed.
+- feats/spells/equipment are first drafts only — write plausible real names; a later grounding step selects the actual final picks from the real compendium.`;
+}
+
+/**
+ * Ask the configured model for a player-character concept: ancestry,
+ * heritage, background, class, key ability, personality/backstory prose, and
+ * first-draft (ungrounded) feat/spell/equipment wishlists — the PC
+ * counterpart of generateConcept().
+ * @returns {Promise<{concept: object, usage: object}>} parsed concept JSON + token usage
+ */
+export async function generatePCConcept({ prompt, level, allowSpellcasting, onProgress }) {
+  const userPrompt = [
+    `Character level: ${level}`,
+    `Spellcasting allowed: ${allowSpellcasting ? "yes, if the class you choose casts spells" : "NO - choose a non-caster class, or a caster with spellcasting set to null"}`,
+    "",
+    `Concept from the GM: ${prompt}`
+  ].join("\n");
+
+  const { data, usage } = await requestJSON({
+    system: pcSystemPrompt(),
+    user: userPrompt,
+    onProgress
+  });
+  return { concept: data, usage };
+}
+
+/**
  * First pass of spell selection: ask the model for a handful of thematic
  * keywords (descriptor traits, damage types, general school-like concepts)
  * that fit the creature, BEFORE we know the full spell list. Used to narrow
@@ -404,6 +466,88 @@ Recreate the first-draft haul: keep its coin and scroll entries as they are, rep
       value: 0
     }));
   return { loot, usage };
+}
+
+/**
+ * Ground a PC's first-draft ancestry/heritage/background/class against the
+ * real compendium lists in ONE call — the ABC counterpart of selectSpells/
+ * selectEquipment/selectLoot: choose ONLY from the provided lists, copying
+ * each name EXACTLY as written. Names returned are still fuzzy-matched via
+ * findEntry() afterward as a safety net.
+ * @param {object} args
+ * @param {object} args.concept  normalized PC concept (for context)
+ * @param {{name: string, traits: string[]}[]} args.ancestryCandidates
+ * @param {{name: string, traits: string[]}[]} args.backgroundCandidates
+ * @param {{name: string, traits: string[]}[]} args.classCandidates
+ * @param {{name: string, traits: string[]}[]} [args.heritageCandidates]
+ * @returns {Promise<{ancestry: string, heritage: string|null, background: string, class: string, keyAbility: string, usage: object}>}
+ */
+export async function selectAncestryBackgroundClass({
+  concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates = [], onProgress
+}) {
+  const system = `You are choosing a Pathfinder 2e character's ancestry, heritage, background and class. Choose ONLY from the provided lists, copying each name EXACTLY as written. Respond with a single JSON object and nothing else:
+{ "ancestry": string, "heritage": string|null, "background": string, "class": string, "keyAbility": "str"|"dex"|"con"|"int"|"wis"|"cha" }
+"heritage" must belong to the chosen ancestry, or null if none fits well. "keyAbility" must be a legal key ability for the chosen class.`;
+
+  const user = [
+    `Character: ${concept.name} (level ${concept.level})`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.backstory ? `Backstory: ${concept.backstory}` : null,
+    `First-draft ideas (use as inspiration, but the final picks MUST come from the lists below): ancestry "${concept.ancestry}", heritage "${concept.heritage ?? "none"}", background "${concept.background}", class "${concept.class}", key ability "${concept.keyAbility}"`,
+    "",
+    `Available ancestries: ${ancestryCandidates.map((a) => a.name).join("; ")}`,
+    heritageCandidates.length ? `Available heritages: ${heritageCandidates.map((h) => h.name).join("; ")}` : null,
+    `Available backgrounds: ${backgroundCandidates.map((b) => b.name).join("; ")}`,
+    `Available classes: ${classCandidates.map((c) => c.name).join("; ")}`
+  ].filter((line) => line !== null).join("\n");
+
+  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  return {
+    ancestry: String(parsed.ancestry || concept.ancestry),
+    heritage: parsed.heritage ? String(parsed.heritage) : null,
+    background: String(parsed.background || concept.background),
+    class: String(parsed.class || concept.class),
+    keyAbility: ["str", "dex", "con", "int", "wis", "cha"].includes(parsed.keyAbility)
+      ? parsed.keyAbility : concept.keyAbility,
+    usage
+  };
+}
+
+/**
+ * Batched feat selection: pick one feat per slot in a SINGLE round trip,
+ * mirroring how selectLoot/selectEquipment batch multiple picks into one
+ * call rather than one call per slot. Each slot's candidates are its own
+ * grounded list (getFeatCandidates), so the model picks ONLY from that
+ * slot's list. A slot whose pick doesn't resolve afterward is simply
+ * skipped by the caller (fail-closed), same as feats elsewhere in the pipeline.
+ * @param {object} args
+ * @param {object} args.concept  normalized PC concept (for context)
+ * @param {{type: string, level: number, candidates: {name: string, level: number}[]}[]} args.slots
+ * @returns {Promise<{picks: {slot: number, name: string}[], usage: object}>}
+ */
+export async function selectFeats({ concept, slots, onProgress }) {
+  const slotLines = slots.map((slot, i) =>
+    `Slot ${i + 1} — ${slot.type} feat, character level ${slot.level}: ${slot.candidates.map((c) => c.name).join("; ")}`
+  ).join("\n");
+
+  const system = `You are choosing feats for a Pathfinder 2e character, one per slot. For EACH slot, choose ONLY from that slot's own list, copying the name EXACTLY as written. Respond with a single JSON object and nothing else:
+{ "picks": [ { "slot": number, "name": string } ] }
+Include exactly one entry per slot number (1 to ${slots.length}). If a slot's list has nothing fitting, still pick the closest thematic option from that slot's own list — never leave a slot out and never pick from another slot's list.`;
+
+  const user = [
+    `Character: ${concept.name} (level ${concept.level}, ${concept.class})`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.feats?.length ? `First-draft feat wishlist (inspiration only, final picks MUST come from each slot's own list): ${concept.feats.join(", ")}` : null,
+    "",
+    "Slots:",
+    slotLines
+  ].filter((line) => line !== null).join("\n");
+
+  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const picks = (Array.isArray(parsed.picks) ? parsed.picks : [])
+    .filter((p) => p?.name && Number.isInteger(Number(p.slot)))
+    .map((p) => ({ slot: Number(p.slot), name: String(p.name) }));
+  return { picks, usage };
 }
 
 /* Schema documentation per item-forge effect kind. Only the kinds that

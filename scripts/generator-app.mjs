@@ -1,10 +1,19 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
-import { generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter } from "./ai.mjs";
-import { getSpellCandidates, getEquipmentCandidates, getLootCandidates } from "./compendium.mjs";
+import {
+  generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
+  generatePCConcept, selectAncestryBackgroundClass, selectFeats
+} from "./ai.mjs";
+import {
+  getSpellCandidates, getEquipmentCandidates, getLootCandidates,
+  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates
+} from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
-  applyTreasureBudget, lootValueGp, parseCoins, parseScroll
+  applyTreasureBudget, lootValueGp, parseCoins, parseScroll, slugify
 } from "./builder.mjs";
+import {
+  normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp
+} from "./pc-builder.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, updateCustomPreset,
@@ -32,6 +41,7 @@ export class GeneratorApp extends SpfApp {
     actions: {
       generate: GeneratorApp.#onGenerate,
       generateRandom: GeneratorApp.#onGenerateRandom,
+      generateRandomEncounter: GeneratorApp.#onGenerateRandomEncounter,
       createActor: GeneratorApp.#onCreateActor,
       discard: GeneratorApp.#onDiscard,
       savePreset: GeneratorApp.#onSavePreset,
@@ -65,6 +75,9 @@ export class GeneratorApp extends SpfApp {
   #resolved = null;
   /** Encounter mode result: {name, budget, spent, members: [...]}. */
   #encounter = null;
+  /** Character mode result: normalized PC concept + resolved documents. */
+  #pcConcept = null;
+  #pcResolved = null;
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
 
@@ -99,6 +112,10 @@ export class GeneratorApp extends SpfApp {
       selectedPresetIsCustom: Boolean(findPreset(this.#input.preset)?.custom),
       presetSelected: Boolean(findPreset(this.#input.preset)),
       encounterMode: this.#input.mode === "encounter",
+      characterMode: this.#input.mode === "character",
+      singleMode: this.#input.mode === "single",
+      levelMin: this.#input.mode === "single" ? -1 : 1,
+      levelMax: this.#input.mode === "single" ? 24 : 20,
       threats: Object.keys(THREATS).map((key) => ({
         value: key,
         label: `SIMPLYPF2E.Threat.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
@@ -111,7 +128,42 @@ export class GeneratorApp extends SpfApp {
       })),
       preview: this.#buildPreviewContext(),
       encounterPreview: this.#buildEncounterPreviewContext(),
+      pcPreview: this.#buildPCPreviewContext(),
       tokenReport: this._buildTokenReport()
+    };
+  }
+
+  #buildPCPreviewContext() {
+    if (!this.#pcConcept) return null;
+    const concept = this.#pcConcept;
+    const resolved = this.#pcResolved;
+    return {
+      concept,
+      ancestry: { name: resolved.ancestryDoc?.name ?? concept.ancestry, found: Boolean(resolved.ancestryDoc) },
+      heritage: concept.heritage
+        ? { name: resolved.heritageDoc?.name ?? concept.heritage, found: Boolean(resolved.heritageDoc) }
+        : null,
+      background: { name: resolved.backgroundDoc?.name ?? concept.background, found: Boolean(resolved.backgroundDoc) },
+      class: { name: resolved.classDoc?.name ?? concept.class, found: Boolean(resolved.classDoc) },
+      feats: (resolved.feats ?? []).map(({ name, entry }) => ({
+        name: entry?.name ?? name,
+        found: Boolean(entry)
+      })),
+      spells: (resolved.spells ?? []).map(({ spell, entry }) => ({
+        name: entry?.name ?? spell.name,
+        rank: spell.rank,
+        found: Boolean(entry)
+      })),
+      equipment: (resolved.equipment ?? []).map(({ name, quantity, runes, entry }) => ({
+        name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
+        found: Boolean(entry)
+      })),
+      loot: (resolved.loot ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
+        name: (scroll && entry
+          ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
+          : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
+        found: Boolean(entry)
+      }))
     };
   }
 
@@ -282,8 +334,9 @@ export class GeneratorApp extends SpfApp {
     const input = this.element.querySelector('input[name="level"]');
     if (!input) return;
     const current = Number.parseInt(input.value, 10);
-    // Party Level (encounter mode) is a PC level, 1-20; creature Level goes -1..24.
-    const [min, max] = this.#input.mode === "encounter" ? [1, 20] : [-1, 24];
+    // Party Level (encounter mode) and Character level are both PC levels,
+    // 1-20; only Single mode's creature Level goes -1..24.
+    const [min, max] = this.#input.mode === "single" ? [-1, 24] : [1, 20];
     input.value = Math.min(max, Math.max(min, (Number.isNaN(current) ? 1 : current) + delta));
   }
 
@@ -311,9 +364,17 @@ export class GeneratorApp extends SpfApp {
     return this.#runGeneration(true);
   }
 
+  /** The encounter mode dice button: forces a fresh random theme even if the
+   * GM already typed one, matching #onGenerateRandom's Single-mode behavior. */
+  static async #onGenerateRandomEncounter() {
+    this.#readForm();
+    return this.#generateEncounter(true);
+  }
+
   async #runGeneration(isRandom) {
     this.#readForm();
-    if (this.#input.mode === "encounter") return this.#generateEncounter();
+    if (this.#input.mode === "encounter") return this.#generateEncounter(isRandom);
+    if (this.#input.mode === "character") return this.#generatePC(isRandom);
     if (!isRandom && !this.#input.prompt.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
       return;
@@ -321,6 +382,8 @@ export class GeneratorApp extends SpfApp {
     this.#busy = true;
     this.#error = null;
     this.#encounter = null;
+    this.#pcConcept = null;
+    this.#pcResolved = null;
     this._tokenUsage = [];
     this._beginProgress([
       ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept")],
@@ -382,11 +445,13 @@ export class GeneratorApp extends SpfApp {
    * AI names the encounter and briefs each slot, then every member runs
    * through the normal single-creature pipeline.
    */
-  async #generateEncounter() {
+  async #generateEncounter(isRandom = false) {
     this.#busy = true;
     this.#error = null;
     this.#concept = null;
     this.#resolved = null;
+    this.#pcConcept = null;
+    this.#pcResolved = null;
     this._tokenUsage = [];
     const { level: partyLevel, partySize, threat, rarity } = this.#input;
     const composition = composeEncounter(threat, partySize, partyLevel);
@@ -400,7 +465,9 @@ export class GeneratorApp extends SpfApp {
     ]);
     try {
       await this._setStep("design");
-      const theme = this.#input.prompt.trim() || randomBrief();
+      // Random mode always rolls a fresh theme, even over a typed prompt —
+      // same contract as the Single-mode dice button (#onGenerateRandom).
+      const theme = isRandom ? randomBrief() : (this.#input.prompt.trim() || randomBrief());
       const design = await designEncounter({
         theme,
         partyLevel,
@@ -473,6 +540,117 @@ export class GeneratorApp extends SpfApp {
       console.error(`${MODULE_ID} | encounter generation failed`, err);
       this.#error = err.message;
       this.#encounter = null;
+    } finally {
+      this.#busy = false;
+      this._progress = null;
+      await this.render();
+    }
+  }
+
+  /**
+   * Player Character mode: ground a first-draft AI concept into a real
+   * ancestry/heritage/background/class, a batch of level-appropriate feats,
+   * spells (if the class casts) and equipment — mirrors #runGeneration's
+   * single-creature shape, with an extra "abc"/"feats" step. Unlike NPCs, no
+   * stats are computed here: the PF2e system derives AC/HP/saves/
+   * proficiencies/spell slots itself from the real items this assembles.
+   */
+  async #generatePC(isRandom) {
+    if (!isRandom && !this.#input.prompt.trim()) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
+      return;
+    }
+    this.#busy = true;
+    this.#error = null;
+    this.#concept = null;
+    this.#resolved = null;
+    this.#encounter = null;
+    this.#pcConcept = null;
+    this.#pcResolved = null;
+    this._tokenUsage = [];
+    this._beginProgress([
+      ["concept", game.i18n.localize("SIMPLYPF2E.Progress.PCConcept")],
+      ["abc", game.i18n.localize("SIMPLYPF2E.Progress.ABC")],
+      ["feats", game.i18n.localize("SIMPLYPF2E.Progress.Feats")],
+      ...(this.#input.allowSpellcasting ? [["spells", game.i18n.localize("SIMPLYPF2E.Progress.Spells")]] : []),
+      ["equipment", game.i18n.localize("SIMPLYPF2E.Progress.Equipment")],
+      ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
+    ]);
+    try {
+      await this._setStep("concept");
+      const { concept: raw, usage } = await generatePCConcept({
+        prompt: isRandom ? randomBrief() : this.#input.prompt,
+        level: this.#input.level,
+        allowSpellcasting: this.#input.allowSpellcasting,
+        onProgress: (p) => this._onAIProgress(p)
+      });
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.PCConcept"), usage);
+      const concept = normalizePCConcept(raw, { level: this.#input.level });
+
+      await this._setStep("abc");
+      const [ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates] = await Promise.all([
+        getAncestryCandidates(), getBackgroundCandidates(), getClassCandidates(), getHeritageCandidates()
+      ]);
+      const abc = await selectAncestryBackgroundClass({
+        concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates,
+        onProgress: (p) => this._onAIProgress(p)
+      });
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.ABC"), abc.usage);
+      concept.ancestry = abc.ancestry;
+      concept.heritage = abc.heritage;
+      concept.background = abc.background;
+      concept.class = abc.class;
+      concept.keyAbility = abc.keyAbility;
+
+      // Resolve ABC + grants + feat-slot candidates now (index lookups are
+      // cheap/cached) so the reused equipment/spell refine helpers below have
+      // real ancestry/class trait slugs for thematic context.
+      let resolved = await resolvePCConcept(concept);
+      concept.traits = [slugify(resolved.ancestryDoc.name), slugify(resolved.classDoc.name)];
+
+      await this._setStep("feats");
+      if (resolved.featSlots.length) {
+        const { picks, usage: featUsage } = await selectFeats({
+          concept, slots: resolved.featSlots, onProgress: (p) => this._onAIProgress(p)
+        });
+        this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), featUsage);
+        resolved.feats = await resolveFeatPicks(resolved.featSlots, picks);
+      } else {
+        resolved.feats = [];
+      }
+
+      // Both refine helpers are the EXISTING NPC ones, reused unchanged — the
+      // PC concept carries the same fields they read (blurb/description/
+      // traits/strikes/equipment/loot/level/name/rarity).
+      if (concept.spellcasting) await this._setStep("spells");
+      await this.#refineSpells(concept);
+
+      await this._setStep("equipment");
+      await this.#refineEquipment(concept);
+
+      await this._setStep("match");
+      // #refineSpells/#refineEquipment replaced the concept's first-draft
+      // spell/equipment picks with grounded ones — re-resolve those parts
+      // (the ABC/grants/feat-slot lookups above are cheap and index-cached,
+      // so redoing them here is harmless; keep the feat picks already made).
+      const final = await resolvePCConcept(concept);
+      resolved = { ...final, feats: resolved.feats };
+      // Starting wealth: the character's OWN accumulated wealth-by-level
+      // (pcStartingWealthGp), NOT treasureBudget() (an NPC per-encounter
+      // share) — applyTreasureBudget is reused completely unchanged.
+      resolved.loot = await applyTreasureBudget(
+        resolved.loot,
+        pcStartingWealthGp(concept.level, this.#input.treasureAmount)
+      );
+
+      this.#pcConcept = concept;
+      this.#pcResolved = resolved;
+      console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
+    } catch (err) {
+      console.error(`${MODULE_ID} | character generation failed`, err);
+      this.#error = err.message;
+      this.#pcConcept = null;
+      this.#pcResolved = null;
     } finally {
       this.#busy = false;
       this._progress = null;
@@ -604,6 +782,7 @@ export class GeneratorApp extends SpfApp {
   static async #onCreateActor() {
     if (this.#busy) return;
     if (this.#input.mode === "encounter" || this.#encounter) return this.#createEncounterActors();
+    if (this.#input.mode === "character" || this.#pcConcept) return this.#createCharacterActor();
     if (!this.#concept) return;
     this.#busy = true;
     await this.render();
@@ -617,6 +796,27 @@ export class GeneratorApp extends SpfApp {
       this.#resolved = null;
     } catch (err) {
       console.error(`${MODULE_ID} | actor creation failed`, err);
+      this.#error = err.message;
+    } finally {
+      this.#busy = false;
+      await this.render();
+    }
+  }
+
+  /** Create the previewed PC actor. No bestiary art lookup (that's
+   * creature-specific) — the character gets the default portrait. */
+  async #createCharacterActor() {
+    if (!this.#pcConcept) return;
+    this.#busy = true;
+    await this.render();
+    try {
+      const actor = await createCharacterActor(this.#pcConcept, this.#pcResolved, {});
+      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
+      actor.sheet.render(true);
+      this.#pcConcept = null;
+      this.#pcResolved = null;
+    } catch (err) {
+      console.error(`${MODULE_ID} | character actor creation failed`, err);
       this.#error = err.message;
     } finally {
       this.#busy = false;
@@ -693,6 +893,8 @@ export class GeneratorApp extends SpfApp {
     this.#concept = null;
     this.#resolved = null;
     this.#encounter = null;
+    this.#pcConcept = null;
+    this.#pcResolved = null;
     this.#error = null;
     this._tokenUsage = [];
     await this.render();

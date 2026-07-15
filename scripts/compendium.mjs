@@ -7,13 +7,19 @@
 
 import { SETTINGS, getSetting } from "./settings.mjs";
 
-export const CATEGORIES = ["abilities", "spells", "feats", "equipment"];
+export const CATEGORIES = [
+  "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "heritages"
+];
 
 export const DEFAULT_PACKS = {
   abilities: ["pf2e.bestiary-ability-glossary-srd", "pf2e.bestiary-family-ability-glossary-srd"],
   spells: ["pf2e.spells-srd"],
   equipment: ["pf2e.equipment-srd"],
-  feats: ["pf2e.feats-srd"]
+  feats: ["pf2e.feats-srd"],
+  ancestries: ["pf2e.ancestries"],
+  backgrounds: ["pf2e.backgrounds"],
+  classes: ["pf2e.classes"],
+  heritages: ["pf2e.heritages"]
 };
 
 export const EQUIPMENT_TYPES = new Set([
@@ -51,7 +57,10 @@ let detectedPacks = null;
  */
 export async function detectAvailablePacks() {
   if (detectedPacks) return detectedPacks;
-  const result = { abilities: [], spells: [], feats: [], equipment: [] };
+  const result = {
+    abilities: [], spells: [], feats: [], equipment: [],
+    ancestries: [], backgrounds: [], classes: [], heritages: []
+  };
   for (const pack of game.packs) {
     if (pack.metadata.type !== "Item") continue;
     const entries = await getIndex(pack.collection);
@@ -62,6 +71,10 @@ export async function detectAvailablePacks() {
     if (types.has("spell")) result.spells.push(info);
     if (types.has("feat")) result.feats.push(info);
     if ([...types].some((t) => EQUIPMENT_TYPES.has(t))) result.equipment.push(info);
+    if (types.has("ancestry")) result.ancestries.push(info);
+    if (types.has("background")) result.backgrounds.push(info);
+    if (types.has("class")) result.classes.push(info);
+    if (types.has("heritage")) result.heritages.push(info);
   }
   for (const list of Object.values(result)) list.sort((a, b) => a.title.localeCompare(b.title));
   detectedPacks = result;
@@ -90,7 +103,8 @@ async function getIndex(packId) {
   const index = await pack.getIndex({
     fields: [
       "name", "type", "system.slug", "system.level.value",
-      "system.traits.value", "system.traits.traditions", "system.ritual"
+      "system.traits.value", "system.traits.traditions", "system.ritual",
+      "system.category"
     ]
   });
   const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
@@ -253,6 +267,83 @@ export async function getEquipmentCandidates(level, keywords = [], { treasure = 
  */
 export function getLootCandidates(level, keywords = []) {
   return getEquipmentCandidates(level + 2, keywords, { treasure: true });
+}
+
+/**
+ * Full unfiltered index of a category's packs, restricted to one item type —
+ * used for ancestries/backgrounds/classes/heritages, which are small (dozens
+ * of entries), so no keyword-narrowing threshold is needed like the spell/
+ * equipment candidate lists above.
+ */
+async function getFullCandidates(category, type) {
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor(category)) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== type) continue;
+      if (seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push({ name: entry.name, traits: entry.system?.traits?.value ?? [] });
+    }
+  }
+  candidates.sort((a, b) => a.name.localeCompare(b.name));
+  return candidates;
+}
+
+/** @returns {Promise<{name: string, traits: string[]}[]>} every ancestry */
+export function getAncestryCandidates() {
+  return getFullCandidates("ancestries", "ancestry");
+}
+
+/** @returns {Promise<{name: string, traits: string[]}[]>} every background */
+export function getBackgroundCandidates() {
+  return getFullCandidates("backgrounds", "background");
+}
+
+/** @returns {Promise<{name: string, traits: string[]}[]>} every class */
+export function getClassCandidates() {
+  return getFullCandidates("classes", "class");
+}
+
+/** @returns {Promise<{name: string, traits: string[]}[]>} every heritage */
+export function getHeritageCandidates() {
+  return getFullCandidates("heritages", "heritage");
+}
+
+/**
+ * List real feats a PC could take for one feat slot, drawn from the existing
+ * feats packs (pf2e.feats-srd, already wired via getPacksFor("feats")).
+ * Filters by item level <= the slot's level, and (when given) by the feat's
+ * `system.category` ("ancestry"|"class"|"skill"|"general" — the PF2e system's
+ * own discriminator) and a trait intersection (e.g. the ancestry's own trait
+ * slug for ancestry feats, the class's trait slug for class feats).
+ * @param {object} args
+ * @param {number} args.level        max item level (the slot's level)
+ * @param {string} [args.category]   "ancestry"|"class"|"skill"|"general"
+ * @param {string[]} [args.traits]   at least one must appear on the feat
+ * @returns {Promise<{name: string, level: number, traits: string[]}[]>} sorted by level then name
+ */
+export async function getFeatCandidates({ level, category, traits = [] } = {}) {
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("feats")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "feat") continue;
+      if ((entry.system?.level?.value ?? 0) > level) continue;
+      if (category && entry.system?.category !== category) continue;
+      const entryTraits = entry.system?.traits?.value ?? [];
+      if (traits.length && !traits.some((t) => entryTraits.includes(t))) continue;
+      if (seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push({ name: entry.name, level: entry.system?.level?.value ?? 0, traits: entryTraits });
+    }
+  }
+  candidates.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+  return candidates;
 }
 
 /** Clone a compendium document into plain item data ready for embedding. */
