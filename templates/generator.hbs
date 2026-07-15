@@ -150,6 +150,7 @@
     <header class="spf-statblock-header">
       <h2>{{preview.concept.name}}</h2>
       <span class="spf-level">{{localize "SIMPLYPF2E.Generator.Creature"}} {{preview.concept.level}}</span>
+      {{#if preview.matchSummary}}<span class="spf-level spf-match-summary" data-tooltip="{{localize 'SIMPLYPF2E.Preview.Found'}}"><i class="fa-solid fa-circle-check"></i> {{preview.matchSummary.text}}</span>{{/if}}
     </header>
     {{#if preview.concept.blurb}}<p class="spf-blurb"><em>{{preview.concept.blurb}}</em></p>{{/if}}
     <div class="spf-traits">
@@ -218,7 +219,7 @@
         {{#each preview.spells}}
           <li class="{{#unless this.found}}spf-dropped{{/unless}}">
             {{this.name}} <span class="spf-rank">({{#if this.rank}}{{localize "SIMPLYPF2E.Preview.Rank"}} {{this.rank}}{{else}}{{localize "SIMPLYPF2E.Preview.Cantrip"}}{{/if}})</span>
-            {{#unless this.found}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+            {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
           </li>
         {{/each}}
       </ul>
@@ -230,7 +231,7 @@
         {{#each preview.feats}}
           <li class="{{#unless this.found}}spf-dropped{{/unless}}">
             {{this.name}}
-            {{#unless this.found}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+            {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
           </li>
         {{/each}}
       </ul>
@@ -242,7 +243,7 @@
         {{#each preview.equipment}}
           <li>
             {{this.name}}
-            {{#unless this.found}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.EquipmentCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/unless}}
+            {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.EquipmentCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/if}}
           </li>
         {{/each}}
       </ul>
@@ -254,7 +255,7 @@
         {{#each preview.loot}}
           <li>
             {{this.name}}
-            {{#unless this.found}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.LootCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/unless}}
+            {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.LootCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/if}}
           </li>
         {{/each}}
       </ul>
@@ -348,23 +349,24 @@
     <header class="spf-statblock-header">
       <h2>{{pcPreview.concept.name}}</h2>
       <span class="spf-level">{{localize "SIMPLYPF2E.Generator.Character"}} {{pcPreview.concept.level}}</span>
+      {{#if pcPreview.matchSummary}}<span class="spf-level spf-match-summary" data-tooltip="{{localize 'SIMPLYPF2E.Preview.Found'}}"><i class="fa-solid fa-circle-check"></i> {{pcPreview.matchSummary.text}}</span>{{/if}}
     </header>
     {{#if pcPreview.concept.blurb}}<p class="spf-blurb"><em>{{pcPreview.concept.blurb}}</em></p>{{/if}}
 
     <div class="spf-statline">
       <span><strong>{{localize "SIMPLYPF2E.Preview.Ancestry"}}</strong>
-        {{pcPreview.ancestry.name}}{{#unless pcPreview.ancestry.found}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+        {{pcPreview.ancestry.name}}{{#if pcPreview.ancestry.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
       </span>
       {{#if pcPreview.heritage}}
         <span><strong>{{localize "SIMPLYPF2E.Preview.Heritage"}}</strong>
-          {{pcPreview.heritage.name}}{{#unless pcPreview.heritage.found}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+          {{pcPreview.heritage.name}}{{#if pcPreview.heritage.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
         </span>
       {{/if}}
       <span><strong>{{localize "SIMPLYPF2E.Preview.Background"}}</strong>
-        {{pcPreview.background.name}}{{#unless pcPreview.background.found}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+        {{pcPreview.background.name}}{{#if pcPreview.background.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
       </span>
       <span><strong>{{localize "SIMPLYPF2E.Preview.Class"}}</strong>
-        {{pcPreview.class.name}}{{#unless pcPreview.class.found}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+        {{pcPreview.class.name}}{{#if pcPreview.class.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
       </span>
     </div>
 
@@ -374,7 +376,7 @@
         {{#each pcPreview.feats}}
           <li class="{{#unless this.found}}spf-dropped{{/unless}}">
             {{this.name}}
-            {{#unless this.found}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+            {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
           </li>
         {{/each}}
       </ul>
@@ -386,7 +388,7 @@
         {{#each pcPreview.spells}}
           <li class="{{#unless this.found}}spf-dropped{{/unless}}">
             {{this.name}} <span class="spf-rank">({{#if this.rank}}{{localize "SIMPLYPF2E.Preview.Rank"}} {{this.rank}}{{else}}{{localize "SIMPLYPF2E.Preview.Cantrip"}}{{/if}})</span>
-            {{#unless this.found}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/unless}}
+            {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
           </li>
         {{/each}}
       </ul>
@@ -398,7 +400,7 @@
         {{#each pcPreview.equipment}}
           <li>
             {{this.name}}
-            {{#unless this.found}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.EquipmentCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/unless}}
+            {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.EquipmentCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/if}}
           </li>
         {{/each}}
       </ul>
@@ -410,7 +412,7 @@
         {{#each pcPreview.loot}}
           <li>
             {{this.name}}
-            {{#unless this.found}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.LootCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/unless}}
+            {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<span class="spf-custom" title="{{localize 'SIMPLYPF2E.Preview.LootCustom'}}">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>{{/if}}
           </li>
         {{/each}}
       </ul>

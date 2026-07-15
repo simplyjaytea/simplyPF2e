@@ -148,7 +148,19 @@ export const RESISTANCE = {
  * the accelerating ×1.55/×1.63/×1.71 run just before it. That may well be
  * how the book prints it (level 20 is the campaign's final level), but if a
  * high-level game feels off, this row is the one to re-check against the
- * book. */
+ * book.
+ *
+ * Re-checked (issue #50 item 8): a second independent recall pass reproduced
+ * every row unchanged, including the 19→20 anomaly above verbatim — no digit
+ * corrections came out of it. This is NOT the same as a primary-source
+ * verification, though: every external fetch tool available this session
+ * (WebFetch, and direct requests to Archives of Nethys/pf2easy/pf2calc/even
+ * plain sites like Wikipedia) returned 403 — a session-wide network
+ * restriction, not this table being unreachable specifically — so this could
+ * only be cross-checked against itself, not the book. Confidence is
+ * unchanged from before; if it matters for a real game, a 30-second manual
+ * check against GM Core/Player Core (or Archives of Nethys, ID=2656) from a
+ * normal browser is still the only way to actually close this out. */
 export const TREASURE_BY_LEVEL = {
   //      lvl  -1   0    1    2    3    4     5     6     7     8     9    10
   total: [    45,  90, 175, 300, 500, 850, 1350, 2000, 2900, 4000, 5700, 8000,

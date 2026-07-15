@@ -510,6 +510,22 @@
   color: var(--color-text-hyperlink);
 }
 
+/* Positive per-item compendium-match indicator (issue #52) — the counterpart
+   to .spf-dropped's warning icon and .spf-custom's pill, shown when an
+   entry DID resolve to a real compendium document instead of only ever
+   flagging the negative case. */
+.simplypf2e .spf-match {
+  color: var(--spf-success);
+}
+
+.simplypf2e .spf-match-summary {
+  opacity: 0.85;
+}
+
+.simplypf2e .spf-match-summary i {
+  color: var(--spf-success);
+}
+
 .simplypf2e .spf-custom {
   font-size: 0.75em;
   font-weight: bold;
