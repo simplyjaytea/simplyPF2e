@@ -372,7 +372,7 @@ async function findScrollTemplate(rank) {
  * @param {number} rank        rank the scroll casts the spell at
  * @returns {Promise<object|null>} item data, or null when spell/template is missing
  */
-async function buildScrollItem(spellEntry, rank) {
+export async function buildScrollItem(spellEntry, rank) {
   const spellDoc = await getDocument(spellEntry);
   if (!spellDoc) return null;
   const template = await findScrollTemplate(rank);
@@ -394,7 +394,7 @@ async function buildScrollItem(spellEntry, rank) {
  * Fallback for loot with no compendium match: a custom treasure item carrying
  * the AI's estimated value, so the haul keeps its worth instead of vanishing.
  */
-function customTreasureItem(name, quantity, value) {
+export function customTreasureItem(name, quantity, value) {
   const gp = Math.max(Math.round(Number(value) || 0), 0);
   const item = {
     name: capitalized(name),
@@ -414,7 +414,7 @@ function customTreasureItem(name, quantity, value) {
  * (type "equipment", not "treasure") at the AI's estimated price, so gear the
  * creature should be carrying doesn't silently vanish or masquerade as coins.
  */
-function customEquipmentItem(name, quantity, value) {
+export function customEquipmentItem(name, quantity, value) {
   const gp = Math.max(Math.round(Number(value) || 0), 0);
   const item = {
     name: capitalized(name),
@@ -460,6 +460,18 @@ export async function resolveConcept(concept) {
     feats.push({ name, entry });
   }
 
+  const equipment = await resolveEquipment(concept);
+  const loot = await resolveLoot(concept);
+
+  return { abilities, spells, feats, equipment, loot };
+}
+
+/**
+ * Resolve a concept's carried equipment against the equipment packs. Shared
+ * by NPC resolveConcept() and the PC pipeline (pc-builder.mjs), which both
+ * carry the same {name, quantity, value} equipment shape and level cap.
+ */
+export async function resolveEquipment(concept) {
   const equipment = [];
   for (const { name, quantity, value } of concept.equipment) {
     // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
@@ -472,10 +484,7 @@ export async function resolveConcept(concept) {
     );
     equipment.push({ name, quantity, value, runes, entry });
   }
-
-  const loot = await resolveLoot(concept);
-
-  return { abilities, spells, feats, equipment, loot };
+  return equipment;
 }
 
 /** Compute the final numeric stat block (also used by the preview). */
@@ -710,7 +719,7 @@ function actionIcon(actionType) {
  * `resilient` on armor; each field keeps whichever value is higher (the item's
  * own or the parsed one). No-ops on other item types. Returns the item data.
  */
-function applyRunes(data, runes, name) {
+export function applyRunes(data, runes, name) {
   const secondaryField = data.type === "weapon" ? "striking"
     : data.type === "armor" ? "resilient" : null;
   if (!secondaryField) return data;
