@@ -118,7 +118,7 @@ async function getIndex(packId) {
     fields: [
       "name", "type", "system.slug", "system.level.value",
       "system.traits.value", "system.traits.traditions", "system.ritual",
-      "system.category"
+      "system.category", "system.traits.rarity"
     ]
   });
   const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
@@ -283,13 +283,21 @@ export function getLootCandidates(level, keywords = []) {
   return getEquipmentCandidates(level + 2, keywords, { treasure: true });
 }
 
+/* Ordered common < uncommon < rare < unique, for the GM's rarity-cap control
+   (issue: PC generation had no way to exclude Rare/Unique ancestries etc.). */
+const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, unique: 3 };
+
 /**
  * Full unfiltered index of a category's packs, restricted to one item type —
  * used for ancestries/backgrounds/classes/heritages, which are small (dozens
  * of entries), so no keyword-narrowing threshold is needed like the spell/
  * equipment candidate lists above.
+ * @param {string} category
+ * @param {string} type
+ * @param {string} [maxRarity] drop entries rarer than this ("common"|"uncommon"|"rare"|"unique")
  */
-async function getFullCandidates(category, type) {
+async function getFullCandidates(category, type, maxRarity) {
+  const maxRank = RARITY_RANK[maxRarity] ?? RARITY_RANK.unique;
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor(category)) {
@@ -297,6 +305,8 @@ async function getFullCandidates(category, type) {
     if (!entries) continue;
     for (const entry of entries) {
       if (entry.type !== type) continue;
+      const rarity = entry.system?.traits?.rarity ?? "common";
+      if ((RARITY_RANK[rarity] ?? 0) > maxRank) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
       candidates.push({ name: entry.name, traits: entry.system?.traits?.value ?? [] });
@@ -306,14 +316,20 @@ async function getFullCandidates(category, type) {
   return candidates;
 }
 
-/** @returns {Promise<{name: string, traits: string[]}[]>} every ancestry */
-export function getAncestryCandidates() {
-  return getFullCandidates("ancestries", "ancestry");
+/**
+ * @param {string} [maxRarity]
+ * @returns {Promise<{name: string, traits: string[]}[]>} every ancestry at or below maxRarity
+ */
+export function getAncestryCandidates(maxRarity) {
+  return getFullCandidates("ancestries", "ancestry", maxRarity);
 }
 
-/** @returns {Promise<{name: string, traits: string[]}[]>} every background */
-export function getBackgroundCandidates() {
-  return getFullCandidates("backgrounds", "background");
+/**
+ * @param {string} [maxRarity]
+ * @returns {Promise<{name: string, traits: string[]}[]>} every background at or below maxRarity
+ */
+export function getBackgroundCandidates(maxRarity) {
+  return getFullCandidates("backgrounds", "background", maxRarity);
 }
 
 /** @returns {Promise<{name: string, traits: string[]}[]>} every class */
@@ -321,9 +337,12 @@ export function getClassCandidates() {
   return getFullCandidates("classes", "class");
 }
 
-/** @returns {Promise<{name: string, traits: string[]}[]>} every heritage */
-export function getHeritageCandidates() {
-  return getFullCandidates("heritages", "heritage");
+/**
+ * @param {string} [maxRarity]
+ * @returns {Promise<{name: string, traits: string[]}[]>} every heritage at or below maxRarity
+ */
+export function getHeritageCandidates(maxRarity) {
+  return getFullCandidates("heritages", "heritage", maxRarity);
 }
 
 /**

@@ -106,6 +106,15 @@
             {{/each}}
           </select>
         </div>
+      {{else if characterMode}}
+        <div class="form-group">
+          <label data-tooltip="{{localize 'SIMPLYPF2E.Generator.RarityCapTooltip'}}">{{localize "SIMPLYPF2E.Generator.RarityCap"}}</label>
+          <select name="rarityCap">
+            {{#each rarities}}
+              <option value="{{this.value}}" {{#if (eq this.value @root.input.rarityCap)}}selected{{/if}}>{{localize this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
       {{/if}}
       <div class="form-group">
         <label>{{localize "SIMPLYPF2E.Generator.TreasureAmount"}}</label>

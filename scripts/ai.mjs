@@ -25,10 +25,15 @@ const LOOT_AMOUNT_GUIDE = {
   generous: `This GM wants GENEROUS loot: lean to the HIGH end of every range below (6-8 items total), always include at least one treasure or magic item, and prefer pricier named items when a few options fit the concept.`
 };
 
-/* Loot rules shared between the concept prompt and the reroll-loot prompt. */
-function lootGuide(amount) {
+/* Loot rules shared between the creature concept prompt, the reroll-loot
+ * prompt, and (via subject="character") the PC starting-wealth-items prompt. */
+function lootGuide(amount, subject = "creature") {
   const amountNote = LOOT_AMOUNT_GUIDE[amount] ?? LOOT_AMOUNT_GUIDE.standard;
-  return `${amountNote} 3-8 items dropped on defeat; "value" is the approximate price of ONE unit in gold pieces (used when an item has no compendium match). Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35, "value": 1}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the creature's level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published item names ${REMASTER_NOTE}, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the creature's level or lower (adjusted per the amount guidance above). EXCEPTION: if the creature's description or the GM's request explicitly calls for abundant loot (a hoard, riches, a wealthy creature, a dragon's hoard, "lots of loot", etc.), scale UP to roughly 12-20 items with proportionally more coin, treasure, and magic-item entries regardless of the amount setting; otherwise stay within the guidance above.`;
+  const origin = subject === "character"
+    ? "3-8 items bought with part of their starting wealth (not everyday adventuring gear, which is handled separately — leave meaningful gold unspent rather than trying to spend it all here)"
+    : "3-8 items dropped on defeat";
+  const hoardTrigger = subject === "character" ? "the character's backstory" : "the creature's description";
+  return `${amountNote} ${origin}; "value" is the approximate price of ONE unit in gold pieces (used when an item has no compendium match). Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35, "value": 1}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the ${subject}'s level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published item names ${REMASTER_NOTE}, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the ${subject}'s level or lower (adjusted per the amount guidance above). EXCEPTION: if ${hoardTrigger} or the GM's request explicitly calls for abundant loot (a hoard, riches, a wealthy creature, a dragon's hoard, "lots of loot", etc.), scale UP to roughly 12-20 items with proportionally more coin, treasure, and magic-item entries regardless of the amount setting; otherwise stay within the guidance above.`;
 }
 
 /**
@@ -200,6 +205,41 @@ Loot should be ${lootGuide(amount)}`;
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.description ? `Description: ${concept.description}` : null,
     concept.traits.length ? `Traits: ${concept.traits.join(", ")}` : null
+  ].filter((line) => line !== null).join("\n");
+
+  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  return { loot: (Array.isArray(parsed.loot) ? parsed.loot : []), usage };
+}
+
+/**
+ * Draft the magic items/treasures a player character bought with part of
+ * their starting wealth — the PC counterpart of generateLoot(). Unlike NPCs
+ * (whose loot comes from the main generateConcept() call), PCs previously
+ * had no first-draft loot at all, so their entire starting wealth became
+ * raw coin with nothing actually purchased (feature request: wealth should
+ * buy magic items, not just sit as gold). Reuses lootGuide's count/richness
+ * rules via subject="character" for the "purchased, not dropped" framing;
+ * the result still goes through the same grounding/coin-budget pipeline
+ * (#refineLoot, applyTreasureBudget) NPC loot already uses.
+ * @returns {Promise<{loot: Array, usage: object}>}
+ */
+export async function generatePCLoot({ concept, amount = "standard", onProgress }) {
+  const system = `You are a Pathfinder 2e player-character equipment designer. Given a character concept, respond with ONLY a JSON object listing magic items and treasures they own, bought with part of their starting wealth.
+
+Respond with a SINGLE JSON object and nothing else. No markdown fences, no commentary.
+
+JSON schema (loot key required):
+{
+  "loot": [ { "name": string, "quantity": number, "value": number } ]
+}
+
+${lootGuide(amount, "character")} Favor items that reinforce the character's class and concept (a caster's wand or backup scroll, a martial's precious-material trinket, a rogue's utility gear) over generic treasure — this represents deliberate purchases, not random battlefield loot.`;
+
+  const user = [
+    `Character: ${concept.name} (level ${concept.level})`,
+    concept.class ? `Class: ${concept.class}` : null,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.backstory ? `Backstory: ${concept.backstory}` : null
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({ system, user, onProgress });

@@ -53,6 +53,8 @@
       "PartySizeUp": "Increase party size",
       "PartySizeDown": "Decrease party size",
       "Rarity": "Rarity",
+      "RarityCap": "Max rarity",
+      "RarityCapTooltip": "Excludes ancestries, backgrounds, and heritages rarer than this from what the AI can pick — e.g. capping at Uncommon rules out Rare/Unique options like Fetchling or Duskwalker",
       "TreasureAmount": "Treasure amount",
       "TreasureReadoutTooltip": "Total loot value across all members vs. the treasure budget (per-creature budget × count, from the GM Core Treasure by Level table)",
       "AllowSpellcasting": "Allow spellcasting",
