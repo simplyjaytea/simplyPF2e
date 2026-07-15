@@ -251,8 +251,12 @@ JSON schema (all keys required unless marked optional):
   "blurb": string, // one-line tagline
   "backstory": string, // 1-2 paragraphs of backstory, plain text
   "appearance": string, // 1-2 sentences describing the character's physical appearance, plain text
+  "age": string, // e.g. "27" or "27 years" — plausible for the ancestry/species and concept
+  "gender": string, // e.g. "Male", "Female", "Non-binary" — pronoun-style is fine too
   "height": string, // e.g. "5 ft. 8 in." — plausible for the ancestry/species
   "weight": string, // e.g. "150 lbs." — plausible for the ancestry/species
+  "ethnicity": string, // e.g. "Garundi", "Tian" — a real-world-flavored or setting-flavored descriptor fitting the concept, "" if not applicable
+  "nationality": string, // e.g. "Absalom native", "Mwangi Expanse" — home region/nation fitting the concept, "" if not applicable
   "personality": string, // 1-2 sentences of personality/mannerisms
   "alignmentFlavor": string, // 1 sentence describing the character's moral/ethical outlook in prose (no game term required)
   "likes": string, // short phrase or list of things the character likes
