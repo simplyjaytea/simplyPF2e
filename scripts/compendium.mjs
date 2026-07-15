@@ -48,6 +48,20 @@ export function getPacksFor(category) {
   return DEFAULT_PACKS[category].filter((id) => game.packs.get(id));
 }
 
+/**
+ * Every pack that can serve `category`: the configured/default packs UNION all
+ * installed Item packs auto-detected to contain that type. Fixes ABC lookups
+ * failing when a legit AI pick lives in a Lost Omens / add-on compendium the
+ * hardcoded DEFAULT_PACKS list doesn't name (issue #51). Reuses the cached
+ * detectAvailablePacks() scan (same runtime-discovery pattern as the item
+ * forge's equipment-pack scan), so it does not rescan per lookup.
+ */
+export async function getAllPacksFor(category) {
+  const configured = getPacksFor(category);
+  const detected = (await detectAvailablePacks())[category]?.map((p) => p.id) ?? [];
+  return [...new Set([...configured, ...detected])];
+}
+
 let detectedPacks = null;
 
 /**

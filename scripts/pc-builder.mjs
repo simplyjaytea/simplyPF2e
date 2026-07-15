@@ -1,10 +1,10 @@
 import * as T from "./tables.mjs";
-import { findEntry, getDocument, toItemData, getPacksFor, getFeatCandidates } from "./compendium.mjs";
+import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates } from "./compendium.mjs";
 import {
   parseCoins, resolveLoot, resolveEquipment, buildScrollItem,
   customTreasureItem, customEquipmentItem, applyRunes, capitalized, slugify
 } from "./builder.mjs";
-import { ABILITY_BOOST_LEVELS, buildFeatSlots } from "./pc-tables.mjs";
+import { ABILITY_BOOST_LEVELS, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
@@ -62,6 +62,7 @@ export function normalizePCConcept(raw, { level }) {
     blurb: String(c.blurb ?? ""),
     description: String(c.backstory ?? ""), // #refineEquipment/#refineLoot read concept.description
     backstory: String(c.backstory ?? ""),
+    appearance: String(c.appearance ?? ""),
     personality: String(c.personality ?? ""),
     alignmentFlavor: String(c.alignmentFlavor ?? ""),
     feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 8),
@@ -141,21 +142,24 @@ async function resolveGrants(doc, maxLevel) {
  * live in the app while resolution lives here for the NPC pipeline too.
  */
 export async function resolvePCConcept(concept) {
-  const ancestryEntry = await findEntry(getPacksFor("ancestries"), concept.ancestry, (e) => e.type === "ancestry");
+  // ABC lookups scan ALL installed packs of the right type (getAllPacksFor),
+  // not just the hardcoded default pack, so a legit AI pick living in a Lost
+  // Omens / add-on compendium still resolves instead of aborting the run (#51).
+  const ancestryEntry = await findEntry(await getAllPacksFor("ancestries"), concept.ancestry, (e) => e.type === "ancestry");
   const ancestryDoc = await getDocument(ancestryEntry);
   if (!ancestryDoc) throw new Error(`Could not find ancestry "${concept.ancestry}" in the compendium`);
 
-  const backgroundEntry = await findEntry(getPacksFor("backgrounds"), concept.background, (e) => e.type === "background");
+  const backgroundEntry = await findEntry(await getAllPacksFor("backgrounds"), concept.background, (e) => e.type === "background");
   const backgroundDoc = await getDocument(backgroundEntry);
   if (!backgroundDoc) throw new Error(`Could not find background "${concept.background}" in the compendium`);
 
-  const classEntry = await findEntry(getPacksFor("classes"), concept.class, (e) => e.type === "class");
+  const classEntry = await findEntry(await getAllPacksFor("classes"), concept.class, (e) => e.type === "class");
   const classDoc = await getDocument(classEntry);
   if (!classDoc) throw new Error(`Could not find class "${concept.class}" in the compendium`);
 
   let heritageDoc = null;
   if (concept.heritage) {
-    const heritageEntry = await findEntry(getPacksFor("heritages"), concept.heritage, (e) => e.type === "heritage");
+    const heritageEntry = await findEntry(await getAllPacksFor("heritages"), concept.heritage, (e) => e.type === "heritage");
     heritageDoc = await getDocument(heritageEntry);
     if (!heritageDoc) {
       console.warn(`simplypf2e | heritage "${concept.heritage}" not found in the compendium — dropping (character will have no heritage)`);
@@ -239,12 +243,91 @@ export async function resolveFeatPicks(featSlots, picks) {
  * out of scope per the plan (no pre-create edit screen in v1); a GM should
  * sanity-check/adjust it before play, same review step as any other preview.
  */
-function assignAbilityBoosts(keyAbility) {
+function boostPriority(keyAbility) {
   const key = ABILITY_KEYS.includes(keyAbility) ? keyAbility : "str";
-  const priority = [key, "con", ...ABILITY_KEYS.filter((a) => a !== key && a !== "con")].slice(0, 4);
+  return [key, "con", ...ABILITY_KEYS.filter((a) => a !== key && a !== "con")];
+}
+
+function assignAbilityBoosts(keyAbility) {
+  const priority = boostPriority(keyAbility).slice(0, 4);
   const boosts = {};
   for (const level of ABILITY_BOOST_LEVELS) boosts[level] = [...priority];
   return boosts;
+}
+
+/**
+ * Pick a legal `selected` for every ability-boost slot on a cloned ancestry or
+ * background item, so the PF2e system actually applies each boost. An unset
+ * `selected` contributes NOTHING (verified: ancestry/background document
+ * prepareActorData only pushes slots whose `selected` is truthy — that's why
+ * a freshly-attached ancestry/background gave the character no attribute
+ * boosts, issue #50 item 1). Slot rules verified against foundryvtt/pf2e item
+ * source (ancestry/background data.ts + ancestry document prepareBaseData):
+ *   value.length === 1 -> fixed boost, selected forced to value[0]
+ *   value.length  >  1 -> constrained choice, pick from the listed options
+ *   value.length === 0 -> not a real boost in modern data (legacy/voluntary
+ *                          placeholder, e.g. Human's third slot); left untouched
+ * Free boosts within one item are kept distinct (remaster "two different
+ * abilities"), preferring the character's key ability then Constitution.
+ */
+function assignItemBoosts(system, keyAbility) {
+  const boosts = system?.boosts;
+  if (!boosts || typeof boosts !== "object") return;
+  const priority = boostPriority(keyAbility);
+  const taken = new Set();
+  for (const slot of Object.values(boosts)) {
+    if (Array.isArray(slot?.value) && slot.value.length === 1) {
+      slot.selected = slot.value[0];
+      taken.add(slot.value[0]);
+    }
+  }
+  for (const slot of Object.values(boosts)) {
+    if (!Array.isArray(slot?.value) || slot.value.length <= 1) continue;
+    const pick = priority.find((a) => slot.value.includes(a) && !taken.has(a))
+      ?? slot.value.find((a) => !taken.has(a))
+      ?? slot.value[0];
+    slot.selected = pick;
+    taken.add(pick);
+  }
+}
+
+/**
+ * The class's `keyAbility.selected` must be one of `keyAbility.value` (verified
+ * against class data.ts); a hallucinated/illegal key ability would leave the
+ * class boost unapplied. Validate the AI's pick, falling back to the class's
+ * first legal option.
+ */
+function resolveKeyAbility(classSystem, requested) {
+  const options = Array.isArray(classSystem?.keyAbility?.value) ? classSystem.keyAbility.value : [];
+  if (options.includes(requested)) return requested;
+  return options[0] ?? (ABILITY_KEYS.includes(requested) ? requested : "str");
+}
+
+/** Core skill -> governing attribute, for deterministic auto-pick of a class's
+ * `trainedSkills.additional` free trained skills (slugs verified against pf2e
+ * CORE_SKILL_SLUGS — full words, not abbreviations). */
+const SKILL_ATTRIBUTE = {
+  acrobatics: "dex", arcana: "int", athletics: "str", crafting: "int",
+  deception: "cha", diplomacy: "cha", intimidation: "cha", medicine: "wis",
+  nature: "wis", occultism: "int", performance: "cha", religion: "wis",
+  society: "int", stealth: "dex", survival: "wis", thievery: "dex"
+};
+
+/** A `type:"lore"` skill item (shape verified against pf2e src/module/item/lore.ts:
+ * `proficient.value` is the rank, 1 = trained). Background lore isn't a
+ * system.skills entry — it needs its own embedded item (issue #50 item 3). */
+function loreItem(name) {
+  return {
+    name: String(name),
+    type: "lore",
+    img: "icons/sundries/scrolls/scroll-symbol-sun-brown.webp",
+    system: {
+      mod: { value: 0 },
+      proficient: { value: 1 },
+      traits: { value: [], otherTags: [] },
+      description: { value: "" }
+    }
+  };
 }
 
 /**
@@ -271,21 +354,50 @@ const CHARACTER_ITEM_TYPES = new Set([
 export async function createCharacterActor(concept, resolved, { img = null } = {}) {
   const items = [];
 
-  items.push(toItemData(resolved.ancestryDoc));
+  // Key ability: validate the AI's pick against the class's legal options once,
+  // then reuse it to drive ancestry/background free-boost preference, the class
+  // item's own keyAbility.selected, the actor-level boosts, and details.keyability.
+  const keyAbility = resolveKeyAbility(resolved.classDoc.system, concept.keyAbility);
+
+  // ABC boosts: without `selected` set on each item's boost slots, the system
+  // applies none of them (issue #50 item 1) — set them on the cloned data.
+  const ancestryData = toItemData(resolved.ancestryDoc);
+  assignItemBoosts(ancestryData.system, keyAbility);
+  items.push(ancestryData);
+
   if (resolved.heritageDoc) items.push(toItemData(resolved.heritageDoc));
-  items.push(toItemData(resolved.backgroundDoc));
-  items.push(toItemData(resolved.classDoc));
+
+  const backgroundData = toItemData(resolved.backgroundDoc);
+  assignItemBoosts(backgroundData.system, keyAbility);
+  items.push(backgroundData);
+
+  const classData = toItemData(resolved.classDoc);
+  classData.system.keyAbility = { ...(classData.system.keyAbility ?? {}), selected: keyAbility };
+  items.push(classData);
+
+  // Background Lore: a real embedded lore item (not a system.skills entry).
+  const loreName = resolved.backgroundDoc.system?.trainedSkills?.lore?.[0];
+  if (loreName) items.push(loreItem(loreName));
 
   for (const grant of resolved.grants) {
     items.push(toItemData(grant));
   }
 
   // Feats: PCs allow the real "feat" item type directly — skip builder.mjs's
-  // featToAction() NPC-only conversion entirely for this path.
-  for (const { entry } of resolved.feats ?? []) {
+  // featToAction() NPC-only conversion entirely for this path. Each feat's
+  // system.location must be the SLOT id ("<group>-<level>", e.g. "ancestry-1")
+  // and system.level.taken the slot level, or the system's feat-slotting
+  // (verified in feats/group.ts assignFeat) can't place it and dumps it into
+  // Bonus feats (issue #50 item 4).
+  for (const { entry, type, level } of resolved.feats ?? []) {
     const doc = await getDocument(entry);
     if (!doc) continue;
-    items.push(toItemData(doc));
+    const data = toItemData(doc);
+    if (type && level) {
+      data.system.location = `${type}-${level}`;
+      data.system.level = { ...(data.system.level ?? {}), taken: level };
+    }
+    items.push(data);
   }
 
   // Spellcasting entry + spells (skipped when no spell resolved to a document).
@@ -293,6 +405,14 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // caster slot management (Wizard-style) is out of scope; add if requested.
   if (concept.spellcasting && resolved.spells?.some((s) => s.entry)) {
     const entryId = foundry.utils.randomID();
+    // Populate per-rank slots so the caster can actually cast (issue #50 item 5
+    // / #53); shape (slot0..slot10, each {value,max,prepared:[]}) verified
+    // against pf2e spellcasting-entry_data.ts. Spontaneous casters leave
+    // `prepared` empty. `ability.value` keys spell DC/attack off the key ability.
+    const slots = {};
+    for (const [rank, max] of Object.entries(spontaneousSpellSlots(concept.level))) {
+      slots[`slot${rank}`] = { value: max, max, prepared: [] };
+    }
     items.push({
       _id: entryId,
       name: `${capitalized(concept.spellcasting.tradition)} Spells`,
@@ -301,7 +421,9 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
       system: {
         tradition: { value: concept.spellcasting.tradition },
         prepared: { value: "spontaneous", flexible: false },
+        ability: { value: keyAbility },
         proficiency: { value: 1 },
+        slots,
         spelldc: { value: 0, dc: 0, mod: 0 },
         showSlotlessLevels: { value: false }
       }
@@ -365,26 +487,40 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   });
 
   // -----------------------------------------------------------------------
-  // SCHEMA NOTE — ASSERTED, NOT VERIFIED. No running Foundry+pf2e world was
-  // available while writing this; the field names below are this module's
-  // best knowledge of the pf2e system schema (module.json requires pf2e
-  // >= 6.0.0), NOT confirmed against real data. Before relying on this in
-  // play, a human should: create a blank character, drag a real Ancestry +
-  // Background + Class onto it via the sheet, then inspect
-  // `actor.toObject().system` (build.attributes.boosts, details.keyability,
-  // skills.<slug>.rank, details.biography.value) to confirm these field
-  // names and shapes, and fix them here if they've drifted.
+  // SCHEMA NOTE — the actor `system.*` field names below were VERIFIED against
+  // foundryvtt/pf2e master source (character/data.ts + document.ts) when these
+  // bugs were fixed: details.keyability.value, details.biography.{backstory,
+  // appearance}, build.attributes.boosts.{1,5,10,15,20}, skills.<slug>.rank,
+  // attributes.hp.{value,temp}. Remaining best-effort (see comments where
+  // used): the spontaneous spell-slot COUNTS (rules-derived, not from source —
+  // pc-tables.spontaneousSpellSlots) and per-generation starting WEALTH
+  // (pcStartingWealthGp — flagged for a human wealth-table cross-check).
   // -----------------------------------------------------------------------
-  const trainedSkills = new Set([
+  // Trained skills: the background and class fixed skills are auto-applied by
+  // their own items, but the class's `additional` count of FREE trained skills
+  // is not (the system can't know which) — auto-pick deterministically: skills
+  // governed by the key ability first, then alphabetical (a sensible default a
+  // GM reviews, same spirit as assignAbilityBoosts). Fixes classes like Fighter
+  // (trainedSkills.value == [], all skills come from `additional`) showing zero
+  // trained skills (issue #50 item 3). ponytail: Int-mod bonus skills omitted;
+  // a GM can train more by hand.
+  const trained = new Set([
     ...(resolved.backgroundDoc.system?.trainedSkills?.value ?? []),
     ...(resolved.classDoc.system?.trainedSkills?.value ?? [])
   ]);
+  const additional = Math.max(0, Math.round(Number(resolved.classDoc.system?.trainedSkills?.additional) || 0));
+  const untrained = Object.keys(SKILL_ATTRIBUTE)
+    .filter((s) => !trained.has(s))
+    .sort((a, b) =>
+      ((SKILL_ATTRIBUTE[a] === keyAbility ? 0 : 1) - (SKILL_ATTRIBUTE[b] === keyAbility ? 0 : 1))
+      || a.localeCompare(b));
+  for (const s of untrained.slice(0, additional)) trained.add(s);
   const skills = {};
-  for (const slug of trainedSkills) skills[slug] = { rank: 1 };
+  for (const slug of trained) skills[slug] = { rank: 1 };
 
   const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
-  const backstoryHtml = concept.backstory
-    ? `<p>${concept.backstory.split(/\n{2,}/).map((p) => esc(p.trim())).filter(Boolean).join("</p><p>")}</p>`
+  const toHtml = (text) => text
+    ? `<p>${String(text).split(/\n{2,}/).map((p) => esc(p.trim())).filter(Boolean).join("</p><p>")}</p>`
     : "";
 
   const actorData = {
@@ -394,15 +530,21 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
     system: {
       details: {
         level: { value: concept.level },
-        keyability: { value: concept.keyAbility },
-        biography: { value: backstoryHtml }
+        keyability: { value: keyAbility },
+        // CharacterBiography has NO `.value` — the real HTML fields are
+        // `backstory` and `appearance` (verified in character/data.ts).
+        biography: { backstory: toHtml(concept.backstory), appearance: toHtml(concept.appearance) }
       },
+      // Full HP: a high sentinel the system clamps to the derived max on every
+      // data-prep pass (character/document.ts: stat.value = min(value, max)),
+      // so this resolves to full HP without us computing it (issue #50 item 6).
+      attributes: { hp: { value: 9999, temp: 0 } },
       build: {
         attributes: {
-          // Tells the sheet these boosts are explicit, not auto-suggested —
-          // see the SCHEMA NOTE above for the "asserted, not verified" caveat.
-          manual: true,
-          boosts: assignAbilityBoosts(concept.keyAbility)
+          // Not manual entry — we want the boosts below (and the ABC-item
+          // boosts) applied by the system to derive ability scores.
+          manual: false,
+          boosts: assignAbilityBoosts(keyAbility)
         }
       },
       skills

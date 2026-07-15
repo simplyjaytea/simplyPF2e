@@ -250,6 +250,7 @@ JSON schema (all keys required unless marked optional):
   "keyAbility": "str"|"dex"|"con"|"int"|"wis"|"cha", // the class's primary ability, matching the class you chose
   "blurb": string, // one-line tagline
   "backstory": string, // 1-2 paragraphs of backstory, plain text
+  "appearance": string, // 1-2 sentences describing the character's physical appearance, plain text
   "personality": string, // 1-2 sentences of personality/mannerisms
   "alignmentFlavor": string, // 1 sentence describing the character's moral/ethical outlook in prose (no game term required)
   "feats": string[], // 3-6 EXACT published PF2e feat names fitting the concept as a first draft wishlist — inspiration only, the final picks are chosen from real compendium lists per level in a second step
@@ -257,7 +258,7 @@ JSON schema (all keys required unless marked optional):
     "tradition": "arcane"|"divine"|"occult"|"primal",
     "spells": [ { "name": string, "rank": number } ] // rank 0 = cantrip; real PF2e spell names as a first draft (${REMASTER_NOTE}; the final list is chosen from the compendium in a second step)
   }, // null if the class you chose isn't a caster, or spellcasting is disallowed
-  "equipment": [ { "name": string, "quantity": number, "value": number } ] // 3-6 first-draft carried items with EXACT PF2e item names (${REMASTER_NOTE}) fitting the class and concept — inspiration only, the final picks are chosen from the compendium in a second step
+  "equipment": [ { "name": string, "quantity": number, "value": number } ] // 3-6 first-draft carried items with EXACT PF2e item names (${REMASTER_NOTE}) fitting the class and concept — include STARTING ARMOR appropriate to the class's armor proficiency (e.g. plate/chain for heavy-armor martials, leather/studded for light-armor types), plus a weapon and useful gear; lightly-armored casters may deliberately carry no armor. Inspiration only, the final picks are chosen from the compendium in a second step
 }
 
 Design guidance:
