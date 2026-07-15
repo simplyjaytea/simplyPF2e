@@ -1,7 +1,7 @@
 import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
 import {
   generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
-  generatePCConcept, selectAncestryBackgroundClass, selectFeats
+  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats
 } from "./ai.mjs";
 import {
   getSpellCandidates, getEquipmentCandidates, getLootCandidates,
@@ -67,7 +67,7 @@ export class GeneratorApp extends SpfApp {
   #input = {
     mode: "single", prompt: "", level: 1, rarity: "common",
     allowSpellcasting: true, preset: "", partySize: 4, threat: "moderate",
-    treasureAmount: "standard"
+    treasureAmount: "standard", rarityCap: "unique"
   };
   #busy = false;
   #error = null;
@@ -288,7 +288,8 @@ export class GeneratorApp extends SpfApp {
     const partySize = Math.min(8, Math.max(1, Number(form.querySelector('[name="partySize"]')?.value ?? 4)));
     const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
     const treasureAmount = form.querySelector('[name="treasureAmount"]')?.value ?? this.#input.treasureAmount;
-    this.#input = { mode, prompt, level, rarity, allowSpellcasting, preset, partySize, threat, treasureAmount };
+    const rarityCap = form.querySelector('[name="rarityCap"]')?.value ?? this.#input.rarityCap;
+    this.#input = { mode, prompt, level, rarity, allowSpellcasting, preset, partySize, threat, treasureAmount, rarityCap };
   }
 
   /**
@@ -609,6 +610,7 @@ export class GeneratorApp extends SpfApp {
       ["feats", game.i18n.localize("SIMPLYPF2E.Progress.Feats")],
       ...(this.#input.allowSpellcasting ? [["spells", game.i18n.localize("SIMPLYPF2E.Progress.Spells")]] : []),
       ["equipment", game.i18n.localize("SIMPLYPF2E.Progress.Equipment")],
+      ["loot", game.i18n.localize("SIMPLYPF2E.Progress.Loot")],
       ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
     ]);
     try {
@@ -623,8 +625,13 @@ export class GeneratorApp extends SpfApp {
       const concept = normalizePCConcept(raw, { level: this.#input.level });
 
       await this._setStep("abc");
+      // Rarity cap: excludes ancestries/backgrounds/heritages rarer than the
+      // GM's chosen max from the candidate lists the AI even sees, so e.g.
+      // capping at Uncommon means a Rare pick like Fetchling can never be
+      // offered — not just discouraged by prompt wording.
+      const { rarityCap } = this.#input;
       const [ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates] = await Promise.all([
-        getAncestryCandidates(), getBackgroundCandidates(), getClassCandidates(), getHeritageCandidates()
+        getAncestryCandidates(rarityCap), getBackgroundCandidates(rarityCap), getClassCandidates(), getHeritageCandidates(rarityCap)
       ]);
       const abc = await selectAncestryBackgroundClass({
         concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates,
@@ -663,16 +670,24 @@ export class GeneratorApp extends SpfApp {
       await this._setStep("equipment");
       await this.#refineEquipment(concept);
 
+      await this._setStep("loot");
+      await this.#refinePCLoot(concept);
+
       await this._setStep("match");
-      // #refineSpells/#refineEquipment replaced the concept's first-draft
-      // spell/equipment picks with grounded ones — re-resolve those parts
-      // (the ABC/grants/feat-slot lookups above are cheap and index-cached,
-      // so redoing them here is harmless; keep the feat picks already made).
+      // #refineSpells/#refineEquipment/#refinePCLoot replaced the concept's
+      // first-draft spell/equipment/loot picks with grounded ones —
+      // re-resolve those parts (the ABC/grants/feat-slot lookups above are
+      // cheap and index-cached, so redoing them here is harmless; keep the
+      // feat picks already made).
       const final = await resolvePCConcept(concept);
       resolved = { ...final, feats: resolved.feats };
       // Starting wealth: the character's OWN accumulated wealth-by-level
       // (pcStartingWealthGp), NOT treasureBudget() (an NPC per-encounter
-      // share) — applyTreasureBudget is reused completely unchanged.
+      // share). applyTreasureBudget is reused completely unchanged — it only
+      // ever flexes COIN entries, so the magic items #refinePCLoot just
+      // grounded are left alone and only the coin remainder is padded/
+      // trimmed to hit the target (issue: starting wealth should buy magic
+      // items, not just sit as raw gold).
       resolved.loot = await applyTreasureBudget(
         resolved.loot,
         pcStartingWealthGp(concept.level, this.#input.treasureAmount)
@@ -811,6 +826,31 @@ export class GeneratorApp extends SpfApp {
       if (loot.length) concept.loot = normalizeLoot(loot);
     } catch (err) {
       console.warn(`${MODULE_ID} | grounded loot selection failed, using first-draft loot`, err);
+    }
+  }
+
+  /**
+   * PC counterpart of the NPC pipeline's built-in first-draft loot: NPCs get
+   * one from their main generateConcept() call, but PCs never had any, so
+   * 100% of starting wealth became raw coin with nothing actually purchased
+   * (feature request: wealth should buy magic items). Drafts a small
+   * wishlist via generatePCLoot() (mirrors generateLoot's shape/reuse of
+   * lootGuide, framed as purchases rather than drops), then runs it through
+   * the EXISTING shared #refineLoot() grounding step unchanged. If either
+   * step fails, concept.loot just stays empty — applyTreasureBudget() (still
+   * called afterward by the caller) then pads with coin only, same as before
+   * this feature — never a hard failure.
+   */
+  async #refinePCLoot(concept) {
+    try {
+      const { loot: draft, usage } = await generatePCLoot({
+        concept, amount: this.#input.treasureAmount, onProgress: (p) => this._onAIProgress(p)
+      });
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
+      concept.loot = normalizeLoot(draft);
+      await this.#refineLoot(concept);
+    } catch (err) {
+      console.warn(`${MODULE_ID} | PC starting-wealth item drafting failed, wealth will be all coin`, err);
     }
   }
 

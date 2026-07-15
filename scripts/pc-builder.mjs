@@ -109,11 +109,16 @@ export function normalizePCConcept(raw, { level }) {
  * scaled by the GM's Treasure amount setting. Deliberately NOT
  * treasureBudget() — that divides by ENCOUNTERS_PER_LEVEL, an NPC-per-
  * encounter share, which is the wrong number for a PC's own starting wealth.
+ *
+ * Level 1 is a special case: the Core Rulebook gives every 1st-level
+ * character a flat 15 gp, independent of class/ancestry — the Treasure by
+ * Level table only applies when starting a campaign ABOVE 1st level (or
+ * replacing a character mid-campaign). Reusing the table for level 1 gave a
+ * brand-new character ~175 gp, over 10x the real starting amount.
  */
 export function pcStartingWealthGp(level, amount = "standard") {
-  return Math.round(
-    T.lookup(T.TREASURE_BY_LEVEL, level, "total", []) * (T.TREASURE_AMOUNT_MULTIPLIER[amount] ?? 1)
-  );
+  const gp = level <= 1 ? 15 : T.lookup(T.TREASURE_BY_LEVEL, level, "total", []);
+  return Math.round(gp * (T.TREASURE_AMOUNT_MULTIPLIER[amount] ?? 1));
 }
 
 /** Resolve one document's granted feature items (UUID-keyed system.items
@@ -178,11 +183,16 @@ export async function resolvePCConcept(concept) {
     }
   }
 
+  // Tagged with which ABC item granted each one (issue: background's own
+  // built-in feat — e.g. Acolyte's "Student of the Canon" — was landing in
+  // Bonus Feats): createCharacterActor needs to know the granting item so it
+  // can set the granted feat's system.location to that item's own embedded
+  // id, matching the real system's ABCItemPF2e.createGrantedItems().
   const grants = [
-    ...(await resolveGrants(ancestryDoc, concept.level)),
-    ...(await resolveGrants(heritageDoc, concept.level)),
-    ...(await resolveGrants(backgroundDoc, concept.level)),
-    ...(await resolveGrants(classDoc, concept.level))
+    ...(await resolveGrants(ancestryDoc, concept.level)).map((doc) => ({ doc, parent: "ancestry" })),
+    ...(await resolveGrants(heritageDoc, concept.level)).map((doc) => ({ doc, parent: "heritage" })),
+    ...(await resolveGrants(backgroundDoc, concept.level)).map((doc) => ({ doc, parent: "background" })),
+    ...(await resolveGrants(classDoc, concept.level)).map((doc) => ({ doc, parent: "class" }))
   ];
 
   // Feat slots: candidates only (no picks yet — generator-app runs
@@ -506,27 +516,53 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   const skills = {};
   for (const slug of trained) skills[slug] = { rank: skillRanks.get(slug) ?? 1 };
 
+  // Explicit ids for the ABC items, assigned BEFORE embedding rather than
+  // left to Foundry to generate on create: a background/ancestry/class's own
+  // granted feat (e.g. Acolyte's "Student of the Canon") needs to reference
+  // its granting item's id in system.location below, which has to be known
+  // up front to wire the two together (verified against the real
+  // ABCItemPF2e.createGrantedItems(), which does the same — sets the granted
+  // feat's location to `this.id`, its own embedded id).
+  const ancestryId = foundry.utils.randomID();
+  const heritageId = resolved.heritageDoc ? foundry.utils.randomID() : null;
+  const backgroundId = foundry.utils.randomID();
+  const classId = foundry.utils.randomID();
+
   // ABC boosts: without `selected` set on each item's boost slots, the system
   // applies none of them (issue #50 item 1) — set them on the cloned data.
   const ancestryData = toItemData(resolved.ancestryDoc);
+  ancestryData._id = ancestryId;
   assignItemBoosts(ancestryData.system, keyAbility);
   items.push(ancestryData);
 
-  if (resolved.heritageDoc) items.push(toItemData(resolved.heritageDoc));
+  if (resolved.heritageDoc) {
+    const heritageData = toItemData(resolved.heritageDoc);
+    heritageData._id = heritageId;
+    items.push(heritageData);
+  }
 
   const backgroundData = toItemData(resolved.backgroundDoc);
+  backgroundData._id = backgroundId;
   assignItemBoosts(backgroundData.system, keyAbility);
   items.push(backgroundData);
 
   const classData = toItemData(resolved.classDoc);
+  classData._id = classId;
   classData.system.keyAbility = { ...(classData.system.keyAbility ?? {}), selected: keyAbility };
   items.push(classData);
 
   // Background Lore: a real embedded lore item (not a system.skills entry).
   if (loreName) items.push(loreItem(loreName, skillRanks.get(loreSlug) ?? 1));
 
-  for (const grant of resolved.grants) {
-    items.push(toItemData(grant));
+  // A background/ancestry/class's own granted feat (Student of the Canon,
+  // a level-1 class feature, ...) needs system.location set to its granting
+  // item's id, or the feat-slotting logic can't place it and it silently
+  // falls into Bonus Feats — it was never set at all before this fix.
+  const parentIds = { ancestry: ancestryId, heritage: heritageId, background: backgroundId, class: classId };
+  for (const { doc, parent } of resolved.grants) {
+    const data = toItemData(doc);
+    if (data.type === "feat") data.system.location = parentIds[parent] ?? null;
+    items.push(data);
   }
 
   // Feats: PCs allow the real "feat" item type directly — skip builder.mjs's
