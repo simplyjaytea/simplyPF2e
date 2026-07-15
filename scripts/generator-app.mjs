@@ -137,33 +137,42 @@ export class GeneratorApp extends SpfApp {
     if (!this.#pcConcept) return null;
     const concept = this.#pcConcept;
     const resolved = this.#pcResolved;
+    const ancestry = { name: resolved.ancestryDoc?.name ?? concept.ancestry, found: Boolean(resolved.ancestryDoc) };
+    const heritage = concept.heritage
+      ? { name: resolved.heritageDoc?.name ?? concept.heritage, found: Boolean(resolved.heritageDoc) }
+      : null;
+    const background = { name: resolved.backgroundDoc?.name ?? concept.background, found: Boolean(resolved.backgroundDoc) };
+    const pcClass = { name: resolved.classDoc?.name ?? concept.class, found: Boolean(resolved.classDoc) };
+    const feats = (resolved.feats ?? []).map(({ name, entry }) => ({
+      name: entry?.name ?? name,
+      found: Boolean(entry)
+    }));
+    const spells = (resolved.spells ?? []).map(({ spell, entry }) => ({
+      name: entry?.name ?? spell.name,
+      rank: spell.rank,
+      found: Boolean(entry)
+    }));
+    const equipment = (resolved.equipment ?? []).map(({ name, quantity, runes, entry }) => ({
+      name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
+      found: Boolean(entry)
+    }));
+    const loot = (resolved.loot ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
+      name: (scroll && entry
+        ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
+        : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
+      found: Boolean(entry)
+    }));
     return {
       concept,
-      ancestry: { name: resolved.ancestryDoc?.name ?? concept.ancestry, found: Boolean(resolved.ancestryDoc) },
-      heritage: concept.heritage
-        ? { name: resolved.heritageDoc?.name ?? concept.heritage, found: Boolean(resolved.heritageDoc) }
-        : null,
-      background: { name: resolved.backgroundDoc?.name ?? concept.background, found: Boolean(resolved.backgroundDoc) },
-      class: { name: resolved.classDoc?.name ?? concept.class, found: Boolean(resolved.classDoc) },
-      feats: (resolved.feats ?? []).map(({ name, entry }) => ({
-        name: entry?.name ?? name,
-        found: Boolean(entry)
-      })),
-      spells: (resolved.spells ?? []).map(({ spell, entry }) => ({
-        name: entry?.name ?? spell.name,
-        rank: spell.rank,
-        found: Boolean(entry)
-      })),
-      equipment: (resolved.equipment ?? []).map(({ name, quantity, runes, entry }) => ({
-        name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
-        found: Boolean(entry)
-      })),
-      loot: (resolved.loot ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
-        name: (scroll && entry
-          ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
-          : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
-        found: Boolean(entry)
-      }))
+      ancestry,
+      heritage,
+      background,
+      class: pcClass,
+      feats,
+      spells,
+      equipment,
+      loot,
+      matchSummary: this.#matchSummary([ancestry], heritage ? [heritage] : [], [background], [pcClass], feats, spells, equipment, loot)
     };
   }
 
@@ -199,6 +208,31 @@ export class GeneratorApp extends SpfApp {
     if (!this.#concept) return null;
     const concept = this.#concept;
     const stats = computeStats(concept);
+    const abilities = (this.#resolved?.abilities ?? []).map(({ ability, entry }) => ({
+      name: ability.name,
+      fromGlossary: Boolean(entry),
+      glossaryName: entry?.name ?? null,
+      description: ability.description
+    }));
+    const spells = (this.#resolved?.spells ?? []).map(({ spell, entry }) => ({
+      name: entry?.name ?? spell.name,
+      rank: spell.rank,
+      found: Boolean(entry)
+    }));
+    const feats = (this.#resolved?.feats ?? []).map(({ name, entry }) => ({
+      name: entry?.name ?? name,
+      found: Boolean(entry)
+    }));
+    const equipment = (this.#resolved?.equipment ?? []).map(({ name, quantity, runes, entry }) => ({
+      name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
+      found: Boolean(entry)
+    }));
+    const loot = (this.#resolved?.loot ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
+      name: (scroll && entry
+        ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
+        : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
+      found: Boolean(entry)
+    }));
     return {
       concept,
       stats,
@@ -206,37 +240,38 @@ export class GeneratorApp extends SpfApp {
       speeds: concept.speeds.map((s) => `${s.type} ${s.value} ft.`).join(", "),
       senses: concept.senses.map((s) => [s.type, s.acuity, s.range ? `${s.range} ft.` : null].filter(Boolean).join(" ")).join(", "),
       languages: concept.languages.join(", "),
-      abilities: (this.#resolved?.abilities ?? []).map(({ ability, entry }) => ({
-        name: ability.name,
-        fromGlossary: Boolean(entry),
-        glossaryName: entry?.name ?? null,
-        description: ability.description
-      })),
-      spells: (this.#resolved?.spells ?? []).map(({ spell, entry }) => ({
-        name: entry?.name ?? spell.name,
-        rank: spell.rank,
-        found: Boolean(entry)
-      })),
-      feats: (this.#resolved?.feats ?? []).map(({ name, entry }) => ({
-        name: entry?.name ?? name,
-        found: Boolean(entry)
-      })),
-      equipment: (this.#resolved?.equipment ?? []).map(({ name, quantity, runes, entry }) => ({
-        name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
-        found: Boolean(entry)
-      })),
-      loot: (this.#resolved?.loot ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
-        name: (scroll && entry
-          ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
-          : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
-        found: Boolean(entry)
-      })),
+      abilities,
+      spells,
+      feats,
+      equipment,
+      loot,
+      matchSummary: this.#matchSummary(
+        abilities.map((a) => ({ found: a.fromGlossary })), spells, feats, equipment, loot
+      ),
       iwr: {
         immunities: concept.immunities.join(", "),
         resistances: concept.resistances.map((r) => `${r} ${stats.resistanceValue}`).join(", "),
         weaknesses: concept.weaknesses.map((w) => `${w} ${stats.resistanceValue}`).join(", ")
       }
     };
+  }
+
+  /**
+   * Aggregate "found vs. total" across every generated category — issue #52:
+   * the GM had no summary of how much of a generation actually grounded
+   * against the real compendium vs. fell back to AI-estimated custom items,
+   * only a per-item warning icon buried in each list. Each argument is an
+   * array of objects carrying a `found` boolean (a single ABC/heritage pick
+   * is wrapped in a 1-element array by the caller so it can be flattened the
+   * same way as the list categories).
+   * @returns {{matched: number, total: number, text: string}|null}
+   */
+  #matchSummary(...groups) {
+    const items = groups.flat().filter(Boolean);
+    const total = items.length;
+    if (!total) return null;
+    const matched = items.filter((i) => i.found).length;
+    return { matched, total, text: game.i18n.format("SIMPLYPF2E.Preview.MatchSummary", { matched, total }) };
   }
 
   /** Read the current form inputs into #input. */
