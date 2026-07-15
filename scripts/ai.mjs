@@ -251,20 +251,29 @@ JSON schema (all keys required unless marked optional):
   "blurb": string, // one-line tagline
   "backstory": string, // 1-2 paragraphs of backstory, plain text
   "appearance": string, // 1-2 sentences describing the character's physical appearance, plain text
+  "height": string, // e.g. "5 ft. 8 in." — plausible for the ancestry/species
+  "weight": string, // e.g. "150 lbs." — plausible for the ancestry/species
   "personality": string, // 1-2 sentences of personality/mannerisms
   "alignmentFlavor": string, // 1 sentence describing the character's moral/ethical outlook in prose (no game term required)
+  "likes": string, // short phrase or list of things the character likes
+  "dislikes": string, // short phrase or list of things the character dislikes
+  "allies": string, // 1-2 sentences naming allies, mentors, or loyal companions (can be "" if none fit)
+  "enemies": string, // 1-2 sentences naming rivals, enemies, or things the character is hunted by (can be "" if none fit)
+  "organizations": string, // 1-2 sentences naming factions, guilds, or organizations the character belongs to (can be "" if none fit)
+  "languages": string[], // 1-3 EXACT PF2e language names beyond the ancestry's automatic ones (e.g. "Common"), fitting the character's background/culture — lowercase is fine, [] if none fit
   "feats": string[], // 3-6 EXACT published PF2e feat names fitting the concept as a first draft wishlist — inspiration only, the final picks are chosen from real compendium lists per level in a second step
   "spellcasting": null | {
     "tradition": "arcane"|"divine"|"occult"|"primal",
     "spells": [ { "name": string, "rank": number } ] // rank 0 = cantrip; real PF2e spell names as a first draft (${REMASTER_NOTE}; the final list is chosen from the compendium in a second step)
   }, // null if the class you chose isn't a caster, or spellcasting is disallowed
-  "equipment": [ { "name": string, "quantity": number, "value": number } ] // 3-6 first-draft carried items with EXACT PF2e item names (${REMASTER_NOTE}) fitting the class and concept — include STARTING ARMOR appropriate to the class's armor proficiency (e.g. plate/chain for heavy-armor martials, leather/studded for light-armor types), plus a weapon and useful gear; lightly-armored casters may deliberately carry no armor. Inspiration only, the final picks are chosen from the compendium in a second step
+  "equipment": [ { "name": string, "quantity": number, "value": number } ] // 4-8 first-draft carried items with EXACT PF2e item names (${REMASTER_NOTE}) fitting the class, level and concept — include STARTING ARMOR appropriate to the class's armor proficiency (e.g. plate/chain for heavy-armor martials, leather/studded for light-armor types), a weapon, useful mundane gear, AND at least 1-2 level-appropriate magic items (a potion or elixir; for a spellcaster, a spell scroll of a real PF2e spell in their tradition they'd want as backup) when the character's level plausibly affords them; lightly-armored casters may deliberately carry no armor. Inspiration only, the final picks are chosen from the compendium in a second step
 }
 
 Design guidance:
 - Pick an ancestry, background and class that together tell a coherent, thematic character matching the GM's concept.
 - "keyAbility" MUST be a legal key ability for the class you chose (e.g. Fighter is str or dex, Wizard is int, Cleric is wis).
 - Only include "spellcasting" for classes that actually cast spells (Wizard, Cleric, Druid, Sorcerer, Bard, Witch, Oracle, Magus, Summoner, ...) and only when spellcasting is allowed.
+- Give the character real personality texture, not just combat stats: mannerisms, likes/dislikes, and at least one named ally, enemy, or organization tying them into a wider world — a blank or generic answer for these is a worse answer than a specific, concept-fitting one.
 - feats/spells/equipment are first drafts only — write plausible real names; a later grounding step selects the actual final picks from the real compendium.`;
 }
 

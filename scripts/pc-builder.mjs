@@ -63,8 +63,16 @@ export function normalizePCConcept(raw, { level }) {
     description: String(c.backstory ?? ""), // #refineEquipment/#refineLoot read concept.description
     backstory: String(c.backstory ?? ""),
     appearance: String(c.appearance ?? ""),
+    height: String(c.height ?? "").slice(0, 40),
+    weight: String(c.weight ?? "").slice(0, 40),
     personality: String(c.personality ?? ""),
     alignmentFlavor: String(c.alignmentFlavor ?? ""),
+    likes: String(c.likes ?? ""),
+    dislikes: String(c.dislikes ?? ""),
+    allies: String(c.allies ?? ""),
+    enemies: String(c.enemies ?? ""),
+    organizations: String(c.organizations ?? ""),
+    languages: (Array.isArray(c.languages) ? c.languages : []).map((l) => String(l)).filter(Boolean).slice(0, 6),
     feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 8),
     spellcasting,
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
@@ -313,6 +321,43 @@ const SKILL_ATTRIBUTE = {
   society: "int", stealth: "dex", survival: "wis", thievery: "dex"
 };
 
+/**
+ * Resolve the AI's freeform language names against the world's real language
+ * list (`CONFIG.PF2E.languages`, a slug -> localized-label map read at
+ * runtime rather than hardcoded, since installed content packs can add to
+ * it), capped to the ancestry's bonus-language slot count and restricted to
+ * its allowed list when the ancestry has one (verified against
+ * ancestry/data.ts: `additionalLanguages.count`/`.value`). Does NOT include
+ * the ancestry's own automatic languages (e.g. Common) — those are added by
+ * the ancestry item's own data prep (verified in ancestry/document.ts:
+ * prepareActorData pushes them into build.languages.granted, which
+ * character/document.ts merges into system.details.languages.value at
+ * runtime), so listing them here would just be redundant, not wrong.
+ */
+function resolveLanguages(names, ancestryDoc) {
+  const known = CONFIG?.PF2E?.languages ?? {};
+  const bySlug = new Set(Object.keys(known));
+  const byLabel = new Map(
+    Object.entries(known).map(([slug, label]) => [String(game.i18n.localize(label)).toLowerCase(), slug])
+  );
+  const additional = ancestryDoc?.system?.additionalLanguages ?? {};
+  const max = Math.max(0, Math.round(Number(additional.count) || 0));
+  const allowed = Array.isArray(additional.value) && additional.value.length ? new Set(additional.value) : null;
+  const automatic = new Set(ancestryDoc?.system?.languages?.value ?? []);
+
+  const resolved = [];
+  for (const raw of names) {
+    if (resolved.length >= max) break;
+    const text = String(raw).trim();
+    if (!text) continue;
+    const slug = bySlug.has(slugify(text)) ? slugify(text) : byLabel.get(text.toLowerCase()) ?? null;
+    if (!slug || automatic.has(slug) || resolved.includes(slug)) continue;
+    if (allowed && !allowed.has(slug)) continue;
+    resolved.push(slug);
+  }
+  return resolved;
+}
+
 /** A `type:"lore"` skill item (shape verified against pf2e src/module/item/lore.ts:
  * `proficient.value` is the rank, 1 = trained). Background lore isn't a
  * system.skills entry — it needs its own embedded item (issue #50 item 3). */
@@ -490,7 +535,9 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // SCHEMA NOTE — the actor `system.*` field names below were VERIFIED against
   // foundryvtt/pf2e master source (character/data.ts + document.ts) when these
   // bugs were fixed: details.keyability.value, details.biography.{backstory,
-  // appearance}, build.attributes.boosts.{1,5,10,15,20}, skills.<slug>.rank,
+  // appearance,attitude,beliefs,likes,dislikes,allies,enemies,organizations},
+  // details.height.value, details.weight.value, details.languages.{value,
+  // details}, build.attributes.boosts.{1,5,10,15,20}, skills.<slug>.rank,
   // attributes.hp.{value,temp}. Remaining best-effort (see comments where
   // used): the spontaneous spell-slot COUNTS (rules-derived, not from source —
   // pc-tables.spontaneousSpellSlots) and per-generation starting WEALTH
@@ -523,6 +570,12 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
     ? `<p>${String(text).split(/\n{2,}/).map((p) => esc(p.trim())).filter(Boolean).join("</p><p>")}</p>`
     : "";
 
+  // Bonus languages: capped to the ancestry's own slot count and allowed-list
+  // (issue #56.2) — the ancestry's automatic languages (e.g. Common) are
+  // added separately by the system itself, not listed here (see
+  // resolveLanguages's doc comment).
+  const languages = resolveLanguages(concept.languages ?? [], resolved.ancestryDoc);
+
   const actorData = {
     name: concept.name,
     type: "character",
@@ -531,9 +584,29 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
       details: {
         level: { value: concept.level },
         keyability: { value: keyAbility },
-        // CharacterBiography has NO `.value` — the real HTML fields are
-        // `backstory` and `appearance` (verified in character/data.ts).
-        biography: { backstory: toHtml(concept.backstory), appearance: toHtml(concept.appearance) }
+        // Height/weight (issue #56.1) and languages (#56.2): field shapes
+        // verified against character/data.ts (details.height.value/
+        // details.weight.value are plain strings; details.languages.value is
+        // the array of chosen languages beyond the ancestry's automatic ones).
+        height: { value: concept.height },
+        weight: { value: concept.weight },
+        languages: { value: languages, details: "" },
+        // CharacterBiography has NO `.value` — the real fields (verified in
+        // character/data.ts) are backstory/appearance (HTML), attitude/
+        // beliefs/likes/dislikes (plain text), allies/enemies/organizations
+        // (HTML). "personality"/"alignmentFlavor" map onto the closest real
+        // biography fields (attitude/beliefs) — issue #56.6.
+        biography: {
+          backstory: toHtml(concept.backstory),
+          appearance: toHtml(concept.appearance),
+          attitude: concept.personality,
+          beliefs: concept.alignmentFlavor,
+          likes: concept.likes,
+          dislikes: concept.dislikes,
+          allies: toHtml(concept.allies),
+          enemies: toHtml(concept.enemies),
+          organizations: toHtml(concept.organizations)
+        }
       },
       // Full HP: a high sentinel the system clamps to the derived max on every
       // data-prep pass (character/document.ts: stat.value = min(value, max)),
