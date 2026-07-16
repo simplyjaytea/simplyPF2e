@@ -233,6 +233,8 @@ Grouped by feature area rather than build order. Version tags mark when a featur
 
 There's no full test suite, but a handful of pure-logic regression checks guard specific historical bugs — each is a standalone, dependency-free script (`node scripts/<name>.test.mjs`), no framework or CI wiring. Where the real function touches Foundry's `game`/`foundry` globals (unavailable outside a running world), the check ports the relevant logic verbatim with a comment citing the source lines to keep in sync. Otherwise verify JS changes with `node --check <file>`.
 
+Picking this codebase up for the first time? `CLAUDE.md` has the architecture, key files, and current state; `HISTORY.md` has the full session-by-session narrative and bug log behind why things are built the way they are — worth a search before re-investigating something already root-caused once.
+
 ## Releasing (for maintainers)
 
 **Releases are automatic.** Every push to `main` triggers `.github/workflows/auto-release.yml`: it reads the latest git tag, bumps its last version segment (`v0.3.5.1` → `v0.3.5.2`), and calls `release.yml` directly as a reusable workflow to build and publish — no manual tag or dispatch step required.
