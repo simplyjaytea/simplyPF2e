@@ -66,10 +66,28 @@ const KIND_SPECS = {
     key: "BaseSpeed",
     allowed: ["key", "selector", "value"],
     matches: (r) => typeof r.selector === "string" && typeof r.value === "number"
+  },
+  // PC focus pool max (character/document.ts zeroes system.resources.focus.max
+  // every data-prep pass and rebuilds it ONLY from ActiveEffectLike rules on
+  // embedded items — plain actor data is silently discarded). The numeric-value
+  // match excludes the predicated variants some subclass features carry; the
+  // clean unconditional shape (e.g. Clarity of Focus) is the one to clone.
+  focusPool: {
+    key: "ActiveEffectLike",
+    allowed: ["key", "mode", "path", "priority", "value"],
+    matches: (r) => r.mode === "add" && r.path === "system.resources.focus.max" && typeof r.value === "number"
   }
 };
 
-export const EFFECT_KINDS = Object.keys(KIND_SPECS);
+/** Every kind the exemplar scan resolves. */
+const ALL_KINDS = Object.keys(KIND_SPECS);
+
+/**
+ * Kinds offered to the ITEM FORGE's AI schema. focusPool is deliberately
+ * excluded: it's a character-builder exemplar (PC focus pool max), not a
+ * wondrous-item effect kind.
+ */
+export const EFFECT_KINDS = ALL_KINDS.filter((k) => k !== "focusPool");
 
 /** Does `rule` qualify as an exemplar for `kind`? */
 function ruleMatchesKind(rule, kind) {
@@ -165,8 +183,8 @@ let exemplarPromise = null;
  */
 export async function findRuleExemplars() {
   exemplarPromise ??= (async () => {
-    const found = Object.fromEntries(EFFECT_KINDS.map((k) => [k, null]));
-    const incomplete = () => EFFECT_KINDS.filter((k) => !found[k] || !isComplete(found[k].rule, k));
+    const found = Object.fromEntries(ALL_KINDS.map((k) => [k, null]));
+    const incomplete = () => ALL_KINDS.filter((k) => !found[k] || !isComplete(found[k].rule, k));
     for (const packId of scanPackOrder()) {
       if (!incomplete().length) break;
       const entries = await getRulesEntries(packId);
@@ -187,7 +205,7 @@ export async function findRuleExemplars() {
         }
       }
     }
-    for (const kind of EFFECT_KINDS) {
+    for (const kind of ALL_KINDS) {
       if (found[kind]) {
         console.debug(
           `simplypf2e | itemforge: "${kind}" rule exemplar from "${found[kind].sourceName}" (${found[kind].sourceUuid})`

@@ -1,9 +1,10 @@
 import * as T from "./tables.mjs";
 import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates } from "./compendium.mjs";
 import {
-  parseCoins, resolveLoot, resolveEquipment, buildScrollItem,
+  parseCoins, resolveLoot, resolveEquipment, resolveFocusSpells, buildScrollItem,
   customTreasureItem, customEquipmentItem, applyRunes, capitalized, slugify
 } from "./builder.mjs";
+import { findRuleExemplar } from "./rule-templates.mjs";
 import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
 
 /**
@@ -79,6 +80,18 @@ export function normalizePCConcept(raw, { level }) {
     languages: (Array.isArray(c.languages) ? c.languages : []).map((l) => String(l)).filter(Boolean).slice(0, 6),
     feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 8),
     spellcasting,
+    // Focus spells are independent of `spellcasting` (a Champion has focus
+    // spells but no slots). Cap at 3 AFTER filtering — the hard focus-pool
+    // ceiling — so the first 3 VALID names are kept, not the first 3 raw ones.
+    focusSpells: (Array.isArray(c.focusSpells) ? c.focusSpells : [])
+      .map((s) => {
+        if (typeof s === "string") return s.trim();
+        if (s?.name) return String(s.name).trim();
+        return "";
+      })
+      .filter(Boolean)
+      .slice(0, 3)
+      .map((name) => ({ name })),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
         if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
@@ -214,13 +227,15 @@ export async function resolvePCConcept(concept) {
     }
   }
 
+  const focusSpells = await resolveFocusSpells(concept.focusSpells ?? []);
+
   const equipment = await resolveEquipment(concept);
   // concept.loot starts empty (see normalizePCConcept) — resolveLoot() is a
   // no-op on it here; applyTreasureBudget() (called by generator-app with
   // pcStartingWealthGp()) is what actually fills it with coins.
   const loot = await resolveLoot(concept);
 
-  return { ancestryDoc, heritageDoc, backgroundDoc, classDoc, grants, featSlots, spells, equipment, loot };
+  return { ancestryDoc, heritageDoc, backgroundDoc, classDoc, grants, featSlots, spells, focusSpells, equipment, loot };
 }
 
 /**
@@ -619,6 +634,53 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
     }
   }
 
+  // Focus spells: a separate `prepared.value: "focus"` entry — how the real
+  // system identifies a focus pool (spellcasting-entry/document.ts
+  // isFocusPool) — with NO slots object (focus spells spend pool points, not
+  // slots). Independent of the block above: a Champion has focus spells but
+  // no spontaneous casting. The pool MAX cannot be plain actor data —
+  // character/document.ts zeroes system.resources.focus.max every data-prep
+  // pass and rebuilds it ONLY from ActiveEffectLike rules on embedded items —
+  // so a real published rule exemplar is cloned onto the entry (never
+  // hand-authored, see rule-templates.mjs).
+  let focusPoolSize = 0;
+  if (resolved.focusSpells?.some((s) => s.entry)) {
+    const focusEntryId = foundry.utils.randomID();
+    focusPoolSize = Math.min(resolved.focusSpells.filter((s) => s.entry).length, 3);
+    const exemplar = await findRuleExemplar("focusPool");
+    if (!exemplar) {
+      // Fail closed but don't abort: the spells still embed, the pool just
+      // stays at 0 until a GM adds the rule by hand.
+      console.warn("simplypf2e | no real focus-pool rule exemplar found in any installed compendium — focus spells embed but the focus pool stays at 0");
+    }
+    const poolRule = exemplar ? structuredClone(exemplar.rule) : null;
+    if (poolRule) poolRule.value = focusPoolSize;
+    items.push({
+      _id: focusEntryId,
+      name: "Focus Spells",
+      type: "spellcastingEntry",
+      img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
+      system: {
+        // Real focus spells carry no tradition of their own; tag the entry
+        // with the class's casting tradition only when the concept has one.
+        ...(concept.spellcasting ? { tradition: { value: concept.spellcasting.tradition } } : {}),
+        prepared: { value: "focus" },
+        ability: { value: keyAbility },
+        proficiency: { value: 1 },
+        spelldc: { value: 0, dc: 0, mod: 0 },
+        showSlotlessLevels: { value: false },
+        rules: poolRule ? [poolRule] : []
+      }
+    });
+    for (const { entry } of resolved.focusSpells) {
+      const doc = await getDocument(entry);
+      if (!doc) continue;
+      const data = toItemData(doc);
+      data.system.location = { ...(data.system.location ?? {}), value: focusEntryId };
+      items.push(data);
+    }
+  }
+
   // Equipment: same quantity/rune/carry-state handling as the NPC pipeline.
   for (const { name, quantity, value, runes, entry } of resolved.equipment) {
     const doc = await getDocument(entry);
@@ -734,6 +796,10 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
       // data-prep pass (character/document.ts: stat.value = min(value, max)),
       // so this resolves to full HP without us computing it (issue #50 item 6).
       attributes: { hp: { value: 9999, temp: 0 } },
+      // Focus pool starts full. Source `value` survives data prep (verified in
+      // character/document.ts prepareBaseData — it keeps value, zeroes max);
+      // `max` comes from the cloned rule on the focus spellcasting entry.
+      resources: { focus: { value: focusPoolSize } },
       build: {
         attributes: {
           // Not manual entry — we want the boosts below (and the ABC-item
