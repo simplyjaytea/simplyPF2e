@@ -487,6 +487,32 @@ export async function resolveEquipment(concept) {
   return equipment;
 }
 
+/**
+ * Resolve focus-spell names against the spell packs. Focus spells carry the
+ * "focus" trait and have an EMPTY system.traits.traditions (verified against
+ * real pack data, e.g. lay-on-hands.json), so the tradition-filtered
+ * getSpellCandidates() can never match one — matched by trait here instead.
+ * Shared: used by the PC pipeline (pc-builder.mjs) now, NPC pipeline later.
+ * Unmatched names keep a null entry — downstream skips them, same fail-closed
+ * treatment as every other unresolved compendium pick in this module.
+ * @param {({name: string}|string)[]} names
+ * @returns {Promise<{name: string, entry: object|null}[]>}
+ */
+export async function resolveFocusSpells(names) {
+  const resolved = [];
+  for (const raw of Array.isArray(names) ? names : []) {
+    const name = typeof raw === "string" ? raw : raw?.name;
+    if (!name) continue;
+    const entry = await findEntry(
+      getPacksFor("spells"),
+      name,
+      (e) => e.type === "spell" && (e.system?.traits?.value ?? []).includes("focus")
+    );
+    resolved.push({ name, entry });
+  }
+  return resolved;
+}
+
 /** Compute the final numeric stat block (also used by the preview). */
 export function computeStats(concept) {
   const lv = concept.level;

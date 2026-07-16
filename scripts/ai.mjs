@@ -310,6 +310,7 @@ JSON schema (all keys required unless marked optional):
     "tradition": "arcane"|"divine"|"occult"|"primal",
     "spells": [ { "name": string, "rank": number } ] // rank 0 = cantrip; real PF2e spell names as a first draft (${REMASTER_NOTE}; the final list is chosen from the compendium in a second step)
   }, // null if the class you chose isn't a caster, or spellcasting is disallowed
+  "focusSpells": string[], // EXACT published PF2e focus spell names (they carry the "focus" trait) granted by this character's class/subclass, 1-3 names, [] if none apply — first draft, grounded against the real compendium afterward. Independent of "spellcasting": a Champion has focus spells but no spell slots
   "equipment": [ { "name": string, "quantity": number, "value": number } ] // 4-8 first-draft carried items with EXACT PF2e item names (${REMASTER_NOTE}) fitting the class, level and concept — include STARTING ARMOR appropriate to the class's armor proficiency (e.g. plate/chain for heavy-armor martials, leather/studded for light-armor types), a weapon, useful mundane gear, AND at least 1-2 level-appropriate magic items (a potion or elixir; for a spellcaster, a spell scroll of a real PF2e spell in their tradition they'd want as backup) when the character's level plausibly affords them; lightly-armored casters may deliberately carry no armor. Inspiration only, the final picks are chosen from the compendium in a second step
 }
 
@@ -317,6 +318,7 @@ Design guidance:
 - Pick an ancestry, background and class that together tell a coherent, thematic character matching the GM's concept.
 - "keyAbility" MUST be a legal key ability for the class you chose (e.g. Fighter is str or dex, Wizard is int, Cleric is wis).
 - Only include "spellcasting" for classes that actually cast spells (Wizard, Cleric, Druid, Sorcerer, Bard, Witch, Oracle, Magus, Summoner, ...) and only when spellcasting is allowed.
+- "focusSpells": Champion (e.g. Lay on Hands), Cleric (a domain spell, e.g. Fire Ray), Druid (an order spell, e.g. Tempest Surge), Sorcerer (a bloodline spell), Wizard (a curriculum spell), Monk (a ki spell), and Bard/Oracle/Witch/Psychic commonly have them — name 1-3 that plausibly fit this build; leave [] if the class/concept doesn't have any.
 - Give the character real personality texture, not just combat stats: mannerisms, likes/dislikes, and at least one named ally, enemy, or organization tying them into a wider world — a blank or generic answer for these is a worse answer than a specific, concept-fitting one.
 - feats/spells/equipment are first drafts only — write plausible real names; a later grounding step selects the actual final picks from the real compendium.`;
 }
