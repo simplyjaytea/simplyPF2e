@@ -137,6 +137,19 @@ export function normalizeConcept(raw, { level, rarity }) {
         traits: (Array.isArray(a.traits) ? a.traits : []).map(slugify).filter(Boolean)
       })),
     spellcasting,
+    // Focus spells ride on the normal spellcasting DC (v1 scope: focus-only
+    // creatures are unsupported), so force [] when spellcasting is absent —
+    // defense in depth against the AI ignoring the schema's own gate. Cap at
+    // 3 AFTER filtering (the hard focus-pool ceiling), same as the PC path.
+    focusSpells: !spellcasting ? [] : (Array.isArray(c.focusSpells) ? c.focusSpells : [])
+      .map((s) => {
+        if (typeof s === "string") return s.trim();
+        if (s?.name) return String(s.name).trim();
+        return "";
+      })
+      .filter(Boolean)
+      .slice(0, 3)
+      .map((name) => ({ name })),
     feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 4),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
@@ -460,10 +473,15 @@ export async function resolveConcept(concept) {
     feats.push({ name, entry });
   }
 
+  // Gated on spellcasting (not just normalize-time): #refineSpells can null
+  // out concept.spellcasting after normalizeConcept ran, and focus spells
+  // have no DC of their own without it (v1 scope).
+  const focusSpells = concept.spellcasting ? await resolveFocusSpells(concept.focusSpells ?? []) : [];
+
   const equipment = await resolveEquipment(concept);
   const loot = await resolveLoot(concept);
 
-  return { abilities, spells, feats, equipment, loot };
+  return { abilities, spells, feats, focusSpells, equipment, loot };
 }
 
 /**
@@ -871,6 +889,42 @@ export async function createActor(concept, resolved, { img = null } = {}) {
     }
   }
 
+  // Focus spells: a separate `prepared.value: "focus"` entry — how the real
+  // system identifies a focus pool — with NO slots object (focus spells spend
+  // pool points, not slots). v1 scope: only attached alongside normal
+  // spellcasting, so the entry reuses the existing spell DC/attack. Unlike
+  // the PC path (pc-builder.mjs), NO Rule Element is needed for the pool max:
+  // npc/document.ts merges system.resources.focus with the SOURCE data
+  // winning, so value/max set on the actor below persist directly.
+  let focusPoolSize = 0;
+  if (concept.spellcasting && resolved.focusSpells?.some((s) => s.entry)) {
+    const focusEntryId = foundry.utils.randomID();
+    // Pool size = distinct focus-spell count, capped at 3 (PF2e's hard
+    // ceiling) — a defensible module default, NOT verified against GM Core's
+    // own creature-design guidance for this number (same class of gap as
+    // TREASURE_BY_LEVEL, see tables.mjs).
+    focusPoolSize = Math.min(resolved.focusSpells.filter((s) => s.entry).length, 3);
+    items.push({
+      _id: focusEntryId,
+      name: "Focus Spells",
+      type: "spellcastingEntry",
+      img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
+      system: {
+        tradition: { value: concept.spellcasting.tradition },
+        prepared: { value: "focus", flexible: false },
+        spelldc: { value: stats.spellAttack, dc: stats.spellDC, mod: 0 },
+        showSlotlessLevels: { value: false }
+      }
+    });
+    for (const { entry } of resolved.focusSpells) {
+      const doc = await getDocument(entry);
+      if (!doc) continue;
+      const data = toItemData(doc);
+      data.system.location = { ...(data.system.location ?? {}), value: focusEntryId };
+      items.push(data);
+    }
+  }
+
   // Equipment: apply quantities, fundamental runes, and sensible carry states.
   // Anything without a compendium match becomes a custom gear item at the AI's
   // estimated price, so it doesn't silently vanish from the actor.
@@ -987,7 +1041,10 @@ export async function createActor(concept, resolved, { img = null } = {}) {
         value: concept.traits,
         rarity: concept.rarity,
         size: { value: concept.size }
-      }
+      },
+      // NPC focus pool max IS plain actor data (unlike PCs) — see the focus
+      // entry block above for the npc/document.ts merge behavior.
+      ...(focusPoolSize ? { resources: { focus: { value: focusPoolSize, max: focusPoolSize } } } : {})
     },
     prototypeToken: {
       displayName: CONST.TOKEN_DISPLAY_MODES.OWNER_HOVER,
