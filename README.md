@@ -191,29 +191,43 @@ Odd generation results:
 - Activated-item macros lean on the PF2e system's own APIs, which can change between system versions. Every call is wrapped so a failure degrades to a plain descriptive chat message ("deal 4d6 fire damage, DC 22 basic Reflex save — apply manually") rather than throwing. A few behaviours are **best-effort**: an inflicted condition's *duration* is shown as text but not auto-enforced (remove it by hand when it lapses); condition effects apply on a failed save, but if the save's degree of success can't be read the condition is skipped with a manual-adjudication chat message rather than applied automatically; and 1/day recharge relies on the PF2e "Rest for the Night" flow firing (otherwise reset the item's charge by hand). If a generated macro misbehaves in play, its script is readable in the macro folder — check the console for the logged fallback reason.
 - A named weapon, armor, or gear item that doesn't match anything in the compendium becomes a generic placeholder item at the AI's estimated price rather than a functional weapon/armor — it won't carry real mechanical bonuses. Carried gear is now picked from a real compendium candidate list (see [Grounding in the compendium](#grounding-in-the-compendium)), so this should be uncommon — mostly the fallback path when the grounded pass fails or a pick is copied imperfectly — but if you see one, swap in the intended item from the compendium by hand.
 - **Player Character mode is younger and less battle-tested than NPC mode.** Its initial build asserted several character-build field names from training knowledge rather than confirmed schema; live testing since has found and fixed real problems across several rounds (attribute boosts, feat slots including a background's own built-in feat, spell slots, HP, skills/skill increases, bio/personality fields, starting wealth, rarity cap), each verified against the real `foundryvtt/pf2e` source. Before trusting a generated character's numbers, open its sheet and sanity-check AC/HP/saves/proficiencies/feats against what its ancestry/background/class/level should produce; if something looks off, `scripts/pc-builder.mjs` is the first place to check. Single-class builds only — no multiclass archetypes, and there's no pre-create screen to swap individual AI picks (regenerate for a different build instead).
+- **Focus spells are freshly built and not yet live-tested at all.** Both PCs and NPCs can get a real focus spellcasting entry and pool, and the schema was verified against real `foundryvtt/pf2e` source (how a focus entry is identified, how a PC's pool max needs a cloned Rule Element vs. an NPC's pool being settable as plain data) — but nobody has generated a character or creature with focus spells in an actual running world yet. The pool-size convention (spell count, capped at 3) is a defensible default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting; a focus-only creature isn't supported yet.
 
 ## Roadmap
 
-- [x] **Templates / presets** — ✅ v0.2.0: built-in class presets (Fighter through Alchemist) plus user-created custom presets in a dropdown.
-- [x] **Preset overhaul** — ✅ unreleased: presets now capture rarity/spellcasting/treasure-amount defaults alongside build guidance, Save edits an already-selected custom preset in place instead of always duplicating, Duplicate clones any preset (built-in or custom) as an editable starting point, and a Manage Presets dialog adds Edit/Export/Import — covers the **Preset sharing** roadmap item below via JSON export/import.
+Grouped by feature area rather than build order. Version tags mark when a feature shipped; "unreleased" means it's on `main` but hasn't been through a full live-play verification pass yet — see [Known limitations](#known-limitations) for what that means in practice.
+
+### Core generation
+
+- [x] **Presets** — ✅ v0.2.0, overhauled unreleased: built-in class presets plus user-created custom ones, each capturing rarity/spellcasting/treasure-amount defaults alongside build guidance. Save edits an already-selected custom preset in place; Duplicate clones any preset (built-in or custom) as a starting point; the Manage Presets dialog adds Edit/Export/Import — export/import as JSON covers **preset sharing**.
 - [x] **Clickable rolls** — ✅ v0.1.4: damage, saves, checks, and area templates in custom abilities are inline roll links.
-- [x] **Encounter mode** — ✅ v0.3.0: themed encounters built to the GM Core XP budget (threat level × party size × party level), created as a folder of actors. Covers the old "batch mode" idea.
+- [x] **Grounded equipment matching** — ✅ unreleased: the AI picks carried gear from a real, level-capped compendium candidate list instead of naming items from memory.
+- [x] **Loot & treasure budgets** — ✅ v0.3.3/unreleased: AI-generated treasure (real currency, consumables, scrolls, magic items) with a Reroll Loot button, priced against the GM Core Treasure by Level table (level + rarity scaled, Stingy/Standard/Generous control) — coin entries flex to land on budget, encounter mode reports the group's total alongside the XP math.
+- [x] **Compendium-match confirmation** — ✅ v0.3.5.22: every generated pick that resolved to a real compendium item gets a checkmark in the preview, plus a per-generation match-rate summary in the header.
+
+### Encounters
+
+- [x] **Encounter mode** — ✅ v0.3.0: themed encounters built to the GM Core XP budget (threat × party size × party level), created as a folder of actors.
 - [x] **Recall Knowledge & read-aloud** — ✅ v0.3.0: theater-of-the-mind read-aloud block and a clickable Recall Knowledge check with a player-facing info nugget.
-- [x] **Loot** — ✅ v0.3.3: AI-generated treasure (coins as real currency, consumables, scrolls built from spells, magic items) with a Reroll Loot button in the preview.
-- [x] **Item forge (Phase 1: passive items)** — ✅ unreleased: describe a wondrous item, get a real Foundry item whose passive Rule Elements are cloned from published exemplars (item bonuses, resistances, weaknesses, immunities, senses, speeds), priced from empirical compendium medians.
-- [x] **Item forge (Phase 2: activated items)** — ✅ unreleased: 1/day activated abilities (damage, heal, condition, self-buff) delivered as a click-to-run companion macro, with per-copy charge tracking and a chat-card-first, plain-message-fallback design.
-- [x] **Item forge (Phase 3: rune weapons & armor)** — ✅ v0.3.5.1: generated magic weapons/armor assembled from real base items plus real fundamental and property rune items pulled from the compendium, priced and leveled by summing the real documents — no memorized rune list or price table.
+
+### Item forge
+
+- [x] **Phase 1 — passive items** — ✅ unreleased: describe a wondrous item, get a real Foundry item whose passive Rule Elements are cloned from published exemplars (item bonuses, resistances, weaknesses, immunities, senses, speeds), priced from empirical compendium medians.
+- [x] **Phase 2 — activated items** — ✅ unreleased: 1/day activated abilities (damage, heal, condition, self-buff) delivered as a click-to-run companion macro, with per-copy charge tracking and a chat-card-first, plain-message-fallback design.
+- [x] **Phase 3 — rune weapons & armor** — ✅ v0.3.5.1: generated magic weapons/armor assembled from real base items plus real fundamental and property rune items, priced and leveled by summing the real documents — no memorized rune list or price table.
+
+### Player Characters
+
+- [x] **Full PC-power-level characters** — ✅ v0.3.5.16+: a Player Character generator mode builds real single-class characters (Ancestry/Background/Class/feats/spells/gear, all compendium-grounded) and lets the PF2e system compute stats from the real embedded items — see [Player Character mode](#player-character-mode). Several live-testing rounds have hardened this since first ship; see the status note there for what's still shaking out.
+- [x] **Starting wealth buys real items** — ✅ v0.3.5.23: a character's starting wealth drafts and grounds a wishlist of real magic items (potions, scrolls, wands) against the compendium instead of becoming 100% raw coin.
+- [x] **Rarity cap** — ✅ v0.3.5.23: a Max rarity control in Character mode excludes ancestries/backgrounds/heritages rarer than the GM's chosen cap from what the AI can even pick. Currently only covers those three categories — feats/spells/equipment aren't filtered yet.
+- [x] **Focus spells** — ✅ unreleased, not yet live-tested: PCs get a real `prepared:"focus"` spellcasting entry with a cloned Rule Element sizing the focus pool (1-3 points, PF2e's hard cap); NPCs get the same entry shape but set the pool directly (only alongside normal spellcasting — a focus-only creature with no spellcasting tradition isn't supported yet). The exact pool-size convention (spell count, capped at 3) is a defensible module default, not checked against GM Core's own creature-design guidance for the number.
+
+### Not yet built
+
 - [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
-- [x] **Grounded equipment matching** — ✅ unreleased: mirrors the spell-selection approach — the AI picks carried gear from a real, level-capped candidate list out of the equipment compendium instead of naming items from memory.
-- [x] **Treasure budgets** — ✅ unreleased: loot is priced against the GM Core Treasure by Level table (level + rarity scaled, with a per-generation Stingy/Standard/Generous control); coin entries flex to land the haul on budget, and encounter mode reports the group's total treasure value alongside the XP math.
-- [x] **Full PC-power-level characters** — ✅ v0.3.5.16 (PR [#49](https://github.com/simplyjaytea/simplyPF2e/pull/49)), hardened across PRs [#54](https://github.com/simplyjaytea/simplyPF2e/pull/54), [#57](https://github.com/simplyjaytea/simplyPF2e/pull/57)–[#61](https://github.com/simplyjaytea/simplyPF2e/pull/61) (v0.3.5.17–v0.3.5.23): a Player Character generator mode builds real single-class characters (Ancestry/Background/Class/feats/spells/gear, all compendium-grounded) and lets the PF2e system compute stats from the real embedded items — see [Player Character mode](#player-character-mode). Still shaking out edge cases; see the status note there.
-- [x] **Preset sharing** — ✅ unreleased: see **Preset overhaul** above — export/import custom presets as JSON via the Manage Presets dialog.
-- [x] **Compendium-match confirmation** — ✅ v0.3.5.22: every generated pick that resolved to a real compendium item gets a checkmark in the preview (previously only misses were flagged), plus a per-generation match-rate summary in the header.
-- [x] **PC starting wealth buys real items** — ✅ v0.3.5.23: a character's starting wealth now drafts and grounds a wishlist of real magic items (potions, scrolls, wands) against the compendium instead of becoming 100% raw coin.
-- [x] **Rarity cap for PC generation** — ✅ v0.3.5.23: a Max rarity control in Character mode excludes ancestries/backgrounds/heritages rarer than the GM's chosen cap from what the AI can even pick.
 - [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.
-- [ ] Elite/weak adjustments and level shifting for existing creatures.
-- [ ] Focus spells for spellcasters.
+- [ ] **Elite/weak adjustments** and level shifting for existing creatures.
 
 ## Development (for maintainers)
 
