@@ -669,10 +669,29 @@ export class GeneratorApp extends SpfApp {
       // grounded are left alone and only the coin remainder is padded/
       // trimmed to hit the target (issue: starting wealth should buy magic
       // items, not just sit as raw gold).
-      resolved.loot = await applyTreasureBudget(
-        resolved.loot,
-        pcStartingWealthGp(concept.level, this.#input.treasureAmount)
-      );
+      const wealthTarget = pcStartingWealthGp(concept.level, this.#input.treasureAmount);
+      resolved.loot = await applyTreasureBudget(resolved.loot, wealthTarget);
+
+      // If most of the wealth still sits as coin after the first purchase pass,
+      // make ONE more pass to convert it into real items (issue #64 item 6:
+      // PCs were leaving too much unspent gold). Bounded to a single retry.
+      const coinGp = lootValueGp(resolved.loot.filter((l) => parseCoins(l.name)));
+      if (coinGp > wealthTarget * 0.25) {
+        try {
+          const { loot: draft, usage: extraUsage } = await generatePCLoot({
+            concept, amount: this.#input.treasureAmount, onProgress: (p) => this._onAIProgress(p)
+          });
+          this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), extraUsage);
+          // Keep the already-grounded items, add the new draft, re-ground and re-budget.
+          concept.loot = [...concept.loot.filter((l) => !parseCoins(l.name)), ...normalizeLoot(draft)];
+          await this.#refineLoot(concept);
+          const topUp = await resolvePCConcept(concept);
+          resolved = { ...topUp, feats: resolved.feats };
+          resolved.loot = await applyTreasureBudget(resolved.loot, wealthTarget);
+        } catch (err) {
+          console.warn(`${MODULE_ID} | extra PC purchase pass failed, leaving remaining wealth as coin`, err);
+        }
+      }
 
       this.#pcConcept = concept;
       this.#pcResolved = resolved;
