@@ -140,7 +140,8 @@
         <button type="button" class="spf-random-button" data-action="generateRandomEncounter" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RandomEncounterTooltip'}}" {{#if busy}}disabled{{/if}}>
           <i class="fa-solid fa-dice-d20"></i>
         </button>
-      {{else}}
+      {{else if singleMode}}
+        {{! Character mode gets no dice button: randomBrief() is creature-flavored }}
         <button type="button" class="spf-random-button" data-action="generateRandom" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RandomTooltip'}}" {{#if busy}}disabled{{/if}}>
           <i class="fa-solid fa-dice-d20"></i>
         </button>

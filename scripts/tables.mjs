@@ -18,8 +18,6 @@ function idx(level) {
   return lv + 1;
 }
 
-export const SCALES = ["extreme", "high", "moderate", "low", "terrible"];
-
 /* ------------------------------------------------------------------ */
 /* Ability modifiers. Extreme is unavailable below level 1 (falls back
  * to high). */

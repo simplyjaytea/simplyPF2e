@@ -416,9 +416,18 @@ Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward 
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  // A ranked spell must never come back as rank 0 (createActor would file it
+  // as a cantrip) — clamp the minimum to the candidate's own listed rank.
+  const listedRank = new Map(candidates.map((c) => [c.name.toLowerCase(), c.rank]));
   const spells = (Array.isArray(parsed.spells) ? parsed.spells : [])
     .filter((s) => s?.name)
-    .map((s) => ({ name: String(s.name), rank: Math.min(Math.max(Math.round(Number(s.rank) || 0), 0), maxRank) }));
+    .map((s) => ({
+      name: String(s.name),
+      rank: Math.min(
+        Math.max(Math.round(Number(s.rank) || 0), listedRank.get(String(s.name).toLowerCase()) ?? 0),
+        maxRank
+      )
+    }));
   return { spells, usage };
 }
 
@@ -830,19 +839,19 @@ async function requestCompletion({ system, user, onProgress }) {
     resetIdle();
     let response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
     // Some OpenAI-compatible providers reject stream_options, response_format
-    // or streaming; retry progressively less demanding.
-    if (response.status === 400) {
-      delete body.stream_options;
-      resetIdle();
-      response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
-    }
-    if (response.status === 400) {
-      delete body.response_format;
-      resetIdle();
-      response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
-    }
-    if (response.status === 400) {
-      delete body.stream;
+    // or streaming. Retry without a parameter ONLY when the 400 body actually
+    // names it (checked longest-first so "stream" can't match the others);
+    // any other 400 fails fast with its own error message.
+    while (response.status === 400) {
+      const detail = await safeErrorDetail(response);
+      const offending = ["stream_options", "response_format", "stream"]
+        .find((param) => param in body && detail.includes(param));
+      if (!offending) {
+        throw new AIRequestError(
+          game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
+        );
+      }
+      delete body[offending];
       resetIdle();
       response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
     }

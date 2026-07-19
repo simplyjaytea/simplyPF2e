@@ -54,8 +54,7 @@ export class GeneratorApp extends SpfApp {
       partyDown: GeneratorApp.#onPartyDown,
       memberUp: GeneratorApp.#onMemberUp,
       memberDown: GeneratorApp.#onMemberDown,
-      rerollLoot: GeneratorApp.#onRerollLoot,
-      openItemForge: GeneratorApp.#onOpenItemForge
+      rerollLoot: GeneratorApp.#onRerollLoot
     }
   };
 
@@ -281,9 +280,9 @@ export class GeneratorApp extends SpfApp {
     const promptEl = form.querySelector('[name="prompt"]');
     const prompt = promptEl ? promptEl.value : this.#input.prompt;
     const level = Number(form.querySelector('[name="level"]')?.value ?? 1);
-    const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
+    const rarity = form.querySelector('[name="rarity"]')?.value ?? this.#input.rarity;
     const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked ?? true;
-    const preset = form.querySelector('[name="preset"]')?.value ?? "";
+    const preset = form.querySelector('[name="preset"]')?.value ?? this.#input.preset;
     const mode = form.querySelector('[name="mode"]:checked')?.value ?? this.#input.mode;
     const partySize = Math.min(8, Math.max(1, Number(form.querySelector('[name="partySize"]')?.value ?? 4)));
     const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
@@ -318,14 +317,6 @@ export class GeneratorApp extends SpfApp {
         this.render();
       });
     }
-  }
-
-  /** Open the item forge (a separate app) — not a mode of this app, so it
-   * doesn't touch #input.mode. Lives next to the Single/Encounter toggle so
-   * the item forge is discoverable from the same window GMs already have
-   * open, in addition to its Items-directory sidebar button. */
-  static #onOpenItemForge() {
-    game.modules.get(MODULE_ID).api.openItemForge();
   }
 
   static #onLevelUp() {
@@ -536,21 +527,11 @@ export class GeneratorApp extends SpfApp {
       await this._setStep("match");
       for (const member of members) {
         member.resolved = await resolveConcept(member.concept);
-        // Treasure is calibrated to the PARTY level (it is awarded to players
-        // of that level), not the member's own creature level, and to the
-        // WHOLE ENCOUNTER, not each group — treasureBudget() returns one
-        // encounter's total, so it's divided evenly across every group
-        // (members.length) before being treated as that group's share.
-        // (Rarity still weights a group's OWN cut relative to the others —
-        // a rare/unique group's per-group treasureBudget() call comes out
-        // higher before the /members.length split — but the SUM across
-        // groups is bounded to roughly one encounter's worth instead of one
-        // full share PER group.) The GROUP as a whole gets ONE share of
-        // treasure regardless of how many copies it has — treasureGroupBudget
-        // is that constant share; treasureBudgetEach is the group's share
-        // divided across its current copies, so the group's total stays flat
-        // as the count stepper changes (see #stepMemberCount, which
-        // recomputes the per-copy split the same way).
+        // Treasure is calibrated to the PARTY level and the WHOLE encounter:
+        // treasureBudget() returns one encounter's total, split evenly across
+        // groups. A group keeps its constant share (treasureGroupBudget)
+        // regardless of copy count — only the per-copy split changes
+        // (#stepMemberCount recomputes it the same way).
         member.treasureGroupBudget =
           treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / members.length;
         member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);

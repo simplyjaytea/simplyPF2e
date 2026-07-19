@@ -7,7 +7,7 @@
       },
       "ApiKey": {
         "Name": "API Key",
-        "Hint": "Your API key for the provider above. Stored in this world's settings and visible to other GMs of this world."
+        "Hint": "Your API key for the provider above. Stored only in this browser's client settings — it is never synced to the world or to other connected users."
       },
       "Model": {
         "Name": "Model",

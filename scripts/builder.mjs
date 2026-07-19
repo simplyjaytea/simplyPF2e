@@ -459,6 +459,11 @@ export async function resolveConcept(concept) {
   if (concept.spellcasting) {
     for (const spell of concept.spellcasting.spells) {
       const entry = await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
+      // A ranked spell assigned rank 0 (or below its own rank) would be
+      // misfiled as a cantrip slot in createActor — clamp to the real rank.
+      if (entry && !(entry.system?.traits?.value ?? []).includes("cantrip")) {
+        spell.rank = Math.max(spell.rank, entry.system?.level?.value ?? 1);
+      }
       spells.push({ spell, entry });
     }
   }
@@ -984,7 +989,7 @@ export async function createActor(concept, resolved, { img = null } = {}) {
     notesParts.push(`<blockquote class="spf-read-aloud"><em>${esc(concept.readAloud)}</em></blockquote>`);
   }
   if (concept.description) {
-    notesParts.push(`<p>${concept.description.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).join("</p><p>")}</p>`);
+    notesParts.push(`<p>${concept.description.split(/\n{2,}/).map((p) => esc(p.trim())).filter(Boolean).join("</p><p>")}</p>`);
   }
   if (concept.recallKnowledge) {
     const skill = recallKnowledgeSkill(concept.traits);

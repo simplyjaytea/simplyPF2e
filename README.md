@@ -79,7 +79,7 @@ Provider examples:
 - **OpenRouter** – `https://openrouter.ai/api/v1`, any hosted model
 - **Ollama (local)** – `http://localhost:11434/v1`, no key needed. Set `OLLAMA_ORIGINS=*` (or your Foundry origin) so the browser may call it. Expect more retries/lower quality unless you're running a large model.
 
-> **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is stored in world settings (visible to other GMs of the same world). Use a key you're comfortable with in that context.
+> **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is a **client** setting stored only in the local browser — it is never synced to the world, so players and other GMs can't read it. Each GM machine that generates needs its own key entered.
 
 ### Choosing compendium sources
 
@@ -124,7 +124,7 @@ Single-class builds only for now — multiclass archetypes, a pre-create screen 
 
 ### Item forge
 
-Open the **Items** sidebar tab and click **Item Forge** (GM only), run `game.modules.get("simplypf2e").api.openItemForge()`, or click the **Item Forge** button next to the Single/Encounter toggle in the NPC generator window — all three open the same app. Pick an item type — **Wondrous Item**, **Weapon**, or **Armor** — describe the item, pick a level and rarity, and **Generate**.
+The item forge's UI buttons are deliberately removed for now (item generation is still unverified end-to-end in a live world); open it by running `game.modules.get("simplypf2e").api.openItemForge()` from a macro or the console. Pick an item type — **Wondrous Item**, **Weapon**, or **Armor** — describe the item, pick a level and rarity, and **Generate**.
 
 For a wondrous item ("a charred iron circlet that shields the wearer's mind and lets it see in the dark"), the preview shows usage, bulk, price, traits, a plain-English list of its passive effects, and — if the concept calls for one — an activated ability; **Create Item** places it in the Items directory with its sheet open, ready to drag onto a character sheet — where the effects *just work*, no manual setup.
 

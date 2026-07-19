@@ -668,9 +668,12 @@ function normalizeActivation(raw, { level, rarity, available }) {
         .map((e) => normalizeEffect(e, { level, available }))
         .filter(Boolean)
         .slice(0, 3);
+      // These two are AI free text concatenated into the macro's chat/effect
+      // HTML — escape here at build time, same esc() pattern as elsewhere.
+      const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
       params = {
-        effectName: String(p.effectName || "Magic Effect").slice(0, 80),
-        description: String(p.description ?? "").slice(0, 600),
+        effectName: esc(String(p.effectName || "Magic Effect").slice(0, 80)),
+        description: esc(String(p.description ?? "").slice(0, 600)),
         durationRounds: rounds,
         durationMinutes: minutes,
         ruleEffectKinds

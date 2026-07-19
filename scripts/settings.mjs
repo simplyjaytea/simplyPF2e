@@ -47,10 +47,12 @@ export function registerSettings(SourcesConfigApp) {
     default: "https://api.deepseek.com/v1"
   });
 
+  // Client scope on purpose: a world-scope setting syncs to every connected
+  // client, letting any player read the key via game.settings.get.
   game.settings.register(MODULE_ID, SETTINGS.apiKey, {
     name: "SIMPLYPF2E.Settings.ApiKey.Name",
     hint: "SIMPLYPF2E.Settings.ApiKey.Hint",
-    scope: "world",
+    scope: "client",
     config: true,
     restricted: true,
     type: String,
