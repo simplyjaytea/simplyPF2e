@@ -17,15 +17,20 @@ export const SKILL_INCREASE_LEVELS = [3, 5, 7, 9, 11, 13, 15, 17, 19];
 /**
  * The ordered feat slots a PC of `level` has earned, one entry per slot in
  * level order — the shape #generatePC()/pc-builder.mjs feed to
- * getFeatCandidates()/selectFeats().
- * @returns {{type: "ancestry"|"class"|"skill"|"general", level: number}[]}
+ * getFeatCandidates()/selectFeats(). With `freeArchetype`, adds the Free
+ * Archetype variant's extra archetype class-feat slot at every even level
+ * (CLASS_FEAT_LEVELS are exactly the even levels 2-20) — issue #64 item 4b.
+ * @returns {{type: "ancestry"|"class"|"skill"|"general", level: number, archetype?: boolean}[]}
  */
-export function buildFeatSlots(level) {
+export function buildFeatSlots(level, { freeArchetype = false } = {}) {
   const slots = [];
   for (const lv of ANCESTRY_FEAT_LEVELS) if (lv <= level) slots.push({ type: "ancestry", level: lv });
   for (const lv of CLASS_FEAT_LEVELS) if (lv <= level) slots.push({ type: "class", level: lv });
   for (const lv of SKILL_FEAT_LEVELS) if (lv <= level) slots.push({ type: "skill", level: lv });
   for (const lv of GENERAL_FEAT_LEVELS) if (lv <= level) slots.push({ type: "general", level: lv });
+  if (freeArchetype) {
+    for (const lv of CLASS_FEAT_LEVELS) if (lv <= level) slots.push({ type: "class", level: lv, archetype: true });
+  }
   return slots.sort((a, b) => a.level - b.level);
 }
 

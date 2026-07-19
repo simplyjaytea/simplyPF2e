@@ -24,6 +24,10 @@
       "RequestTimeout": {
         "Name": "Request timeout (seconds)",
         "Hint": "Abort a generation if the AI provider sends no data for this long. Responses are streamed, so slow models keep working as long as data keeps arriving — this only catches genuinely stalled connections."
+      },
+      "FreeArchetype": {
+        "Name": "Free Archetype variant rule",
+        "Hint": "When enabled, generated player characters gain an extra archetype class-feat slot at every even level, matching the Free Archetype campaign variant rule."
       }
     },
     "Generator": {
@@ -82,6 +86,12 @@
       "Bard": "Bard",
       "Champion": "Champion",
       "Alchemist": "Alchemist",
+      "Cultivator": "Cultivator",
+      "FireMage": "Fire Mage",
+      "Assassin": "Assassin",
+      "Healer": "Healer",
+      "Tank": "Tank",
+      "SkillMonkey": "Skill-Monkey",
       "SaveTooltip": "Save a custom preset (edits the selected custom preset in place)",
       "DuplicateTooltip": "Duplicate the selected preset into a new custom preset",
       "DeleteTooltip": "Delete the selected custom preset",
