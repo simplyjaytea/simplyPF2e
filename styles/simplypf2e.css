@@ -297,77 +297,31 @@
   background: linear-gradient(90deg, var(--spf-brand-dark), var(--spf-brand-accent));
   border-radius: 0.3rem;
   transition: width 0.4s ease;
-}
-
-.simplypf2e .spf-progress-steps {
-  display: flex;
-  justify-content: center;
-  gap: 1.25rem;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  font-size: var(--spf-text-sm);
-}
-
-.simplypf2e .spf-progress-steps li {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-  min-width: 6rem;
-}
-
-.simplypf2e .spf-step-label {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-
-/* Mini loading bar under each step: empty while pending, sliding while
-   active, full once done. */
-.simplypf2e .spf-step-bar {
-  width: 100%;
-  height: 0.25rem;
-  border-radius: 0.125rem;
-  background: rgba(0, 0, 0, 0.25);
+  position: relative;
   overflow: hidden;
 }
 
-.simplypf2e .spf-step-bar-fill {
-  height: 100%;
-  width: 0;
-  background: linear-gradient(90deg, var(--spf-brand-dark), var(--spf-brand-accent));
-  transition: width 0.3s ease;
-}
-
-.simplypf2e .spf-step-done .spf-step-bar-fill {
-  width: 100%;
-}
-
-.simplypf2e .spf-step-active .spf-step-bar-fill {
+/* Continuous motion while a step runs: a sheen sweeps across the fill so the
+   bar reads as "working" even while its width holds steady during a step. */
+.simplypf2e .spf-progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
   width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
   animation: spf-step-slide 1.2s ease-in-out infinite;
+}
+
+.simplypf2e .spf-progress-percent {
+  margin: 0;
+  text-align: center;
+  font-size: var(--spf-text-sm);
+  font-weight: bold;
 }
 
 @keyframes spf-step-slide {
   0% { margin-left: -40%; }
   100% { margin-left: 100%; }
-}
-
-.simplypf2e .spf-step-pending {
-  opacity: 0.45;
-}
-
-.simplypf2e .spf-step-active {
-  font-weight: bold;
-}
-
-.simplypf2e .spf-step-done {
-  opacity: 0.8;
-}
-
-.simplypf2e .spf-step-done i {
-  color: var(--spf-success);
 }
 
 .simplypf2e .spf-progress-detail {
