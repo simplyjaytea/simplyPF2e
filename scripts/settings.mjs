@@ -8,7 +8,8 @@ export const SETTINGS = {
   maxTokens: "maxTokens",
   requestTimeout: "requestTimeout",
   sourcePacks: "sourcePacks",
-  customPresets: "customPresets"
+  customPresets: "customPresets",
+  freeArchetype: "freeArchetype"
 };
 
 export function registerSettings(SourcesConfigApp) {
@@ -98,6 +99,19 @@ export function registerSettings(SourcesConfigApp) {
     restricted: true,
     type: Number,
     default: 90
+  });
+
+  // Free Archetype variant rule: a GM campaign-rule choice, so world-scoped
+  // and restricted. When on, generated PCs get an extra archetype class-feat
+  // slot at every even level (issue #64 item 4b).
+  game.settings.register(MODULE_ID, SETTINGS.freeArchetype, {
+    name: "SIMPLYPF2E.Settings.FreeArchetype.Name",
+    hint: "SIMPLYPF2E.Settings.FreeArchetype.Hint",
+    scope: "world",
+    config: true,
+    restricted: true,
+    type: Boolean,
+    default: false
   });
 }
 

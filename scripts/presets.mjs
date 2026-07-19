@@ -68,6 +68,36 @@ export const BUILT_IN_PRESETS = [
     id: "alchemist",
     name: "SIMPLYPF2E.Presets.Alchemist",
     prompt: "Build like an ALCHEMIST: a bomb-throwing tinkerer. A ranged bomb strike dealing energy damage with splash flavor, moderate attack, low-to-moderate AC and HP, high Reflex, high Crafting. A mutagen-or-elixir-flavored signature ability, alchemist-tool equipment. No spellcasting."
+  },
+  {
+    id: "cultivator",
+    name: "SIMPLYPF2E.Presets.Cultivator",
+    prompt: "Build like a CULTIVATOR: a wuxia-style internal-energy martial artist. Unarmed or simple-weapon strikes, high or extreme attack, high Reflex and Will, fast land speed, moderate AC. A ki/qi-flavored signature ability (a focused palm strike, a breath technique, a burst of inner power), Acrobatics and Athletics. At most a few focus-style occult or primal spells channeled as internal energy."
+  },
+  {
+    id: "fire-mage",
+    name: "SIMPLYPF2E.Presets.FireMage",
+    prompt: "Build like a FIRE MAGE: a pyromancer. Arcane or primal spellcasting at high or extreme DC weighted almost entirely toward fire spells, a fire resistance or immunity, low AC and HP, low attack, high Will. A signature ability that ignites or spreads flame, Arcana skill, a staff or dagger strike as a last resort."
+  },
+  {
+    id: "assassin",
+    name: "SIMPLYPF2E.Presets.Assassin",
+    prompt: "Build like an ASSASSIN: a lethal killer for hire. High Dexterity, high Reflex, agile/finesse or ranged strikes, moderate HP, low-to-moderate AC. A sneak-attack-or-death-blow ability dealing extra damage against unaware or off-guard targets, applied poisons, high Stealth, Deception and Thievery, mobility and hidden-strike feats. No spellcasting."
+  },
+  {
+    id: "healer",
+    name: "SIMPLYPF2E.Presets.Healer",
+    prompt: "Build like a HEALER: a support specialist. Divine or primal spellcasting at high DC centered on healing and restorative spells, high Will, moderate HP and AC, low attack. A signature ability that heals or shields allies each round, high Medicine, healer's tools, a simple weapon strike only for self-defense."
+  },
+  {
+    id: "tank",
+    name: "SIMPLYPF2E.Presets.Tank",
+    prompt: "Build like a TANK: an immovable defender. Extreme or high AC, high Fortitude, high HP, moderate attack and damage. A defensive reaction or aura that protects nearby allies or punishes attackers, heavy armor and a shield, Athletics and Intimidation. No spellcasting."
+  },
+  {
+    id: "skill-monkey",
+    name: "SIMPLYPF2E.Presets.SkillMonkey",
+    prompt: "Build like a SKILL-MONKEY: a versatile generalist who solves problems out of combat. Moderate everything in a fight, but an unusually broad spread of trained skills at high scale (Acrobatics, Stealth, Thievery, Society, Deception, and a couple of Lores), utility gear (thieves' tools, a climbing kit, a disguise kit), and skill-boosting feats. Light weapon strike, no spellcasting unless a touch of utility magic fits."
   }
 ];
 
@@ -167,6 +197,48 @@ export const EXAMPLE_PROMPTS = {
     "A dwarven demolitionist who measures friendship in blast radius",
     "A back-alley mutagenist one dose away from perfection",
     "A traveling apothecary whose cart is a rolling armory"
+  ],
+  cultivator: [
+    "A mountain-sect disciple chasing the next breakthrough in his art",
+    "A disgraced sword-saint whose inner energy runs cold as jade",
+    "A wandering monk who bottles storms in her breathing",
+    "An immortal's last student guarding a half-burned technique manual",
+    "A river-spirit's heir learning to still his own heartbeat"
+  ],
+  "fire-mage": [
+    "A pyromancer who names every fire she starts",
+    "An exiled evoker whose spellbook is a scarred wall of soot",
+    "A hearth-witch keeping a village warm and a grudge warmer",
+    "A volcano cultist certain the world ends in cleansing flame",
+    "A fireworks artificer one bad night from arson charges"
+  ],
+  assassin: [
+    "A guild killer paid to make an accident look like an accident",
+    "A masked poisoner who leaves a single black flower",
+    "A retired blade dragged back for one last name on the list",
+    "A courtesan-spy who knows exactly where the artery is",
+    "A silent halfling who has never been seen by a living witness"
+  ],
+  healer: [
+    "A battlefield medic who has stitched more enemies than friends",
+    "A grove-tender whose touch coaxes bone back together",
+    "A plague-ward sister rationing miracles by the hour",
+    "A disgraced surgeon seeking absolution one patient at a time",
+    "A gentle oracle who feels every wound she mends"
+  ],
+  tank: [
+    "A shield-bearer who has never let an ally fall behind him",
+    "A dwarven wall-in-armor who dares foes to come closer",
+    "A fortress-knight sworn to be the last one standing",
+    "A scarred veteran who counts her worth in blows absorbed",
+    "A bridge-guard who has turned back three armies alone"
+  ],
+  "skill-monkey": [
+    "A jack-of-all-trades who has faked six professions this month",
+    "A tomb-robber who reads locks like bedtime stories",
+    "A fixer who knows a guy for absolutely everything",
+    "A traveling troubleshooter with a tool for every disaster",
+    "A charming grifter three steps ahead of every mark"
   ]
 };
 

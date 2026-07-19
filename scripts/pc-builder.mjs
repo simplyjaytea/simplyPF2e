@@ -6,6 +6,7 @@ import {
 } from "./builder.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
 import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
+import { SETTINGS, getSetting } from "./settings.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
@@ -213,10 +214,22 @@ export async function resolvePCConcept(concept) {
   const ancestryTrait = slugify(ancestryDoc.name);
   const classTrait = slugify(classDoc.name);
   const featSlots = [];
-  for (const slot of buildFeatSlots(concept.level)) {
-    const traits = slot.type === "ancestry" ? [ancestryTrait] : slot.type === "class" ? [classTrait] : [];
-    const candidates = await getFeatCandidates({ level: slot.level, category: slot.type, traits });
+  const freeArchetype = Boolean(getSetting(SETTINGS.freeArchetype));
+  for (const slot of buildFeatSlots(concept.level, { freeArchetype })) {
+    const traits = slot.archetype ? ["archetype"]
+      : slot.type === "ancestry" ? [ancestryTrait]
+      : slot.type === "class" ? [classTrait] : [];
+    let candidates = await getFeatCandidates({ level: slot.level, category: slot.type, traits });
+    // Retry once without the trait filter before giving up: a valid slot
+    // whose ancestry/class trait matched nothing at this level (odd content
+    // packs, sparse low levels) is better filled with an on-category feat than
+    // silently dropped. Archetype slots keep their trait (loosening would just
+    // give plain class feats, defeating the slot). Issue #64 item 4a.
+    if (!candidates.length && traits.length && !slot.archetype) {
+      candidates = await getFeatCandidates({ level: slot.level, category: slot.type });
+    }
     if (candidates.length) featSlots.push({ ...slot, candidates });
+    else console.warn(`simplypf2e | no feat candidates for a ${slot.type}${slot.archetype ? " (archetype)" : ""} slot at level ${slot.level} — slot left empty`);
   }
 
   const spells = [];
@@ -383,14 +396,17 @@ const SKILL_ATTRIBUTE = {
  * character/document.ts merges into system.details.languages.value at
  * runtime), so listing them here would just be redundant, not wrong.
  */
-function resolveLanguages(names, ancestryDoc) {
+function resolveLanguages(names, ancestryDoc, bonus = 0) {
   const known = CONFIG?.PF2E?.languages ?? {};
   const bySlug = new Set(Object.keys(known));
   const byLabel = new Map(
     Object.entries(known).map(([slug, label]) => [String(game.i18n.localize(label)).toLowerCase(), slug])
   );
   const additional = ancestryDoc?.system?.additionalLanguages ?? {};
-  const max = Math.max(0, Math.round(Number(additional.count) || 0));
+  // Cap = the ancestry's own bonus-language slots PLUS the character's
+  // Intelligence-modifier bonus languages (issue #64 item 1) — without the
+  // Int bonus the AI's extra language picks were silently truncated.
+  const max = Math.max(0, Math.round(Number(additional.count) || 0)) + Math.max(0, Math.round(Number(bonus) || 0));
   const allowed = Array.isArray(additional.value) && additional.value.length ? new Set(additional.value) : null;
   const automatic = new Set(ancestryDoc?.system?.languages?.value ?? []);
 
@@ -682,7 +698,14 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   }
 
   // Equipment: same quantity/rune/carry-state handling as the NPC pipeline.
+  // Dedup by name first (issue #64 item 3): the AI sometimes pads a thin list
+  // by repeating items — a repeated name is filler, not a real second copy
+  // (genuine stacks come through as one entry with quantity > 1).
+  const seenEquipment = new Set();
   for (const { name, quantity, value, runes, entry } of resolved.equipment) {
+    const dedupKey = slugify(name);
+    if (seenEquipment.has(dedupKey)) continue;
+    seenEquipment.add(dedupKey);
     const doc = await getDocument(entry);
     if (!doc) {
       items.push(customEquipmentItem(name, quantity, value));
@@ -821,5 +844,20 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
     actorData.prototypeToken.texture = { src: img };
   }
 
-  return Actor.create(actorData);
+  const actor = await Actor.create(actorData);
+
+  // Int-modifier bonus languages (issue #64 item 1): the character gets extra
+  // language slots equal to their Intelligence modifier on top of the
+  // ancestry's own count. Int is read from the system's own derived data after
+  // create rather than re-deriving the boost math here (the reliable source),
+  // so any AI language picks that overflowed the base cap are now applied.
+  const intMod = Number(actor?.system?.abilities?.int?.mod) || 0;
+  if (intMod > 0) {
+    const withBonus = resolveLanguages(concept.languages ?? [], resolved.ancestryDoc, intMod);
+    if (withBonus.length > languages.length) {
+      await actor.update({ "system.details.languages.value": withBonus });
+    }
+  }
+
+  return actor;
 }
