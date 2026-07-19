@@ -29,7 +29,7 @@ PF2e statblocks and character builds normally take real prep time because everyt
 - **Player Character mode.** Describe a concept, get a full player-character build — real Ancestry, Background, Class, feats at every level slot (including a background's own built-in feat, like Acolyte's "Student of the Canon"), skill proficiency increases, and spells/gear, all grounded in your compendium. Unlike NPCs, the PF2e system itself computes AC/HP/saves/proficiencies once the real items are embedded — see [Player Character mode](#player-character-mode).
 - **Compendium-match visibility.** Every generated pick that resolved to a real compendium item gets a checkmark right in the preview — spells, feats, equipment, loot, and (in PC mode) ancestry/background/class — plus a per-generation "X/Y compendium matches" summary in the header, so you can see how grounded a build actually is at a glance instead of hunting for warning icons.
 - **Item forge.** Describe a wondrous magic item and get a real Foundry item with *working* passive automation — its Rule Elements are cloned from published items, never invented. Or forge a magic weapon or suit of armor built from real fundamental and property runes, priced by summing the actual rune and base-item documents (see [Item forge](#item-forge)).
-- **Presets that shape the build.** Twelve built-in class road maps, plus save, edit, duplicate, and share your own — see [Presets](#presets).
+- **Presets that shape the build.** Eighteen built-in road maps — twelve standard classes plus six flavor themes (Cultivator, Fire Mage, Assassin, Healer, Tank, Skill-Monkey) — plus save, edit, duplicate, and share your own — see [Presets](#presets).
 - **Nothing touches your world until you say so.** Every generation is a preview — regenerate, edit the prompt, reroll just the loot, or discard, freely.
 - **Full visibility into cost.** Streamed progress per step and an exact token-usage report after every generation.
 
@@ -71,6 +71,7 @@ Configure the AI provider under **Game Settings → Configure Settings → Simpl
 | Creativity | Sampling temperature (0–2). |
 | Max response tokens | Raise if complex creatures come back truncated. |
 | Request timeout | Abort a generation if the provider sends *no data* for this long (default 90 s). |
+| Free Archetype | Optional variant rule (GM-only, off by default). When on, Player Character mode adds an extra archetype feat slot at every even level. See [Player Character mode](#player-character-mode) for a caveat on slot placement. |
 
 Provider examples:
 
@@ -93,7 +94,7 @@ By default SimplyPF2e draws from the PF2e system packs (bestiary ability glossar
 
 ### Presets
 
-The preset dropdown shapes the *build* while your description drives the *flavor*. Built-in presets cover the standard fantasy classes — Fighter, Barbarian, Rogue, Ranger, Monk, Cleric, Druid, Wizard, Sorcerer, Bard, Champion, and Alchemist — each encoding a GM Core-style road map (stat scales, techniques, casting tradition). "Level 5 hobgoblin veteran" + the Fighter preset gives a disciplined soldier; the same prompt with the Barbarian preset gives a reckless brute.
+The preset dropdown shapes the *build* while your description drives the *flavor*. Built-in presets cover the standard fantasy classes — Fighter, Barbarian, Rogue, Ranger, Monk, Cleric, Druid, Wizard, Sorcerer, Bard, Champion, and Alchemist — each encoding a GM Core-style road map (stat scales, techniques, casting tradition). "Level 5 hobgoblin veteran" + the Fighter preset gives a disciplined soldier; the same prompt with the Barbarian preset gives a reckless brute. Six flavor-themed presets round out the list for concepts that don't map to one class — Cultivator, Fire Mage, Assassin, Healer, Tank, and Skill-Monkey.
 
 A preset can also carry defaults for **rarity**, **allow spellcasting**, and **Treasure amount** — selecting one restores any of those three it defines, leaving fields it doesn't touch as you left them.
 
@@ -120,7 +121,7 @@ Switch the toggle to **Player Character**, describe a concept ("a grizzled dwarf
 
 Every choice is grounded the same way spells and equipment already are for NPCs: the AI drafts first-draft ancestry/background/class/feat/spell names as inspiration, then a grounded pass matches each against your real compendium and the AI picks only from what actually exists — nothing is invented except loot (which follows the exact same free-form exception NPCs already have for coins and scrolls). Starting gear is grounded and budgeted the same way NPC equipment is, scaled to the character's own level instead of an NPC's encounter share — and starting wealth now actually buys real magic items (potions, scrolls, wands, and the like) the same way NPC loot does, instead of turning entirely into raw coin.
 
-Single-class builds only for now — multiclass archetypes, a pre-create screen for swapping individual AI picks, and the Free Archetype variant rule are explicitly out of scope for this first pass.
+Single-class builds only for now — multiclass archetypes and a pre-create screen for swapping individual AI picks are explicitly out of scope for this first pass. The **Free Archetype** variant rule is available as an opt-in GM setting (see [Setup](#setup)): when enabled, the build gets an extra archetype feat slot at every even level. It's newly built and not yet live-verified — the archetype feat can land in the same slot location as a regular class feat at that level, so it still embeds on the character but may not show up in a distinct Free Archetype slot on the sheet.
 
 ### Item forge
 
@@ -166,7 +167,7 @@ Generation is meant to be a conversation, not a one-shot:
 
 Slow or stuck generations:
 
-- Responses are **streamed**: while generating you'll see a progress bar per step (concept, spell selection, compendium matching, ...) plus a live token ticker. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
+- Responses are **streamed**: while generating you'll see a single animated progress bar with a live percentage (concept, spell selection, compendium matching, ... all rolled into one bar) plus a live token ticker. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
 - After generation the preview shows a **token usage report**: the exact prompt/completion tokens each AI call used (concept, spell selection, encounter design, each member, loot rerolls) and the total. If a provider doesn't report usage, the step falls back to a clearly-marked estimate.
 - The **request timeout** setting (default 90 s) aborts the request only if the provider sends *no data* at all for that long, so slow-but-alive generations are never cut off. If you get timeout errors, check the provider's status page and your model name.
 - Make sure **Model** is the exact API identifier from your provider's documentation (for DeepSeek e.g. `deepseek-chat` or `deepseek-reasoner`) — marketing names don't always match the API id. A wrong id normally returns an immediate error, not a hang.
@@ -221,7 +222,11 @@ Grouped by feature area rather than build order. Version tags mark when a featur
 - [x] **Full PC-power-level characters** — ✅ v0.3.5.16+: a Player Character generator mode builds real single-class characters (Ancestry/Background/Class/feats/spells/gear, all compendium-grounded) and lets the PF2e system compute stats from the real embedded items — see [Player Character mode](#player-character-mode). Several live-testing rounds have hardened this since first ship; see the status note there for what's still shaking out.
 - [x] **Starting wealth buys real items** — ✅ v0.3.5.23: a character's starting wealth drafts and grounds a wishlist of real magic items (potions, scrolls, wands) against the compendium instead of becoming 100% raw coin.
 - [x] **Rarity cap** — ✅ v0.3.5.23: a Max rarity control in Character mode excludes ancestries/backgrounds/heritages rarer than the GM's chosen cap from what the AI can even pick. Currently only covers those three categories — feats/spells/equipment aren't filtered yet.
-- [x] **Focus spells** — ✅ unreleased, not yet live-tested: PCs get a real `prepared:"focus"` spellcasting entry with a cloned Rule Element sizing the focus pool (1-3 points, PF2e's hard cap); NPCs get the same entry shape but set the pool directly (only alongside normal spellcasting — a focus-only creature with no spellcasting tradition isn't supported yet). The exact pool-size convention (spell count, capped at 3) is a defensible module default, not checked against GM Core's own creature-design guidance for the number.
+- [x] **Focus spells** — ✅ merged, not yet live-tested: PCs get a real `prepared:"focus"` spellcasting entry with a cloned Rule Element sizing the focus pool (1-3 points, PF2e's hard cap); NPCs get the same entry shape but set the pool directly (only alongside normal spellcasting — a focus-only creature with no spellcasting tradition isn't supported yet). The exact pool-size convention (spell count, capped at 3) is a defensible module default, not checked against GM Core's own creature-design guidance for the number.
+- [x] **Free Archetype variant rule** — ✅ merged, not yet live-tested: an opt-in GM setting adds an extra archetype feat slot at every even level. Known gap: the archetype slot can collide with a regular class feat slot's location at the same level rather than sitting in a truly distinct Free Archetype slot.
+- [x] **Bonus languages from Intelligence** — ✅ merged, not yet live-tested: a character's Intelligence modifier now grants extra language picks beyond the ancestry's own allotment.
+- [x] **Runes on PC gear** — ✅ merged, not yet live-tested: level-appropriate fundamental runes (e.g. "+1 striking") now show up on higher-level character equipment, the same way they already did for NPCs.
+- [x] **Starting wealth spends down further** — ✅ merged, not yet live-tested: a second, smaller purchase pass now buys down leftover starting-wealth coin instead of leaving as much of it unspent.
 
 ### Not yet built
 
