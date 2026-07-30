@@ -12,6 +12,15 @@ import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
    told otherwise every time. */
 const REMASTER_NOTE = `using CURRENT PF2e REMASTER names, never the old pre-Remaster name — e.g. "Thunderstone" is now "Blasting Stone", the old "Bag of Holding" is now "Spacious Pouch"`;
 
+/* The grounding passes below tell the model to copy names EXACTLY from a
+ * candidate list, and those lists hold plain BASE items only — no runed
+ * variants exist as their own compendium documents. Without this carve-out the
+ * "copy exactly" rule strips the "+1 striking" prefix the earlier draft asked
+ * for, silently undoing every runed weapon/armor the concept called for.
+ * builder.mjs's parseRunes reads the prefix back off and applies real rune
+ * data, and capRunes clamps the tier to what the level actually allows. */
+const RUNE_PREFIX_NOTE = `ONE allowed deviation: a weapon or armor from the list may keep a fundamental-rune prefix in front of its exact listed name ("+1 striking longsword", "+2 greater resilient half plate") when the first draft asked for one — the base name after the prefix must still be copied exactly. Never invent any other variation on a listed name.`;
+
 /* How the GM's Treasure amount setting (Stingy/Standard/Generous — see
  * TREASURE_AMOUNT_MULTIPLIER in tables.mjs) should bend the item COUNT and
  * richness the model writes, not just the post-hoc coin padding that
@@ -455,6 +464,7 @@ export async function selectEquipment({ concept, candidates, onProgress }) {
 
   const system = `You are selecting carried equipment for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written. Respond with a single JSON object and nothing else:
 { "equipment": [ { "name": string, "quantity": number } ] }
+${RUNE_PREFIX_NOTE}
 Pick the logical items the creature would carry: the weapons it wields (match its strikes), sensible consumables (healing potions, elixirs, bombs, talismans, poisons it applies), and everyday adventuring gear it would plausibly use (rope, torches, rations, tools). Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its role and level. Pick each DISTINCT item at most once — a smaller focused set is fine; never repeat an item or add filler to reach a count. NO coins or currency. "quantity" is usually 1; use 2-5 only for ammunition and stackable consumables.`;
 
   const user = [
@@ -511,6 +521,7 @@ export async function selectLoot({ concept, candidates, onProgress }) {
 
   const system = `You are selecting dropped loot for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written — with two exceptions kept free-form because they are built specially: coin entries ("Gold Coins"/"Silver Coins" etc., quantity = the number of coins) and spell scrolls ("Scroll of {exact PF2e spell name} (Rank {n})"). Respond with a single JSON object and nothing else:
 { "loot": [ { "name": string, "quantity": number } ] }
+${RUNE_PREFIX_NOTE}
 Recreate the first-draft haul: keep its coin and scroll entries as they are, replace every other entry with its closest match from the list (the same item if it appears, otherwise the nearest equivalent in kind and value), and drop an entry only when nothing on the list comes close. Keep the draft's quantities.`;
 
   const user = [
@@ -816,7 +827,8 @@ async function requestCompletion({ system, user, onProgress }) {
   const body = {
     model: getSetting(SETTINGS.model),
     temperature: Number(getSetting(SETTINGS.temperature)) || 0.8,
-    max_tokens: Number(getSetting(SETTINGS.maxTokens)) || 4000,
+    // Fallback matches the registered default for this setting (settings.mjs).
+    max_tokens: Number(getSetting(SETTINGS.maxTokens)) || 8000,
     stream: true,
     // Ask for exact token usage in the final stream chunk (OpenAI-style;
     // DeepSeek sends it regardless). Dropped first if the provider 400s.

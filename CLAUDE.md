@@ -1,91 +1,98 @@
 # simplyPF2e — project brief
 
-Foundry VTT module. An AI generates PF2e (Remaster) NPC/monster concepts and Player Characters from a text prompt; the module grounds every named pick (spell, feat, item...) against the real installed compendium and either computes numbers from GM Core benchmark tables (NPCs) or embeds real character-build items and lets the PF2e system compute them itself (PCs). Repo: `simplyjaytea/simplyPF2e`, GitHub.
+Foundry VTT module. An AI generates PF2e (Remaster) NPCs/monsters, Player Characters, and magic items from a text prompt. Every named pick is grounded against the real installed compendium; numbers come from GM Core benchmark tables (NPCs) or from the pf2e system's own derived data (PCs). Repo: `simplyjaytea/simplyPF2e`.
 
-**Session-by-session history, the full bug log, and PR-by-PR narrative live in [HISTORY.md](HISTORY.md) — check there before re-investigating something a past session already root-caused.** This file only holds what's true right now: architecture, key files, how to work here, and the current handoff state.
+**Session history, the full bug log, and PR narrative are in [HISTORY.md](HISTORY.md) — check there before re-investigating anything.** This file holds only what is true right now.
 
 ## Glossary
 
-Terms used below without re-explaining each time:
+- **Foundry** — the VTT this is a module for. **Actor** = a character/creature sheet. **Item** = anything embedded on one.
+- **pf2e system** — the official PF2e ruleset package (`foundryvtt/pf2e`). "Real source" = that repo's actual TS/JSON, fetched live, not recalled.
+- **Compendium / pack** — a bundled library of real game content. The module never invents content: a pick either matches a real document or is marked custom.
+- **GM Core** — the sourcebook whose Building Creatures benchmark tables (AC/HP/save/attack by level) `tables.mjs` hardcodes. **Remaster** — the 2023+ edition; the AI is repeatedly reminded to use Remaster names.
+- **ABC item** — Ancestry/Background/Class, the real items a PC embeds to derive stats. **Heritage** — a 4th, in its own pack.
+- **Grant** — an item that auto-bundles another when embedded (an ancestry grants its features), via `system.items` on the granting doc.
+- **Rule Element (RE)** — a JSON rule object in `system.rules` that makes something mechanically happen. Foundry fails **silently** on a wrong key, so a hand-typed RE can look right and do nothing.
+- **Spellcasting entry** — the item holding a caster's spells + slots. `system.prepared.value` = `prepared`|`spontaneous`|`innate`|`focus`.
+- **Tradition** — arcane/divine/occult/primal. **Focus spell / pool** — a small pool (1–3) spent on class spells, refilled by Refocus, separate from slots.
+- **Slug** — lowercase-hyphenated id (`ghost-touch`). PF2e sometimes needs **camelCase** instead (`ghostTouch`) — NOT interchangeable, a recurring silent-bug source.
+- **Trait** — a tag in `system.traits.value` used for filtering (real focus spells all carry `focus`).
 
-- **Foundry (VTT)** — the virtual tabletop app this is a module for. An **actor** is a character/creature sheet; an **item** is anything embedded on one (a feat, spell, weapon, spellcasting entry...).
-- **pf2e system** — the official Pathfinder 2e ruleset package for Foundry (`foundryvtt/pf2e` on GitHub) that this module builds actors on top of. "Real pf2e source" = that repo's actual TypeScript/JSON, pulled live via `gh api`/`raw.githubusercontent.com` when a schema fact needs verifying rather than recalling from training data.
-- **Compendium / pack** — a bundled library of real game content (spells, feats, items, ancestries...) either from the pf2e system itself or an installed add-on module. This module never invents content — everything a generated actor carries either matches a real compendium document or is clearly marked as a custom/estimated fallback.
-- **GM Core** — the PF2e sourcebook whose "Building Creatures" benchmark tables (AC/HP/save/attack scales by level) this module hardcodes for the NPC pipeline (`tables.mjs`). **Remaster** — the current (2023+) edition of PF2e rules text/names; the AI is repeatedly reminded to use Remaster names, not older pre-Remaster ones.
-- **ABC item** — Ancestry/Background/Class, the three real compendium item types a Player Character embeds to derive its stats. **Heritage** is a related 4th type (a subtype of ancestry, lives in its own compendium).
-- **Grant** — an item automatically bundling another item onto the actor when embedded (e.g. an ancestry grants its ancestry features; a background grants its one skill feat) — tracked via a `system.items` field on the granting document.
-- **Rule Element (RE)** — a small JSON rule object (`system.rules` on an item) that makes something actually happen mechanically (a bonus, a resistance, a pool increase...) rather than just being descriptive text. This module's core safety principle: **clone a real RE from a published item, never hand-author one** — Foundry fails silently on a wrong key/field/shape, so a hand-typed RE risks looking correct while doing nothing.
-- **Spellcasting entry** — the item type that holds a caster's spell list + slots/pool. Its `system.prepared.value` says which kind: `"prepared"`, `"spontaneous"`, `"innate"`, or `"focus"`.
-- **Tradition** — arcane/divine/occult/primal, which spell list a caster draws from.
-- **Focus spell / focus pool** — a distinct PF2e casting mechanic: a small pool (1-3 points) spent on class-granted spells, refilled by a 10-minute Refocus activity, separate from a normal entry's daily slots.
-- **Slug** — a lowercase-hyphenated machine-readable id derived from a name (e.g. "Ghost Touch" → `ghost-touch`); PF2e sometimes instead needs **camelCase** keys (e.g. `ghostTouch`) for certain fields — these two shapes are NOT always interchangeable, a recurring source of silent bugs (see HISTORY.md's rune-key bug).
-- **Trait** — a tag on a document (`system.traits.value`) used for filtering/matching — e.g. real focus spells all carry the `"focus"` trait.
+## Invariants
+
+1. **Clone a real RE from a published item; never hand-author one.** See `rule-templates.mjs`. No hand-written fallback exists, by design.
+2. **When a system field name or shape matters, fetch the real `foundryvtt/pf2e` source** (`raw.githubusercontent.com/foundryvtt/pf2e/master/...`, reachable here) instead of recalling it. This has bitten the project repeatedly — see HISTORY.md's first two bug-log entries.
+3. **The AI never emits a number or writes code.** It picks scale words and enum slugs; the module supplies values from tables, real documents, or pre-written macro bodies.
+4. **Escape AI text before it reaches HTML** — use `text.mjs`'s `esc`/`toHtml`. Generated names/descriptions land in `system.description.value`, actor notes, and macro chat content.
+5. **Fail closed.** An unresolved pick is dropped with a `console.warn`, never guessed. Exception: a PC feat slot or a PC caster's spell list, where empty is worse than approximate.
 
 ## Architecture
 
-Three independent generation pipelines, sharing compendium/table infrastructure but otherwise separate code paths:
+Three pipelines over shared compendium/table infrastructure.
 
-### 1. NPC / creature pipeline (the original, most battle-tested path)
+**1. NPC / creature** (`builder.mjs`, the most battle-tested path)
+1. `generateConcept()` (`ai.mjs`) — one call against SYSTEM_PROMPT; returns a concept in *scales*, not numbers.
+2. `normalizeConcept()` — coerce/clamp into a safe shape.
+3. Spells (2 extra calls): `chooseSpellFocus()` → keywords → `getSpellCandidates()` narrows the real tradition list → `selectSpells()` picks from it.
+4. Equipment (1 extra call): keywords tokenized locally → `getEquipmentCandidates()` → `selectEquipment()`. Failure keeps first-draft names.
+5. `resolveConcept()` — fuzzy-match every pick via `findEntry()`.
+6. `createActor()` — build real items, apply runes/quantities/carry state, create the actor.
 
-Per creature:
-1. `generateConcept()` (`scripts/ai.mjs`) — one AI call against a large SYSTEM_PROMPT, returns a JSON concept in *scales* not numbers (str/dex/etc, AC/HP/save scales, strikes, specialAbilities, feats, equipment, loot, spellcasting draft).
-2. `normalizeConcept()` (`builder.mjs`) — coerce/clamp the raw JSON into a safe shape.
-3. Spells (if spellcasting): `chooseSpellFocus()` (tiny call, concept only) returns 3-6 keyword tags → `getSpellCandidates(tradition, maxRank, keywords)` (`compendium.mjs`) pulls real tradition spells filtered by keyword, falls back to the full list if filtered `< 12` → `selectSpells()` makes the final AI pick from that narrowed list. 3 AI calls total for casters.
-4. Equipment (if any): `#refineEquipment()` (`generator-app.mjs`) tokenizes keywords locally (no AI call) from first-draft gear + strike names, `getEquipmentCandidates(level, keywords)` pulls real level-capped non-treasure items, `selectEquipment()` picks final gear. Any failure keeps the first-draft names.
-5. `resolveConcept()` (`builder.mjs`) — fuzzy-matches every named pick (abilities/feats/equipment/loot/focus spells) against the compendium via `findEntry()`.
-6. `createActor()` (`builder.mjs`) — builds real Foundry items, applies runes/quantities/carry state, creates the actor.
+Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then the whole per-creature pipeline runs per member (N× system-prompt cost). Loot reroll: `generateLoot()`, a small call on the concept summary.
 
-Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then the full per-creature pipeline above runs once per party member (N× the system-prompt cost). Loot reroll: `generateLoot()` is a separate small call (concept summary only) that regenerates just the loot array.
+**2. Player Character** (`pc-builder.mjs`) — no math layer at all. Embed real ABC/heritage/feat items with correct `system.build` data and the pf2e system computes AC/HP/saves/proficiencies itself. `normalizePCConcept()` → `resolvePCConcept()` (ABC/grants/feat slots/focus spells) → `createCharacterActor()`. Single-class, no multiclass, no pre-create edit screen.
 
-### 2. Player Character pipeline (`pc-builder.mjs`)
+**3. Item forge** (`item-builder.mjs`, `rule-templates.mjs`, `itemforge-app.mjs`) — standalone magic items. Phase 1 passive wondrous (cloned REs), Phase 2 1/day activated (generated companion macro; AI supplies only numbers/enum slugs), Phase 3 rune weapons/armor (real base + real rune items, prices/levels summed).
 
-Structurally different from NPCs: a PC doesn't need a benchmark-table math layer at all. Once real Ancestry/Background/Class/Heritage/feat compendium items are embedded on a `type: "character"` actor with the right `system.build` data, the PF2e system's own derived-data prep computes AC/HP/saves/proficiencies itself — this pipeline's whole job is "assemble a fully-grounded, real-item build," not "invent another stat-lookup table."
+## Files
 
-`normalizePCConcept()` → `resolvePCConcept()` (ABC/heritage/grant/feat-slot/focus-spell resolution against the compendium, all real-source-verified — see HISTORY.md's bug log for the schema mistakes found and fixed along the way) → `createCharacterActor()` (embeds the real items, sets ability boosts/skill ranks/feat slot locations/spell slots/focus pool). Single-class only, no multiclass, no pre-create edit screen.
-
-### 3. Item forge (`item-builder.mjs`, `rule-templates.mjs`, `itemforge-app.mjs`)
-
-A separate generator (Items directory button) for standalone magic items, not tied to actor creation. Three phases, same "clone real data, never hand-author" principle as everywhere else: **Phase 1** passive wondrous items (cloned Rule Elements from real exemplars), **Phase 2** 1/day activated items (a generated companion macro, AI supplies only numbers/enum slugs — never writes code), **Phase 3** rune-based weapons/armor (real base item + real rune items, prices/levels summed from the real documents, no memorized rune list).
-
-## Key files
-
-- `scripts/ai.mjs` — all AI calls + SYSTEM_PROMPT (creature schema) + `pcSystemPrompt()` (PC schema) + `lootGuide()`. Streaming SSE, retry-once, JSON repair for truncation.
-- `scripts/builder.mjs` — NPC pipeline: `normalizeConcept`, `resolveConcept`, `computeStats` (GM Core table lookups via `tables.mjs`), `createActor`, `enrichDescription` (text→clickable roll links), shared `resolveFocusSpells()` (used by both NPC and PC pipelines).
-- `scripts/compendium.mjs` — `findEntry` fuzzy match, `getSpellCandidates`, `getPacksFor`/`getAllPacksFor` (configurable + auto-detected source packs per category).
-- `scripts/generator-app.mjs` — NPC/PC generator UI app, orchestrates both pipelines, token usage tracking, progress steps.
-- `scripts/tables.mjs` — GM Core Building Creatures benchmark tables (NPC-only; PCs don't need them).
-- `scripts/encounter.mjs` — XP budget/composition math for encounter mode.
-- `scripts/rule-templates.mjs` — harvests real Rule Element exemplars from installed compendiums at runtime (never hand-authors RE JSON); used by both the item forge and the PC pipeline's focus-pool Rule Element.
-- `scripts/item-builder.mjs` — item forge: concept normalize, empirical pricing, item data assembly from cloned exemplar rules or real base-item + rune-item documents summed.
-- `scripts/itemforge-app.mjs` — item forge UI, mirrors `generator-app.mjs` patterns.
-- `scripts/pc-builder.mjs` — PC pipeline: `normalizePCConcept`, ABC/grant/feat-slot/focus-spell resolution, `createCharacterActor` (embeds real items + sets `system.build` — NPCs get none of this).
-- `scripts/pc-tables.mjs` — Core Rulebook PC leveling cadence (ability boost / skill increase / feat slot levels), hardcoded the same way `tables.mjs` hardcodes GM Core's NPC benchmarks.
-- `scripts/*.test.mjs` — standalone regression self-checks (zero deps, `node:assert/strict`, `node scripts/<name>.test.mjs`, no framework/CI wiring) for pure logic behind specific past bugs. See HISTORY.md for what each one covers and why it exists.
+| File | Role |
+| --- | --- |
+| `ai.mjs` | All AI calls, SYSTEM_PROMPT, `pcSystemPrompt()`, `lootGuide()`. Streaming SSE, retry-once, JSON truncation repair. |
+| `builder.mjs` | NPC pipeline + shared resolve/build helpers used by both actor pipelines (`resolveEquipment`, `resolveLoot`, `resolveFocusSpells`, `buildEquipmentItems`, `buildLootItems`, `filterItemTypes`, `applyTreasureBudget`, `enrichDescription`). |
+| `pc-builder.mjs` | PC pipeline. First file to check when PC generation misbehaves. |
+| `compendium.mjs` | `findEntry` fuzzy match, pack indexes (incl. the extended equipment index), candidate lists, `getPacksFor`/`getAllPacksFor`, `priceToGp`, `RARITY_RANK`. |
+| `runes.mjs` | All rune knowledge: parse out of a name, apply as system data, cap tiers to level, price from real rune docs, item-forge candidate lists. Never hardcodes a rune level or price. |
+| `text.mjs` | `slugify`, `capitalized`, `esc`, `toHtml`. Zero deps, node-testable. |
+| `tables.mjs` | GM Core Building Creatures benchmarks + Treasure by Level (NPC-only). |
+| `pc-tables.mjs` | Core Rulebook PC leveling cadence (boost/skill/feat-slot levels). |
+| `rule-templates.mjs` | Harvests real RE exemplars from installed packs at runtime. Used by the forge and the PC focus-pool rule. |
+| `item-builder.mjs` | Item forge: normalize, empirical pricing, item assembly. |
+| `generator-app.mjs` / `itemforge-app.mjs` / `manage-presets-app.mjs` / `sources-app.mjs` | UI apps over `app-base.mjs` (token tracking + progress). |
+| `encounter.mjs` | XP budget/composition math. |
+| `presets.mjs` | 18 built-in build presets + custom preset CRUD + random briefs. |
+| `*.test.mjs` | 13 standalone regression checks (`node scripts/<name>.test.mjs`). |
 
 ## How to work here
 
-- **Push feature work as branch + PR, not direct to main** (standing preference — the one exception was an explicit one-off user request to merge docs-only work directly, see HISTORY.md).
-- **Releases are automatic on merge to `main`** (`.github/workflows/auto-release.yml` → `release.yml`): a merge is NOT a quiet, reversible action — it ships a public release immediately to every install's "latest" manifest URL. Treat a main-bound merge with the care of a manual `gh release create`. `.github/workflows/*.yml` changes specifically need an actual test merge to trust — `node --check`/YAML-syntax-validity doesn't catch trigger-chain bugs (two were found this way, see HISTORY.md).
-- **Verification**: no full test suite. Run `node --check <file>` on anything touched; run the relevant `scripts/*.test.mjs` self-check(s) if the change touches logic one already covers, and add a new one for genuinely pure logic behind a historical-bug-shaped change (see existing `*.test.mjs` files for the convention). Most of this module's actual behavior (does a generated actor render/compute correctly in a real Foundry+pf2e world) is **not** self-checkable — it needs a live world, and this module has a real history of schema assumptions that looked right and weren't (see HISTORY.md's bug log before trusting an unverified schema claim).
-- **When a real system field name/shape matters, pull the actual `foundryvtt/pf2e` source** (`gh api repos/foundryvtt/pf2e/contents/...` or `raw.githubusercontent.com/foundryvtt/pf2e/master/...`, both reachable from this environment) instead of recalling it from training knowledge. This has bitten the project repeatedly — see HISTORY.md's bug log, especially the first two entries.
-- Local git identity for this repo only: `user.name "jt"`, `user.email "jt_f@ymail.com"` (no global config touched).
-- The user sometimes merges a PR right after requesting a review/audit, occasionally before the audit finishes — if a requested independent review is still in flight, say so explicitly; a merge landing mid-audit needs its fixes shipped as a new follow-up PR, not folded into the already-merged original.
+- **Branch + PR, never direct to main.** A merge to `main` auto-publishes a public release to every install's "latest" manifest — treat it like a manual `gh release create`. `.github/workflows/*.yml` changes need a real test merge; syntax validity doesn't catch trigger-chain bugs (two were found that way).
+- **Verify:** `node --check` on everything touched; run the `*.test.mjs` checks; add one for genuinely pure logic behind a bug-shaped change. Most behavior (does the actor render/compute correctly in a live world) is **not** self-checkable.
+- Local git identity for this repo: `user.name "jt"`, `user.email "jt_f@ymail.com"`.
+- The user sometimes merges a PR while a requested review is still running. If an audit is in flight, say so; fixes for a mid-audit merge ship as a new PR, not folded into the merged one.
 
-## Current state (as of 2026-07-20)
+## Verified against real pf2e source — do not re-litigate
 
-- **Focus-spell support** (PC + NPC) merged to `main` via PR #62 — real-source-verified, logic-level self-checked, **still not live-tested**.
-- **Security/quality audit fixes** merged to `main` (commit `51fae80`): escaped AI-generated text before HTML injection (actor notes, macro chat messages), moved the API key setting from world to client scope so it no longer syncs to players, plus several smaller correctness/cleanup fixes. One finding was deliberately left unfixed and flagged rather than guessed: `pc-tables.mjs`'s `spontaneousSpellSlots` progression is unverified against Player Core's actual caster tables — needs a human with the rulebook.
-- **PC generator bug/feature batch for issue #64** merged to `main` via PR #65: Intelligence-bonus languages, level-gated runes on PC gear, reduced duplicate-item padding, feat-slot retry on empty candidates, a new optional **Free Archetype** setting, curated skill-item prompt hints, PC generation spends down more starting wealth, a consolidated single-bar progress UI with percentage, six new themed presets (Cultivator, Fire Mage, Assassin, Healer, Tank, Skill-Monkey), and a soft steer toward common ancestries. All logic-level self-checked (11 `scripts/*.test.mjs` files pass), **not live-tested**. Known caveat: a Free Archetype feat and a regular class feat at the same even level can land on the same `system.location`, so the archetype feat still embeds but may not sit in a dedicated FA slot in the sheet UI — needs a live check.
-- Item forge (all 3 phases) remains completely unverified end-to-end in a live game.
-- **Next natural task**: a real live-Foundry test — the PC pipeline now has the largest unverified surface (focus spells, languages, runes, feat slots incl. Free Archetype, gold spend, presets, progress UI), so that's the highest-value place to start; the item forge's first live item creation is the other major gap. `pc-builder.mjs` is the first file to check if PC generation misbehaves; `builder.mjs`'s NPC `createActor()` for creature-side issues.
+- Setting all five `build.attributes.boosts` tiers regardless of level is **safe** — `character/document.ts` slices each tier by `allowedBoosts`.
+- A PC spellcasting entry's `proficiency.value` is a **floor, not a cap** — `spellcasting-entry/document.ts` takes `Math.max` with the actor's `base-spellcasting` rank, which class features raise.
+- `details.languages.value` is **not** truncated to max, and the system already adds Int mod to `build.languages.max` itself.
+- Not writing `system.price`/`system.level` on a runed item is **correct** — `physical/document.ts` recomputes both via `computeLevelRarityPrice()` every prep.
+- A character's `resources.focus.max` is zeroed every prep and rebuilt only from ActiveEffectLike rules, so the PC focus pool needs a cloned RE; an NPC's can be plain actor data.
 
-Full narrative for all of the above — what was tried, what broke, why — is in HISTORY.md.
+## Current state (2026-07-30)
 
-## Known gaps / roadmap next
+Last work: a full project audit, then an optimization pass, on `claude/project-audit-s2ezn0`.
 
-- Chat command, reskin-existing-creature, elite/weak adjustments: unbuilt roadmap items (see README's Roadmap, grouped by feature area).
-- Item forge Phase 3: no rune prerequisite/exclusivity validation (nothing stops picking contradictory runes — prompt guidance only), armor property runes aren't filtered to the base armor's actual category, shield/ammunition-only runes are out of scope.
-- **Rarity cap only covers ancestry/background/heritage candidates** — feats, spells, and equipment/loot were explicitly excluded (user's own scope choice), so a rare feat/item can still surface even with Max rarity set low. `getFullCandidates()`'s `maxRarity` param + `RARITY_RANK` in `compendium.mjs` are already there if extending this is ever wanted.
-- **Focus spells have two deliberate v1 scope gaps**: a focus-only NPC with no normal spellcasting tradition isn't supported (no DC to cast from), and the pool-size convention (spell count, capped at 3) is a module default flagged as unverified against GM Core's actual creature-design guidance — same class of gap as `TREASURE_BY_LEVEL`. Both are explicit, signed-off scope decisions, not bugs.
-- **`pc-tables.mjs`'s `spontaneousSpellSlots`** progression (2/3 slots per rank) is flagged unverified against Player Core's actual spontaneous-caster tables — a past audit suggested it may be off (e.g. sorcerer should get 4/rank). Left as-is rather than guessed at; needs a human with the rulebook before trusting a spontaneous PC caster's slot counts.
-- **Free Archetype's slot placement is approximate**: the new archetype feat slot (see Current state) can collide with a regular class feat slot at the same even level on `system.location` — the feat still embeds, but may not land in a distinct Free Archetype slot in the sheet UI. The real PF2e variant rule uses a separate feat group; this module doesn't yet.
+Shipped in that pass: shared `text.mjs`/`runes.mjs` extracted (four copies of `esc`, two halves of rune logic, ~45-line duplicated item-embedding loops in both actor pipelines, four duplicated preview mappers); rune tiers now level-gated and priced from real rune docs; both grounding prompts carve out the `+N striking` prefix they were silently stripping; `resolveFeatPicks` dedupes across slots; a PC caster no longer loses spellcasting when grounding comes up empty; Create Actor follows the visible preview instead of the mode radio; missing `SIMPLYPF2E.Generator.Creature` i18n key added.
+
+**Unverified in a live world** (all logic-level checked only): focus spells (PC + NPC), Free Archetype, Int languages, PC runes, PC gold spend, the six new presets, the consolidated progress UI, and the **entire item forge**.
+
+**Next task: a live-Foundry test.** The PC pipeline has the largest unverified surface; the item forge's first live item creation is the other major gap.
+
+## Known gaps
+
+- **`pc-tables.spontaneousSpellSlots`** (2/3 slots per rank) is rules-derived, not copied from a verified table — an audit suggested sorcerers should get 4/rank. Needs a human with Player Core.
+- **Free Archetype slot placement is approximate** — the archetype feat can collide with a regular class feat on `system.location` at the same even level. The real variant rule uses a separate feat group; this doesn't.
+- **Focus spells, v1 scope:** a focus-only NPC (no casting tradition, so no DC) is unsupported, and the pool-size convention (spell count, capped at 3) is a module default, not GM Core guidance. Both are signed-off decisions.
+- **Rarity cap covers ancestry/background/heritage only** — feats/spells/equipment were explicitly excluded. `getFullCandidates()`'s `maxRarity` + `RARITY_RANK` are already in place if extending is wanted.
+- **Item forge Phase 3:** no rune prerequisite/exclusivity validation, armor property runes aren't filtered to the base armor's category, shield/ammunition runes out of scope.
+- **Unbuilt roadmap:** chat command, reskin-existing-creature, elite/weak adjustments, multiclass.
