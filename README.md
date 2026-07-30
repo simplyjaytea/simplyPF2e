@@ -6,46 +6,34 @@
 
 Turn a one-sentence idea into a fully statted, ready-to-run Pathfinder 2e actor — NPC, monster, whole encounter, or player character — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
 
-**[Install](#install)** · **[Setup](#setup)** · **[Usage](#usage)** · **[Troubleshooting](#troubleshooting)** · **[Known limitations](#known-limitations)** · **[Roadmap](#roadmap)**
+> *"A cunning swamp hag who brews poisons from drowned travelers"* → a complete level-6 creature with statistics, strikes, spells, gear and loot, on its sheet, in about a minute.
 
-## What it does
+**[Install](#install)** · **[Setup](#setup)** · **[Usage](#usage)** · **[Troubleshooting](#troubleshooting)** · **[Limitations](#limitations)** · **[Roadmap](#roadmap)**
 
-SimplyPF2e's scope is **any PF2e actor a GM needs, built correctly the first time**, not just monsters. Right now that's two generators sharing one grounding philosophy:
+## How it works
 
-- **NPCs & monsters** (the core, released feature). Type *"a cunning swamp hag who brews poisons from drowned travelers"*, pick a level, and get a complete creature: statistics, saves, strikes, skills, special abilities, spells, gear, and loot — solo, or a whole themed **Encounter** built to the GM Core XP budget in one pass.
-- **Player characters** (released, younger than NPC mode — see [Player Character mode](#player-character-mode)). Same idea, different mechanism: a PC is a real Ancestry/Background/Class plus chosen feats, so the PF2e system itself computes the numbers once those real items are embedded, rather than a benchmark table.
+The AI never produces a number and never invents content. The job is split three ways:
 
-PF2e statblocks and character builds normally take real prep time because everything has to be correct *and* statted; SimplyPF2e does that work by splitting the job three ways:
+| | Who decides | What that means |
+| --- | --- | --- |
+| **Concept** | The AI | Name, flavor, traits, and *which statistics should be extreme / high / moderate / low* — never the values themselves. |
+| **Numbers** | The rules | NPCs: every stat comes from the GM Core **Building Creatures** benchmark tables for your chosen level. PCs: the PF2e system's own engine computes AC/HP/saves/proficiencies from the real embedded Ancestry/Background/Class items. |
+| **Content** | Your compendiums | Every named spell, feat, ability, ancestry and item is matched against your installed packs and the **real document** is embedded. |
 
-1. **The AI invents the concept.** An LLM (DeepSeek by default, or any OpenAI-compatible API) receives your prompt and returns a structured concept — for NPCs: name, flavor, traits, which statistics should be *extreme / high / moderate / low*, strikes and signature abilities; for PCs: ancestry/background/class leaning, personality, and a first-draft build wishlist.
-2. **The numbers are never the AI's job.** For NPCs, every stat — AC, HP, saves, perception, skill modifiers, strike attack bonuses, damage dice, spell DCs — is looked up from the official GM Core **"Building Creatures"** benchmark tables for the level you chose. For PCs, the PF2e system's own derived-data engine computes AC/HP/saves/proficiencies from the real embedded Ancestry/Background/Class/feat items. Either way, the AI never outputs a number, so builds are always mechanically sound for their level.
-3. **The compendiums provide the content.** Abilities (Grab, Knockdown, Frightful Presence, Attack of Opportunity, ...), feats, spells, ancestries, backgrounds, classes, and equipment named by the AI are matched against the PF2e system's own compendium packs and the real documents are embedded in the actor. Nothing rules-critical is hallucinated: anything without a compendium match is either created as a clearly-marked custom item or flagged in the preview so you can decide (loot keeps a narrow, documented exception for coins and scrolls).
+Anything the AI names that doesn't match a real document is either dropped or created as a clearly-marked custom item — and flagged in the preview either way, with an "X/Y compendium matches" score in the header so you can see how grounded a build is at a glance.
 
-### Highlights
+Nothing touches your world until you click **Create**. Regenerate, edit the prompt, reroll just the loot, or discard, freely.
 
-- **Grounded, not hallucinated.** Spells, feats, abilities, and equipment are matched against your actual compendiums — see [Grounding in the compendium](#grounding-in-the-compendium) for how each category stays honest.
-- **Real currency and treasure.** Loot generates as actual PF2e coin items, consumables, scrolls, and magic items — not text you have to convert by hand.
-- **Encounter mode.** Describe a theme, get a whole cohesive group built to the GM Core XP budget in one pass. The dice button rolls a random theme here too.
-- **Player Character mode.** Describe a concept, get a full player-character build — real Ancestry, Background, Class, feats at every level slot (including a background's own built-in feat, like Acolyte's "Student of the Canon"), skill proficiency increases, and spells/gear, all grounded in your compendium. Unlike NPCs, the PF2e system itself computes AC/HP/saves/proficiencies once the real items are embedded — see [Player Character mode](#player-character-mode).
-- **Compendium-match visibility.** Every generated pick that resolved to a real compendium item gets a checkmark right in the preview — spells, feats, equipment, loot, and (in PC mode) ancestry/background/class — plus a per-generation "X/Y compendium matches" summary in the header, so you can see how grounded a build actually is at a glance instead of hunting for warning icons.
-- **Item forge.** Describe a wondrous magic item and get a real Foundry item with *working* passive automation — its Rule Elements are cloned from published items, never invented. Or forge a magic weapon or suit of armor built from real fundamental and property runes, priced by summing the actual rune and base-item documents (see [Item forge](#item-forge)).
-- **Presets that shape the build.** Eighteen built-in road maps — twelve standard classes plus six flavor themes (Cultivator, Fire Mage, Assassin, Healer, Tank, Skill-Monkey) — plus save, edit, duplicate, and share your own — see [Presets](#presets).
-- **Nothing touches your world until you say so.** Every generation is a preview — regenerate, edit the prompt, reroll just the loot, or discard, freely.
-- **Full visibility into cost.** Streamed progress per step and an exact token-usage report after every generation.
+## Status
 
-## Grounding in the compendium
+| Feature | Status |
+| --- | --- |
+| **NPCs & monsters** | Stable. The oldest, most battle-tested path. |
+| **Encounter mode** | Stable. |
+| **Player Character mode** | Released and hardened over several live-testing rounds, but younger than NPC mode. Sanity-check a generated character's numbers on its sheet before play. |
+| **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons are hidden for that reason; open it from the console (see [Item forge](#item-forge)). |
 
-Several parts of the concept get extra grounding so the AI can't invent things that don't exist in your game:
-
-- **Spells are chosen *from* the compendium, in two steps.** First a small pass asks the AI for a handful of thematic keywords (descriptor traits, damage types, "healing", "control", ...) that fit the creature. Those keywords narrow the actual spell list for its tradition and level down to a relevant slice before a second pass picks the final spells from it — every pick lands as the real spell document on the sheet, and the narrowing keeps the second pass's prompt small instead of dumping the whole tradition's spell list on every generation.
-- **Feats for trained creatures.** Creatures that would plausibly have class-like techniques — humanoid soldiers, monks, assassins — can be given real feats (Power Attack, Sudden Charge, ...), matched against the system's feats compendium and embedded on the NPC.
-- **Equipment is chosen *from* the compendium too.** After the concept lands, a follow-up pass hands the AI a real, level-capped list of items from your equipment compendium — narrowed by keywords taken from the concept's own gear ideas and strikes, so the prompt stays small — and the AI picks the creature's carried gear from it. Every pick is a name that actually exists, so it lands as the real item document on the sheet.
-- **Real, logical inventories.** The AI stocks each creature with the weapons and armor it actually wields (equipped and held correctly, and only when the creature would plausibly wear armor), general adventuring gear (rope, torches, rations, thieves' tools, and the like), consumables where they make sense (healing potions, elixirs, bombs, talismans — with quantities), and for creatures of level 2+ optionally a magic item. Fundamental-rune gear like **"+1 striking rapier"** is handled properly — the module parses the runes, embeds the real base weapon, and applies potency/striking as system data so the item works mechanically. Anything named that still doesn't match the compendium becomes a real inventory item — a custom gear item at the AI's estimated price — instead of silently disappearing. Coins never show up here — they're loot only.
-- **Loot worth fighting for.** Creatures carry the treasure they drop on defeat: coins, consumables, and magic items contextual to the creature and scaled to its level and rarity, all matched against the equipment compendium. Coins ("Gold Coins", "150 silver pieces") become the real PF2e currency items, so they show up in the sheet's Currency section. Spell scrolls are assembled the same way the system builds them on spell drag-and-drop: the named spell is resolved from the spell compendium and embedded into the matching rank's scroll template, producing a fully usable consumable.
-- **Loot is priced to a real budget.** The same authority split as the statistics: the module computes an expected gp value from the GM Core Treasure by Level table (scaled by creature rarity and your **Treasure amount** setting), the AI only themes and names items within it, and the loot's real compendium prices are summed against that target — if the haul lands meaningfully off budget, the coin entries flex to close the gap (named items are never added or removed to hit a number). Encounter mode shows the group's total treasure value against its budget, right next to the XP math.
-- **Passives lean on real automation.** A passive ability that matches a standard PF2e glossary entry (Regeneration, All-Around Vision, ...) is cloned from the compendium wholesale, so it carries the system's own working automation instead of being descriptive text you have to remember to apply.
-- **Item names stay current.** Everything named — equipment, loot, scrolls — uses current PF2e Remaster terminology (e.g. "Blasting Stone", not the old "Thunderstone"), matched against your compendiums either way.
-- **Player characters get the same grounding, plus a rarity cap.** Ancestry, background, class, heritage, feats, spells, gear, and starting-wealth items are all matched against real compendium documents the same way NPC content is — and in Character mode you can additionally cap the **Max rarity** of ancestry/background/heritage candidates, so the AI is never even shown (let alone able to pick) something rarer than the GM allows.
+Recent additions — focus spells, Free Archetype, Intelligence languages, runes on PC gear — are on `main` but have not been through a live-play pass yet. See [Limitations](#limitations).
 
 ## Install
 
@@ -55,202 +43,156 @@ Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
 https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
 ```
 
-This link is **permanent** — it always resolves to the newest published release, so Foundry will detect and offer updates automatically. You never need a new URL when the module updates.
-
-Requires Foundry VTT **v13+** and the **pf2e** game system (6.0.0+).
+The link is permanent — it always resolves to the newest release, so Foundry offers updates automatically. Requires Foundry **v13+** and the **pf2e** system (6.0.0+).
 
 ## Setup
 
-Configure the AI provider under **Game Settings → Configure Settings → SimplyPF2e** (GM only):
+Configure your AI provider under **Game Settings → Configure Settings → SimplyPF2e** (GM only).
 
 | Setting | Description |
 | --- | --- |
-| API Base URL | Any OpenAI-compatible endpoint. Defaults to DeepSeek (`https://api.deepseek.com/v1`). |
-| API Key | Your provider API key. |
-| Model | e.g. `deepseek-chat`, `deepseek-reasoner`, `gpt-4o`, or whatever your provider offers. |
+| API Base URL | Any OpenAI-compatible endpoint. Defaults to DeepSeek. |
+| API Key | Your provider key. |
+| Model | e.g. `deepseek-chat`, `deepseek-reasoner`, `gpt-4o` — the exact API identifier, not the marketing name. |
 | Creativity | Sampling temperature (0–2). |
 | Max response tokens | Raise if complex creatures come back truncated. |
-| Request timeout | Abort a generation if the provider sends *no data* for this long (default 90 s). |
-| Free Archetype | Optional variant rule (GM-only, off by default). When on, Player Character mode adds an extra archetype feat slot at every even level. See [Player Character mode](#player-character-mode) for a caveat on slot placement. |
+| Request timeout | Aborts only if the provider sends *no data* for this long (default 90 s). |
+| Free Archetype | Optional variant rule, off by default. Adds an extra archetype feat slot at every even level in Character mode. |
 
-Provider examples:
+**Providers**
 
-- **DeepSeek** – `https://api.deepseek.com/v1`, model `deepseek-chat` — cheap, strong JSON output, the recommended default.
-- **OpenAI** – `https://api.openai.com/v1`, model `gpt-4o`
-- **OpenRouter** – `https://openrouter.ai/api/v1`, any hosted model
-- **Ollama (local)** – `http://localhost:11434/v1`, no key needed. Set `OLLAMA_ORIGINS=*` (or your Foundry origin) so the browser may call it. Expect more retries/lower quality unless you're running a large model.
+- **DeepSeek** — `https://api.deepseek.com/v1`, model `deepseek-chat`. Cheap, strong JSON, the recommended default.
+- **OpenAI** — `https://api.openai.com/v1`, model `gpt-4o`
+- **OpenRouter** — `https://openrouter.ai/api/v1`, any hosted model
+- **Ollama (local)** — `http://localhost:11434/v1`, no key. Set `OLLAMA_ORIGINS=*` (or your Foundry origin) so the browser may call it. Expect lower quality unless you run a large model.
 
-> **Note on keys & requests:** requests are sent directly from the GM's browser to the provider, and the key is a **client** setting stored only in the local browser — it is never synced to the world, so players and other GMs can't read it. Each GM machine that generates needs its own key entered.
+> **Your key stays local.** Requests go straight from the GM's browser to the provider, and the key is a **client** setting stored in that browser only — never synced to the world, so players and other GMs can't read it. Each GM machine that generates needs its own key.
 
-### Choosing compendium sources
+### Compendium sources
 
-By default SimplyPF2e draws from the PF2e system packs (bestiary ability glossary, spells, feats, equipment). Under **Module Settings → SimplyPF2e → Compendium Sources** you can change that: the module scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you check the ones each category may use — so homebrew compendiums and content modules (e.g. adventure-path packs) become available to the AI. The grounded spell selection reads from your chosen spell packs too, meaning the AI literally sees and picks from your homebrew spell list. Leaving a category empty falls back to the system defaults.
+By default the module draws from the PF2e system packs. Under **Compendium Sources** it scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you pick which each category may use — so homebrew and content-module packs become available to the AI. The AI literally sees and picks from your homebrew spell list. An empty category falls back to the system defaults.
 
 ## Usage
 
-1. Open the **Actors** sidebar tab and click **SimplyPF2e** (GM only), or run `game.modules.get("simplypf2e").api.open()` from a macro.
-2. Optionally pick a **preset** from the dropdown, describe the creature, set its level (−1 to 24) and rarity, pick a **Treasure amount** (Stingy / Standard / Generous — how rich the loot budget runs), choose whether spellcasting is allowed, and click **Generate**.
-3. Review the stat-block preview, then click **Create Actor**. The finished NPC opens on its sheet, ready to drop onto the canvas.
+Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.modules.get("simplypf2e").api.open()`. Pick a mode at the top of the dialog.
 
-### Presets
+### Single creature
 
-The preset dropdown shapes the *build* while your description drives the *flavor*. Built-in presets cover the standard fantasy classes — Fighter, Barbarian, Rogue, Ranger, Monk, Cleric, Druid, Wizard, Sorcerer, Bard, Champion, and Alchemist — each encoding a GM Core-style road map (stat scales, techniques, casting tradition). "Level 5 hobgoblin veteran" + the Fighter preset gives a disciplined soldier; the same prompt with the Barbarian preset gives a reckless brute. Six flavor-themed presets round out the list for concepts that don't map to one class — Cultivator, Fire Mage, Assassin, Healer, Tank, and Skill-Monkey.
+Optionally pick a **preset**, describe the creature, set level (−1 to 24) and rarity, choose a **Treasure amount** and whether spellcasting is allowed, then **Generate**. Review the stat-block preview and **Create Actor**.
 
-A preset can also carry defaults for **rarity**, **allow spellcasting**, and **Treasure amount** — selecting one restores any of those three it defines, leaving fields it doesn't touch as you left them.
+The **dice button** rolls a surprise instead: it ignores the description and rolls a brief locally (creature type × combat role × home × twist — thousands of combinations), so every click is a genuinely new idea. Good for filling a dungeon room.
 
-- **Save** captures your *current* form — the build guidance you write plus whatever rarity/spellcasting/treasure amount are set right now — as a new custom preset (or, if a custom preset is already selected, updates that same preset in place instead of creating a duplicate). Custom presets are stored in the world and appear in the dropdown marked with `*`.
-- **Duplicate** starts a new custom preset pre-filled from whichever preset is currently selected — built-in or custom — so you can take "Fighter" and tweak it into your own house archetype without typing a guidance paragraph from scratch.
-- **Delete** removes the selected custom preset (built-ins can't be deleted).
-- **Manage Presets** opens a dialog listing all your custom presets with Edit, Duplicate, Export, and Delete on each row, plus **Export All** and **Import** at the bottom. Export writes a JSON file you can hand to another GM; Import reads one back in (invalid entries are skipped, valid ones always get a fresh internal id so they never collide with presets you already have) — this is how you trade presets between worlds or with other GMs.
-
-The description box's placeholder shows a different example concept each time you switch presets — five per preset — as inspiration for what that preset can build.
-
-### Random creatures
-
-The dice button next to **Generate** rolls a surprise: it ignores the description box, rolls a brief locally (creature type × combat role × home × twist — thousands of combinations), and the AI builds it at the level you set. Every click rolls a brand-new brief, so it never converges on the same ideas — great for filling a dungeon room or sparking a session when you're out of prep. The same dice button is available in Encounter mode, where it rolls a random encounter theme instead.
+Each creature also gets GM support baked into its notes: a **read-aloud block** for theater of the mind, a **Recall Knowledge line** with the correct identification skill, a clickable check at the level- and rarity-based DC, and what a player learns on a success. **Art** is borrowed from the closest-matching bestiary creature, scored by shared creature-type traits, size and level.
 
 ### Encounter mode
 
-Switch the toggle at the top of the dialog to **Encounter**, set your party's level and size (both with +/− steppers), pick a threat level (trivial → extreme), and optionally give a theme ("a smuggler ring run by wererats") — or click the dice button for a random one. The module computes the XP budget and composition from the official GM Core encounter-building rules — a headline creature whose relative level matches the threat, backed by minions until the budget is spent — then the AI names the encounter, briefs each slot so the group feels cohesive, and every member runs through the full creature pipeline. The preview shows each member with count, level, role, and key stats plus the XP math; **+/− buttons on each member** adjust how many of it you want (0 skips it entirely), with the XP total updating live and turning red if you go over budget. **Create All Actors** files the whole roster into a folder named after the encounter — every copy of a duplicated member is created as its own actor, numbered so they stay distinguishable ("Goblin Skirmisher 1", "Goblin Skirmisher 2", ...).
+Set party level and size, pick a threat (trivial → extreme), and give a theme — or roll one with the dice button. The module computes the XP budget and composition from the GM Core encounter rules (a headline creature matching the threat, backed by minions until the budget is spent); the AI then names the encounter and briefs each slot so the group feels cohesive, and every member runs the full creature pipeline.
+
+The preview shows each member with count, level, role and key stats, plus the XP math and the group's total treasure value. **+/−** on each member adjusts how many you want (0 skips it), with the XP total updating live and turning red over budget. **Create All Actors** files the roster into a folder named after the encounter, numbering duplicates ("Goblin Skirmisher 1", "2", ...).
 
 ### Player Character mode
 
-> **Status: released, but younger and less battle-tested than NPC mode.** The initial build (PR [#49](https://github.com/simplyjaytea/simplyPF2e/pull/49)) shipped with several character-build field names asserted from training knowledge rather than confirmed against the pf2e system. Live testing found real problems, and several rounds of fixes since (PRs [#54](https://github.com/simplyjaytea/simplyPF2e/pull/54), [#57](https://github.com/simplyjaytea/simplyPF2e/pull/57)–[#61](https://github.com/simplyjaytea/simplyPF2e/pull/61)) — each verified against the actual `foundryvtt/pf2e` system source — landed attribute boosts, feat slots (including a background's own built-in feat), spell slots, HP, skills and skill-proficiency increases, bio/personality fields, and starting wealth. Most of that is now confirmed working in a live world; the newest changes (see the roadmap below) are not yet. Sanity-check a generated character's numbers on its sheet before trusting it in play.
+Describe a concept ("a grizzled dwarf ranger who hunts undead"), set a level (1–20), and optionally cap the **Max rarity** of the ancestry/background/heritage the AI may pick — capping at Uncommon rules out Rare options like Fetchling, so they're never even offered.
 
-Switch the toggle to **Player Character**, describe a concept ("a grizzled dwarf ranger who hunts undead"), optionally cap the **Max rarity** of the ancestry/background/heritage the AI can pick (excludes anything rarer, e.g. capping at Uncommon rules out Rare options like Fetchling), set a level (1–20), and generate. Unlike NPC mode, nothing here is scale-word math — a PC is built from real Ancestry, Background, and Class compendium items plus chosen feats at every level slot (ancestry/class/skill/general, per the Core Rulebook's leveling cadence, including any feat the background itself automatically grants) and ability boosts, and the PF2e system's own derived-data engine computes AC, HP, saves, and proficiencies once those real items are embedded, the same way it would for a character built by hand on the sheet. Skill proficiency also advances past Trained at the Core Rulebook's skill-increase levels, not just at character creation.
+Nothing here is scale-word math. A PC is assembled from real Ancestry, Background and Class items plus feats at every level slot (ancestry/class/skill/general per the Core Rulebook cadence, including any feat the background itself grants — like Acolyte's *Student of the Canon*), ability boosts, and skill increases past Trained. The PF2e system then computes AC, HP, saves and proficiencies exactly as it would for a character built by hand.
 
-Every choice is grounded the same way spells and equipment already are for NPCs: the AI drafts first-draft ancestry/background/class/feat/spell names as inspiration, then a grounded pass matches each against your real compendium and the AI picks only from what actually exists — nothing is invented except loot (which follows the exact same free-form exception NPCs already have for coins and scrolls). Starting gear is grounded and budgeted the same way NPC equipment is, scaled to the character's own level instead of an NPC's encounter share — and starting wealth now actually buys real magic items (potions, scrolls, wands, and the like) the same way NPC loot does, instead of turning entirely into raw coin.
-
-Single-class builds only for now — multiclass archetypes and a pre-create screen for swapping individual AI picks are explicitly out of scope for this first pass. The **Free Archetype** variant rule is available as an opt-in GM setting (see [Setup](#setup)): when enabled, the build gets an extra archetype feat slot at every even level. It's newly built and not yet live-verified — the archetype feat can land in the same slot location as a regular class feat at that level, so it still embeds on the character but may not show up in a distinct Free Archetype slot on the sheet.
+Starting wealth buys real gear rather than turning into raw coin, and fundamental runes on weapons and armor are capped to what the character's level actually allows. Single-class builds only — no multiclass archetypes, and no pre-create screen for swapping individual picks (regenerate instead).
 
 ### Item forge
 
-The item forge's UI buttons are deliberately removed for now (item generation is still unverified end-to-end in a live world); open it by running `game.modules.get("simplypf2e").api.openItemForge()` from a macro or the console. Pick an item type — **Wondrous Item**, **Weapon**, or **Armor** — describe the item, pick a level and rarity, and **Generate**.
+> The UI buttons are hidden while this is unverified in a live game. Open it with `game.modules.get("simplypf2e").api.openItemForge()`.
 
-For a wondrous item ("a charred iron circlet that shields the wearer's mind and lets it see in the dark"), the preview shows usage, bulk, price, traits, a plain-English list of its passive effects, and — if the concept calls for one — an activated ability; **Create Item** places it in the Items directory with its sheet open, ready to drag onto a character sheet — where the effects *just work*, no manual setup.
+Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rarity, and **Generate**.
 
-For a weapon or suit of armor, the forge switches to a rune-based pipeline: it harvests real candidates from your equipment compendium — base weapons/armor at or under the target level, property runes filtered by their real usage string (etched onto a weapon vs. onto light/medium-heavy armor), and fundamental rune tiers (potency, striking or resilient) whose real item level actually fits the target — and the AI picks a build only from those exact candidates, never inventing a rune or base item. The final item sums the real base item's and rune items' actual prices, and its overall level is the highest level among them (the real PF2e rule); the name follows the standard "+N [runes] [base name]" convention, assembled from the resolved documents' own names.
+**Wondrous items** get passive effects — item bonuses (AC, perception, saves, skills), resistances, weaknesses, immunities, senses, and speed grants — that *actually work* on a sheet, because:
 
-The forge builds **passive** effects: item bonuses (AC, perception, saves, skills), resistances, weaknesses, immunities, senses (darkvision, scent, ...), and speed grants (fly/swim/climb/burrow). What makes them trustworthy is the same grounding philosophy as the rest of the module:
+- **Rule Elements are cloned from real published items, never written from memory.** Foundry fails *silently* on a wrong rule key — the ring just does nothing. So the forge finds a published item already carrying that kind of rule, clones it, and substitutes only the value, statistic or damage type. An effect kind with no real example in your world isn't offered at all.
+- **Prices are empirical** — the median real compendium price at that level, scaled for rarity, not a remembered table.
+- **Usage strings are harvested from real gear**, so the item slots correctly.
 
-- **Rule Elements are cloned from real published items, never written from memory.** Foundry fails *silently* when a Rule Element has a wrong key or field name — the ring simply doesn't do anything. So the forge scans your installed compendiums for published items that already carry each kind of rule (e.g. Hellfire Boots for a resistance), clones that working rule, and substitutes only the value, statistic, or damage type. If your world has no real example of some effect kind, that kind simply isn't offered to the AI — the forge never falls back to hand-writing a rule.
-- **Prices are empirical.** The gp price is the median real compendium price of items at the chosen level (widened to neighboring levels when a level has few priced items), scaled up for uncommon/rare/unique — not a remembered price table.
-- **Usage strings are harvested from real gear** ("worn", "wornshoes", "held-in-one-hand", ...), so the item slots correctly on a sheet.
+**Activated items** add a 1/day ability — damage, heal, condition, or self-buff — as a companion **macro**, with a clickable Activate link in the description and the macros filed in a "SimplyPF2e Item Forge" folder (auto-deleted with the item). Target a token, click Activate; damage and healing post as normal PF2e chat cards so the built-in Apply buttons handle the rest. Each copy tracks its own charge and recharges on a night's rest.
 
-**Activated items** now work too. When a concept implies a triggered ability ("once per day, unleash a blast of frost", "heal a wounded ally", "frighten a foe"), the forge builds one of four activation kinds — **damage**, **heal**, **condition**, or **self-buff** — and generates a companion **macro** you click to use it. The item's description gets a clickable **Activate** link, and the macros are filed in a "SimplyPF2e Item Forge" macro folder (auto-deleted when you delete the item). To use one: target a token (for damage/condition effects), then click Activate. Damage and healing post as normal PF2e chat cards, so the built-in **Apply Damage / Apply Half / Apply Healing** buttons handle the rest — the macro leans on the system's own battle-tested UI rather than touching HP directly. Activated items are **1/day**: each copy tracks its own charge and recharges on a night's rest.
+**Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates; the final price and level are summed from the resolved documents.
 
-### Read-aloud text, Recall Knowledge, and art
+### Presets
 
-Every creature comes with GM support baked into its notes:
+The preset dropdown shapes the *build* while your description drives the *flavor*. "Level 5 hobgoblin veteran" + Fighter gives a disciplined soldier; the same prompt + Barbarian gives a reckless brute.
 
-- A **read-aloud block** — two or three sensory sentences for theater of the mind, shown as a quote at the top of the description.
-- A **Recall Knowledge line** — the correct identification skill for the creature type, a clickable check at the level- and rarity-based DC, and a short nugget of what a player learns on a success (its weakness, its most dangerous trick).
-- **Art**: SimplyPF2e borrows art from the closest-matching bestiary creature — scored by shared creature-type traits, size, and level — and uses it for the sheet and token.
+Eighteen built-ins: the twelve standard classes, plus six themes for concepts that don't map to one (Cultivator, Fire Mage, Assassin, Healer, Tank, Skill-Monkey). A preset can also carry defaults for rarity, spellcasting and Treasure amount.
 
-### Loot
+- **Save** captures your current form as a new custom preset — or updates the selected custom preset in place.
+- **Duplicate** starts a new preset pre-filled from any preset, built-in or custom.
+- **Manage Presets** lists your custom presets with Edit / Duplicate / Export / Delete, plus Export All and Import. Export writes JSON you can hand to another GM; imports always get a fresh id so they never collide.
 
-The preview shows the creature's loot — coins, consumables, scrolls, and treasure — with anything that failed to match the compendium flagged so you can decide before creating. Happy with the creature but not the haul? Click **Reroll Loot**: it regenerates only the treasure with a fresh AI pass, leaving the concept, stats, and gear untouched. Loot volume follows your framing: a typical creature drops a modest 3-8 items, but describe it as guarding a hoard or ask for "lots of loot" and the haul scales up to match — both on initial generation and on reroll.
+The description placeholder cycles five example concepts per preset as inspiration.
 
-The **Treasure amount** control shapes the haul twice. Up front, it nudges what the AI proposes: Stingy leans toward the low end (2-3 cheap, common items, usually skipping the magic-item slot entirely), Standard uses the baseline 3-8 item guidance as written, and Generous leans toward the high end (6-8 items, always including at least one treasure or magic item). Then, after generation, the haul's *value* is budgeted, not guessed: the module computes a target gp value from the GM Core Treasure by Level table for the creature's level (party level in encounter mode), multiplied up for uncommon/rare/unique creatures and by the same Treasure amount setting (Stingy halves it, Generous adds half). The real compendium prices of the generated items are summed against that target, and the coin entries are adjusted to land the total on budget — so a level 5 creature drops level-5-appropriate wealth whether or not the AI guessed prices well.
+### Loot and treasure
 
-### Iterating on a creature
+Creatures carry what they drop: coins, consumables, scrolls and magic items, contextual to the creature and scaled to its level and rarity. Coins become real PF2e currency items (so they land in the sheet's Currency section) and scrolls are assembled the way the system does on spell drag-and-drop — the real spell embedded into the matching rank's scroll template.
 
-Generation is meant to be a conversation, not a one-shot:
+The **Treasure amount** control shapes the haul twice. Up front it nudges what the AI proposes: Stingy leans to 2–3 cheap items and usually skips the magic item, Standard uses the baseline 3–8, Generous leans to 6–8 with at least one magic item. After generation the *value* is budgeted rather than guessed: the module computes a target from the GM Core Treasure by Level table (level, creature rarity, and the same Treasure setting), sums the real compendium prices of what was generated — runes included — and flexes the **coin** entries to land on target. Named items are never added or removed to hit a number.
 
-- **Regenerate** re-rolls the concept from the same prompt — same level and math, new take.
-- **Edit the prompt and regenerate** to steer it: add "make it a spellcaster", "give it a ranged attack", "less gear, more natural weapons", and so on.
-- **Reroll Loot** re-rolls just the treasure (see [Loot](#loot)).
-- **Discard** clears the preview without creating anything.
-- Nothing touches your world until you click **Create Actor**, so iterate freely — and after creation the result is a completely normal PF2e NPC you can keep editing on the sheet.
+Loot volume also follows your framing: describe a hoard or ask for "lots of loot" and the haul scales up. Happy with the creature but not the haul? **Reroll Loot** regenerates only the treasure.
 
 ## Troubleshooting
 
-Slow or stuck generations:
+**Slow or stuck generations**
 
-- Responses are **streamed**: while generating you'll see a single animated progress bar with a live percentage (concept, spell selection, compendium matching, ... all rolled into one bar) plus a live token ticker. Reasoning models (e.g. DeepSeek's reasoner variants) show "The model is thinking…" first — that can take a while and is normal.
-- After generation the preview shows a **token usage report**: the exact prompt/completion tokens each AI call used (concept, spell selection, encounter design, each member, loot rerolls) and the total. If a provider doesn't report usage, the step falls back to a clearly-marked estimate.
-- The **request timeout** setting (default 90 s) aborts the request only if the provider sends *no data* at all for that long, so slow-but-alive generations are never cut off. If you get timeout errors, check the provider's status page and your model name.
-- Make sure **Model** is the exact API identifier from your provider's documentation (for DeepSeek e.g. `deepseek-chat` or `deepseek-reasoner`) — marketing names don't always match the API id. A wrong id normally returns an immediate error, not a hang.
-- Spellcasters make **three** AI calls (concept, then a small spell-focus pass, then grounded spell selection), so they take a bit longer than martial creatures — the focus pass is small and fast, most of the extra time is still the final selection pass. Any creature that carries gear also makes one extra grounded equipment-selection call.
+- Generation is **streamed** — you'll see one animated progress bar with a live percentage and token ticker. Reasoning models show "The model is thinking…" first; that's normal and can take a while.
+- The **request timeout** aborts only on total silence from the provider, so slow-but-alive generations are never cut off. If you get timeouts, check the provider's status page and your model name.
+- Check **Model** is the exact API identifier from your provider's docs. A wrong id normally returns an immediate error rather than hanging.
+- Spellcasters make **three** AI calls (concept, a small spell-focus pass, then grounded selection), so they take longer. Creatures carrying gear make one more.
+- After generation the preview shows an exact **token usage report** per call. If a provider doesn't report usage, the step is a clearly-marked estimate.
 
-Odd generation results:
+**Odd results**
 
-- **A creature is missing an ability you expected** (e.g. Attack of Opportunity on a disciplined soldier) — the AI decides case by case whether a standard ability fits; regenerating or nudging the prompt ("give it Attack of Opportunity") usually gets it.
-- **An item name looks unfamiliar** — SimplyPF2e always targets current PF2e Remaster terminology; if a generation still surfaces an old pre-Remaster name, it'll simply fail to match the compendium and fall back to a flagged custom item (see [Known limitations](#known-limitations)) rather than break anything.
+- **Missing an ability you expected** (Attack of Opportunity on a soldier, say) — the AI decides case by case; nudging the prompt usually gets it.
+- **An unfamiliar item name** — the module always targets current Remaster terminology. A stray pre-Remaster name simply fails to match and falls back to a flagged custom item rather than breaking anything.
+- **A pick shows as custom, not matched** — that item isn't in your enabled compendium sources. Swap in the real one by hand, or widen your sources.
 
-## Known limitations
+## Limitations
 
-- Generated spellcasters use a spontaneous-style entry with 2 slots per rank; adjust on the sheet if you want prepared or innate casting.
-- The benchmark tables were transcribed by hand from GM Core. If you spot a value that disagrees with the book, please open an issue.
-- Matched feats are converted to NPC action items (the PF2e system does not allow feat items on NPC actors) — they keep the feat's cost, rules text, and automation.
-- Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions; if a phrase slips through unconverted, it stays as readable plain text (regenerate or edit the ability to fix it).
-- A custom (non-glossary) passive ability is only as interactive as its phrasing — anything outside the standard damage/save/check/heal/area conventions is flavor text the table applies by hand rather than a live automated effect.
-- Presets guide the AI rather than hard-constrain it — an occasional generation may drift from the chosen road map; regenerating usually lands it.
-- Loot value is budgeted against the GM Core Treasure by Level table, but only the coin entries flex to hit the target — a haul whose named items alone already exceed the budget is left as-is (with a console note) rather than losing items. Carried gear (weapons, armor, adventuring kit) is not counted against the treasure budget.
-- The item forge builds **passive** effects, **1/day activated** abilities (damage, heal, condition, self-buff), and **rune-based weapons/armor**. Passive effect kinds depend on your installed compendiums: each needs at least one published item carrying that rule to serve as a template (all six kinds have one in the standard PF2e equipment/bestiary packs), and a kind with no real example in your world is not offered rather than guessed at. The rune-based weapon/armor path has its own gaps: nothing validates rune prerequisites or exclusivity (you can pick contradictory runes like Holy and Unholy on the same item — this is prompt guidance only, not enforced), armor property runes aren't filtered to the base armor's actual category (light vs. medium/heavy — all usage variants are offered regardless of which armor was picked), and shield- and ammunition-only runes are out of scope entirely.
-- The item forge — all three phases — has been built and independently reviewed, but not yet verified end-to-end on an actual character sheet in a live Foundry game. If a generated item looks structurally correct in the preview but doesn't behave as expected once it's on a sheet, that mismatch is the first thing to check.
-- Activated-item macros lean on the PF2e system's own APIs, which can change between system versions. Every call is wrapped so a failure degrades to a plain descriptive chat message ("deal 4d6 fire damage, DC 22 basic Reflex save — apply manually") rather than throwing. A few behaviours are **best-effort**: an inflicted condition's *duration* is shown as text but not auto-enforced (remove it by hand when it lapses); condition effects apply on a failed save, but if the save's degree of success can't be read the condition is skipped with a manual-adjudication chat message rather than applied automatically; and 1/day recharge relies on the PF2e "Rest for the Night" flow firing (otherwise reset the item's charge by hand). If a generated macro misbehaves in play, its script is readable in the macro folder — check the console for the logged fallback reason.
-- A named weapon, armor, or gear item that doesn't match anything in the compendium becomes a generic placeholder item at the AI's estimated price rather than a functional weapon/armor — it won't carry real mechanical bonuses. Carried gear is now picked from a real compendium candidate list (see [Grounding in the compendium](#grounding-in-the-compendium)), so this should be uncommon — mostly the fallback path when the grounded pass fails or a pick is copied imperfectly — but if you see one, swap in the intended item from the compendium by hand.
-- **Player Character mode is younger and less battle-tested than NPC mode.** Its initial build asserted several character-build field names from training knowledge rather than confirmed schema; live testing since has found and fixed real problems across several rounds (attribute boosts, feat slots including a background's own built-in feat, spell slots, HP, skills/skill increases, bio/personality fields, starting wealth, rarity cap), each verified against the real `foundryvtt/pf2e` source. Before trusting a generated character's numbers, open its sheet and sanity-check AC/HP/saves/proficiencies/feats against what its ancestry/background/class/level should produce; if something looks off, `scripts/pc-builder.mjs` is the first place to check. Single-class builds only — no multiclass archetypes, and there's no pre-create screen to swap individual AI picks (regenerate for a different build instead).
-- **Focus spells are freshly built and not yet live-tested at all.** Both PCs and NPCs can get a real focus spellcasting entry and pool, and the schema was verified against real `foundryvtt/pf2e` source (how a focus entry is identified, how a PC's pool max needs a cloned Rule Element vs. an NPC's pool being settable as plain data) — but nobody has generated a character or creature with focus spells in an actual running world yet. The pool-size convention (spell count, capped at 3) is a defensible default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting; a focus-only creature isn't supported yet.
+**Generation quality**
+
+- Presets guide the AI rather than constrain it; an occasional generation drifts. Regenerating usually lands it.
+- Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions. A phrase that slips through stays readable plain text.
+- A custom (non-glossary) passive is only as interactive as its phrasing — anything outside the standard damage/save/check/heal/area conventions is flavor text you apply by hand.
+- An item with no compendium match becomes a placeholder at the AI's estimated price, not a functional weapon or armor. This should be rare (gear is picked from a real candidate list), but swap in the real item if you see one.
+
+**Rules coverage**
+
+- Generated spellcasters use a spontaneous-style entry; adjust on the sheet for prepared or innate casting.
+- Matched feats become NPC action items — the PF2e system doesn't allow feat items on NPCs — keeping the feat's cost, rules text and automation.
+- Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget.
+- The benchmark tables were transcribed by hand from GM Core. If a value disagrees with the book, please open an issue.
+- The rarity cap covers ancestry/background/heritage only — feats, spells and equipment aren't filtered by it yet.
+
+**Not yet live-tested** (built, reviewed, and verified against the real pf2e system source, but not yet run in an actual game)
+
+- **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
+- **Free Archetype.** The archetype feat can land in the same slot location as a regular class feat at that level, so it embeds on the character but may not appear in a distinct Free Archetype slot on the sheet.
+- **Spontaneous spell-slot counts** for high-level PC casters are derived from the standard progression rather than copied from a verified table. Check a high-level caster's slots against Player Core before trusting them.
+- **The item forge**, all three phases. If an item looks right in the preview but misbehaves on a sheet, that's the first thing to check. Its rune path has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), armor property runes aren't filtered to the base armor's category, and shield/ammunition runes are out of scope.
+- **Activated-item macros** lean on PF2e system APIs that can change between versions. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.
 
 ## Roadmap
 
-Grouped by feature area rather than build order. Version tags mark when a feature shipped; "unreleased" means it's on `main` but hasn't been through a full live-play verification pass yet — see [Known limitations](#known-limitations) for what that means in practice.
-
-### Core generation
-
-- [x] **Presets** — ✅ v0.2.0, overhauled unreleased: built-in class presets plus user-created custom ones, each capturing rarity/spellcasting/treasure-amount defaults alongside build guidance. Save edits an already-selected custom preset in place; Duplicate clones any preset (built-in or custom) as a starting point; the Manage Presets dialog adds Edit/Export/Import — export/import as JSON covers **preset sharing**.
-- [x] **Clickable rolls** — ✅ v0.1.4: damage, saves, checks, and area templates in custom abilities are inline roll links.
-- [x] **Grounded equipment matching** — ✅ unreleased: the AI picks carried gear from a real, level-capped compendium candidate list instead of naming items from memory.
-- [x] **Loot & treasure budgets** — ✅ v0.3.3/unreleased: AI-generated treasure (real currency, consumables, scrolls, magic items) with a Reroll Loot button, priced against the GM Core Treasure by Level table (level + rarity scaled, Stingy/Standard/Generous control) — coin entries flex to land on budget, encounter mode reports the group's total alongside the XP math.
-- [x] **Compendium-match confirmation** — ✅ v0.3.5.22: every generated pick that resolved to a real compendium item gets a checkmark in the preview, plus a per-generation match-rate summary in the header.
-
-### Encounters
-
-- [x] **Encounter mode** — ✅ v0.3.0: themed encounters built to the GM Core XP budget (threat × party size × party level), created as a folder of actors.
-- [x] **Recall Knowledge & read-aloud** — ✅ v0.3.0: theater-of-the-mind read-aloud block and a clickable Recall Knowledge check with a player-facing info nugget.
-
-### Item forge
-
-- [x] **Phase 1 — passive items** — ✅ unreleased: describe a wondrous item, get a real Foundry item whose passive Rule Elements are cloned from published exemplars (item bonuses, resistances, weaknesses, immunities, senses, speeds), priced from empirical compendium medians.
-- [x] **Phase 2 — activated items** — ✅ unreleased: 1/day activated abilities (damage, heal, condition, self-buff) delivered as a click-to-run companion macro, with per-copy charge tracking and a chat-card-first, plain-message-fallback design.
-- [x] **Phase 3 — rune weapons & armor** — ✅ v0.3.5.1: generated magic weapons/armor assembled from real base items plus real fundamental and property rune items, priced and leveled by summing the real documents — no memorized rune list or price table.
-
-### Player Characters
-
-- [x] **Full PC-power-level characters** — ✅ v0.3.5.16+: a Player Character generator mode builds real single-class characters (Ancestry/Background/Class/feats/spells/gear, all compendium-grounded) and lets the PF2e system compute stats from the real embedded items — see [Player Character mode](#player-character-mode). Several live-testing rounds have hardened this since first ship; see the status note there for what's still shaking out.
-- [x] **Starting wealth buys real items** — ✅ v0.3.5.23: a character's starting wealth drafts and grounds a wishlist of real magic items (potions, scrolls, wands) against the compendium instead of becoming 100% raw coin.
-- [x] **Rarity cap** — ✅ v0.3.5.23: a Max rarity control in Character mode excludes ancestries/backgrounds/heritages rarer than the GM's chosen cap from what the AI can even pick. Currently only covers those three categories — feats/spells/equipment aren't filtered yet.
-- [x] **Focus spells** — ✅ merged, not yet live-tested: PCs get a real `prepared:"focus"` spellcasting entry with a cloned Rule Element sizing the focus pool (1-3 points, PF2e's hard cap); NPCs get the same entry shape but set the pool directly (only alongside normal spellcasting — a focus-only creature with no spellcasting tradition isn't supported yet). The exact pool-size convention (spell count, capped at 3) is a defensible module default, not checked against GM Core's own creature-design guidance for the number.
-- [x] **Free Archetype variant rule** — ✅ merged, not yet live-tested: an opt-in GM setting adds an extra archetype feat slot at every even level. Known gap: the archetype slot can collide with a regular class feat slot's location at the same level rather than sitting in a truly distinct Free Archetype slot.
-- [x] **Bonus languages from Intelligence** — ✅ merged, not yet live-tested: a character's Intelligence modifier now grants extra language picks beyond the ancestry's own allotment.
-- [x] **Runes on PC gear** — ✅ merged, not yet live-tested: level-appropriate fundamental runes (e.g. "+1 striking") now show up on higher-level character equipment, the same way they already did for NPCs.
-- [x] **Starting wealth spends down further** — ✅ merged, not yet live-tested: a second, smaller purchase pass now buys down leftover starting-wealth coin instead of leaving as much of it unspent.
-
-### Not yet built
-
-- [ ] **Chat command** — e.g. `/forge swamp hag 6` to generate straight from the chat box during play.
+- [ ] **Chat command** — `/forge swamp hag 6` straight from the chat box during play.
 - [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.
 - [ ] **Elite/weak adjustments** and level shifting for existing creatures.
+- [ ] **Multiclass archetypes** and a pre-create screen for swapping individual PC picks.
 
-## Development (for maintainers)
+Shipped features and their versions are in the [release notes](https://github.com/simplyjaytea/simplyPF2e/releases).
 
-There's no full test suite, but a handful of pure-logic regression checks guard specific historical bugs — each is a standalone, dependency-free script (`node scripts/<name>.test.mjs`), no framework or CI wiring. Where the real function touches Foundry's `game`/`foundry` globals (unavailable outside a running world), the check ports the relevant logic verbatim with a comment citing the source lines to keep in sync. Otherwise verify JS changes with `node --check <file>`.
+## For maintainers
 
-## Releasing (for maintainers)
+Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](HISTORY.md).
 
-**Releases are automatic.** Every push to `main` triggers `.github/workflows/auto-release.yml`: it reads the latest git tag, bumps its last version segment (`v0.3.5.1` → `v0.3.5.2`), and calls `release.yml` directly as a reusable workflow to build and publish — no manual tag or dispatch step required.
+There's no test suite. A set of standalone, dependency-free regression checks guard specific historical bugs — `node scripts/<name>.test.mjs`, no framework or CI wiring. Where the real function touches Foundry globals, the check ports that logic verbatim with a comment citing the source to keep in sync. Otherwise verify with `node --check <file>`.
 
-This changes the risk profile of merging: **merging a PR to `main` is no longer a quiet, reversible action.** It ships a public release immediately, and since the install link above points at `releases/latest`, every existing install is offered that update right away. Treat a main-bound merge with the same care you'd give a manual `gh release create`.
+**Releases are automatic.** Every push to `main` triggers `auto-release.yml`, which bumps the last segment of the latest tag (`v0.3.5.1` → `v0.3.5.2`) and calls `release.yml` to build and publish. This means **merging to `main` is not a quiet, reversible action** — it ships a public release immediately, and every existing install is offered that update right away. Treat it with the care of a manual `gh release create`.
 
-The old manual paths still work as a fallback or override if you need to publish out-of-band (e.g. re-cutting a broken release):
-
-- **Push a tag:** `git tag v0.4.0 && git push origin v0.4.0`.
-- **From Actions:** go to **Actions → Release → Run workflow** and enter a version like `0.4.0`.
-- **From Releases:** draft and publish a release by hand with a tag like `v0.4.0`.
-
-Any of these stamps the version into `module.json`, builds `module.zip`, and attaches both to the release.
+Manual paths still work for an out-of-band publish: push a tag (`git tag v0.4.0 && git push origin v0.4.0`), run **Actions → Release → Run workflow**, or publish a release by hand. Each stamps the version into `module.json`, builds `module.zip`, and attaches both.
 
 ## Licensing & attribution
 
