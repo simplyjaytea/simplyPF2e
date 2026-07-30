@@ -816,7 +816,8 @@ async function requestCompletion({ system, user, onProgress }) {
   const body = {
     model: getSetting(SETTINGS.model),
     temperature: Number(getSetting(SETTINGS.temperature)) || 0.8,
-    max_tokens: Number(getSetting(SETTINGS.maxTokens)) || 4000,
+    // Fallback matches the registered default for this setting (settings.mjs).
+    max_tokens: Number(getSetting(SETTINGS.maxTokens)) || 8000,
     stream: true,
     // Ask for exact token usage in the final stream chunk (OpenAI-style;
     // DeepSeek sends it regardless). Dropped first if the provider 400s.

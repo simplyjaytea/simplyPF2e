@@ -50,6 +50,7 @@
       "CharacterPrompt": "Describe the character",
       "CharacterPromptPlaceholder": "e.g. A gruff dwarven artillerist who left the family forge to hunt the beast that killed her mentor...",
       "Character": "Character",
+      "Creature": "Creature",
       "CreateAll": "Create All Actors",
       "CreatedAll": "Created {count} actors in folder \"{name}\".",
       "LevelUp": "Increase level",

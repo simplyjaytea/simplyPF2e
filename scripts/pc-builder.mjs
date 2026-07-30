@@ -518,7 +518,7 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // governed by the key ability first, then alphabetical (a sensible default a
   // GM reviews, same spirit as assignAbilityBoosts). Fixes classes like Fighter
   // (trainedSkills.value == [], all skills come from `additional`) showing zero
-  // trained skills (issue #50 item 3). ponytail: Int-mod bonus skills omitted;
+  // trained skills (issue #50 item 3). NOTE: Int-mod bonus skills omitted;
   // a GM can train more by hand.
   const trained = new Set([
     ...(resolved.backgroundDoc.system?.trainedSkills?.value ?? []),
@@ -614,7 +614,7 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   }
 
   // Spellcasting entry + spells (skipped when no spell resolved to a document).
-  // ponytail: a fixed spontaneous entry is a v1 simplification — prepared-
+  // NOTE: a fixed spontaneous entry is a v1 simplification — prepared-
   // caster slot management (Wizard-style) is out of scope; add if requested.
   if (concept.spellcasting && resolved.spells?.some((s) => s.entry)) {
     const entryId = foundry.utils.randomID();
