@@ -1,9 +1,10 @@
 import * as T from "./tables.mjs";
 import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates } from "./compendium.mjs";
 import {
-  parseCoins, resolveLoot, resolveEquipment, resolveFocusSpells, buildScrollItem,
-  customTreasureItem, customEquipmentItem, applyRunes, capitalized, slugify
+  parseCoins, resolveLoot, resolveEquipment, resolveFocusSpells,
+  buildEquipmentItems, buildLootItems, filterItemTypes
 } from "./builder.mjs";
+import { slugify, capitalized, toHtml } from "./text.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
 import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
@@ -265,41 +266,55 @@ export async function resolvePCConcept(concept) {
  * slot.type`) the candidate list itself was built with — previously a
  * same-named-but-wrong-category feat elsewhere in the compendium could
  * resolve in place of the slot's own intended pick.
+ *
+ * Picks are deduplicated ACROSS slots: PF2e feats aren't repeatable, and both
+ * failure modes here converge on the same name otherwise — the AI can name one
+ * feat for two slots, and the fallback below is `candidates[0]`, which (sorted
+ * by level then name) is IDENTICAL for every slot of a category. A level-20
+ * character whose batched selectFeats() call came back empty used to get ten
+ * copies of the same class feat.
  * @param {{type: string, level: number, candidates: {name: string}[]}[]} featSlots
  * @param {{slot: number, name: string}[]} picks
- * @returns {Promise<{type: string, level: number, entry: object}[]>}
+ * @returns {Promise<{type: string, level: number, name: string, entry: object|null}[]>}
  */
 export async function resolveFeatPicks(featSlots, picks) {
   const bySlot = new Map(picks.map((p) => [p.slot, p.name]));
+  const taken = new Set();
   const resolved = [];
+
+  /** Resolve one name for one slot, rejecting anything already taken. */
+  const resolveFor = (slot, name) => findEntry(
+    getPacksFor("feats"),
+    name,
+    (e) => e.type === "feat"
+      && e.system?.category === slot.type
+      && (e.system?.level?.value ?? 0) <= slot.level
+      && !taken.has(slugify(e.name))
+  );
+
   for (let i = 0; i < featSlots.length; i++) {
     const slot = featSlots[i];
     let name = bySlot.get(i + 1) ?? null;
-    let entry = null;
-    if (name) {
-      entry = await findEntry(
-        getPacksFor("feats"),
-        name,
-        (e) => e.type === "feat" && e.system?.category === slot.type && (e.system?.level?.value ?? 0) <= slot.level
-      );
-      if (!entry) {
-        console.warn(`simplypf2e | feat pick "${name}" for slot ${i + 1} (${slot.type}, level ${slot.level}) did not resolve to a real feat for this slot`);
+    let entry = name ? await resolveFor(slot, name) : null;
+    if (name && !entry) {
+      console.warn(`simplypf2e | feat pick "${name}" for slot ${i + 1} (${slot.type}, level ${slot.level}) did not resolve to an unused feat for this slot`);
+    }
+    if (!entry) {
+      // Fallback: walk this slot's own candidate list (real, already
+      // level/category/trait-filtered) for the first one not already taken.
+      for (const candidate of slot.candidates ?? []) {
+        entry = await resolveFor(slot, candidate.name);
+        if (entry) {
+          name = entry.name;
+          console.warn(`simplypf2e | slot ${i + 1} (${slot.type}, level ${slot.level}) had no usable AI pick — defaulted to "${name}"`);
+          break;
+        }
       }
     }
-    if (!entry && slot.candidates?.length) {
-      // Fallback: the slot's own first candidate is guaranteed to be a real,
-      // already level/category/trait-filtered feat, so this always resolves.
-      name = slot.candidates[0].name;
-      entry = await findEntry(
-        getPacksFor("feats"),
-        name,
-        (e) => e.type === "feat" && e.system?.category === slot.type && (e.system?.level?.value ?? 0) <= slot.level
-      );
-      if (entry) console.warn(`simplypf2e | slot ${i + 1} (${slot.type}, level ${slot.level}) had no usable AI pick — defaulted to "${name}"`);
-    }
-    // entry can still be null only if the slot had no candidates at all
-    // (shouldn't happen — resolvePCConcept only creates slots with >=1
-    // candidate); the name is kept so the preview can still show intent.
+    if (entry) taken.add(slugify(entry.name));
+    // entry can still be null when every candidate for this slot is already
+    // taken (a sparse category at low levels); the name is kept so the preview
+    // can still show intent, and the slot is simply left empty on the sheet.
     resolved.push({ type: slot.type, level: slot.level, name: name ?? `${slot.type} feat`, entry });
   }
   return resolved;
@@ -697,61 +712,15 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
     }
   }
 
-  // Equipment: same quantity/rune/carry-state handling as the NPC pipeline.
-  // Dedup by name first (issue #64 item 3): the AI sometimes pads a thin list
-  // by repeating items — a repeated name is filler, not a real second copy
-  // (genuine stacks come through as one entry with quantity > 1).
-  const seenEquipment = new Set();
-  for (const { name, quantity, value, runes, entry } of resolved.equipment) {
-    const dedupKey = slugify(name);
-    if (seenEquipment.has(dedupKey)) continue;
-    seenEquipment.add(dedupKey);
-    const doc = await getDocument(entry);
-    if (!doc) {
-      items.push(customEquipmentItem(name, quantity, value));
-      continue;
-    }
-    const data = toItemData(doc);
-    if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
-    applyRunes(data, runes, name);
-    if (data.type === "weapon") {
-      data.system.equipped = { ...data.system.equipped, carryType: "held", handsHeld: 1 };
-    } else if (data.type === "armor") {
-      data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
-    }
-    items.push(data);
-  }
+  // Equipment and loot (the character's starting wealth, see
+  // pcStartingWealthGp) use the exact same quantity/rune/carry-state handling
+  // as the NPC pipeline — shared helpers, no PC-specific copy. Equipment is
+  // deduped by name (issue #64 item 3) because the AI pads a thin list by
+  // repeating items; loot dedups for the same reason.
+  items.push(...await buildEquipmentItems(resolved.equipment, { dedup: true }));
+  items.push(...await buildLootItems(resolved.loot));
 
-  // Loot: the character's starting wealth (see pcStartingWealthGp) — same
-  // scroll/custom-treasure handling as the NPC pipeline, completely reused.
-  for (const { name, quantity, value, runes, entry, scroll } of resolved.loot) {
-    if (scroll) {
-      const data = await buildScrollItem(entry, scroll.rank);
-      if (data) {
-        if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
-        items.push(data);
-      } else {
-        items.push(customTreasureItem(name, quantity, value));
-      }
-      continue;
-    }
-    const doc = await getDocument(entry);
-    if (!doc) {
-      items.push(customTreasureItem(name, quantity, value));
-      continue;
-    }
-    const data = toItemData(doc);
-    if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
-    applyRunes(data, runes, name);
-    items.push(data);
-  }
-
-  // Final safety net: never embed an item type the character schema rejects.
-  const safeItems = items.filter((item) => {
-    if (CHARACTER_ITEM_TYPES.has(item.type)) return true;
-    console.warn(`simplypf2e | dropped "${item.name}": item type "${item.type}" is not allowed on character actors`);
-    return false;
-  });
+  const safeItems = filterItemTypes(items, CHARACTER_ITEM_TYPES, "character");
 
   // -----------------------------------------------------------------------
   // SCHEMA NOTE — the actor `system.*` field names below were VERIFIED against
@@ -766,11 +735,6 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // pc-tables.spontaneousSpellSlots) and per-generation starting WEALTH
   // (pcStartingWealthGp — flagged for a human wealth-table cross-check).
   // -----------------------------------------------------------------------
-
-  const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
-  const toHtml = (text) => text
-    ? `<p>${String(text).split(/\n{2,}/).map((p) => esc(p.trim())).filter(Boolean).join("</p><p>")}</p>`
-    : "";
 
   // Bonus languages: capped to the ancestry's own slot count and allowed-list
   // (issue #56.2) — the ancestry's automatic languages (e.g. Common) are

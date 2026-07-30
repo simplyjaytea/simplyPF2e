@@ -142,25 +142,10 @@ export class GeneratorApp extends SpfApp {
       : null;
     const background = { name: resolved.backgroundDoc?.name ?? concept.background, found: Boolean(resolved.backgroundDoc) };
     const pcClass = { name: resolved.classDoc?.name ?? concept.class, found: Boolean(resolved.classDoc) };
-    const feats = (resolved.feats ?? []).map(({ name, entry }) => ({
-      name: entry?.name ?? name,
-      found: Boolean(entry)
-    }));
-    const spells = (resolved.spells ?? []).map(({ spell, entry }) => ({
-      name: entry?.name ?? spell.name,
-      rank: spell.rank,
-      found: Boolean(entry)
-    }));
-    const equipment = (resolved.equipment ?? []).map(({ name, quantity, runes, entry }) => ({
-      name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
-      found: Boolean(entry)
-    }));
-    const loot = (resolved.loot ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
-      name: (scroll && entry
-        ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
-        : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
-      found: Boolean(entry)
-    }));
+    const feats = GeneratorApp.#mapNamed(resolved.feats);
+    const spells = GeneratorApp.#mapSpells(resolved.spells);
+    const equipment = GeneratorApp.#mapGear(resolved.equipment);
+    const loot = GeneratorApp.#mapGear(resolved.loot);
     return {
       concept,
       ancestry,
@@ -173,6 +158,39 @@ export class GeneratorApp extends SpfApp {
       loot,
       matchSummary: this.#matchSummary([ancestry], heritage ? [heritage] : [], [background], [pcClass], feats, spells, equipment, loot)
     };
+  }
+
+  /* The three preview shapes below are identical for creatures and characters,
+     so both #buildPreviewContext and #buildPCPreviewContext share them. Each
+     returns rows carrying `found`, which drives both the per-row checkmark and
+     #matchSummary's aggregate. */
+
+  /** Rows for a plain {name, entry} list (feats). */
+  static #mapNamed(list) {
+    return (list ?? []).map(({ name, entry }) => ({ name: entry?.name ?? name, found: Boolean(entry) }));
+  }
+
+  /** Rows for resolved spells, which carry their cast rank. */
+  static #mapSpells(list) {
+    return (list ?? []).map(({ spell, entry }) => ({
+      name: entry?.name ?? spell.name,
+      rank: spell.rank,
+      found: Boolean(entry)
+    }));
+  }
+
+  /**
+   * Rows for equipment or loot. A runed name is shown as the AI wrote it (the
+   * entry is only the base item), a scroll as the item it will be built into,
+   * and a stack gets its ×N suffix.
+   */
+  static #mapGear(list) {
+    return (list ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
+      name: (scroll && entry
+        ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
+        : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
+      found: Boolean(entry)
+    }));
   }
 
   #buildEncounterPreviewContext() {
@@ -213,25 +231,10 @@ export class GeneratorApp extends SpfApp {
       glossaryName: entry?.name ?? null,
       description: ability.description
     }));
-    const spells = (this.#resolved?.spells ?? []).map(({ spell, entry }) => ({
-      name: entry?.name ?? spell.name,
-      rank: spell.rank,
-      found: Boolean(entry)
-    }));
-    const feats = (this.#resolved?.feats ?? []).map(({ name, entry }) => ({
-      name: entry?.name ?? name,
-      found: Boolean(entry)
-    }));
-    const equipment = (this.#resolved?.equipment ?? []).map(({ name, quantity, runes, entry }) => ({
-      name: (runes?.potency ? name : entry?.name ?? name) + (quantity > 1 ? ` ×${quantity}` : ""),
-      found: Boolean(entry)
-    }));
-    const loot = (this.#resolved?.loot ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
-      name: (scroll && entry
-        ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
-        : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
-      found: Boolean(entry)
-    }));
+    const spells = GeneratorApp.#mapSpells(this.#resolved?.spells);
+    const feats = GeneratorApp.#mapNamed(this.#resolved?.feats);
+    const equipment = GeneratorApp.#mapGear(this.#resolved?.equipment);
+    const loot = GeneratorApp.#mapGear(this.#resolved?.loot);
     return {
       concept,
       stats,
@@ -279,11 +282,17 @@ export class GeneratorApp extends SpfApp {
     // The textarea is hidden in Random mode; keep the last typed prompt then.
     const promptEl = form.querySelector('[name="prompt"]');
     const prompt = promptEl ? promptEl.value : this.#input.prompt;
-    const level = Number(form.querySelector('[name="level"]')?.value ?? 1);
+    const mode = form.querySelector('[name="mode"]:checked')?.value ?? this.#input.mode;
+    // Clamp to the mode's own range, the same way partySize is clamped below:
+    // only Single mode's creature level goes -1..24, and a level left over
+    // from a previous mode would otherwise be sent verbatim to the AI prompt
+    // (the concept is clamped later; the prompt text was not).
+    const [levelMin, levelMax] = mode === "single" ? [-1, 24] : [1, 20];
+    const rawLevel = Number(form.querySelector('[name="level"]')?.value ?? 1);
+    const level = Math.min(levelMax, Math.max(levelMin, Number.isNaN(rawLevel) ? 1 : rawLevel));
     const rarity = form.querySelector('[name="rarity"]')?.value ?? this.#input.rarity;
     const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked ?? true;
     const preset = form.querySelector('[name="preset"]')?.value ?? this.#input.preset;
-    const mode = form.querySelector('[name="mode"]:checked')?.value ?? this.#input.mode;
     const partySize = Math.min(8, Math.max(1, Number(form.querySelector('[name="partySize"]')?.value ?? 4)));
     const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
     const treasureAmount = form.querySelector('[name="treasureAmount"]')?.value ?? this.#input.treasureAmount;
@@ -646,7 +655,7 @@ export class GeneratorApp extends SpfApp {
       // PC concept carries the same fields they read (blurb/description/
       // traits/strikes/equipment/loot/level/name/rarity).
       if (concept.spellcasting) await this._setStep("spells");
-      await this.#refineSpells(concept);
+      await this.#refineSpells(concept, { requireSpells: true });
 
       await this._setStep("equipment");
       await this.#refineEquipment(concept);
@@ -718,9 +727,10 @@ export class GeneratorApp extends SpfApp {
    * compendium-backed list, spells are dropped rather than left as unvetted
    * draft names, same fail-closed behavior as feats elsewhere in the pipeline.
    */
-  async #refineSpells(concept) {
+  async #refineSpells(concept, { requireSpells = false } = {}) {
     const spellcasting = concept?.spellcasting;
     if (!spellcasting) return;
+    const draft = spellcasting.spells;
     try {
       // Both AI calls below run under the single "Spell selection" step, so
       // keep a running token total across them — otherwise the live counter
@@ -762,7 +772,20 @@ export class GeneratorApp extends SpfApp {
       console.warn(`${MODULE_ID} | grounded spell selection failed, dropping spellcasting (unconstrained first-draft spells discarded)`, err);
       spellcasting.spells = [];
     }
-    if (!spellcasting.spells.length) concept.spellcasting = null;
+    if (spellcasting.spells.length) return;
+    // Fail-closed is right for a CREATURE — a monster is fine with one fewer
+    // ability, and unvetted draft names would become nothing on the sheet
+    // anyway. It is the wrong trade for a PLAYER CHARACTER: dropping
+    // spellcasting there hands the GM a Wizard with no spells at all, which is
+    // a broken character rather than a slightly simpler one. So a PC keeps the
+    // ungrounded draft and leans on resolvePCConcept's own findEntry pass,
+    // which still discards anything that doesn't match a real spell.
+    if (requireSpells && draft.length) {
+      console.warn(`${MODULE_ID} | grounded spell selection produced nothing for a character — keeping the ungrounded first draft, which is still compendium-matched before anything is embedded`);
+      spellcasting.spells = draft;
+      return;
+    }
+    concept.spellcasting = null;
   }
 
   /**
@@ -854,10 +877,16 @@ export class GeneratorApp extends SpfApp {
     }
   }
 
+  /**
+   * Create whatever is currently previewed. Routing is driven by which preview
+   * actually EXISTS, not by the mode radio: switching modes leaves the old
+   * preview on screen (its Create button included), and keying off the radio
+   * sent that click to a null concept and silently did nothing.
+   */
   static async #onCreateActor() {
     if (this.#busy) return;
-    if (this.#input.mode === "encounter" || this.#encounter) return this.#createEncounterActors();
-    if (this.#input.mode === "character" || this.#pcConcept) return this.#createCharacterActor();
+    if (this.#encounter) return this.#createEncounterActors();
+    if (this.#pcConcept) return this.#createCharacterActor();
     if (!this.#concept) return;
     this.#busy = true;
     await this.render();

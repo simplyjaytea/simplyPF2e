@@ -10,8 +10,21 @@
  *    of items at the concept's level, not a remembered price table.
  */
 
-import { getPacksFor, EQUIPMENT_TYPES, findEntry, getDocument, toItemData } from "./compendium.mjs";
-import { priceToGp, slugify, capitalized } from "./builder.mjs";
+import {
+  getPacksFor, EQUIPMENT_TYPES, findEntry, getDocument, toItemData, getEquipmentIndex,
+  priceToGp, RARITY_RANK
+} from "./compendium.mjs";
+import { slugify, capitalized, esc } from "./text.mjs";
+import {
+  RUNED_ITEM_KINDS, SECONDARY_ADJECTIVE, SECONDARY_RUNE_FIELD, propertyRuneKey,
+  findFundamentalRune, getBaseItemCandidates, getPropertyRuneCandidates, getFundamentalRuneTiers
+} from "./runes.mjs";
+
+/* Re-exported: the item forge UI imports its whole surface from this module. */
+export {
+  getBaseItemCandidates, getPropertyRuneCandidates, getFundamentalRuneTiers,
+  SECONDARY_ADJECTIVE, RUNED_ITEM_KINDS
+} from "./runes.mjs";
 import {
   RARITY_TREASURE_MULTIPLIER, RESISTANCE, MAX_LEVEL, lookup,
   STRIKE_DAMAGE, SPELL_DC, RARITY_DC_ADJUSTMENT
@@ -19,27 +32,6 @@ import {
 import { findRuleExemplar, EFFECT_KINDS } from "./rule-templates.mjs";
 
 const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
-
-/* "ghost-touch" -> "ghostTouch": the transform PF2e's own rune data uses
- * between a rune's kebab-case slug and its system.runes.property array key
- * (verified against foundryvtt/pf2e source: "flaming", "ghostTouch",
- * "ancestralEchoing" all follow this convention). */
-const kebabToCamel = (s) => String(s).replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
-
-/* Graded property runes ("Flaming (Greater)", "Fortification (Greater)")
- * are the ONE case where the catalog name and the property-array key don't
- * follow simple kebabToCamel: the grade moves from a trailing "(Greater)"/
- * "(Major)" suffix to a LEADING key prefix — "Flaming (Greater)" is key
- * "greaterFlaming", not "flamingGreater" (verified against multiple real
- * examples in foundryvtt/pf2e's runes.ts: greaterFortification, greaterCorrosive,
- * greaterInvisibility, majorQuenching, ...). */
-function propertyRuneKey(name) {
-  const match = /^(.+?)\s*\((Greater|Major)\)$/i.exec(String(name).trim());
-  if (!match) return kebabToCamel(slugify(name));
-  const grade = match[2].toLowerCase();
-  const base = kebabToCamel(slugify(match[1]));
-  return grade + base.charAt(0).toUpperCase() + base.slice(1);
-}
 
 /* Item levels the forge accepts (items start at 1; creature MAX_LEVEL caps it). */
 export const MIN_ITEM_LEVEL = 1;
@@ -148,30 +140,6 @@ function clampDc(raw, level, rarity) {
  * coins and valuables ARE value, they don't have one). */
 const PRICED_TYPES = new Set([...EQUIPMENT_TYPES].filter((t) => t !== "treasure"));
 
-/* packId -> index entries with the extra fields the forge needs. */
-const forgeIndexCache = new Map();
-
-/** Equipment-pack index extended with level, price, usage, and traits. */
-async function getForgeIndex(packId) {
-  if (forgeIndexCache.has(packId)) return forgeIndexCache.get(packId);
-  const pack = game.packs.get(packId);
-  if (!pack) {
-    forgeIndexCache.set(packId, []);
-    return [];
-  }
-  let entries = [];
-  try {
-    const index = await pack.getIndex({
-      fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value"]
-    });
-    entries = [...index];
-  } catch (err) {
-    console.warn(`simplypf2e | itemforge: failed to index pack "${packId}"`, err);
-  }
-  forgeIndexCache.set(packId, entries);
-  return entries;
-}
-
 /* -------------------- empirical pricing -------------------- */
 
 /* All priced items across the equipment packs, as {level, gp}. Cached. */
@@ -182,7 +150,7 @@ async function getPriceSamples() {
     const samples = [];
     const seen = new Set();
     for (const packId of getPacksFor("equipment")) {
-      for (const entry of await getForgeIndex(packId)) {
+      for (const entry of await getEquipmentIndex(packId)) {
         if (!PRICED_TYPES.has(entry.type)) continue;
         const key = slugify(entry.name);
         if (seen.has(key)) continue;
@@ -241,131 +209,6 @@ export async function priceForLevel(level, rarity = "common") {
 }
 
 /* -------------------- runed weapons/armor (Phase 3) -------------------- */
-
-/**
- * Fundamental and property runes are all just real Item documents in the
- * equipment compendium (type "equipment", e.g. "Weapon Potency (+1)",
- * "Striking (Greater)", "Flaming") with their own real level and price —
- * verified against the published foundryvtt/pf2e system source. So a runed
- * weapon/armor needs NO empirical price benchmark and NO memorized rune
- * list: pick a real base item plus real rune items and SUM their real
- * prices; the item's overall level is the MAX level among them (the actual
- * PF2e rule). Same "assemble real pieces" principle as equipment grounding
- * and Phase 1's cloned Rule Elements, applied to runes instead.
- */
-export const RUNED_ITEM_KINDS = new Set(["weapon", "armor"]);
-
-/* Real system.usage.value strings that mark a property rune item as valid
- * for a weapon vs. armor (verified against several published rune items;
- * shield/ammunition-only runes are deliberately excluded — out of scope). */
-const WEAPON_RUNE_USAGE = new Set(["etched-onto-a-weapon"]);
-const ARMOR_RUNE_USAGE = new Set(["etched-onto-armor", "etched-onto-light-armor", "etched-onto-med-heavy-armor"]);
-
-/* Catalog names of the fundamental rune items, exactly as published. */
-const POTENCY_CATALOG_NAME = {
-  weapon: (tier) => `Weapon Potency (+${tier})`,
-  armor: (tier) => `Armor Potency (+${tier})`
-};
-const SECONDARY_CATALOG_NAME = {
-  weapon: { 1: "Striking", 2: "Striking (Greater)", 3: "Striking (Major)" },
-  armor: { 1: "Resilient", 2: "Resilient (Greater)", 3: "Resilient (Major)" }
-};
-/* Adjective form used when assembling the full item name ("+2 Greater
- * Striking Flaming Rapier") — differs from the catalog search name above. */
-export const SECONDARY_ADJECTIVE = {
-  weapon: { 1: "Striking", 2: "Greater Striking", 3: "Major Striking" },
-  armor: { 1: "Resilient", 2: "Greater Resilient", 3: "Major Resilient" }
-};
-/* system.runes field the secondary tier lives on, per kind. */
-const SECONDARY_RUNE_FIELD = { weapon: "striking", armor: "resilient" };
-
-/* All equipment-pack index entries, deduped by name, cached. Reused by every
- * candidate/tier lookup below — one scan serves base items, property runes
- * and fundamental rune tiers alike. */
-let equipmentEntriesPromise = null;
-async function getAllEquipmentEntries() {
-  equipmentEntriesPromise ??= (async () => {
-    const entries = [];
-    const seen = new Set();
-    for (const packId of getPacksFor("equipment")) {
-      for (const entry of await getForgeIndex(packId)) {
-        const key = slugify(entry.name);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        entries.push({
-          name: entry.name,
-          type: entry.type,
-          level: entry.system?.level?.value ?? 0,
-          usage: entry.system?.usage?.value ?? null
-        });
-      }
-    }
-    return entries;
-  })();
-  return equipmentEntriesPromise;
-}
-
-/**
- * Real base weapons/armor at or below a target level, so the AI picks a
- * base item that exists instead of naming one from memory.
- * @returns {Promise<{name: string, level: number}[]>}
- */
-export async function getBaseItemCandidates(kind, maxLevel) {
-  const entries = await getAllEquipmentEntries();
-  return entries
-    .filter((e) => e.type === kind && e.level <= maxLevel)
-    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-    .map((e) => ({ name: e.name, level: e.level }));
-}
-
-/* Fundamental rune items share the same "etched onto a weapon/armor" usage
- * string as property runes (e.g. "Weapon Potency (+1)", "Striking (Greater)")
- * — excluded by name so they never leak into the property-rune candidate
- * list and get double-priced/double-picked alongside the dedicated
- * potency/secondary-tier fields. */
-function fundamentalRuneNames(kind) {
-  const names = new Set([1, 2, 3].map((t) => slugify(POTENCY_CATALOG_NAME[kind](t))));
-  for (const t of [1, 2, 3]) names.add(slugify(SECONDARY_CATALOG_NAME[kind][t]));
-  return names;
-}
-
-/**
- * Real property rune items (by their "etched onto a weapon/armor" usage
- * string) at or below a target level.
- * @returns {Promise<{name: string, level: number}[]>}
- */
-export async function getPropertyRuneCandidates(kind, maxLevel) {
-  const usageSet = kind === "weapon" ? WEAPON_RUNE_USAGE : ARMOR_RUNE_USAGE;
-  const fundamentalNames = fundamentalRuneNames(kind);
-  const entries = await getAllEquipmentEntries();
-  return entries
-    .filter((e) => e.type === "equipment" && usageSet.has(e.usage) && e.level <= maxLevel
-      && !fundamentalNames.has(slugify(e.name)))
-    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-    .map((e) => ({ name: e.name, level: e.level }));
-}
-
-/**
- * Which potency/secondary fundamental-rune tiers fit under a target item
- * level, resolved against each tier's REAL compendium item level (never a
- * memorized threshold — a homebrew rune-price module would be picked up
- * automatically). Tier 0 (no secondary rune) is always valid and implicit.
- * `minPotencyLevel` is the level of the +1 potency rune regardless of the
- * filter, so callers can report why no tiers are available at a low level.
- * @returns {Promise<{potencyTiers: number[], secondaryTiers: number[], minPotencyLevel: number}>}
- */
-export async function getFundamentalRuneTiers(kind, maxLevel) {
-  const entries = await getAllEquipmentEntries();
-  const byName = new Map(entries.map((e) => [slugify(e.name), e]));
-  const levelOf = (name) => byName.get(slugify(name))?.level ?? Infinity;
-  const potencyLevels = [1, 2, 3].map((t) => levelOf(POTENCY_CATALOG_NAME[kind](t)));
-  const secondaryLevels = [1, 2, 3].map((t) => levelOf(SECONDARY_CATALOG_NAME[kind][t]));
-  return {
-    potencyTiers: [1, 2, 3].filter((t) => potencyLevels[t - 1] <= maxLevel),
-    secondaryTiers: [1, 2, 3].filter((t) => secondaryLevels[t - 1] <= maxLevel),
-    minPotencyLevel: potencyLevels[0]
-  };
-}
 
 /**
  * Coerce a raw AI runed-item concept into a safe shape. Every name is
@@ -427,14 +270,10 @@ export async function buildRunedItemData(concept) {
     throw new Error(`Base ${concept.kind} "${concept.baseItemName}" could not be resolved against the compendium.`);
   }
 
-  const potencyEntry = await findEntry(packs, POTENCY_CATALOG_NAME[concept.kind](concept.potency), (e) => e.type === "equipment");
-  const potencyDoc = await getDocument(potencyEntry);
-
-  let secondaryDoc = null;
-  if (concept.secondaryTier) {
-    const secondaryEntry = await findEntry(packs, SECONDARY_CATALOG_NAME[concept.kind][concept.secondaryTier], (e) => e.type === "equipment");
-    secondaryDoc = await getDocument(secondaryEntry);
-  }
+  const potencyDoc = await getDocument(await findFundamentalRune(concept.kind, "potency", concept.potency));
+  const secondaryDoc = concept.secondaryTier
+    ? await getDocument(await findFundamentalRune(concept.kind, "secondary", concept.secondaryTier))
+    : null;
 
   const propertyDocs = [];
   for (const name of concept.propertyRunes) {
@@ -476,14 +315,12 @@ export async function buildRunedItemData(concept) {
   nameParts.push(baseDoc.name);
   data.name = nameParts.join(" ");
 
-  const rarityRank = { common: 0, uncommon: 1, rare: 2, unique: 3 };
   const baseRarity = data.system.traits?.rarity ?? "common";
-  const rarity = (rarityRank[concept.rarity] ?? 0) > (rarityRank[baseRarity] ?? 0) ? concept.rarity : baseRarity;
+  const rarity = (RARITY_RANK[concept.rarity] ?? 0) > (RARITY_RANK[baseRarity] ?? 0) ? concept.rarity : baseRarity;
   const traits = new Set(data.system.traits?.value ?? []);
   traits.add("magical");
   data.system.traits = { ...(data.system.traits ?? {}), value: [...traits], rarity };
 
-  const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
   const paragraphs = String(concept.description ?? "")
     .split(/\n{2,}/).map((p) => `<p>${esc(p.trim())}</p>`).filter((p) => p !== "<p></p>");
   const runeSummary = [
@@ -516,7 +353,7 @@ export async function getUsageOptions() {
   usageOptionsPromise ??= (async () => {
     const counts = new Map();
     for (const packId of getPacksFor("equipment")) {
-      for (const entry of await getForgeIndex(packId)) {
+      for (const entry of await getEquipmentIndex(packId)) {
         if (entry.type !== "equipment") continue;
         const traits = entry.system?.traits?.value ?? [];
         if (!traits.includes("magical")) continue;
@@ -669,8 +506,7 @@ function normalizeActivation(raw, { level, rarity, available }) {
         .filter(Boolean)
         .slice(0, 3);
       // These two are AI free text concatenated into the macro's chat/effect
-      // HTML — escape here at build time, same esc() pattern as elsewhere.
-      const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
+      // HTML — escaped here at build time, same as every other AI string.
       params = {
         effectName: esc(String(p.effectName || "Magic Effect").slice(0, 80)),
         description: esc(String(p.description ?? "").slice(0, 600)),
@@ -885,7 +721,6 @@ function parameterizeRule(rule, effect) {
 export async function buildMagicItemData(concept) {
   const { rules, applied } = await cloneRulesForEffects(concept.effects);
 
-  const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
   const paragraphs = String(concept.description ?? "")
     .split(/\n{2,}/).map((p) => esc(p.trim())).filter(Boolean);
   const descriptionParts = paragraphs.map((p) => `<p>${p}</p>`);

@@ -6,6 +6,7 @@
  */
 
 import { SETTINGS, getSetting } from "./settings.mjs";
+import { slugify } from "./text.mjs";
 
 export const CATEGORIES = [
   "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "heritages"
@@ -25,6 +26,23 @@ export const DEFAULT_PACKS = {
 export const EQUIPMENT_TYPES = new Set([
   "weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit"
 ]);
+
+/**
+ * Convert a PF2e price-value denomination object ({pp, gp, sp, cp}, any
+ * subset present) into a single gp number.
+ */
+export function priceToGp(price) {
+  if (!price || typeof price !== "object") return 0;
+  return (Number(price.pp) || 0) * 10
+    + (Number(price.gp) || 0)
+    + (Number(price.sp) || 0) / 10
+    + (Number(price.cp) || 0) / 100;
+}
+
+/* Ordered common < uncommon < rare < unique. Single source of truth for every
+   rarity comparison in the module (the GM's rarity cap, the item forge's
+   base-item-vs-requested-rarity pick). */
+export const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, unique: 3 };
 
 /**
  * Pack ids a category draws from: the GM's Compendium Sources selection, or
@@ -124,6 +142,65 @@ async function getIndex(packId) {
   const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
   indexCache.set(packId, entries);
   return entries;
+}
+
+/* packId -> index entries carrying the extra fields the equipment-heavy
+   callers need (price/usage), which the shared index above doesn't request. */
+const equipmentIndexCache = new Map();
+
+/**
+ * Equipment-pack index extended with level, price, usage and traits — used by
+ * the rune helpers (runes.mjs) and the item forge's empirical pricing, both of
+ * which need real prices and `usage` strings the default index omits.
+ * @returns {Promise<object[]>} index entries, or [] when the pack is missing
+ */
+export async function getEquipmentIndex(packId) {
+  if (equipmentIndexCache.has(packId)) return equipmentIndexCache.get(packId);
+  const pack = game.packs.get(packId);
+  if (!pack) {
+    equipmentIndexCache.set(packId, []);
+    return [];
+  }
+  let entries = [];
+  try {
+    const index = await pack.getIndex({
+      fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value"]
+    });
+    entries = [...index];
+  } catch (err) {
+    console.warn(`simplypf2e | failed to index equipment pack "${packId}"`, err);
+  }
+  equipmentIndexCache.set(packId, entries);
+  return entries;
+}
+
+/**
+ * Every equipment-pack entry, deduped by name, as lightweight records. One
+ * scan serves rune lookups, base-item candidates and price sampling alike.
+ * @returns {Promise<{name: string, type: string, level: number, gp: number, usage: string|null}[]>}
+ */
+let equipmentEntriesPromise = null;
+export function getAllEquipmentEntries() {
+  equipmentEntriesPromise ??= (async () => {
+    const entries = [];
+    const seen = new Set();
+    for (const packId of getPacksFor("equipment")) {
+      for (const entry of await getEquipmentIndex(packId)) {
+        const key = slugify(entry.name);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        entries.push({
+          name: entry.name,
+          type: entry.type,
+          level: entry.system?.level?.value ?? 0,
+          gp: priceToGp(entry.system?.price?.value),
+          usage: entry.system?.usage?.value ?? null
+        });
+      }
+    }
+    return entries;
+  })();
+  return equipmentEntriesPromise;
 }
 
 /* Filler words that shouldn't block a token match ("Potion of Invisibility"
@@ -282,10 +359,6 @@ export async function getEquipmentCandidates(level, keywords = [], { treasure = 
 export function getLootCandidates(level, keywords = []) {
   return getEquipmentCandidates(level + 2, keywords, { treasure: true });
 }
-
-/* Ordered common < uncommon < rare < unique, for the GM's rarity-cap control
-   (issue: PC generation had no way to exclude Rare/Unique ancestries etc.). */
-const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, unique: 3 };
 
 /**
  * Full unfiltered index of a category's packs, restricted to one item type —

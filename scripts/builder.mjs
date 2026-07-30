@@ -1,5 +1,13 @@
 import * as T from "./tables.mjs";
-import { getPacksFor, findEntry, getDocument, toItemData } from "./compendium.mjs";
+import { getPacksFor, findEntry, getDocument, toItemData, priceToGp } from "./compendium.mjs";
+import { slugify, capitalized, esc, toHtml } from "./text.mjs";
+import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
+
+/* Re-exported so the rest of the module keeps importing its shared helpers
+   from one place; the definitions live in text.mjs / runes.mjs / compendium.mjs. */
+export { slugify, capitalized, esc, toHtml } from "./text.mjs";
+export { parseRunes, applyRunes } from "./runes.mjs";
+export { priceToGp } from "./compendium.mjs";
 
 const SIZES = new Set(["tiny", "sm", "med", "lg", "huge", "grg"]);
 const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
@@ -12,9 +20,6 @@ const STANDARD_SKILLS = new Set([
   "intimidation", "medicine", "nature", "occultism", "performance", "religion",
   "society", "stealth", "survival", "thievery"
 ]);
-
-export const slugify = (value) =>
-  String(value ?? "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 function scale4(value, fallback = "moderate") {
   return SCALE4.has(value) ? value : fallback;
@@ -225,18 +230,6 @@ export function parseScroll(name) {
 }
 
 /**
- * Convert a PF2e price-value denomination object ({pp, gp, sp, cp}, any
- * subset present) into a single gp number.
- */
-export function priceToGp(price) {
-  if (!price || typeof price !== "object") return 0;
-  return (Number(price.pp) || 0) * 10
-    + (Number(price.gp) || 0)
-    + (Number(price.sp) || 0) / 10
-    + (Number(price.cp) || 0) / 100;
-}
-
-/**
  * Resolve loot names against the equipment packs. Loot may sit a little above
  * the creature's level — treasure rewards run ahead of encounter level.
  * Scrolls resolve their SPELL instead (PF2e ships no premade scroll items);
@@ -246,7 +239,10 @@ export function priceToGp(price) {
  * the matched compendium item (or the rank template, for scrolls), falling
  * back to the AI's own estimate when nothing matched or the match has no
  * price. The treasure-budget enforcement sums these, so real prices beat the
- * AI's guesses wherever a real item resolved.
+ * AI's guesses wherever a real item resolved. A runed name resolves to its
+ * BASE item, so the runes' own real price is added on top (see runes.runeGp) —
+ * otherwise a "+1 striking longsword" budgets as a 1 gp longsword while the
+ * sheet renders a ~1,000 gp item, and the coin padding overshoots wildly.
  */
 export async function resolveLoot(concept) {
   const loot = [];
@@ -268,22 +264,22 @@ export async function resolveLoot(concept) {
       });
       continue;
     }
-    const runes = parseRunes(name);
+    // Loot may sit up to 2 levels above the creature, so the runes are capped
+    // at that same level rather than the creature's own.
+    const maxLevel = Math.max(concept.level + 2, 0);
     const entry = await findEntry(
       getPacksFor("equipment"),
-      runes.base,
-      (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level + 2, 0)
+      parseRunes(name).base,
+      (e) => (e.system?.level?.value ?? 0) <= maxLevel
     );
+    const runes = await capRunes(parseRunes(name), entry?.type, maxLevel);
     let resolvedValue = value;
     if (entry) {
       const doc = await getDocument(entry);
       const gp = priceToGp(doc?.system?.price?.value);
-      if (gp > 0) {
-        // Rune-bearing names ("+1 striking rapier") only match the BASE item,
-        // whose price excludes the runes — the AI's estimate is closer there.
-        const hasRunes = runes.potency || runes.striking || runes.resilient;
-        resolvedValue = hasRunes && value > 0 ? value : gp;
-      }
+      // The matched entry is the BASE item, so add the runes' own real price.
+      if (gp > 0) resolvedValue = gp + await runeGp(runes, entry.type);
+      else if (hasRunes(runes)) resolvedValue = value + await runeGp(runes, entry.type);
     }
     loot.push({ name, quantity, value, runes, entry, resolvedValue });
   }
@@ -496,15 +492,19 @@ export async function resolveConcept(concept) {
  */
 export async function resolveEquipment(concept) {
   const equipment = [];
+  const maxLevel = Math.max(concept.level, 0);
   for (const { name, quantity, value } of concept.equipment) {
     // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
     // item matches; the runes are re-applied as system data at creation.
-    const runes = parseRunes(name);
     const entry = await findEntry(
       getPacksFor("equipment"),
-      runes.base,
-      (e) => (e.system?.level?.value ?? 0) <= Math.max(concept.level, 0)
+      parseRunes(name).base,
+      (e) => (e.system?.level?.value ?? 0) <= maxLevel
     );
+    // The item-level cap above only gates the BASE item — without this the AI's
+    // chosen rune tier is ungated, so a level-1 character asked for "+1
+    // striking" could be handed "+3 major striking" (a level-19 item).
+    const runes = await capRunes(parseRunes(name), entry?.type, maxLevel);
     equipment.push({ name, quantity, value, runes, entry });
   }
   return equipment;
@@ -658,39 +658,6 @@ export function enrichDescription(text, level) {
   return out;
 }
 
-const STRIKING_RUNES = { "major striking": 3, "greater striking": 2, "striking": 1 };
-const RESILIENT_RUNES = { "major resilient": 3, "greater resilient": 2, "resilient": 1 };
-
-/**
- * Parse fundamental runes out of an item name like "+1 striking rapier" or
- * "+2 greater resilient breastplate", so the base item can be found in the
- * compendium and the runes applied as real system data.
- */
-export function parseRunes(name) {
-  const result = { base: String(name).trim(), potency: 0, striking: 0, resilient: 0 };
-  const match = /^\s*\+(\d)\s+(.+)$/.exec(result.base);
-  if (!match) return result;
-  result.potency = Math.min(Number(match[1]), 3);
-  let rest = match[2].trim();
-  const lower = () => rest.toLowerCase();
-  for (const [rune, value] of Object.entries(STRIKING_RUNES)) {
-    if (lower().startsWith(`${rune} `)) {
-      result.striking = value;
-      rest = rest.slice(rune.length + 1);
-      break;
-    }
-  }
-  for (const [rune, value] of Object.entries(RESILIENT_RUNES)) {
-    if (lower().startsWith(`${rune} `)) {
-      result.resilient = value;
-      rest = rest.slice(rune.length + 1);
-      break;
-    }
-  }
-  result.base = rest.trim();
-  return result;
-}
-
 /* Which skill identifies a creature, by creature-type trait (Recall Knowledge). */
 const RECALL_KNOWLEDGE_SKILLS = {
   aberration: "occultism", animal: "nature", astral: "occultism", beast: "nature",
@@ -715,6 +682,104 @@ function boldKeywords(text) {
     /(^|; ?)(Frequency|Trigger|Requirements?|Effect|Critical Success|Success|Failure|Critical Failure)\b\s*/g,
     (_, lead, keyword) => `${lead}<strong>${keyword}</strong> `
   );
+}
+
+/**
+ * Turn resolved equipment into embeddable item data: real compendium clones
+ * with quantities, fundamental runes and sensible carry states applied;
+ * anything unmatched becomes a custom gear item at the AI's estimated price so
+ * it doesn't silently vanish. Shared verbatim by the NPC and PC pipelines —
+ * the only difference between them was PC-side name dedup, which is now the
+ * `dedup` flag (the AI pads a thin list by repeating items; a repeated NAME is
+ * filler, since a genuine stack arrives as one entry with quantity > 1).
+ * @param {object[]} equipment  entries from resolveEquipment()
+ * @param {{dedup?: boolean}} [options]
+ * @returns {Promise<object[]>} item data ready to embed
+ */
+export async function buildEquipmentItems(equipment, { dedup = false } = {}) {
+  const items = [];
+  const seen = new Set();
+  for (const { name, quantity, value, runes, entry } of equipment ?? []) {
+    if (dedup) {
+      const key = slugify(name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    const doc = await getDocument(entry);
+    if (!doc) {
+      items.push(customEquipmentItem(name, quantity, value));
+      continue;
+    }
+    const data = toItemData(doc);
+    setQuantity(data, quantity);
+    applyRunes(data, runes);
+    if (data.type === "weapon") {
+      data.system.equipped = { ...data.system.equipped, carryType: "held", handsHeld: 1 };
+    } else if (data.type === "armor") {
+      data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
+    }
+    items.push(data);
+  }
+  return items;
+}
+
+/**
+ * Turn resolved loot into embeddable item data (unequipped, in inventory):
+ * scrolls assembled from their rank template, everything else a real
+ * compendium clone with quantities and runes, and anything unmatched a custom
+ * treasure item at the AI's estimated value so the haul keeps its worth.
+ * Shared by the NPC pipeline (dropped loot) and the PC one (starting wealth).
+ * Deduped by name for the same reason equipment is.
+ * @param {object[]} loot  entries from resolveLoot()
+ * @returns {Promise<object[]>} item data ready to embed
+ */
+export async function buildLootItems(loot) {
+  const items = [];
+  const seen = new Set();
+  for (const { name, quantity, value, runes, entry, scroll } of loot ?? []) {
+    // Coins are the one line that legitimately repeats (applyTreasureBudget
+    // may add a Gold Pieces line next to an AI-drafted one), so they skip
+    // dedup and simply stack on the sheet.
+    if (!parseCoins(name)) {
+      const key = slugify(name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    if (scroll) {
+      const data = await buildScrollItem(entry, scroll.rank);
+      items.push(data ? setQuantity(data, quantity) : customTreasureItem(name, quantity, value));
+      continue;
+    }
+    const doc = await getDocument(entry);
+    if (!doc) {
+      items.push(customTreasureItem(name, quantity, value));
+      continue;
+    }
+    const data = toItemData(doc);
+    setQuantity(data, quantity);
+    applyRunes(data, runes);
+    items.push(data);
+  }
+  return items;
+}
+
+/** Set a stack size, but only on item types that actually carry one. */
+function setQuantity(data, quantity) {
+  if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
+  return data;
+}
+
+/**
+ * Final safety net before Actor.create: a single item of a type the actor's
+ * schema rejects renders the whole sheet unopenable, so anything outside the
+ * allowed set is dropped with a warning rather than sinking the actor.
+ */
+export function filterItemTypes(items, allowed, actorLabel) {
+  return items.filter((item) => {
+    if (allowed.has(item.type)) return true;
+    console.warn(`simplypf2e | dropped "${item.name}": item type "${item.type}" is not allowed on ${actorLabel} actors`);
+    return false;
+  });
 }
 
 /**
@@ -760,27 +825,6 @@ function actionIcon(actionType) {
     free: "systems/pf2e/icons/actions/FreeAction.webp",
     passive: "systems/pf2e/icons/actions/Passive.webp"
   }[actionType] ?? "systems/pf2e/icons/actions/Passive.webp";
-}
-
-/**
- * Apply parsed fundamental runes to weapon/armor item data in place and rename
- * it to the runed name. The secondary rune is `striking` on weapons and
- * `resilient` on armor; each field keeps whichever value is higher (the item's
- * own or the parsed one). No-ops on other item types. Returns the item data.
- */
-export function applyRunes(data, runes, name) {
-  const secondaryField = data.type === "weapon" ? "striking"
-    : data.type === "armor" ? "resilient" : null;
-  if (!secondaryField) return data;
-  if (runes.potency || runes[secondaryField]) {
-    data.system.runes = {
-      ...data.system.runes,
-      potency: Math.max(runes.potency, data.system.runes?.potency ?? 0),
-      [secondaryField]: Math.max(runes[secondaryField], data.system.runes?.[secondaryField] ?? 0)
-    };
-    data.name = capitalized(name);
-  }
-  return data;
 }
 
 /**
@@ -837,9 +881,7 @@ export async function createActor(concept, resolved, { img = null } = {}) {
       items.push(toItemData(doc));
       continue;
     }
-    const escaped = foundry.utils.escapeHTML
-      ? foundry.utils.escapeHTML(ability.description)
-      : ability.description;
+    const escaped = esc(ability.description);
     items.push({
       name: ability.name,
       type: "action",
@@ -930,66 +972,17 @@ export async function createActor(concept, resolved, { img = null } = {}) {
     }
   }
 
-  // Equipment: apply quantities, fundamental runes, and sensible carry states.
-  // Anything without a compendium match becomes a custom gear item at the AI's
-  // estimated price, so it doesn't silently vanish from the actor.
-  for (const { name, quantity, value, runes, entry } of resolved.equipment) {
-    const doc = await getDocument(entry);
-    if (!doc) {
-      items.push(customEquipmentItem(name, quantity, value));
-      continue;
-    }
-    const data = toItemData(doc);
-    if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
-    applyRunes(data, runes, name);
-    if (data.type === "weapon") {
-      data.system.equipped = { ...data.system.equipped, carryType: "held", handsHeld: 1 };
-    } else if (data.type === "armor") {
-      data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
-    }
-    items.push(data);
-  }
+  items.push(...await buildEquipmentItems(resolved.equipment));
+  items.push(...await buildLootItems(resolved.loot));
 
-  // Loot: apply quantities and runes (unequipped, in inventory). Anything
-  // without a compendium match becomes a custom treasure item at the AI's
-  // estimated value, so the haul keeps its worth instead of vanishing.
-  for (const { name, quantity, value, runes, entry, scroll } of resolved.loot) {
-    if (scroll) {
-      const data = await buildScrollItem(entry, scroll.rank);
-      if (data) {
-        if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
-        items.push(data);
-      } else {
-        items.push(customTreasureItem(name, quantity, value));
-      }
-      continue;
-    }
-    const doc = await getDocument(entry);
-    if (!doc) {
-      items.push(customTreasureItem(name, quantity, value));
-      continue;
-    }
-    const data = toItemData(doc);
-    if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
-    applyRunes(data, runes, name);
-    items.push(data);
-  }
+  const safeItems = filterItemTypes(items, NPC_ITEM_TYPES, "NPC");
 
-  // Final safety net: never embed an item type the NPC schema rejects — a
-  // single illegal item renders the whole sheet unopenable.
-  const safeItems = items.filter((item) => {
-    if (NPC_ITEM_TYPES.has(item.type)) return true;
-    console.warn(`simplypf2e | dropped "${item.name}": item type "${item.type}" is not allowed on NPC actors`);
-    return false;
-  });
-
-  const esc = (text) => (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(text) : text);
   const notesParts = [];
   if (concept.readAloud) {
     notesParts.push(`<blockquote class="spf-read-aloud"><em>${esc(concept.readAloud)}</em></blockquote>`);
   }
   if (concept.description) {
-    notesParts.push(`<p>${concept.description.split(/\n{2,}/).map((p) => esc(p.trim())).filter(Boolean).join("</p><p>")}</p>`);
+    notesParts.push(toHtml(concept.description));
   }
   if (concept.recallKnowledge) {
     const skill = recallKnowledgeSkill(concept.traits);
@@ -1062,8 +1055,4 @@ export async function createActor(concept, resolved, { img = null } = {}) {
   }
 
   return Actor.create(actorData);
-}
-
-export function capitalized(text) {
-  return String(text).split(" ").map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
 }
