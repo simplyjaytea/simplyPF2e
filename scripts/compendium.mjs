@@ -164,7 +164,7 @@ export async function getEquipmentIndex(packId) {
   let entries = [];
   try {
     const index = await pack.getIndex({
-      fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value"]
+      fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value", "system.category"]
     });
     entries = [...index];
   } catch (err) {
@@ -177,7 +177,7 @@ export async function getEquipmentIndex(packId) {
 /**
  * Every equipment-pack entry, deduped by name, as lightweight records. One
  * scan serves rune lookups, base-item candidates and price sampling alike.
- * @returns {Promise<{name: string, type: string, level: number, gp: number, usage: string|null}[]>}
+ * @returns {Promise<{name: string, type: string, level: number, gp: number, usage: string|null, category: string|null}[]>}
  */
 let equipmentEntriesPromise = null;
 export function getAllEquipmentEntries() {
@@ -194,7 +194,8 @@ export function getAllEquipmentEntries() {
           type: entry.type,
           level: entry.system?.level?.value ?? 0,
           gp: priceToGp(entry.system?.price?.value),
-          usage: entry.system?.usage?.value ?? null
+          usage: entry.system?.usage?.value ?? null,
+          category: entry.system?.category ?? null
         });
       }
     }
