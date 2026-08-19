@@ -576,3 +576,19 @@
 .spf-itemforge-button i {
   color: inherit;
 }
+.simplypf2e .spf-provider-warning {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.simplypf2e .spf-provider-endpoint {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.simplypf2e .spf-provider-warning button {
+  flex: 0 0 auto;
+  width: auto;
+}

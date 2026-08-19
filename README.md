@@ -52,21 +52,24 @@ Configure your AI provider under **Game Settings → Configure Settings → Simp
 | Setting | Description |
 | --- | --- |
 | API Base URL | Any OpenAI-compatible endpoint. Defaults to DeepSeek. |
-| API Key | Your provider key. |
-| Model | e.g. `deepseek-chat`, `deepseek-reasoner`, `gpt-4o` — the exact API identifier, not the marketing name. |
-| Creativity | Sampling temperature (0–2). |
-| Max response tokens | Raise if complex creatures come back truncated. |
+| API Key | Your provider key, stored in this browser and bound to the exact API Base URL. Leave blank for a keyless local server. |
+| Model | e.g. `deepseek-v4-flash`, `deepseek-v4-pro`, `gpt-4o` — the exact API identifier, not the marketing name. |
+| Creativity | Sampling temperature (0–2) for creative generation. Grounding/selectors always use temperature 0. |
+| Max response tokens | Global ceiling. Each operation applies a smaller production-safe cap where possible. |
 | Request timeout | Aborts only if the provider sends *no data* for this long (default 90 s). |
 | Free Archetype | Optional variant rule, off by default. Adds an extra archetype feat slot at every even level in Character mode. |
 
 **Providers**
 
-- **DeepSeek** — `https://api.deepseek.com/v1`, model `deepseek-chat`. Cheap, strong JSON, the recommended default.
+- **DeepSeek** — `https://api.deepseek.com/v1`, model `deepseek-v4-flash`. Cheap, strong JSON, the recommended default.
 - **OpenAI** — `https://api.openai.com/v1`, model `gpt-4o`
 - **OpenRouter** — `https://openrouter.ai/api/v1`, any hosted model
-- **Ollama (local)** — `http://localhost:11434/v1`, no key. Set `OLLAMA_ORIGINS=*` (or your Foundry origin) so the browser may call it. Expect lower quality unless you run a large model.
+- **Ollama (local)** — `http://localhost:11434/v1`, usually no key. Set `OLLAMA_ORIGINS` to the exact Foundry browser origin (for example `http://localhost:30000`) so the browser may call it; avoid wildcard origins.
+- **LM Studio (local)** — `http://localhost:1234/v1`, no key unless server authentication is enabled. Keep the server bound to loopback; require authentication if LAN serving or cross-origin access is enabled. LM Studio 0.4.8+ honors Chat Completions reasoning controls; older versions still work through compatibility fallback but may not disable reasoning.
 
-> **Your key stays local.** Requests go straight from the GM's browser to the provider, and the key is a **client** setting stored in that browser only — never synced to the world, so players and other GMs can't read it. Each GM machine that generates needs its own key.
+SimplyPF2e disables separate model reasoning for its structured generation calls so bounded response budgets are spent on complete JSON. Providers that do not support the control fall back to their ordinary OpenAI-compatible request behavior.
+
+> **Provider security:** requests go straight from the GM's browser to the configured provider. API keys are client settings, never synced to the world, and are sent only to the exact Base URL they were authorized for. Saving a key or changing the Base URL disables it until confirmation. Open the generator, verify the displayed endpoint, and click **Authorize for this endpoint**. Existing keys from older SimplyPF2e versions also start disabled after this upgrade. Generated prompts and character data are sent to remote providers when a remote endpoint is configured.
 
 ### Compendium sources
 
@@ -188,11 +191,11 @@ Shipped features and their versions are in the [release notes](https://github.co
 
 Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](HISTORY.md).
 
-There's no test suite. A set of standalone, dependency-free regression checks guard specific historical bugs — `node scripts/<name>.test.mjs`, no framework or CI wiring. Where the real function touches Foundry globals, the check ports that logic verbatim with a comment citing the source to keep in sync. Otherwise verify with `node --check <file>`.
+Standalone, dependency-free regression checks guard historical bugs and production-safe pure helpers — `node scripts/<name>.test.mjs`, no framework required. CI syntax-checks every module and runs every `*.test.mjs` before any release is created. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
 
 **Releases are automatic.** Every push to `main` triggers `auto-release.yml`, which bumps the last segment of the latest tag (`v0.3.5.1` → `v0.3.5.2`) and calls `release.yml` to build and publish. This means **merging to `main` is not a quiet, reversible action** — it ships a public release immediately, and every existing install is offered that update right away. Treat it with the care of a manual `gh release create`.
 
-Manual paths still work for an out-of-band publish: push a tag (`git tag v0.4.0 && git push origin v0.4.0`), run **Actions → Release → Run workflow**, or publish a release by hand. Each stamps the version into `module.json`, builds `module.zip`, and attaches both.
+Manual paths still work for an out-of-band publish: push a tag (`git tag v0.4.0 && git push origin v0.4.0`) or run **Actions → Release → Run workflow**. Each verifies first, stamps the version into `module.json`, builds `module.zip`, and attaches both. Publishing a release directly in GitHub is intentionally unsupported because validation cannot stop an already-public release.
 
 ## Licensing & attribution
 

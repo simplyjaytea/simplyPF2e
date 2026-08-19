@@ -7,19 +7,19 @@
       },
       "ApiKey": {
         "Name": "API Key",
-        "Hint": "Your API key for the provider above. Stored only in this browser's client settings — it is never synced to the world or to other connected users."
+        "Hint": "API key for the current API Base URL. It stays in this browser and is never synced to the world or other users. Saving the key or changing the Base URL leaves it disabled until you verify the displayed endpoint and authorize it from the generator. Leave blank for a keyless local server such as Ollama or LM Studio."
       },
       "Model": {
         "Name": "Model",
-        "Hint": "Model identifier, e.g. deepseek-chat, deepseek-reasoner, gpt-4o, or any model your provider offers."
+        "Hint": "Model identifier, e.g. deepseek-v4-flash, deepseek-v4-pro, gpt-4o, or any model your provider offers."
       },
       "Temperature": {
         "Name": "Creativity (temperature)",
-        "Hint": "Higher values give more creative (and less predictable) concepts."
+        "Hint": "Higher values give more creative (and less predictable) concepts. Grounding and selection operations always use temperature 0 for reliable local-model output."
       },
       "MaxTokens": {
         "Name": "Max response tokens",
-        "Hint": "Upper limit for the AI response length. Reasoning models (like DeepSeek's) spend part of this budget thinking before they write, so keep it generous — raise it if you see truncation errors."
+        "Hint": "Global upper limit for AI responses. Each operation applies a smaller production-safe cap where possible; reasoning is disabled so the allowance is reserved for complete structured output."
       },
       "RequestTimeout": {
         "Name": "Request timeout (seconds)",
@@ -71,7 +71,12 @@
       "RerollLootTooltip": "Generate different loot without changing the creature",
       "Discard": "Discard",
       "Created": "Created actor \"{name}\".",
-      "NoApiKey": "No API key is configured. Set one in Module Settings → SimplyPF2e before generating."
+      "NoApiKey": "No API key is configured for this remote provider. Set one in Module Settings → SimplyPF2e, or use a keyless local Ollama/LM Studio endpoint.",
+      "ApiKeyNotAuthorized": "Stored API key is not authorized for the current API Base URL and will not be sent.",
+      "ApiKeyEndpoint": "Endpoint:",
+      "AuthorizeApiKey": "Authorize for this endpoint",
+      "ApiKeyAuthorized": "API key authorized for the current endpoint.",
+      "ApiKeyAuthorizationFailed": "The API endpoint changed before authorization completed. Review it and try again."
     },
     "Presets": {
       "None": "— No preset —",
@@ -279,9 +284,10 @@
       "ApiError": "The AI provider returned an error ({status}): {detail}",
       "NetworkError": "Could not reach the AI provider: {message}. If you are using a local or self-hosted provider, make sure it allows requests from Foundry (CORS).",
       "EmptyResponse": "The AI provider returned an empty response. This was retried once already — check the provider's status page and your model name.",
-      "Truncated": "The AI ran out of tokens before finishing its answer ({max} allowed). Raise \"Max response tokens\" in the module settings — reasoning models spend part of the budget thinking before they write.",
+      "Truncated": "The AI ran out of tokens before finishing its answer ({max} allowed). Try a model with efficient structured output or shorten the prompt; raise \"Max response tokens\" only when it is below this operation's safety cap.",
       "Timeout": "The AI provider sent no data for {seconds} seconds and the request was aborted. Check the model name and provider status, or raise the timeout in the module settings.",
       "BadJson": "The AI response was not valid JSON. Try generating again.",
+      "BadStructure": "The AI response was incomplete ({detail}). Try a stronger structured-output model or generate again.",
       "WrongSystem": "SimplyPF2e requires the Pathfinder Second Edition (pf2e) game system."
     }
   }

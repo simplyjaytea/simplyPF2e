@@ -31,7 +31,48 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find scripts -type f -name '*.mjs' -print0 | sort -z)
+          if (( ${#files[@]} == 0 )); then
+            echo "No .mjs files found under scripts/" >&2
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            node --check "$file"
+          done
+
+      - name: Run regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' tests < <(find scripts -type f -name '*.test.mjs' -print0 | sort -z)
+          if (( ${#tests[@]} == 0 )); then
+            echo "No regression checks found under scripts/" >&2
+            exit 1
+          fi
+          for test_file in "${tests[@]}"; do
+            echo "Running $test_file"
+            node "$test_file"
+          done
+
   compute-version:
+    needs: verify
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.next.outputs.version }}
@@ -45,7 +86,9 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --tags --force
-          LATEST=$(git tag --list 'v*' | sort -V | tail -1)
+          # Ignore non-version tags so one malformed v* tag cannot poison the
+          # numeric last-segment bump below.
+          LATEST=$(git tag --list | sed -nE '/^v(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))+$/p' | sort -V | tail -1)
           LATEST="${LATEST:-v0.0.0}"
           BASE="${LATEST%.*}"
           LAST="${LATEST##*.}"

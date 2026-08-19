@@ -2,6 +2,17 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-19 — Production-hardening pass 1 (provider safety, context bounds, release gates)
+
+- Bound each browser's API key to the exact normalized API Base URL. New, changed, and legacy keys stay disabled until the displayed endpoint is verified and **Authorize for this endpoint** is clicked; changing endpoint invalidates the binding. Keyless Ollama/LM Studio and common local/LAN endpoints no longer show a false missing-key warning.
+- Added hard, balanced candidate ceilings: spells 96 total/12 per rank, equipment and loot 120, feats 16 per slot. Removed the narrow-filter path that could expand into an entire compendium. High-level feat prompts now send each repeated feat name once and reference it by short per-slot IDs.
+- Added per-operation output/sampling profiles. Grounding calls use temperature 0 and small output limits; creative concept calls retain larger configurable budgets. Separate model reasoning is disabled for structured JSON work, with provider-specific DeepSeek vs. Ollama/LM Studio controls and safe fallback. Temperature 0 now works. Length-truncated and structurally incomplete JSON fails closed instead of being silently repaired into a partial actor.
+- Replaced the retired default DeepSeek alias with `deepseek-v4-flash`. Persisted legacy aliases are translated only for DeepSeek's first-party hostname at request time; custom gateway model IDs remain untouched.
+- Added production-import regression checks for provider auth, candidate caps, task profiles, compact feat IDs, and JSON parsing.
+- Added mandatory syntax/regression gates to every supported release route. Archives exclude `*.test.mjs`; archive validation completes before a GitHub release is created. Directly publishing a GitHub release is no longer a supported trigger because an already-public release cannot be pre-gated.
+
+**Still requires live validation before release:** Foundry v13/v14 settings callbacks, browser calls to keyless Ollama and LM Studio, one remote keyed request after endpoint authorization, and full NPC/PC generation at low and high levels.
+
 ## 2026-07-17 — Focus-spell support (PC + NPC), doc restructuring
 
 Roadmap item, previously listed unbuilt. Planned before coding rather than delegated blind:

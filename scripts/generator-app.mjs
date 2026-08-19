@@ -1,4 +1,7 @@
-import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
+import {
+  MODULE_ID, SETTINGS, getSetting, getProviderAuthWarningKey, getProviderRequestConfig,
+  authorizeApiKeyForCurrentBaseUrl
+} from "./settings.mjs";
 import {
   generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
   generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats
@@ -54,7 +57,8 @@ export class GeneratorApp extends SpfApp {
       partyDown: GeneratorApp.#onPartyDown,
       memberUp: GeneratorApp.#onMemberUp,
       memberDown: GeneratorApp.#onMemberDown,
-      rerollLoot: GeneratorApp.#onRerollLoot
+      rerollLoot: GeneratorApp.#onRerollLoot,
+      authorizeApiKey: GeneratorApp.#onAuthorizeApiKey
     }
   };
 
@@ -81,12 +85,18 @@ export class GeneratorApp extends SpfApp {
   #exampleTick = Math.floor(Math.random() * 5);
 
   async _prepareContext() {
+    const authState = getProviderRequestConfig();
+    const authWarningKey = getProviderAuthWarningKey(authState);
     return {
       input: this.#input,
       busy: this.#busy,
       error: this.#error,
       progress: this._progress,
-      hasApiKey: Boolean(getSetting(SETTINGS.apiKey)),
+      apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
+      providerBaseUrl: authState.baseUrl,
+      canAuthorizeApiKey: Boolean(
+        authState.baseUrl && authState.hasConfiguredApiKey && !authState.apiKeyIsBound
+      ),
       model: getSetting(SETTINGS.model),
       rarities: [
         { value: "common", label: "SIMPLYPF2E.Rarity.Common" },
@@ -330,6 +340,16 @@ export class GeneratorApp extends SpfApp {
 
   static #onLevelUp() {
     this.#stepLevel(1);
+  }
+
+  static async #onAuthorizeApiKey(_event, target) {
+    const authorized = await authorizeApiKeyForCurrentBaseUrl(target.dataset.baseUrl);
+    if (authorized) {
+      ui.notifications.info(game.i18n.localize("SIMPLYPF2E.Generator.ApiKeyAuthorized"));
+    } else {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ApiKeyAuthorizationFailed"));
+    }
+    await this.render();
   }
 
   static #onLevelDown() {
@@ -751,10 +771,14 @@ export class GeneratorApp extends SpfApp {
         keywords = focus.keywords;
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.SpellFocus"), focus.usage);
       } catch (err) {
-        console.warn(`${MODULE_ID} | spell focus selection failed, using unfiltered spell list`, err);
+        console.warn(`${MODULE_ID} | spell focus selection failed, using first-draft spell names only`, err);
       }
       stepTokens += lastTokens;
-      const candidates = await getSpellCandidates(spellcasting.tradition, spellcasting.maxRank, keywords);
+      const candidates = await getSpellCandidates(
+        spellcasting.tradition,
+        spellcasting.maxRank,
+        [...spellcasting.spells.map((spell) => spell.name), ...keywords]
+      );
       if (!candidates.length) {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
         spellcasting.spells = [];
@@ -799,11 +823,12 @@ export class GeneratorApp extends SpfApp {
   async #refineEquipment(concept) {
     if (!concept?.equipment?.length) return;
     try {
-      const keywords = [...new Set(
-        [...concept.equipment.map((e) => e.name), ...concept.strikes.map((s) => s.name)]
-          .flatMap((name) => String(name).toLowerCase().split(/[^a-z0-9]+/))
-          .filter((token) => token.length > 2)
-      )];
+      const draftNames = [...concept.equipment.map((e) => e.name), ...concept.strikes.map((s) => s.name)]
+        .map((name) => String(name).toLowerCase()).filter(Boolean);
+      const keywords = [...new Set([
+        ...draftNames,
+        ...draftNames.flatMap((name) => name.split(/[^a-z0-9]+/)).filter((token) => token.length > 2)
+      ])];
       const candidates = await getEquipmentCandidates(concept.level, keywords);
       if (!candidates.length) return;
       const { equipment, usage } = await selectEquipment({
@@ -833,11 +858,11 @@ export class GeneratorApp extends SpfApp {
     if (!concept?.loot?.length) return;
     if (concept.loot.every((l) => parseCoins(l.name) || parseScroll(l.name))) return;
     try {
-      const keywords = [...new Set(
-        concept.loot.map((l) => l.name)
-          .flatMap((name) => String(name).toLowerCase().split(/[^a-z0-9]+/))
-          .filter((token) => token.length > 2)
-      )];
+      const draftNames = concept.loot.map((loot) => String(loot.name).toLowerCase()).filter(Boolean);
+      const keywords = [...new Set([
+        ...draftNames,
+        ...draftNames.flatMap((name) => name.split(/[^a-z0-9]+/)).filter((token) => token.length > 2)
+      ])];
       const candidates = await getLootCandidates(concept.level, keywords);
       if (!candidates.length) return;
       const { loot, usage } = await selectLoot({

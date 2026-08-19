@@ -1,4 +1,7 @@
-import { MODULE_ID, SETTINGS, getSetting } from "./settings.mjs";
+import {
+  MODULE_ID, SETTINGS, getSetting, getProviderAuthWarningKey, getProviderRequestConfig,
+  authorizeApiKeyForCurrentBaseUrl
+} from "./settings.mjs";
 import { generateMagicItemConcept, generateRunedItemConcept } from "./ai.mjs";
 import { availableEffectKinds, EFFECT_KINDS } from "./rule-templates.mjs";
 import {
@@ -31,6 +34,7 @@ export class ItemForgeApp extends SpfApp {
       generate: ItemForgeApp.#onGenerate,
       createItem: ItemForgeApp.#onCreateItem,
       discard: ItemForgeApp.#onDiscard,
+      authorizeApiKey: ItemForgeApp.#onAuthorizeApiKey,
       levelUp: ItemForgeApp.#onLevelUp,
       levelDown: ItemForgeApp.#onLevelDown
     }
@@ -56,12 +60,18 @@ export class ItemForgeApp extends SpfApp {
   #unavailableKinds = null;
 
   async _prepareContext() {
+    const authState = getProviderRequestConfig();
+    const authWarningKey = getProviderAuthWarningKey(authState);
     return {
       input: this.#input,
       busy: this.#busy,
       error: this.#error,
       progress: this._progress,
-      hasApiKey: Boolean(getSetting(SETTINGS.apiKey)),
+      apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
+      providerBaseUrl: authState.baseUrl,
+      canAuthorizeApiKey: Boolean(
+        authState.baseUrl && authState.hasConfiguredApiKey && !authState.apiKeyIsBound
+      ),
       model: getSetting(SETTINGS.model),
       minLevel: MIN_ITEM_LEVEL,
       maxLevel: MAX_ITEM_LEVEL,
@@ -132,6 +142,16 @@ export class ItemForgeApp extends SpfApp {
 
   static #onLevelUp() {
     this.#stepLevel(1);
+  }
+
+  static async #onAuthorizeApiKey(_event, target) {
+    const authorized = await authorizeApiKeyForCurrentBaseUrl(target.dataset.baseUrl);
+    if (authorized) {
+      ui.notifications.info(game.i18n.localize("SIMPLYPF2E.Generator.ApiKeyAuthorized"));
+    } else {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ApiKeyAuthorizationFailed"));
+    }
+    await this.render();
   }
 
   static #onLevelDown() {

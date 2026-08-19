@@ -252,18 +252,195 @@ export async function getDocument(entry) {
   return pack.getDocument(entry._id);
 }
 
-/** Below this many keyword-filtered results, the filter is discarded as too narrow. */
-const MIN_FILTERED_SPELLS = 12;
+/* Hard ceilings for the name catalogs serialized into AI prompts. These stay
+ * deliberately conservative: broad enough to offer real choices, but small
+ * enough that installing another content pack cannot silently consume the
+ * model's whole context window. */
+export const SPELL_CANDIDATE_LIMIT = 96;
+export const SPELL_CANDIDATES_PER_RANK = 12;
+export const SPELL_CANDIDATE_FLOOR = 40;
+export const EQUIPMENT_CANDIDATE_LIMIT = 120;
+export const LOOT_CANDIDATE_LIMIT = 120;
+export const EQUIPMENT_CANDIDATE_FLOOR = 48;
+export const FEAT_CANDIDATE_LIMIT = 16;
+export const FEAT_CANDIDATES_PER_LEVEL = 8;
+
+const normalizedKeywords = (keywords) => [...new Set(
+  (Array.isArray(keywords) ? keywords : [])
+    .map((keyword) => normalize(keyword))
+    .filter((keyword) => keyword && !STOPWORDS.has(keyword))
+)];
+
+/* Exact names win, then name/trait matches. This is intentionally lexical:
+ * candidate generation must stay deterministic and model-free. */
+function relevanceScore(candidate, keywords) {
+  if (!keywords.length) return 0;
+  const name = normalize(candidate.name);
+  const nameTokens = new Set(name.split(" ").filter(Boolean));
+  const traits = new Set(
+    (Array.isArray(candidate.traits) ? candidate.traits : []).map(normalize).filter(Boolean)
+  );
+  let score = 0;
+  for (const keyword of keywords) {
+    if (name === keyword) score += 10000;
+    else if (name.includes(keyword)) score += 1000;
+    if (traits.has(keyword)) score += 800;
+    const tokens = keyword.split(" ").filter((token) => !STOPWORDS.has(token));
+    if (tokens.length && tokens.every((token) => nameTokens.has(token))) score += 400;
+  }
+  return score;
+}
+
+function roundRobin(buckets, limit) {
+  const capped = Math.max(Math.floor(Number(limit) || 0), 0);
+  if (!capped) return [];
+  const offsets = buckets.map(() => 0);
+  const selected = [];
+  let advanced = true;
+  while (selected.length < capped && advanced) {
+    advanced = false;
+    for (let i = 0; i < buckets.length && selected.length < capped; i++) {
+      if (offsets[i] >= buckets[i].length) continue;
+      selected.push(buckets[i][offsets[i]++]);
+      advanced = true;
+    }
+  }
+  return selected;
+}
+
+function withPriority(buckets, priority, limit) {
+  const capped = Math.max(Math.floor(Number(limit) || 0), 0);
+  const selected = priority.slice(0, capped);
+  const used = new Set(selected);
+  const remaining = buckets.map((bucket) => bucket.filter((candidate) => !used.has(candidate)));
+  selected.push(...roundRobin(remaining, capped - selected.length));
+  return selected;
+}
+
+/** Pure bounded selector used by getSpellCandidates() and its regression test. */
+export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CANDIDATE_LIMIT) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const kw = normalizedKeywords(keywords);
+  const exactNames = new Set(kw);
+  const byRank = new Map();
+  for (const candidate of list) {
+    const rank = Number(candidate.rank) || 0;
+    if (!byRank.has(rank)) byRank.set(rank, []);
+    byRank.get(rank).push(candidate);
+  }
+  const buckets = [...byRank.entries()]
+    // Start each round at the highest rank so top-rank options survive even
+    // when an unusual caller supplies a very small override limit.
+    .sort(([a], [b]) => b - a)
+    .map(([, entries]) => entries
+      .sort((a, b) => relevanceScore(b, kw) - relevanceScore(a, kw)
+        || a.name.localeCompare(b.name))
+      .slice(0, SPELL_CANDIDATES_PER_RANK));
+  const exact = list
+    .filter((candidate) => exactNames.has(normalize(candidate.name)))
+    .sort((a, b) => b.rank - a.rank || a.name.localeCompare(b.name));
+  const matchedCount = kw.length
+    ? list.filter((candidate) => relevanceScore(candidate, kw) > 0).length
+    : limit;
+  const target = kw.length
+    ? Math.min(limit, Math.max(SPELL_CANDIDATE_FLOOR, matchedCount))
+    : limit;
+  return withPriority(buckets, exact, target)
+    .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+}
+
+const EQUIPMENT_LEVEL_BANDS = ["high", "mid", "low", "zero"];
+
+function equipmentLevelBand(level, maxLevel) {
+  const lv = Math.max(Number(level) || 0, 0);
+  if (lv === 0) return "zero";
+  if (maxLevel <= 1 || lv / maxLevel > 2 / 3) return "high";
+  if (lv / maxLevel > 1 / 3) return "mid";
+  return "low";
+}
+
+/** Pure bounded selector used for both carried equipment and dropped loot. */
+export function limitEquipmentCandidates(candidates, keywords = [], limit = EQUIPMENT_CANDIDATE_LIMIT) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const kw = normalizedKeywords(keywords);
+  const exactNames = new Set(kw);
+  const maxLevel = list.reduce(
+    (highest, candidate) => Math.max(highest, Number(candidate.level) || 0), 0
+  );
+  const types = [
+    ...[...EQUIPMENT_TYPES].filter((type) => list.some((candidate) => candidate.type === type)),
+    ...[...new Set(list.map((candidate) => candidate.type).filter(Boolean))]
+      .filter((type) => !EQUIPMENT_TYPES.has(type)).sort()
+  ];
+  const grouped = new Map();
+  for (const candidate of list) {
+    const key = `${candidate.type}\u0000${equipmentLevelBand(candidate.level, maxLevel)}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(candidate);
+  }
+  const buckets = [];
+  for (const band of EQUIPMENT_LEVEL_BANDS) {
+    for (const type of types) {
+      const entries = grouped.get(`${type}\u0000${band}`);
+      if (!entries?.length) continue;
+      buckets.push(entries.sort((a, b) => relevanceScore(b, kw) - relevanceScore(a, kw)
+        || b.level - a.level || a.name.localeCompare(b.name)));
+    }
+  }
+  const exact = list
+    .filter((candidate) => exactNames.has(normalize(candidate.name)))
+    .sort((a, b) => relevanceScore(b, kw) - relevanceScore(a, kw)
+      || b.level - a.level || a.name.localeCompare(b.name));
+  const matchedCount = kw.length
+    ? list.filter((candidate) => relevanceScore(candidate, kw) > 0).length
+    : limit;
+  const target = kw.length
+    ? Math.min(limit, Math.max(EQUIPMENT_CANDIDATE_FLOOR, matchedCount))
+    : limit;
+  return withPriority(buckets, exact, target)
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+}
+
+function evenlySpaced(entries, limit) {
+  if (entries.length <= limit) return entries;
+  if (limit <= 1) return entries.slice(0, Math.max(limit, 0));
+  return Array.from({ length: limit }, (_, i) =>
+    entries[Math.round(i * (entries.length - 1) / (limit - 1))]);
+}
+
+/** Pure per-slot feat limiter. Balances levels and samples each alphabetic
+ * level list evenly so the cap does not permanently favor A-prefixed feats. */
+export function limitFeatCandidates(
+  candidates, limit = FEAT_CANDIDATE_LIMIT, preferredNames = []
+) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const preferred = new Set(normalizedKeywords(preferredNames));
+  const byLevel = new Map();
+  for (const candidate of list) {
+    const level = Number(candidate.level) || 0;
+    if (!byLevel.has(level)) byLevel.set(level, []);
+    byLevel.get(level).push(candidate);
+  }
+  const buckets = [...byLevel.entries()]
+    .sort(([a], [b]) => b - a)
+    .map(([, entries]) => evenlySpaced(
+      entries.sort((a, b) => a.name.localeCompare(b.name)),
+      FEAT_CANDIDATES_PER_LEVEL
+    ));
+  const exact = list
+    .filter((candidate) => preferred.has(normalize(candidate.name)))
+    .sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
+  return withPriority(buckets, exact, limit)
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+}
 
 /**
  * List real, castable spells of a tradition up to a maximum rank, so the AI
  * can choose from the compendium instead of naming spells from memory.
  *
- * When `keywords` are given (descriptor traits / theme words from
- * chooseSpellFocus), the list is narrowed to spells matching at least one
- * keyword in their traits or name — keeping the final selection prompt small
- * — unless that narrows things down to next to nothing, in which case the
- * full tradition list is returned instead.
+ * Keyword/name matches rank first. The returned list is hard-capped and
+ * balanced across spell ranks; narrow matches are padded with bounded real
+ * options instead of falling back to the full tradition catalog.
  * @param {string[]} [keywords]
  * @returns {Promise<{name: string, rank: number, traits: string[]}[]>} sorted by rank then name
  */
@@ -288,18 +465,8 @@ export async function getSpellCandidates(tradition, maxRank, keywords = []) {
     }
   }
   candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
-  if (!keywords.length) return candidates;
-  const kw = keywords.map((k) => k.toLowerCase());
-  const filtered = candidates.filter((c) =>
-    kw.some((k) => c.traits.includes(k) || c.name.toLowerCase().includes(k))
-  );
-  return filtered.length >= MIN_FILTERED_SPELLS ? filtered : candidates;
+  return limitSpellCandidates(candidates, keywords);
 }
-
-/* Below this many keyword-filtered equipment results, the filter is discarded
-   as too narrow — a bit higher than spells since equipment spans many more
-   item families (weapons, armor, gear, consumables) at once. */
-const MIN_FILTERED_EQUIPMENT = 20;
 
 /**
  * List real equipment items the creature could carry, so the AI can choose
@@ -310,17 +477,17 @@ const MIN_FILTERED_EQUIPMENT = 20;
  * level is capped at the creature's level, matching resolveConcept()'s
  * equipment filter exactly so every candidate offered can actually resolve.
  *
- * When `keywords` are given (tokens from the first-draft equipment names and
- * strikes), the list is narrowed to items matching at least one keyword in
- * their traits or name — keeping the selection prompt small — unless that
- * narrows things down to next to nothing, in which case the full level-capped
- * list is returned instead.
+ * Keyword/name matches rank first. The returned list is hard-capped and
+ * balanced across item types and low/mid/high level bands, so custom packs
+ * cannot make the prompt grow without bound.
  * @param {number} level creature level
  * @param {string[]} [keywords]
- * @param {{treasure?: boolean}} [options] include treasure-type items (loot)
+ * @param {{treasure?: boolean, limit?: number}} [options] treasure inclusion and hard result cap
  * @returns {Promise<{name: string, type: string, level: number}[]>} sorted by level then name
  */
-export async function getEquipmentCandidates(level, keywords = [], { treasure = false } = {}) {
+export async function getEquipmentCandidates(
+  level, keywords = [], { treasure = false, limit = EQUIPMENT_CANDIDATE_LIMIT } = {}
+) {
   const maxLevel = Math.max(level, 0);
   const candidates = [];
   const seen = new Set();
@@ -343,12 +510,7 @@ export async function getEquipmentCandidates(level, keywords = [], { treasure = 
   }
   candidates.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
   const strip = ({ name, type, level: lv }) => ({ name, type, level: lv });
-  if (!keywords.length) return candidates.map(strip);
-  const kw = keywords.map((k) => k.toLowerCase());
-  const filtered = candidates.filter((c) =>
-    kw.some((k) => c.traits.includes(k) || c.name.toLowerCase().includes(k))
-  );
-  return (filtered.length >= MIN_FILTERED_EQUIPMENT ? filtered : candidates).map(strip);
+  return limitEquipmentCandidates(candidates, keywords, limit).map(strip);
 }
 
 /**
@@ -357,7 +519,7 @@ export async function getEquipmentCandidates(level, keywords = [], { treasure = 
  * resolveLoot()'s filter exactly so every candidate offered can resolve.
  */
 export function getLootCandidates(level, keywords = []) {
-  return getEquipmentCandidates(level + 2, keywords, { treasure: true });
+  return getEquipmentCandidates(level + 2, keywords, { treasure: true, limit: LOOT_CANDIDATE_LIMIT });
 }
 
 /**
@@ -429,9 +591,10 @@ export function getHeritageCandidates(maxRarity) {
  * @param {number} args.level        max item level (the slot's level)
  * @param {string} [args.category]   "ancestry"|"class"|"skill"|"general"
  * @param {string[]} [args.traits]   at least one must appear on the feat
+ * @param {string[]} [args.preferredNames] exact legal first-draft picks kept before sampling
  * @returns {Promise<{name: string, level: number, traits: string[]}[]>} sorted by level then name
  */
-export async function getFeatCandidates({ level, category, traits = [] } = {}) {
+export async function getFeatCandidates({ level, category, traits = [], preferredNames = [] } = {}) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("feats")) {
@@ -449,7 +612,7 @@ export async function getFeatCandidates({ level, category, traits = [] } = {}) {
     }
   }
   candidates.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-  return candidates;
+  return limitFeatCandidates(candidates, FEAT_CANDIDATE_LIMIT, preferredNames);
 }
 
 /** Clone a compendium document into plain item data ready for embedding. */

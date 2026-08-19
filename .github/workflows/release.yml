@@ -1,17 +1,16 @@
 name: Release
 
-# Publishes Foundry-installable assets. Four ways to ship an update:
+# Publishes Foundry-installable assets. Three ways to ship an update; every
+# path runs syntax + regression checks before a release is created:
 #
 #   1. Push a tag like v0.1.1. The workflow creates the GitHub release
 #      itself and attaches assets.
 #   2. Actions -> Release -> "Run workflow", enter a version like 0.1.1.
 #      Same as above, without needing a local checkout.
-#   3. Draft and publish a release by hand with a tag like v0.1.1; the
-#      workflow fires on publish and attaches the assets.
-#   4. Called as a reusable workflow (workflow_call, with a "version" input)
+#   3. Called as a reusable workflow (workflow_call, with a "version" input)
 #      by auto-release.yml on every merge to main. Reusable-workflow calls
 #      run in the SAME workflow-run graph as their caller, so this is the
-#      only one of the four paths a workflow can trigger on another
+#      only one of the three paths a workflow can trigger on another
 #      workflow's behalf — a tag pushed BY a workflow using the default
 #      GITHUB_TOKEN does NOT fire this workflow's own `push: tags` trigger
 #      (GitHub suppresses event-triggered runs started by GITHUB_TOKEN, to
@@ -27,8 +26,6 @@ name: Release
 # users roll back to old versions if needed.
 
 on:
-  release:
-    types: [published]
   push:
     tags:
       - "v*"
@@ -49,7 +46,46 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find scripts -type f -name '*.mjs' -print0 | sort -z)
+          if (( ${#files[@]} == 0 )); then
+            echo "No .mjs files found under scripts/" >&2
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            node --check "$file"
+          done
+
+      - name: Run regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' tests < <(find scripts -type f -name '*.test.mjs' -print0 | sort -z)
+          if (( ${#tests[@]} == 0 )); then
+            echo "No regression checks found under scripts/" >&2
+            exit 1
+          fi
+          for test_file in "${tests[@]}"; do
+            echo "Running $test_file"
+            node "$test_file"
+          done
+
   build:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,16 +107,11 @@ jobs:
           else
             TAG="$GITHUB_REF_NAME"
           fi
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))+$ ]]; then
+            echo "Invalid release tag: $TAG (expected v1.2.3 or another numeric dotted version without leading zeroes)" >&2
+            exit 1
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-      - name: Create the release (tag pushes and manual runs)
-        if: github.event_name != 'release'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
 
       - name: Stamp version and download URL into module.json
         env:
@@ -95,10 +126,64 @@ jobs:
           mv module.json.tmp module.json
 
       - name: Build module archive
-        run: zip -r module.zip module.json LICENSE README.md lang scripts styles templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          for required_path in module.json LICENSE README.md lang scripts styles templates; do
+            if [[ ! -e "$required_path" ]]; then
+              echo "Required release path is missing: $required_path" >&2
+              exit 1
+            fi
+          done
+          mapfile -t release_files < <(
+            printf '%s\n' module.json LICENSE README.md
+            find lang scripts styles templates -type f ! -name '*.test.mjs' -print | sort
+          )
+          zip -q module.zip "${release_files[@]}"
+          if unzip -Z1 module.zip | grep -Eq '(^|/)[^/]+\.test\.mjs$'; then
+            echo "Regression test files must not be shipped in module.zip" >&2
+            exit 1
+          fi
 
-      - name: Attach assets to the release
+      - name: Stage verified release and assets
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
-        run: gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" module.json module.zip --clobber
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          EXISTING_TARGET=$(git rev-list -n 1 "$TAG" 2>/dev/null || true)
+          if [[ -n "$EXISTING_TARGET" && "$EXISTING_TARGET" != "$GITHUB_SHA" ]]; then
+            echo "Tag $TAG already targets $EXISTING_TARGET, not verified commit $GITHUB_SHA" >&2
+            exit 1
+          fi
+          if RELEASE_JSON=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,targetCommitish 2>/dev/null); then
+            IS_DRAFT=$(jq -r '.isDraft' <<<"$RELEASE_JSON")
+            RELEASE_TARGET=$(jq -r '.targetCommitish // empty' <<<"$RELEASE_JSON")
+            if [[ "$IS_DRAFT" != "true" && "$IS_DRAFT" != "false" ]]; then
+              echo "Could not determine whether release $TAG is a draft" >&2
+              exit 1
+            fi
+            if [[ "$IS_DRAFT" == "true" && "$RELEASE_TARGET" != "$GITHUB_SHA" ]]; then
+              echo "Draft release $TAG targets $RELEASE_TARGET, not verified commit $GITHUB_SHA" >&2
+              exit 1
+            fi
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" module.json module.zip --clobber
+          else
+            gh release create "$TAG" module.json module.zip \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --generate-notes \
+              --draft
+          fi
+
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        # Let GitHub choose Latest automatically by version/date. Forcing
+        # --latest here would let an older manual publish or rerun replace the
+        # update manifest served from releases/latest/download/module.json.
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

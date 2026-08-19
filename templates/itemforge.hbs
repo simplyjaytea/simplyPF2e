@@ -1,7 +1,13 @@
 <div class="simplypf2e-generator">
-  {{#unless hasApiKey}}
-    <p class="notification warning">{{localize "SIMPLYPF2E.Generator.NoApiKey"}}</p>
-  {{/unless}}
+  {{#if apiKeyWarning}}
+    <p class="notification warning spf-provider-warning">
+      <span>{{apiKeyWarning}}</span>
+      {{#if canAuthorizeApiKey}}
+        <span class="spf-provider-endpoint"><strong>{{localize "SIMPLYPF2E.Generator.ApiKeyEndpoint"}}</strong> <code>{{providerBaseUrl}}</code></span>
+        <button type="button" data-action="authorizeApiKey" data-base-url="{{providerBaseUrl}}" {{#if busy}}disabled{{/if}}>{{localize "SIMPLYPF2E.Generator.AuthorizeApiKey"}}</button>
+      {{/if}}
+    </p>
+  {{/if}}
 
   <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
     <legend>{{localize "SIMPLYPF2E.ItemForge.ConceptLegend"}}</legend>

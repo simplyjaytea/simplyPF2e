@@ -1,0 +1,253 @@
+// Provider request/retry regression test. This drives the production path
+// with fake provider responses so failed attempts stay in token reports and
+// named compatibility failures remove only the rejected parameter.
+// Run: node scripts/ai.usage.test.mjs
+import assert from "node:assert/strict";
+import { SETTINGS } from "./settings.mjs";
+
+const settings = new Map([
+  [SETTINGS.apiBaseUrl, "http://localhost:11434/v1"],
+  [SETTINGS.apiKey, ""],
+  [SETTINGS.apiKeyBaseUrl, ""],
+  [SETTINGS.model, "test-model"],
+  [SETTINGS.temperature, 0.8],
+  [SETTINGS.maxTokens, 8000],
+  [SETTINGS.requestTimeout, 90]
+]);
+
+globalThis.game = {
+  settings: { get: (_moduleId, key) => settings.get(key) },
+  i18n: {
+    localize: (key) => key,
+    format: (key, data) => `${key}:${JSON.stringify(data)}`
+  }
+};
+
+const providerReplies = [
+  {
+    choices: [{
+      message: { content: '{"keywords":["fire"' },
+      finish_reason: "length"
+    }],
+    usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }
+  },
+  {
+    choices: [{
+      message: { content: '{"keywords":["fire","control"]}' },
+      finish_reason: "stop"
+    }],
+    usage: { prompt_tokens: 11, completion_tokens: 5, total_tokens: 16 }
+  }
+];
+const requestBodies = [];
+const requestHeaders = [];
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (_url, options) => {
+  requestBodies.push(JSON.parse(options.body));
+  requestHeaders.push(options.headers);
+  const reply = providerReplies.shift();
+  assert.ok(reply, "production path must make exactly the expected provider calls");
+  return new Response(JSON.stringify(reply.body ?? reply), {
+    status: reply.httpStatus ?? 200,
+    headers: { "content-type": "application/json" }
+  });
+};
+
+try {
+  const { chooseSpellFocus } = await import("./ai.mjs");
+  const result = await chooseSpellFocus({
+    concept: {
+      name: "Ember Adept",
+      level: 5,
+      blurb: "A battlefield fire controller",
+      description: "Shapes flame to divide enemies.",
+      traits: ["fire", "humanoid"]
+    },
+    tradition: "arcane"
+  });
+
+  assert.deepEqual(result.keywords, ["fire", "control"]);
+  assert.deepEqual(
+    result.usage,
+    { prompt: 21, completion: 25, total: 46, estimated: false },
+    "successful retry must include the exact usage from its truncated first attempt"
+  );
+  assert.equal(requestBodies.length, 2);
+  assert.equal(requestBodies[0].max_tokens, 768, "first selector attempt must use its task cap");
+  assert.equal(requestBodies[1].max_tokens, 1536, "retry may use its bounded expanded cap");
+  assert.equal(requestBodies[0].reasoning_effort, "none");
+  assert.equal(
+    Object.hasOwn(requestBodies[0], "thinking"),
+    false,
+    "Ollama/LM Studio-style endpoints must use their OpenAI-compatible reasoning control only"
+  );
+
+  settings.set(SETTINGS.apiKey, "local-secret");
+  settings.set(SETTINGS.apiKeyBaseUrl, "http://localhost:11434/v1");
+  providerReplies.push(
+    {
+      httpStatus: 400,
+      body: { error: { message: "Unsupported parameter: reasoning_effort" } }
+    },
+    {
+      choices: [{
+        message: { content: '{"keywords":["frost","control"]}' },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 }
+    }
+  );
+  const compatibilityStart = requestBodies.length;
+  const compatibilityResult = await chooseSpellFocus({
+    concept: {
+      name: "Frost Adept",
+      level: 5,
+      blurb: "A battlefield frost controller",
+      description: "Shapes ice to divide enemies.",
+      traits: ["cold", "humanoid"]
+    },
+    tradition: "arcane"
+  });
+  assert.deepEqual(compatibilityResult.keywords, ["frost", "control"]);
+  const compatibilityBodies = requestBodies.slice(compatibilityStart);
+  const compatibilityHeaders = requestHeaders.slice(compatibilityStart);
+  assert.equal(compatibilityBodies.length, 2, "named unsupported parameters must retry in-place once");
+  assert.equal(compatibilityBodies[0].reasoning_effort, "none");
+  assert.equal(
+    Object.hasOwn(compatibilityBodies[1], "reasoning_effort"),
+    false,
+    "compatibility retry must remove only the provider-rejected parameter"
+  );
+  assert.ok(
+    compatibilityHeaders.every((headers) => headers.Authorization === "Bearer local-secret"),
+    "compatibility retries must preserve an exactly bound provider key"
+  );
+  settings.set(SETTINGS.apiKey, "");
+  settings.set(SETTINGS.apiKeyBaseUrl, "");
+
+  const estimatedStart = requestBodies.length;
+  providerReplies.push(
+    {
+      choices: [{
+        message: { content: '{"keywords":["smoke"' },
+        finish_reason: "length"
+      }]
+    },
+    {
+      choices: [{
+        message: { content: '{"keywords":["smoke","concealment"]}' },
+        finish_reason: "stop"
+      }]
+    }
+  );
+  const estimatedResult = await chooseSpellFocus({
+    concept: {
+      name: "Mist Stalker",
+      level: 4,
+      blurb: "A hunter hidden by smoke",
+      description: "Controls sight lines with drifting mist.",
+      traits: ["air", "humanoid"]
+    },
+    tradition: "primal"
+  });
+  const estimateTokens = (chars) => Math.max(1, Math.round(chars / 4));
+  const estimatedBodies = requestBodies.slice(estimatedStart);
+  const expectedPrompt = estimatedBodies.reduce(
+    (sum, body) => sum + estimateTokens(body.messages.reduce(
+      (chars, message) => chars + message.content.length, 0
+    )),
+    0
+  );
+  const expectedCompletion = estimateTokens('{"keywords":["smoke"'.length)
+    + estimateTokens('{"keywords":["smoke","concealment"]}'.length);
+  assert.deepEqual(
+    estimatedResult.usage,
+    {
+      prompt: expectedPrompt,
+      completion: expectedCompletion,
+      total: expectedPrompt + expectedCompletion,
+      estimated: true
+    },
+    "providers without usage metadata must also retain the truncated attempt estimate"
+  );
+
+  providerReplies.push(
+    {
+      choices: [{
+        message: { content: "", reasoning: "reasoning without a final answer" },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 13, completion_tokens: 17, total_tokens: 30 }
+    },
+    {
+      choices: [{
+        message: { content: '{"keywords":["mist","concealment"]}' },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 7, completion_tokens: 4, total_tokens: 11 }
+    }
+  );
+  const emptyAttemptStart = requestBodies.length;
+  const emptyRetryResult = await chooseSpellFocus({
+    concept: {
+      name: "Veiled Hunter",
+      level: 4,
+      blurb: "A hunter behind a curtain of mist",
+      description: "Uses concealment to control the battlefield.",
+      traits: ["air", "humanoid"]
+    },
+    tradition: "primal"
+  });
+  assert.deepEqual(emptyRetryResult.keywords, ["mist", "concealment"]);
+  assert.deepEqual(
+    emptyRetryResult.usage,
+    { prompt: 20, completion: 21, total: 41, estimated: false },
+    "an empty first response must retain its provider-reported usage before retrying"
+  );
+  assert.equal(requestBodies.length - emptyAttemptStart, 2);
+
+  settings.set(SETTINGS.apiBaseUrl, "https://api.deepseek.com/v1");
+  settings.set(SETTINGS.model, "deepseek-chat");
+  providerReplies.push(
+    {
+      httpStatus: 422,
+      body: { error: { message: "Unsupported parameter: thinking" } }
+    },
+    {
+      choices: [{
+        message: { content: '{"keywords":["force","control"]}' },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 }
+    }
+  );
+  const deepSeekStart = requestBodies.length;
+  await chooseSpellFocus({
+    concept: {
+      name: "Force Adept",
+      level: 5,
+      blurb: "A disciplined force mage",
+      description: "Shapes force to control enemy movement.",
+      traits: ["human", "humanoid"]
+    },
+    tradition: "arcane"
+  });
+  const [deepSeekBody, deepSeekRetryBody] = requestBodies.slice(deepSeekStart);
+  assert.equal(deepSeekBody.model, "deepseek-v4-flash", "retired first-party aliases must resolve at request time");
+  assert.equal(
+    Object.hasOwn(deepSeekBody, "reasoning_effort"),
+    false,
+    "the first-party DeepSeek API must not receive its unsupported reasoning_effort none value"
+  );
+  assert.deepEqual(deepSeekBody.thinking, { type: "disabled" });
+  assert.equal(
+    Object.hasOwn(deepSeekRetryBody, "thinking"),
+    false,
+    "422 compatibility retries must remove a named unsupported thinking control"
+  );
+  assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+console.log("ai.usage.test.mjs: provider request/retry assertions passed");

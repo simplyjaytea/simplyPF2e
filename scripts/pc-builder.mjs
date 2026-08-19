@@ -220,14 +220,18 @@ export async function resolvePCConcept(concept) {
     const traits = slot.archetype ? ["archetype"]
       : slot.type === "ancestry" ? [ancestryTrait]
       : slot.type === "class" ? [classTrait] : [];
-    let candidates = await getFeatCandidates({ level: slot.level, category: slot.type, traits });
+    let candidates = await getFeatCandidates({
+      level: slot.level, category: slot.type, traits, preferredNames: concept.feats
+    });
     // Retry once without the trait filter before giving up: a valid slot
     // whose ancestry/class trait matched nothing at this level (odd content
     // packs, sparse low levels) is better filled with an on-category feat than
     // silently dropped. Archetype slots keep their trait (loosening would just
     // give plain class feats, defeating the slot). Issue #64 item 4a.
     if (!candidates.length && traits.length && !slot.archetype) {
-      candidates = await getFeatCandidates({ level: slot.level, category: slot.type });
+      candidates = await getFeatCandidates({
+        level: slot.level, category: slot.type, preferredNames: concept.feats
+      });
     }
     if (candidates.length) featSlots.push({ ...slot, candidates });
     else console.warn(`simplypf2e | no feat candidates for a ${slot.type}${slot.archetype ? " (archetype)" : ""} slot at level ${slot.level} — slot left empty`);

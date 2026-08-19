@@ -1,16 +1,23 @@
-import { SETTINGS, getSetting } from "./settings.mjs";
+import {
+  SETTINGS, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint, resolveProviderModel
+} from "./settings.mjs";
 import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
+import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
+import { encodeFeatCandidateSlots, resolveEncodedFeatPicks } from "./ai-candidate-format.mjs";
+import { taskResponseProblem } from "./ai-response-validation.mjs";
 
 /**
  * Client for any OpenAI-compatible chat completions API (DeepSeek, OpenAI,
- * OpenRouter, Ollama, LM Studio, ...). The endpoint, key and model are all
- * world settings, so each table can bring its own provider.
+ * OpenRouter, Ollama, LM Studio, ...). Endpoint and model are world settings;
+ * each browser keeps its own key, bound to the exact configured endpoint.
  */
 
 /* Shared reminder everywhere the AI names a published item — the Remaster
    renamed many classics, and the AI defaults to pre-Remaster memory unless
    told otherwise every time. */
 const REMASTER_NOTE = `using CURRENT PF2e REMASTER names, never the old pre-Remaster name — e.g. "Thunderstone" is now "Blasting Stone", the old "Bag of Holding" is now "Spacious Pouch"`;
+
+let warnedLegacyDeepSeekModel = false;
 
 /* The grounding passes below tell the model to copy names EXACTLY from a
  * candidate list, and those lists hold plain BASE items only — no runed
@@ -36,7 +43,7 @@ const LOOT_AMOUNT_GUIDE = {
 
 /* Loot rules shared between the creature concept prompt, the reroll-loot
  * prompt, and (via subject="character") the PC starting-wealth-items prompt. */
-function lootGuide(amount, subject = "creature") {
+export function lootGuide(amount, subject = "creature") {
   const amountNote = LOOT_AMOUNT_GUIDE[amount] ?? LOOT_AMOUNT_GUIDE.standard;
   const origin = subject === "character"
     ? "a DISTINCT set of items bought with MOST of their starting wealth (not everyday adventuring gear, which is handled separately — spend the bulk of the budget on worthwhile gear, keeping only a modest coin reserve rather than leaving most of it as gold)"
@@ -137,9 +144,10 @@ Design guidance (GM Core road maps):
 }
 
 export class AIRequestError extends Error {
-  constructor(message, { retryable = false } = {}) {
+  constructor(message, { retryable = false, usage = null } = {}) {
     super(message);
     this.retryable = retryable;
+    this.usage = usage;
   }
 }
 
@@ -162,10 +170,24 @@ async function requestJSON(args) {
   };
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const { content, usage } = await requestCompletion(args);
+      const requestArgs = attempt === 0 ? args : {
+        ...args,
+        retryAttempt: attempt,
+        user: `${args.user}\n\nIMPORTANT RETRY: the previous response was truncated, invalid, or incomplete. Return one complete JSON object with every required field. No commentary.`
+      };
+      const { content, usage } = await requestCompletion(requestArgs);
       addUsage(usage);
-      return { data: parseConceptJSON(content), usage: total };
+      const data = parseConceptJSON(content);
+      const structureProblem = taskResponseProblem(args.task, data);
+      if (structureProblem) {
+        throw new AIRequestError(
+          game.i18n.format("SIMPLYPF2E.Errors.BadStructure", { detail: structureProblem }),
+          { retryable: true }
+        );
+      }
+      return { data, usage: total };
     } catch (err) {
+      if (err instanceof AIRequestError) addUsage(err.usage);
       if (!(err instanceof AIRequestError) || !err.retryable) throw err;
       lastError = err;
       if (attempt === 0) console.warn("simplypf2e | generation attempt failed, retrying once:", err.message);
@@ -177,11 +199,11 @@ async function requestJSON(args) {
 /**
  * Shape the provider's usage block into {prompt, completion, total, estimated}.
  * When the provider sent no usage at all, fall back to a ~4 chars/token
- * estimate of both sides — the completion from the streamed content, the
+ * estimate of both sides — completion includes visible and reasoning text,
  * prompt from the request's system+user text — so the report never comes up
  * empty or pretends the prompt cost nothing.
  */
-function normalizeUsage(usage, { content, system, user }) {
+function normalizeUsage(usage, { content, system, user, reasoningChars = 0 }) {
   const prompt = Number(usage?.prompt_tokens);
   const completion = Number(usage?.completion_tokens);
   if (Number.isFinite(prompt) || Number.isFinite(completion)) {
@@ -190,7 +212,7 @@ function normalizeUsage(usage, { content, system, user }) {
     return { prompt: p, completion: c, total: Number(usage?.total_tokens) || p + c, estimated: false };
   }
   const promptEst = estimateTokens((system ?? "").length + (user ?? "").length);
-  const est = estimateTokens((content ?? "").length);
+  const est = estimateTokens((content ?? "").length + reasoningChars);
   return { prompt: promptEst, completion: est, total: promptEst + est, estimated: true };
 }
 
@@ -218,7 +240,9 @@ Loot should be ${lootGuide(amount)}`;
     concept.traits.length ? `Traits: ${concept.traits.join(", ")}` : null
   ].filter((line) => line !== null).join("\n");
 
-  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.LOOT_DRAFT, system, user, onProgress
+  });
   return { loot: (Array.isArray(parsed.loot) ? parsed.loot : []), usage };
 }
 
@@ -253,7 +277,9 @@ ${lootGuide(amount, "character")} Favor items that reinforce the character's cla
     concept.backstory ? `Backstory: ${concept.backstory}` : null
   ].filter((line) => line !== null).join("\n");
 
-  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.LOOT_DRAFT, system, user, onProgress
+  });
   return { loot: (Array.isArray(parsed.loot) ? parsed.loot : []), usage };
 }
 
@@ -272,6 +298,7 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
   ].filter((line) => line !== null).join("\n");
 
   const { data, usage } = await requestJSON({
+    task: AI_TASK.CREATURE_CONCEPT,
     system: systemPrompt(amount),
     user: userPrompt,
     onProgress
@@ -351,6 +378,7 @@ export async function generatePCConcept({ prompt, level, allowSpellcasting, onPr
   ].join("\n");
 
   const { data, usage } = await requestJSON({
+    task: AI_TASK.PC_CONCEPT,
     system: pcSystemPrompt(),
     user: userPrompt,
     onProgress
@@ -379,7 +407,9 @@ Give 3-6 lowercase keywords describing the KINDS of spells that fit this creatur
     `Tradition: ${tradition}`
   ].filter((line) => line !== null).join("\n");
 
-  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.SPELL_FOCUS, system, user, onProgress
+  });
   const keywords = (Array.isArray(parsed.keywords) ? parsed.keywords : [])
     .map((k) => String(k).toLowerCase().trim())
     .filter(Boolean);
@@ -425,7 +455,9 @@ Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward 
     list
   ].filter((line) => line !== null).join("\n");
 
-  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.SPELL_SELECTION, system, user, onProgress
+  });
   // A ranked spell must never come back as rank 0 (createActor would file it
   // as a cantrip) — clamp the minimum to the candidate's own listed rank.
   const listedRank = new Map(candidates.map((c) => [c.name.toLowerCase(), c.rank]));
@@ -483,7 +515,9 @@ Pick the logical items the creature would carry: the weapons it wields (match it
     list
   ].filter((line) => line !== null).join("\n");
 
-  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.EQUIPMENT_SELECTION, system, user, onProgress
+  });
   const equipment = (Array.isArray(parsed.equipment) ? parsed.equipment : [])
     .filter((e) => e?.name)
     .map((e) => ({
@@ -534,7 +568,9 @@ Recreate the first-draft haul: keep its coin and scroll entries as they are, rep
     list
   ].filter((line) => line !== null).join("\n");
 
-  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.LOOT_SELECTION, system, user, onProgress
+  });
   const loot = (Array.isArray(parsed.loot) ? parsed.loot : [])
     .filter((l) => l?.name)
     .map((l) => ({
@@ -580,7 +616,9 @@ export async function selectAncestryBackgroundClass({
     `Available classes: ${classCandidates.map((c) => c.name).join("; ")}`
   ].filter((line) => line !== null).join("\n");
 
-  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.ABC_SELECTION, system, user, onProgress
+  });
   return {
     ancestry: String(parsed.ancestry || concept.ancestry),
     heritage: parsed.heritage ? String(parsed.heritage) : null,
@@ -605,27 +643,32 @@ export async function selectAncestryBackgroundClass({
  * @returns {Promise<{picks: {slot: number, name: string}[], usage: object}>}
  */
 export async function selectFeats({ concept, slots, onProgress }) {
-  const slotLines = slots.map((slot, i) =>
-    `Slot ${i + 1} — ${slot.type} feat, character level ${slot.level}: ${slot.candidates.map((c) => c.name).join("; ")}`
+  const encoded = encodeFeatCandidateSlots(slots);
+  const catalogLines = encoded.catalog.map(({ id, name }) => `${id} | ${name}`).join("\n");
+  const slotLines = encoded.slots.map((slot) =>
+    `${slot.number} | ${slot.type} | level ${slot.level} | ${slot.ids.join(",")}`
   ).join("\n");
 
-  const system = `You are choosing feats for a Pathfinder 2e character, one per slot. For EACH slot, choose ONLY from that slot's own list, copying the name EXACTLY as written. Respond with a single JSON object and nothing else:
-{ "picks": [ { "slot": number, "name": string } ] }
-Include exactly one entry per slot number (1 to ${slots.length}). If a slot's list has nothing fitting, still pick the closest thematic option from that slot's own list — never leave a slot out and never pick from another slot's list.`;
+  const system = `You are choosing feats for a Pathfinder 2e character, one per slot. Each feat name appears once in a catalog with a short ID. For EACH slot, choose ONLY an ID allowed by that slot. Respond with a single JSON object and nothing else:
+{ "picks": [ { "slot": number, "id": string } ] }
+Include exactly one entry per slot number (1 to ${slots.length}). Never use an ID outside that slot's allowed list.`;
 
   const user = [
     `Character: ${concept.name} (level ${concept.level}, ${concept.class})`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.feats?.length ? `First-draft feat wishlist (inspiration only, final picks MUST come from each slot's own list): ${concept.feats.join(", ")}` : null,
     "",
-    "Slots:",
+    "Feat catalog (ID | exact name):",
+    catalogLines,
+    "",
+    "Slots (number | type | character level | allowed IDs):",
     slotLines
   ].filter((line) => line !== null).join("\n");
 
-  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
-  const picks = (Array.isArray(parsed.picks) ? parsed.picks : [])
-    .filter((p) => p?.name && Number.isInteger(Number(p.slot)))
-    .map((p) => ({ slot: Number(p.slot), name: String(p.name) }));
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.FEAT_SELECTION, system, user, onProgress
+  });
+  const picks = resolveEncodedFeatPicks(encoded, parsed.picks);
   return { picks, usage };
 }
 
@@ -709,7 +752,9 @@ Design guidance:
     `Item concept from the GM: ${prompt}`
   ].join("\n");
 
-  const { data, usage } = await requestJSON({ system, user, onProgress });
+  const { data, usage } = await requestJSON({
+    task: AI_TASK.MAGIC_ITEM_CONCEPT, system, user, onProgress
+  });
   return { concept: data, usage };
 }
 
@@ -768,7 +813,9 @@ Design guidance:
     `Item concept from the GM: ${prompt}`
   ].join("\n");
 
-  const { data, usage } = await requestJSON({ system, user, onProgress });
+  const { data, usage } = await requestJSON({
+    task: AI_TASK.RUNED_ITEM_CONCEPT, system, user, onProgress
+  });
   return { concept: data, usage };
 }
 
@@ -796,7 +843,9 @@ Respond with a single JSON object and nothing else:
     slotLines
   ].join("\n");
 
-  const { data: parsed, usage } = await requestJSON({ system, user, onProgress });
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.ENCOUNTER_DESIGN, system, user, onProgress
+  });
   const briefs = Array.isArray(parsed.briefs) ? parsed.briefs.map((b) => String(b)) : [];
   return {
     name: String(parsed.name || "Encounter"),
@@ -814,21 +863,41 @@ Respond with a single JSON object and nothing else:
  * total time is unbounded as long as data keeps arriving.
  *
  * @param {object} args
+ * @param {string} args.task AI_TASK operation identifier
  * @param {string} args.system
  * @param {string} args.user
  * @param {(p: {phase: "thinking"|"writing", tokens: number}) => void} [args.onProgress]
  * @returns {Promise<{content: string, usage: object}>}
  */
-async function requestCompletion({ system, user, onProgress }) {
-  const apiKey = getSetting(SETTINGS.apiKey);
-  const baseUrl = String(getSetting(SETTINGS.apiBaseUrl) ?? "").replace(/\/+$/, "");
+async function requestCompletion({ task, system, user, onProgress, retryAttempt = 0 }) {
+  // The client-scoped key is returned only when it was explicitly saved for
+  // this exact normalized base URL. A world-level provider change can never
+  // redirect a legacy or previously authorized key to another endpoint.
+  const { apiKey, baseUrl } = getProviderRequestConfig();
   if (!baseUrl) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoBaseUrl"));
 
+  const completionOptions = completionOptionsFor(task, {
+    configuredTemperature: getSetting(SETTINGS.temperature),
+    configuredMaxTokens: getSetting(SETTINGS.maxTokens),
+    retryAttempt
+  });
+  const configuredModel = String(getSetting(SETTINGS.model) ?? "").trim();
+  const model = resolveProviderModel(baseUrl, configuredModel);
+  if (!warnedLegacyDeepSeekModel && model !== configuredModel) {
+    console.warn(`simplypf2e | DeepSeek model ${configuredModel} was retired; using ${model} for this request`);
+    warnedLegacyDeepSeekModel = true;
+  }
+  const officialDeepSeek = isOfficialDeepSeekEndpoint(baseUrl);
   const body = {
-    model: getSetting(SETTINGS.model),
-    temperature: Number(getSetting(SETTINGS.temperature)) || 0.8,
-    // Fallback matches the registered default for this setting (settings.mjs).
-    max_tokens: Number(getSetting(SETTINGS.maxTokens)) || 8000,
+    model,
+    temperature: completionOptions.temperature,
+    max_tokens: completionOptions.maxTokens,
+    ...(completionOptions.reasoningEffort && !officialDeepSeek
+      ? { reasoning_effort: completionOptions.reasoningEffort }
+      : {}),
+    ...(completionOptions.thinkingType && officialDeepSeek
+      ? { thinking: { type: completionOptions.thinkingType } }
+      : {}),
     stream: true,
     // Ask for exact token usage in the final stream chunk (OpenAI-style;
     // DeepSeek sends it regardless). Dropped first if the provider 400s.
@@ -852,12 +921,12 @@ async function requestCompletion({ system, user, onProgress }) {
     resetIdle();
     let response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
     // Some OpenAI-compatible providers reject stream_options, response_format
-    // or streaming. Retry without a parameter ONLY when the 400 body actually
+    // or streaming. Retry without a parameter ONLY when a 400/422 body actually
     // names it (checked longest-first so "stream" can't match the others);
-    // any other 400 fails fast with its own error message.
-    while (response.status === 400) {
+    // any other validation error fails fast with its own message.
+    while (response.status === 400 || response.status === 422) {
       const detail = await safeErrorDetail(response);
-      const offending = ["stream_options", "response_format", "stream"]
+      const offending = ["reasoning_effort", "stream_options", "response_format", "thinking", "stream"]
         .find((param) => param in body && detail.includes(param));
       if (!offending) {
         throw new AIRequestError(
@@ -879,27 +948,43 @@ async function requestCompletion({ system, user, onProgress }) {
     let content;
     let finishReason = null;
     let usage = null;
+    let reasoningChars = 0;
     if (contentType.includes("text/event-stream") && response.body) {
-      ({ content, finishReason, usage } = await readEventStream(response, { onProgress, resetIdle }));
+      ({ content, finishReason, usage, reasoningChars } = await readEventStream(
+        response, { onProgress, resetIdle }
+      ));
     } else {
       resetIdle();
       const data = await response.json();
       content = data?.choices?.[0]?.message?.content;
+      const reasoning = data?.choices?.[0]?.message?.reasoning_content
+        ?? data?.choices?.[0]?.message?.reasoning
+        ?? data?.choices?.[0]?.message?.thinking;
+      reasoningChars = typeof reasoning === "string" ? reasoning.length : 0;
       finishReason = data?.choices?.[0]?.finish_reason ?? null;
       usage = data?.usage ?? null;
     }
-    if (!content) {
-      // Reasoning models can burn the whole token budget "thinking" and
-      // return no content at all — tell the user exactly what to fix.
-      if (finishReason === "length") {
-        throw new AIRequestError(
-          game.i18n.format("SIMPLYPF2E.Errors.Truncated", { max: body.max_tokens }),
-          { retryable: true }
-        );
-      }
-      throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"), { retryable: true });
+    // Never accept a parseable prefix from a length-truncated response. It
+    // can omit required fields while still looking like valid JSON.
+    if (finishReason === "length") {
+      throw new AIRequestError(
+        game.i18n.format("SIMPLYPF2E.Errors.Truncated", { max: body.max_tokens }),
+        {
+          retryable: true,
+          usage: normalizeUsage(usage, { content, system, user, reasoningChars })
+        }
+      );
     }
-    return { content, usage: normalizeUsage(usage, { content, system, user }) };
+    if (!content) {
+      throw new AIRequestError(
+        game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"),
+        {
+          retryable: true,
+          usage: normalizeUsage(usage, { content, system, user, reasoningChars })
+        }
+      );
+    }
+    return { content, usage: normalizeUsage(usage, { content, system, user, reasoningChars }) };
   } catch (err) {
     if (err.name === "AbortError" || controller.signal.aborted) {
       throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.Timeout", { seconds: idleSeconds }));
@@ -948,9 +1033,10 @@ async function readEventStream(response, { onProgress, resetIdle }) {
       const choice = chunk?.choices?.[0] ?? {};
       if (choice.finish_reason) finishReason = choice.finish_reason;
       const delta = choice.delta ?? {};
-      // DeepSeek reasoning models stream their chain of thought first
-      if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
-        reasoningChars += delta.reasoning_content.length;
+      // Providers use several fields for separated reasoning traces.
+      const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
+      if (typeof reasoning === "string" && reasoning) {
+        reasoningChars += reasoning.length;
         onProgress?.({ phase: "thinking", tokens: estimateTokens(reasoningChars) });
       }
       if (typeof delta.content === "string" && delta.content) {
@@ -959,7 +1045,7 @@ async function readEventStream(response, { onProgress, resetIdle }) {
       }
     }
   }
-  return { content, finishReason, usage };
+  return { content, finishReason, usage, reasoningChars };
 }
 
 async function postChatCompletion(baseUrl, apiKey, body, signal) {
@@ -994,9 +1080,9 @@ async function safeErrorDetail(response) {
 }
 
 /**
- * Parse model output into JSON, tolerating markdown fences, stray prose, and
- * truncation (a response cut off by the token limit is repaired by closing
- * open strings/brackets at the last parseable point).
+ * Parse model output into JSON, tolerating markdown fences and stray prose.
+ * Incomplete JSON fails closed: silently repairing a truncated prefix can
+ * produce a valid-looking concept with required fields missing.
  */
 export function parseConceptJSON(content) {
   let text = content.trim();
@@ -1011,60 +1097,9 @@ export function parseConceptJSON(content) {
     try {
       return JSON.parse(text.slice(start, end + 1));
     } catch {
-      // fall through to truncation repair
+      // fall through to fail-closed error
     }
-  }
-  const repaired = repairTruncatedJSON(text.slice(start));
-  if (repaired !== null) {
-    console.warn("simplypf2e | AI response was truncated; salvaged a partial concept");
-    return repaired;
   }
   console.error("simplypf2e | Failed to parse AI response:", content);
   throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.BadJson"), { retryable: true });
-}
-
-/** Append the closers a truncated JSON string needs to become parseable. */
-function closeBrackets(text) {
-  const stack = [];
-  let inString = false;
-  let escaped = false;
-  for (const char of text) {
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = inString;
-      continue;
-    }
-    if (char === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (char === "{" || char === "[") stack.push(char === "{" ? "}" : "]");
-    else if (char === "}" || char === "]") {
-      if (stack.pop() !== char) return null; // mismatched — not salvageable here
-    }
-  }
-  return text + (inString ? '"' : "") + stack.reverse().join("");
-}
-
-/**
- * Backtrack from the cut point until closing the open brackets yields valid
- * JSON — recovering the complete prefix of a token-limit-truncated object.
- */
-function repairTruncatedJSON(text) {
-  const minEnd = Math.max(1, text.length - 2000);
-  for (let end = text.length; end >= minEnd; end--) {
-    const candidate = closeBrackets(text.slice(0, end));
-    if (candidate === null) continue;
-    try {
-      const parsed = JSON.parse(candidate);
-      if (parsed && typeof parsed === "object") return parsed;
-    } catch {
-      // keep backtracking
-    }
-  }
-  return null;
 }

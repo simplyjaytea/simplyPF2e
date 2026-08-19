@@ -48,7 +48,9 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 
 | File | Role |
 | --- | --- |
-| `ai.mjs` | All AI calls, SYSTEM_PROMPT, `pcSystemPrompt()`, `lootGuide()`. Streaming SSE, retry-once, JSON truncation repair. |
+| `ai.mjs` | All AI calls, SYSTEM_PROMPT, `pcSystemPrompt()`, `lootGuide()`. Streaming SSE, retry-once, fail-closed JSON parsing. |
+| `ai-task-profiles.mjs` / `ai-candidate-format.mjs` | Pure per-operation token/sampling caps and compact grounded-candidate encoding. |
+| `settings.mjs` | Foundry settings plus exact-endpoint API-key binding and local/keyless provider readiness. |
 | `builder.mjs` | NPC pipeline + shared resolve/build helpers used by both actor pipelines (`resolveEquipment`, `resolveLoot`, `resolveFocusSpells`, `buildEquipmentItems`, `buildLootItems`, `filterItemTypes`, `applyTreasureBudget`, `enrichDescription`). |
 | `pc-builder.mjs` | PC pipeline. First file to check when PC generation misbehaves. |
 | `compendium.mjs` | `findEntry` fuzzy match, pack indexes (incl. the extended equipment index), candidate lists, `getPacksFor`/`getAllPacksFor`, `priceToGp`, `RARITY_RANK`. |
@@ -61,7 +63,7 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 | `generator-app.mjs` / `itemforge-app.mjs` / `manage-presets-app.mjs` / `sources-app.mjs` | UI apps over `app-base.mjs` (token tracking + progress). |
 | `encounter.mjs` | XP budget/composition math. |
 | `presets.mjs` | 18 built-in build presets + custom preset CRUD + random briefs. |
-| `*.test.mjs` | 13 standalone regression checks (`node scripts/<name>.test.mjs`). |
+| `*.test.mjs` | Standalone regression checks (`node scripts/<name>.test.mjs`); CI runs every check before release. |
 
 ## How to work here
 
