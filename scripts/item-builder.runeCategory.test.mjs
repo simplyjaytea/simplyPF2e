@@ -9,7 +9,10 @@
 // takes its candidate lists as arguments, so no compendium is needed.
 
 import assert from "node:assert/strict";
-import { propertyRuneFitsBase, propertyRuneRestrictionNote } from "./runes.mjs";
+import {
+  getBaseItemCandidates, getPropertyRuneCandidates,
+  propertyRuneFitsBase, propertyRuneRestrictionNote
+} from "./runes.mjs";
 import { normalizeRunedItemConcept } from "./item-builder.mjs";
 
 /* ---------------- usage -> category fit ---------------- */
@@ -96,6 +99,61 @@ try {
   assert.deepEqual(weapon.propertyRunes, ["Flaming"], "weapon runes pass through unchanged");
 } finally {
   console.warn = realWarn;
+}
+
+/* ---------------- compendium index -> candidates ---------------- */
+
+// Exercise the Foundry-facing boundary added with this fix. The pure tests
+// above would still pass if getEquipmentIndex forgot to request
+// system.category, or if getAllEquipmentEntries dropped it while flattening
+// index records. A minimal game/pack mock lets the real production functions
+// prove that category and usage survive all the way into the candidate lists.
+const previousGame = globalThis.game;
+let requestedFields = [];
+const indexEntries = [
+  { name: "Full Plate", type: "armor", system: { level: { value: 2 }, category: "heavy" } },
+  { name: "Leather Armor", type: "armor", system: { level: { value: 0 }, category: "light" } },
+  { name: "Invisibility", type: "equipment", system: {
+    level: { value: 8 }, usage: { value: "etched-onto-light-armor" }
+  } },
+  { name: "Fortification", type: "equipment", system: {
+    level: { value: 12 }, usage: { value: "etched-onto-med-heavy-armor" }
+  } },
+  { name: "Shadow", type: "equipment", system: {
+    level: { value: 5 }, usage: { value: "etched-onto-lm-nonmetal-armor" }
+  } },
+  { name: "Armor Potency (+1)", type: "equipment", system: {
+    level: { value: 5 }, usage: { value: "etched-onto-armor" }
+  } }
+];
+
+globalThis.game = {
+  settings: { get: () => ({}) },
+  packs: new Map([["pf2e.equipment-srd", {
+    getIndex: async ({ fields }) => {
+      requestedFields = fields;
+      return indexEntries;
+    }
+  }]])
+};
+
+try {
+  const indexedBases = await getBaseItemCandidates("armor", 20);
+  assert.ok(requestedFields.includes("system.category"),
+    "the equipment index explicitly requests the base armor category");
+  assert.deepEqual(indexedBases, [
+    { name: "Leather Armor", level: 0, category: "light" },
+    { name: "Full Plate", level: 2, category: "heavy" }
+  ], "base candidates preserve real system.category values from the pack index");
+
+  const indexedRunes = await getPropertyRuneCandidates("armor", 20);
+  assert.deepEqual(indexedRunes, [
+    { name: "Invisibility", level: 8, usage: "etched-onto-light-armor" },
+    { name: "Fortification", level: 12, usage: "etched-onto-med-heavy-armor" }
+  ], "rune candidates preserve supported usages while excluding material-constrained and fundamental runes");
+} finally {
+  if (previousGame === undefined) delete globalThis.game;
+  else globalThis.game = previousGame;
 }
 
 console.log("item forge armor-category rune gate check: all assertions passed");
