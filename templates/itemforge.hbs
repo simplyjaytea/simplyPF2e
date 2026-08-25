@@ -1,4 +1,12 @@
 <div class="simplypf2e-generator">
+  <div class="spf-provider-summary {{#if providerReady}}spf-provider-ready{{else}}spf-provider-attention{{/if}}" data-tooltip="{{providerBaseUrl}}">
+    <span class="spf-provider-name">
+      <i class="fa-solid {{#if provider.local}}fa-server{{else}}fa-cloud{{/if}}"></i>
+      <strong>{{provider.name}}</strong>
+    </span>
+    <code class="spf-provider-model">{{#if provider.model}}{{provider.model}}{{else}}{{localize "SIMPLYPF2E.Generator.NoModelShort"}}{{/if}}</code>
+    <i class="fa-solid {{#if providerReady}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}} spf-provider-state" data-tooltip="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}"></i>
+  </div>
   {{#if apiKeyWarning}}
     <p class="notification warning spf-provider-warning">
       <span>{{apiKeyWarning}}</span>

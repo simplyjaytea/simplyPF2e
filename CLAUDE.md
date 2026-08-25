@@ -80,15 +80,15 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 - Not writing `system.price`/`system.level` on a runed item is **correct** — `physical/document.ts` recomputes both via `computeLevelRarityPrice()` every prep.
 - A character's `resources.focus.max` is zeroed every prep and rebuilt only from ActiveEffectLike rules, so the PC focus pool needs a cloned RE; an NPC's can be plain actor data.
 
-## Current state (2026-07-30)
+## Current state (2026-08-26)
 
-Last work: a full project audit, then an optimization pass, on `claude/project-audit-s2ezn0`.
+Current work: consumer-readiness pass on `codex/consumer-readiness`. Cloud/local provider setup now has explicit provider/model identity, empty-model and browser mixed-content checks, exact endpoint-bound keys, modern first-party OpenAI request fields, and compatibility negotiation for older OpenAI-compatible servers. The generator and item forge share a compact provider strip; responsive controls were browser-checked at 420 px and 760 px without overflow. See the newest HISTORY.md entry for the exact scope and tests.
 
-Shipped in that pass: shared `text.mjs`/`runes.mjs` extracted (four copies of `esc`, two halves of rune logic, ~45-line duplicated item-embedding loops in both actor pipelines, four duplicated preview mappers); rune tiers now level-gated and priced from real rune docs; both grounding prompts carve out the `+N striking` prefix they were silently stripping; `resolveFeatPicks` dedupes across slots; a PC caster no longer loses spellcasting when grounding comes up empty; Create Actor follows the visible preview instead of the mode radio; missing `SIMPLYPF2E.Generator.Creature` i18n key added.
+Earlier audit/optimization work extracted shared `text.mjs`/`runes.mjs`, level-gated and real-source-priced runes, deduped feat picks, preserved PC spellcasting on empty grounding, and consolidated preview/build helpers.
 
-**Unverified in a live world** (all logic-level checked only): focus spells (PC + NPC), Free Archetype, Int languages, PC runes, PC gold spend, the six new presets, the consolidated progress UI, and the **entire item forge**.
+**Unverified in a live world** (logic/browser checks only): a keyed OpenAI generation; a keyless Ollama/LM Studio generation and CORS setup; the provider strip in real Foundry chrome; focus spells (PC + NPC); Free Archetype; Int languages; PC runes; PC gold spend; the six new presets; the consolidated progress UI; and the **entire item forge**.
 
-**Next task: a live-Foundry test.** The PC pipeline has the largest unverified surface; the item forge's first live item creation is the other major gap.
+**Next task: a live-Foundry test.** Start with one cloud and one local generation, then cover the PC pipeline (largest unverified surface) and the item forge's first live item creation.
 
 ## Known gaps
 

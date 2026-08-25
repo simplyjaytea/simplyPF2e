@@ -165,6 +165,16 @@ export function isOfficialDeepSeekEndpoint(value) {
   }
 }
 
+/** True only for OpenAI's first-party API hostname. */
+export function isOfficialOpenAIEndpoint(value) {
+  try {
+    const host = new URL(normalizeApiBaseUrl(value)).hostname.toLowerCase().replace(/\.$/, "");
+    return host === "api.openai.com";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Preserve existing worlds after DeepSeek retired its legacy model aliases.
  * Custom gateways keep their configured identifiers unchanged because those
@@ -186,8 +196,6 @@ export function isLikelyKeylessLocalEndpoint(value) {
   try {
     const url = new URL(normalizeApiBaseUrl(value));
     const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
-    const port = url.port || (url.protocol === "https:" ? "443" : "80");
-    if (port === "11434" || port === "1234") return true;
     if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
     if (host === "::1" || (host.includes(":") && /^(?:fc|fd|fe80:)/.test(host))) return true;
     if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) || /^169\.254\./.test(host)) return true;
@@ -199,11 +207,45 @@ export function isLikelyKeylessLocalEndpoint(value) {
 }
 
 /**
+ * Compact provider metadata for the generator header. This is deliberately
+ * inferred from the endpoint instead of stored as a second provider setting,
+ * so custom OpenAI-compatible gateways remain first-class and cannot drift
+ * out of sync with the URL that actually receives requests.
+ */
+export function describeProvider(baseUrl, model = "") {
+  const normalized = normalizeApiBaseUrl(baseUrl);
+  const configuredModel = String(model ?? "").trim();
+  if (!normalized) {
+    return { id: "missing", name: "Not configured", local: false, model: configuredModel };
+  }
+  try {
+    const url = new URL(normalized);
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+    const port = url.port || (url.protocol === "https:" ? "443" : "80");
+    if (host === "api.openai.com") return { id: "openai", name: "OpenAI", local: false, model: configuredModel };
+    if (host === "api.deepseek.com") return { id: "deepseek", name: "DeepSeek", local: false, model: configuredModel };
+    if (host === "openrouter.ai") return { id: "openrouter", name: "OpenRouter", local: false, model: configuredModel };
+    const local = isLikelyKeylessLocalEndpoint(normalized);
+    if (local && port === "11434") return { id: "ollama", name: "Ollama", local: true, model: configuredModel };
+    if (local && port === "1234") return { id: "lmstudio", name: "LM Studio", local: true, model: configuredModel };
+    return {
+      id: local ? "local" : "custom",
+      name: local ? "Local provider" : "Custom provider",
+      local,
+      model: configuredModel
+    };
+  } catch {
+    return { id: "custom", name: "Custom provider", local: false, model: configuredModel };
+  }
+}
+
+/**
  * Read provider authentication without exposing an unbound key to callers.
  * `apiKey` is non-empty only when its stored binding exactly matches baseUrl.
  */
 export function getProviderRequestConfig() {
   const baseUrl = normalizeApiBaseUrl(getSetting(SETTINGS.apiBaseUrl));
+  const model = String(getSetting(SETTINGS.model) ?? "").trim();
   const configuredApiKey = String(getSetting(SETTINGS.apiKey) ?? "").trim();
   const apiKeyBaseUrl = normalizeApiBaseUrl(getSetting(SETTINGS.apiKeyBaseUrl));
   const apiKeyIsBound = Boolean(configuredApiKey && baseUrl && apiKeyBaseUrl === baseUrl);
@@ -212,18 +254,31 @@ export function getProviderRequestConfig() {
     apiKey: apiKeyIsBound ? configuredApiKey : "",
     hasConfiguredApiKey: Boolean(configuredApiKey),
     apiKeyIsBound,
-    keylessLocal: isLikelyKeylessLocalEndpoint(baseUrl)
+    keylessLocal: isLikelyKeylessLocalEndpoint(baseUrl),
+    model,
+    provider: describeProvider(baseUrl, model)
   };
 }
 
 /** Localization key for a useful provider-auth warning, or null when ready. */
-export function getProviderAuthWarningKey(state = getProviderRequestConfig()) {
+export function getProviderAuthWarningKey(
+  state = getProviderRequestConfig(),
+  pageProtocol = globalThis.location?.protocol
+) {
   if (!state.baseUrl) return "SIMPLYPF2E.Errors.NoBaseUrl";
+  if (!String(state.model ?? "").trim()) return "SIMPLYPF2E.Errors.NoModel";
   if (state.hasConfiguredApiKey && !state.apiKeyIsBound) {
     return "SIMPLYPF2E.Generator.ApiKeyNotAuthorized";
   }
   if (!state.hasConfiguredApiKey && !state.keylessLocal) {
     return "SIMPLYPF2E.Generator.NoApiKey";
+  }
+  try {
+    if (pageProtocol === "https:" && new URL(state.baseUrl).protocol === "http:") {
+      return "SIMPLYPF2E.Errors.MixedContentProvider";
+    }
+  } catch {
+    // Invalid URLs are surfaced by fetch with the ordinary network guidance.
   }
   return null;
 }

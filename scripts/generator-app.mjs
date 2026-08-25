@@ -1,5 +1,5 @@
 import {
-  MODULE_ID, SETTINGS, getSetting, getProviderAuthWarningKey, getProviderRequestConfig,
+  MODULE_ID, getProviderAuthWarningKey, getProviderRequestConfig,
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
 import {
@@ -94,10 +94,12 @@ export class GeneratorApp extends SpfApp {
       progress: this._progress,
       apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
       providerBaseUrl: authState.baseUrl,
+      provider: authState.provider,
+      providerReady: !authWarningKey,
       canAuthorizeApiKey: Boolean(
         authState.baseUrl && authState.hasConfiguredApiKey && !authState.apiKeyIsBound
       ),
-      model: getSetting(SETTINGS.model),
+      model: authState.model,
       rarities: [
         { value: "common", label: "SIMPLYPF2E.Rarity.Common" },
         { value: "uncommon", label: "SIMPLYPF2E.Rarity.Uncommon" },

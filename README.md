@@ -53,7 +53,7 @@ Configure your AI provider under **Game Settings → Configure Settings → Simp
 | --- | --- |
 | API Base URL | Any OpenAI-compatible endpoint. Defaults to DeepSeek. |
 | API Key | Your provider key, stored in this browser and bound to the exact API Base URL. Leave blank for a keyless local server. |
-| Model | e.g. `deepseek-v4-flash`, `deepseek-v4-pro`, `gpt-4o` — the exact API identifier, not the marketing name. |
+| Model | e.g. `deepseek-v4-flash`, `deepseek-v4-pro`, `gpt-5.6-luna` — the exact API identifier, not the marketing name. |
 | Creativity | Sampling temperature (0–2) for creative generation. Grounding/selectors always use temperature 0. |
 | Max response tokens | Global ceiling. Each operation applies a smaller production-safe cap where possible. |
 | Request timeout | Aborts only if the provider sends *no data* for this long (default 90 s). |
@@ -62,12 +62,14 @@ Configure your AI provider under **Game Settings → Configure Settings → Simp
 **Providers**
 
 - **DeepSeek** — `https://api.deepseek.com/v1`, model `deepseek-v4-flash`. Cheap, strong JSON, the recommended default.
-- **OpenAI** — `https://api.openai.com/v1`, model `gpt-4o`
+- **OpenAI** — `https://api.openai.com/v1`, model `gpt-5.6-luna`
 - **OpenRouter** — `https://openrouter.ai/api/v1`, any hosted model
 - **Ollama (local)** — `http://localhost:11434/v1`, usually no key. Set `OLLAMA_ORIGINS` to the exact Foundry browser origin (for example `http://localhost:30000`) so the browser may call it; avoid wildcard origins.
 - **LM Studio (local)** — `http://localhost:1234/v1`, no key unless server authentication is enabled. Keep the server bound to loopback; require authentication if LAN serving or cross-origin access is enabled. LM Studio 0.4.8+ honors Chat Completions reasoning controls; older versions still work through compatibility fallback but may not disable reasoning.
 
-SimplyPF2e disables separate model reasoning for its structured generation calls so bounded response budgets are spent on complete JSON. Providers that do not support the control fall back to their ordinary OpenAI-compatible request behavior.
+SimplyPF2e uses current OpenAI Chat Completions fields for OpenAI and the broadly supported OpenAI-compatible fields everywhere else. If a provider explicitly rejects an optional field, instruction role, or token-limit spelling, the module removes or negotiates only that part and retries the request. It also disables separate model reasoning for structured generation where the provider supports that control, so bounded response budgets are spent on complete JSON.
+
+The provider and model currently in use are always shown at the top of the generator. An empty model is caught before generation. If Foundry is served over HTTPS, an HTTP local provider will be blocked by the browser; serve the provider over HTTPS, or access Foundry over HTTP on the same trusted local network. Local servers must also allow the exact Foundry browser origin through CORS.
 
 > **Provider security:** requests go straight from the GM's browser to the configured provider. API keys are client settings, never synced to the world, and are sent only to the exact Base URL they were authorized for. Saving a key or changing the Base URL disables it until confirmation. Open the generator, verify the displayed endpoint, and click **Authorize for this endpoint**. Existing keys from older SimplyPF2e versions also start disabled after this upgrade. Generated prompts and character data are sent to remote providers when a remote endpoint is configured.
 

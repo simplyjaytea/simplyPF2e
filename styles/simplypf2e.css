@@ -242,7 +242,8 @@
 
 .simplypf2e .spf-row {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: var(--spf-space-md);
   align-items: flex-end;
   margin: var(--spf-space-md) 0;
 }
@@ -250,7 +251,13 @@
 .simplypf2e .spf-row .form-group {
   display: flex;
   flex-direction: column;
+  flex: 1 1 8.5rem;
+  min-width: 0;
   gap: 0.15rem;
+}
+
+.simplypf2e .spf-row select {
+  width: 100%;
 }
 
 .simplypf2e .spf-row input[type="number"] {
@@ -591,4 +598,76 @@
 .simplypf2e .spf-provider-warning button {
   flex: 0 0 auto;
   width: auto;
+}
+
+/* Always-visible provider identity. The endpoint stays in the tooltip so the
+ * strip is useful without taking over the top of a compact generator window. */
+.simplypf2e .spf-provider-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spf-space-sm);
+  min-width: 0;
+  padding: var(--spf-space-xs) var(--spf-space-md);
+  border: 1px solid var(--color-border, #7a7971);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  font-size: var(--spf-text-sm);
+}
+
+.simplypf2e .spf-provider-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spf-space-xs);
+  white-space: nowrap;
+}
+
+.simplypf2e .spf-provider-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.simplypf2e .spf-provider-state {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.simplypf2e .spf-provider-ready .spf-provider-state {
+  color: var(--spf-success);
+}
+
+.simplypf2e .spf-provider-attention .spf-provider-state {
+  color: var(--spf-danger);
+}
+
+@media (max-width: 520px) {
+  .simplypf2e .spf-inputs,
+  .simplypf2e .spf-preview {
+    padding-inline: var(--spf-space-md);
+  }
+
+  .simplypf2e .spf-mode-toggle {
+    gap: var(--spf-space-xs);
+  }
+
+  .simplypf2e .spf-mode-toggle label {
+    gap: var(--spf-space-xs);
+    padding-inline: var(--spf-space-xs);
+    font-size: var(--spf-text-sm);
+  }
+
+  .simplypf2e .spf-preset-controls select {
+    min-width: 0;
+  }
+
+  .simplypf2e .spf-row .form-group {
+    flex-basis: calc(50% - var(--spf-space-md));
+  }
+
+  .simplypf2e .spf-statblock-header {
+    flex-wrap: wrap;
+    gap: var(--spf-space-xs);
+  }
 }

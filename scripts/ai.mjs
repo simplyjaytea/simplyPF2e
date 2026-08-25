@@ -1,5 +1,6 @@
 import {
-  SETTINGS, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint, resolveProviderModel
+  SETTINGS, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
+  isOfficialOpenAIEndpoint, resolveProviderModel
 } from "./settings.mjs";
 import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
 import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
@@ -883,15 +884,18 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
   });
   const configuredModel = String(getSetting(SETTINGS.model) ?? "").trim();
   const model = resolveProviderModel(baseUrl, configuredModel);
+  if (!model) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoModel"));
   if (!warnedLegacyDeepSeekModel && model !== configuredModel) {
     console.warn(`simplypf2e | DeepSeek model ${configuredModel} was retired; using ${model} for this request`);
     warnedLegacyDeepSeekModel = true;
   }
   const officialDeepSeek = isOfficialDeepSeekEndpoint(baseUrl);
+  const officialOpenAI = isOfficialOpenAIEndpoint(baseUrl);
+  const tokenLimitField = officialOpenAI ? "max_completion_tokens" : "max_tokens";
   const body = {
     model,
     temperature: completionOptions.temperature,
-    max_tokens: completionOptions.maxTokens,
+    [tokenLimitField]: completionOptions.maxTokens,
     ...(completionOptions.reasoningEffort && !officialDeepSeek
       ? { reasoning_effort: completionOptions.reasoningEffort }
       : {}),
@@ -903,7 +907,7 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
     // DeepSeek sends it regardless). Dropped first if the provider 400s.
     stream_options: { include_usage: true },
     messages: [
-      { role: "system", content: system },
+      { role: officialOpenAI ? "developer" : "system", content: system },
       { role: "user", content: user }
     ],
     response_format: { type: "json_object" }
@@ -920,20 +924,46 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
   try {
     resetIdle();
     let response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
+    const rejectedParameters = new Set();
     // Some OpenAI-compatible providers reject stream_options, response_format
     // or streaming. Retry without a parameter ONLY when a 400/422 body actually
     // names it (checked longest-first so "stream" can't match the others);
     // any other validation error fails fast with its own message.
     while (response.status === 400 || response.status === 422) {
       const detail = await safeErrorDetail(response);
-      const offending = ["reasoning_effort", "stream_options", "response_format", "thinking", "stream"]
-        .find((param) => param in body && detail.includes(param));
+      const normalizedDetail = detail.toLowerCase();
+      if (
+        body.messages[0]?.role === "developer"
+        && normalizedDetail.includes("developer")
+        && !rejectedParameters.has("developer_role")
+      ) {
+        // Current OpenAI models prefer developer instructions, while older
+        // Chat Completions models may only recognize the system role.
+        body.messages[0].role = "system";
+        rejectedParameters.add("developer_role");
+        resetIdle();
+        response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
+        continue;
+      }
+      const offending = [
+        "max_completion_tokens", "reasoning_effort", "stream_options", "response_format",
+        "temperature", "max_tokens", "thinking", "stream"
+      ].find((param) => param in body && normalizedDetail.includes(param));
       if (!offending) {
         throw new AIRequestError(
           game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
         );
       }
+      const value = body[offending];
       delete body[offending];
+      rejectedParameters.add(offending);
+      // OpenAI reasoning models require max_completion_tokens, while some
+      // local compatibility servers still implement only max_tokens.
+      // Negotiate in either direction without ever looping between names.
+      if (offending === "max_tokens" || offending === "max_completion_tokens") {
+        const alternate = offending === "max_tokens" ? "max_completion_tokens" : "max_tokens";
+        if (!rejectedParameters.has(alternate)) body[alternate] = value;
+      }
       resetIdle();
       response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
     }
@@ -967,8 +997,9 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
     // Never accept a parseable prefix from a length-truncated response. It
     // can omit required fields while still looking like valid JSON.
     if (finishReason === "length") {
+      const maxTokens = body.max_completion_tokens ?? body.max_tokens ?? completionOptions.maxTokens;
       throw new AIRequestError(
-        game.i18n.format("SIMPLYPF2E.Errors.Truncated", { max: body.max_tokens }),
+        game.i18n.format("SIMPLYPF2E.Errors.Truncated", { max: maxTokens }),
         {
           retryable: true,
           usage: normalizeUsage(usage, { content, system, user, reasoningChars })

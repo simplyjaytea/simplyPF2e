@@ -1,5 +1,5 @@
 import {
-  MODULE_ID, SETTINGS, getSetting, getProviderAuthWarningKey, getProviderRequestConfig,
+  MODULE_ID, getProviderAuthWarningKey, getProviderRequestConfig,
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
 import { generateMagicItemConcept, generateRunedItemConcept } from "./ai.mjs";
@@ -69,10 +69,12 @@ export class ItemForgeApp extends SpfApp {
       progress: this._progress,
       apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
       providerBaseUrl: authState.baseUrl,
+      provider: authState.provider,
+      providerReady: !authWarningKey,
       canAuthorizeApiKey: Boolean(
         authState.baseUrl && authState.hasConfiguredApiKey && !authState.apiKeyIsBound
       ),
-      model: getSetting(SETTINGS.model),
+      model: authState.model,
       minLevel: MIN_ITEM_LEVEL,
       maxLevel: MAX_ITEM_LEVEL,
       kinds: [

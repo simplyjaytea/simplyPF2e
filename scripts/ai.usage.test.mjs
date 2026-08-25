@@ -245,6 +245,81 @@ try {
     false,
     "422 compatibility retries must remove a named unsupported thinking control"
   );
+
+  settings.set(SETTINGS.apiBaseUrl, "https://api.openai.com/v1");
+  settings.set(SETTINGS.apiKey, "openai-secret");
+  settings.set(SETTINGS.apiKeyBaseUrl, "https://api.openai.com/v1");
+  settings.set(SETTINGS.model, "gpt-test");
+  providerReplies.push(
+    {
+      httpStatus: 400,
+      body: { error: { message: "Unsupported message role: developer" } }
+    },
+    {
+      httpStatus: 400,
+      body: { error: { message: "Unsupported parameter: temperature" } }
+    },
+    {
+      choices: [{
+        message: { content: '{"keywords":["storm","control"]}' },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 9, completion_tokens: 4, total_tokens: 13 }
+    }
+  );
+  const openAIStart = requestBodies.length;
+  await chooseSpellFocus({
+    concept: {
+      name: "Storm Adept",
+      level: 5,
+      blurb: "A disciplined storm mage",
+      description: "Shapes wind to control enemy movement.",
+      traits: ["air", "humanoid"]
+    },
+    tradition: "arcane"
+  });
+  const [openAIBody, openAIRoleRetryBody, openAIParameterRetryBody] = requestBodies.slice(openAIStart);
+  assert.equal(openAIBody.messages[0].role, "developer", "first-party OpenAI uses current developer instructions");
+  assert.equal(openAIBody.max_completion_tokens, 768, "first-party OpenAI uses the current completion-limit field");
+  assert.equal(Object.hasOwn(openAIBody, "max_tokens"), false, "deprecated max_tokens is not sent to OpenAI");
+  assert.equal(openAIRoleRetryBody.messages[0].role, "system", "older OpenAI models can reject the developer role by name");
+  assert.equal(Object.hasOwn(openAIParameterRetryBody, "temperature"), false, "unsupported sampling controls are removed by name");
+  assert.equal(openAIParameterRetryBody.max_completion_tokens, 768, "compatibility retry preserves the output cap");
+  assert.equal(requestHeaders[openAIStart].Authorization, "Bearer openai-secret");
+
+  settings.set(SETTINGS.apiBaseUrl, "http://localhost:11434/v1");
+  settings.set(SETTINGS.apiKey, "");
+  settings.set(SETTINGS.apiKeyBaseUrl, "");
+  settings.set(SETTINGS.model, "new-local-model");
+  providerReplies.push(
+    {
+      httpStatus: 400,
+      body: { error: { message: "Unsupported parameter: max_tokens; use max_completion_tokens" } }
+    },
+    {
+      choices: [{
+        message: { content: '{"keywords":["stone","control"]}' },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 7, completion_tokens: 4, total_tokens: 11 }
+    }
+  );
+  const localTokenStart = requestBodies.length;
+  await chooseSpellFocus({
+    concept: {
+      name: "Stone Adept",
+      level: 5,
+      blurb: "A patient earth mage",
+      description: "Raises stone to divide enemy movement.",
+      traits: ["earth", "humanoid"]
+    },
+    tradition: "primal"
+  });
+  const [localLegacyBody, localModernBody] = requestBodies.slice(localTokenStart);
+  assert.equal(localLegacyBody.messages[0].role, "system", "local compatibility keeps the broadly-supported system role");
+  assert.equal(localLegacyBody.max_tokens, 768);
+  assert.equal(localModernBody.max_completion_tokens, 768, "local providers can negotiate the newer token-limit spelling");
+  assert.equal(Object.hasOwn(localModernBody, "max_tokens"), false);
   assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
 } finally {
   globalThis.fetch = originalFetch;

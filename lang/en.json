@@ -11,7 +11,7 @@
       },
       "Model": {
         "Name": "Model",
-        "Hint": "Model identifier, e.g. deepseek-v4-flash, deepseek-v4-pro, gpt-4o, or any model your provider offers."
+        "Hint": "Model identifier, e.g. deepseek-v4-flash, deepseek-v4-pro, gpt-5.6-luna, or any model your provider offers."
       },
       "Temperature": {
         "Name": "Creativity (temperature)",
@@ -76,7 +76,9 @@
       "ApiKeyEndpoint": "Endpoint:",
       "AuthorizeApiKey": "Authorize for this endpoint",
       "ApiKeyAuthorized": "API key authorized for the current endpoint.",
-      "ApiKeyAuthorizationFailed": "The API endpoint changed before authorization completed. Review it and try again."
+      "ApiKeyAuthorizationFailed": "The API endpoint changed before authorization completed. Review it and try again.",
+      "ProviderReady": "Provider configuration is ready",
+      "NoModelShort": "No model"
     },
     "Presets": {
       "None": "— No preset —",
@@ -281,6 +283,8 @@
     "Errors": {
       "NoPrompt": "Describe the creature first.",
       "NoBaseUrl": "No API base URL is configured in the module settings.",
+      "NoModel": "No model identifier is configured. Set one in Module Settings → SimplyPF2e before generating.",
+      "MixedContentProvider": "This Foundry page uses HTTPS, but the configured AI provider uses HTTP. Browsers block that mixed-content request. Serve the provider over HTTPS or open Foundry over HTTP on the same trusted local network.",
       "ApiError": "The AI provider returned an error ({status}): {detail}",
       "NetworkError": "Could not reach the AI provider: {message}. If you are using a local or self-hosted provider, make sure it allows requests from Foundry (CORS).",
       "EmptyResponse": "The AI provider returned an empty response. This was retried once already — check the provider's status page and your model name.",

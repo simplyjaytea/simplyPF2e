@@ -2,6 +2,15 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-26 — Consumer readiness pass (cloud/local providers and compact UI)
+
+- Modernized first-party OpenAI Chat Completions requests to use a `developer` message and `max_completion_tokens`; other OpenAI-compatible providers retain the broadly supported `system`/`max_tokens` shape. A targeted 400/422 compatibility retry can remove rejected optional controls or negotiate the token-limit field in either direction without looping.
+- Added explicit empty-model and HTTPS-to-HTTP mixed-content checks before generation. Provider identity is inferred from the exact request URL, with public hosts on Ollama/LM Studio ports no longer treated as local or keyless.
+- Added an always-visible, compact provider/model strip to the generator and item forge. Responsive rows now wrap cleanly into two columns in narrow Foundry windows; browser layout checks at 420 px and 760 px found no horizontal overflow after the fix.
+- Updated the stale OpenAI model example to `gpt-5.6-luna`, which the current official model catalog lists for Chat Completions, streaming, and structured output. Added production-import provider/request tests and a static template/CSS contract check.
+
+**Still requires live validation before release:** one real keyed OpenAI request, one keyless Ollama or LM Studio request (including CORS), the new strip inside Foundry's ApplicationV2 chrome, and the previously unverified NPC/PC/item-forge surfaces below.
+
 ## 2026-08-19 — Production-hardening pass 1 (provider safety, context bounds, release gates)
 
 - Bound each browser's API key to the exact normalized API Base URL. New, changed, and legacy keys stay disabled until the displayed endpoint is verified and **Authorize for this endpoint** is clicked; changing endpoint invalidates the binding. Keyless Ollama/LM Studio and common local/LAN endpoints no longer show a false missing-key warning.
