@@ -86,7 +86,7 @@ Current work: consumer-readiness pass on `codex/consumer-readiness`. Cloud/local
 
 Earlier audit/optimization work extracted shared `text.mjs`/`runes.mjs`, level-gated and real-source-priced runes, deduped feat picks, preserved PC spellcasting on empty grounding, and consolidated preview/build helpers.
 
-**Unverified in a live world** (logic/browser checks only): save/test through the focused provider setup; a keyed OpenAI generation; a keyless Ollama/LM Studio generation and CORS setup; the provider strip in real Foundry chrome; focus spells (PC + NPC); Free Archetype; Int languages; PC runes; PC gold spend; the six new presets; the consolidated progress UI; and the **entire item forge**.
+**Unverified in a live world** (logic/browser checks only): save/test through the focused provider setup; a real keyed OpenAI generation; a real Ollama/LM Studio generation; the provider strip in real Foundry chrome; focus spells (PC + NPC); Free Archetype; Int languages; PC runes; PC gold spend; the six new presets; the consolidated progress UI; and the **entire item forge**. The production request path itself has been browser-integration-tested cross-origin for CORS/preflight, SSE, compatibility retry, a bound bearer key, and an unbound key being withheld.
 
 **Next task: a live-Foundry test.** Start with one cloud and one local generation, then cover the PC pipeline (largest unverified surface) and the item forge's first live item creation.
 
