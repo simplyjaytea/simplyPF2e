@@ -8,6 +8,7 @@
  * disabled to reserve the bounded completion allowance for a complete object.
  */
 export const AI_TASK = Object.freeze({
+  CONNECTION_TEST: "connectionTest",
   CREATURE_CONCEPT: "creatureConcept",
   PC_CONCEPT: "pcConcept",
   LOOT_DRAFT: "lootDraft",
@@ -23,6 +24,7 @@ export const AI_TASK = Object.freeze({
 });
 
 const TASK_PROFILES = Object.freeze({
+  [AI_TASK.CONNECTION_TEST]: { maxTokens: 64, deterministic: true, disableReasoning: true },
   [AI_TASK.CREATURE_CONCEPT]: { maxTokens: 8000, deterministic: false, disableReasoning: true },
   [AI_TASK.PC_CONCEPT]: { maxTokens: 8000, deterministic: false, disableReasoning: true },
   [AI_TASK.LOOT_DRAFT]: { maxTokens: 1600, deterministic: false, disableReasoning: true },

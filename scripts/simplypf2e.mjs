@@ -2,6 +2,7 @@ import { MODULE_ID, registerSettings } from "./settings.mjs";
 import { GeneratorApp } from "./generator-app.mjs";
 import { ItemForgeApp } from "./itemforge-app.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
+import { ProviderSetupApp } from "./provider-setup-app.mjs";
 
 let app = null;
 let itemForgeApp = null;
@@ -19,7 +20,7 @@ function openItemForge() {
 }
 
 Hooks.once("init", () => {
-  registerSettings(SourcesConfigApp);
+  registerSettings(SourcesConfigApp, ProviderSetupApp);
   if (!Handlebars.helpers.eq) {
     Handlebars.registerHelper("eq", (a, b) => a === b);
   }

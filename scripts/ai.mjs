@@ -20,6 +20,20 @@ const REMASTER_NOTE = `using CURRENT PF2e REMASTER names, never the old pre-Rema
 
 let warnedLegacyDeepSeekModel = false;
 
+/**
+ * Exercise the exact configured Chat Completions path with a tiny structured
+ * response. Unlike a /models probe, this verifies CORS, endpoint binding,
+ * authentication, the selected model, streaming, and compatibility fallback.
+ */
+export async function testProviderConnection() {
+  const { usage } = await requestCompletion({
+    task: AI_TASK.CONNECTION_TEST,
+    system: "You are a connection health check. Return only valid JSON.",
+    user: 'Return exactly {"ok":true}.'
+  });
+  return usage;
+}
+
 /* The grounding passes below tell the model to copy names EXACTLY from a
  * candidate list, and those lists hold plain BASE items only — no runed
  * variants exist as their own compendium documents. Without this carve-out the

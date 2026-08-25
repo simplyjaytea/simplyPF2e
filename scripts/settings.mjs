@@ -13,7 +13,17 @@ export const SETTINGS = {
   freeArchetype: "freeArchetype"
 };
 
-export function registerSettings(SourcesConfigApp) {
+export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
+  if (ProviderSetupApp) {
+    game.settings.registerMenu(MODULE_ID, "providerSetupMenu", {
+      name: "SIMPLYPF2E.ProviderSetup.MenuName",
+      label: "SIMPLYPF2E.ProviderSetup.MenuLabel",
+      hint: "SIMPLYPF2E.ProviderSetup.MenuHint",
+      icon: "fa-solid fa-plug-circle-check",
+      type: ProviderSetupApp,
+      restricted: true
+    });
+  }
   game.settings.registerMenu(MODULE_ID, "sourcesMenu", {
     name: "SIMPLYPF2E.Sources.MenuName",
     label: "SIMPLYPF2E.Sources.MenuLabel",

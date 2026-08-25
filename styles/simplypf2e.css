@@ -630,8 +630,27 @@
 }
 
 .simplypf2e .spf-provider-state {
+  flex: 0 0 auto;
+}
+
+.simplypf2e .spf-provider-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spf-space-xs);
   margin-left: auto;
   flex: 0 0 auto;
+}
+
+.simplypf2e .spf-provider-actions button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: 1;
 }
 
 .simplypf2e .spf-provider-ready .spf-provider-state {
@@ -640,6 +659,56 @@
 
 .simplypf2e .spf-provider-attention .spf-provider-state {
   color: var(--spf-danger);
+}
+
+.simplypf2e .simplypf2e-provider-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spf-space-lg);
+  padding: var(--spf-space-sm);
+}
+
+.simplypf2e .simplypf2e-provider-setup .form-group {
+  margin: 0;
+}
+
+.simplypf2e .simplypf2e-provider-setup .hint {
+  margin: 0.15rem 0 0;
+  font-size: var(--spf-text-sm);
+  opacity: 0.75;
+}
+
+.simplypf2e .spf-provider-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spf-space-sm);
+}
+
+.simplypf2e .spf-provider-presets button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spf-space-xs);
+  min-width: 0;
+  padding: var(--spf-space-sm);
+  opacity: 0.72;
+}
+
+.simplypf2e .spf-provider-presets button.spf-provider-preset-active {
+  opacity: 1;
+  font-weight: bold;
+  border-color: var(--spf-brand-accent);
+  box-shadow: inset 0 0 0 1px var(--spf-brand-accent);
+}
+
+.simplypf2e .spf-provider-clear-key {
+  display: flex;
+  align-items: center;
+  gap: var(--spf-space-sm);
+}
+
+.simplypf2e .spf-provider-privacy {
+  margin: 0;
 }
 
 @media (max-width: 520px) {
@@ -669,5 +738,9 @@
   .simplypf2e .spf-statblock-header {
     flex-wrap: wrap;
     gap: var(--spf-space-xs);
+  }
+
+  .simplypf2e .spf-provider-presets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -54,7 +54,7 @@ globalThis.fetch = async (_url, options) => {
 };
 
 try {
-  const { chooseSpellFocus } = await import("./ai.mjs");
+  const { chooseSpellFocus, testProviderConnection } = await import("./ai.mjs");
   const result = await chooseSpellFocus({
     concept: {
       name: "Ember Adept",
@@ -320,6 +320,22 @@ try {
   assert.equal(localLegacyBody.max_tokens, 768);
   assert.equal(localModernBody.max_completion_tokens, 768, "local providers can negotiate the newer token-limit spelling");
   assert.equal(Object.hasOwn(localModernBody, "max_tokens"), false);
+
+  providerReplies.push({
+    choices: [{
+      message: { content: '{"ok":true}' },
+      finish_reason: "stop"
+    }],
+    usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 }
+  });
+  const testStart = requestBodies.length;
+  const testUsage = await testProviderConnection();
+  const testBody = requestBodies[testStart];
+  assert.deepEqual(testUsage, { prompt: 12, completion: 5, total: 17, estimated: false });
+  assert.equal(testBody.max_tokens, 64, "connection checks must use their small task-specific cap");
+  assert.equal(testBody.temperature, 0);
+  assert.equal(testBody.stream, true, "connection checks must exercise the real streaming request path");
+  assert.deepEqual(testBody.response_format, { type: "json_object" });
   assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
 } finally {
   globalThis.fetch = originalFetch;

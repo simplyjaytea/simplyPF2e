@@ -3,11 +3,11 @@
     "Settings": {
       "ApiBaseUrl": {
         "Name": "API Base URL",
-        "Hint": "Base URL of an OpenAI-compatible API. DeepSeek: https://api.deepseek.com/v1 — OpenAI: https://api.openai.com/v1 — OpenRouter: https://openrouter.ai/api/v1 — Ollama (local): http://localhost:11434/v1"
+        "Hint": "Base URL of an OpenAI-compatible API. The guided AI Provider Setup supplies presets for DeepSeek, OpenAI, OpenRouter, Ollama, and LM Studio."
       },
       "ApiKey": {
         "Name": "API Key",
-        "Hint": "API key for the current API Base URL. It stays in this browser and is never synced to the world or other users. Saving the key or changing the Base URL leaves it disabled until you verify the displayed endpoint and authorize it from the generator. Leave blank for a keyless local server such as Ollama or LM Studio."
+        "Hint": "API key for the current API Base URL. It stays in this browser and is never synced to the world or other users. Use AI Provider Setup for guided Save & Authorize; direct changes here remain disabled until the displayed endpoint is confirmed. Leave blank for a keyless local server such as Ollama or LM Studio."
       },
       "Model": {
         "Name": "Model",
@@ -29,6 +29,34 @@
         "Name": "Free Archetype variant rule",
         "Hint": "When enabled, generated player characters gain an extra archetype class-feat slot at every even level, matching the Free Archetype campaign variant rule."
       }
+    },
+    "ProviderSetup": {
+      "Title": "AI Provider Setup",
+      "MenuName": "AI Provider Setup",
+      "MenuLabel": "Configure Provider",
+      "MenuHint": "Choose a cloud or local OpenAI-compatible provider, then save and authorize its endpoint.",
+      "Intro": "Choose a provider to fill in its endpoint, then enter the exact model identifier it offers. Local servers must be running before generation.",
+      "ChooseProvider": "Choose provider",
+      "LocalServerHint": "For a local server, allow browser origin {origin} in CORS. An HTTPS Foundry page cannot call an HTTP provider.",
+      "BaseUrlHint": "The OpenAI-compatible API root, normally ending in /v1.",
+      "ModelPlaceholder": "Exact provider model ID",
+      "ModelHint": "Cloud model IDs come from the provider. For Ollama or LM Studio, use the name of a model installed on that server.",
+      "ApiKeyLabel": "API key (this browser only)",
+      "ApiKeySaved": "A key is saved — leave blank to keep it",
+      "ApiKeyOptional": "Leave blank for a keyless local server",
+      "ApiKeyHint": "Changing endpoints clears the old saved key unless you enter a replacement here.",
+      "ClearApiKey": "Clear the saved API key",
+      "Privacy": "The key stays in this browser and is sent only to the exact endpoint authorized when you save.",
+      "SaveAuthorize": "Save & Authorize",
+      "Cancel": "Cancel",
+      "Configure": "Configure AI provider",
+      "TestConnection": "Test provider connection",
+      "InvalidBaseUrl": "Enter a complete HTTP or HTTPS API Base URL.",
+      "Saved": "Saved {provider} with model {model}.",
+      "SavedAuthorized": "Saved {provider} with model {model}; the key is authorized for this endpoint.",
+      "SavedNeedsKey": "Saved {provider} with model {model}, but this remote provider still needs an API key.",
+      "TestSuccess": "Connected to {provider} with model {model} ({total} tokens).",
+      "TestFailed": "Provider connection test failed: {message}"
     },
     "Generator": {
       "Title": "SimplyPF2e",

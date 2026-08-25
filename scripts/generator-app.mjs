@@ -58,7 +58,9 @@ export class GeneratorApp extends SpfApp {
       memberUp: GeneratorApp.#onMemberUp,
       memberDown: GeneratorApp.#onMemberDown,
       rerollLoot: GeneratorApp.#onRerollLoot,
-      authorizeApiKey: GeneratorApp.#onAuthorizeApiKey
+      authorizeApiKey: GeneratorApp.#onAuthorizeApiKey,
+      configureProvider: GeneratorApp.#onConfigureProvider,
+      testProvider: GeneratorApp.#onTestProvider
     }
   };
 
@@ -352,6 +354,15 @@ export class GeneratorApp extends SpfApp {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ApiKeyAuthorizationFailed"));
     }
     await this.render();
+  }
+
+  static #onConfigureProvider() {
+    this.#readForm();
+    this._openProviderSetup();
+  }
+
+  static async #onTestProvider(_event, target) {
+    await this._testProvider(target);
   }
 
   static #onLevelDown() {

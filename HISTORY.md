@@ -7,9 +7,10 @@ Full session-by-session narrative, process notes, and the bug log. Not loaded by
 - Modernized first-party OpenAI Chat Completions requests to use a `developer` message and `max_completion_tokens`; other OpenAI-compatible providers retain the broadly supported `system`/`max_tokens` shape. A targeted 400/422 compatibility retry can remove rejected optional controls or negotiate the token-limit field in either direction without looping.
 - Added explicit empty-model and HTTPS-to-HTTP mixed-content checks before generation. Provider identity is inferred from the exact request URL, with public hosts on Ollama/LM Studio ports no longer treated as local or keyless.
 - Added an always-visible, compact provider/model strip to the generator and item forge. Responsive rows now wrap cleanly into two columns in narrow Foundry windows; browser layout checks at 420 px and 760 px found no horizontal overflow after the fix.
+- Added a focused first-run provider setup reachable from module settings or the generator strip: cloud/local presets, exact model and endpoint fields, browser-only key handling, endpoint authorization, local CORS/mixed-content guidance, and a 64-token connection check through the real streaming generation path. Switching endpoints without entering a replacement key clears the old secret rather than leaving it available for accidental reuse.
 - Updated the stale OpenAI model example to `gpt-5.6-luna`, which the current official model catalog lists for Chat Completions, streaming, and structured output. Added production-import provider/request tests and a static template/CSS contract check.
 
-**Still requires live validation before release:** one real keyed OpenAI request, one keyless Ollama or LM Studio request (including CORS), the new strip inside Foundry's ApplicationV2 chrome, and the previously unverified NPC/PC/item-forge surfaces below.
+**Still requires live validation before release:** save/test through the new setup in Foundry, one real keyed OpenAI request, one keyless Ollama or LM Studio request (including CORS), the new strip inside Foundry's ApplicationV2 chrome, and the previously unverified NPC/PC/item-forge surfaces below.
 
 ## 2026-08-19 — Production-hardening pass 1 (provider safety, context bounds, release gates)
 

@@ -5,7 +5,17 @@
       <strong>{{provider.name}}</strong>
     </span>
     <code class="spf-provider-model">{{#if provider.model}}{{provider.model}}{{else}}{{localize "SIMPLYPF2E.Generator.NoModelShort"}}{{/if}}</code>
-    <i class="fa-solid {{#if providerReady}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}} spf-provider-state" data-tooltip="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}"></i>
+    <span class="spf-provider-actions">
+      {{#if providerReady}}
+        <button type="button" data-action="testProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" {{#if busy}}disabled{{/if}}>
+          <i class="fa-solid fa-signal"></i>
+        </button>
+      {{/if}}
+      <button type="button" data-action="configureProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-gear"></i>
+      </button>
+      <i class="fa-solid {{#if providerReady}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}} spf-provider-state" data-tooltip="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}"></i>
+    </span>
   </div>
   {{#if apiKeyWarning}}
     <p class="notification warning spf-provider-warning">

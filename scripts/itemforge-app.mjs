@@ -35,6 +35,8 @@ export class ItemForgeApp extends SpfApp {
       createItem: ItemForgeApp.#onCreateItem,
       discard: ItemForgeApp.#onDiscard,
       authorizeApiKey: ItemForgeApp.#onAuthorizeApiKey,
+      configureProvider: ItemForgeApp.#onConfigureProvider,
+      testProvider: ItemForgeApp.#onTestProvider,
       levelUp: ItemForgeApp.#onLevelUp,
       levelDown: ItemForgeApp.#onLevelDown
     }
@@ -154,6 +156,15 @@ export class ItemForgeApp extends SpfApp {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ApiKeyAuthorizationFailed"));
     }
     await this.render();
+  }
+
+  static #onConfigureProvider() {
+    this.#readForm();
+    this._openProviderSetup();
+  }
+
+  static async #onTestProvider(_event, target) {
+    await this._testProvider(target);
   }
 
   static #onLevelDown() {

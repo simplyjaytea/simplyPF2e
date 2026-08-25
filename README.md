@@ -47,7 +47,7 @@ The link is permanent — it always resolves to the newest release, so Foundry o
 
 ## Setup
 
-Configure your AI provider under **Game Settings → Configure Settings → SimplyPF2e** (GM only).
+Open **AI Provider Setup** under **Game Settings → Configure Settings → SimplyPF2e** (GM only), or click the gear beside the provider name in the generator. Pick a cloud/local preset, confirm the exact model ID, and save. The signal button beside a ready provider makes a tiny 64-token connection check through the same streaming request path used for generation; a cloud provider may charge its normal small token cost for that check.
 
 | Setting | Description |
 | --- | --- |
@@ -71,7 +71,7 @@ SimplyPF2e uses current OpenAI Chat Completions fields for OpenAI and the broadl
 
 The provider and model currently in use are always shown at the top of the generator. An empty model is caught before generation. If Foundry is served over HTTPS, an HTTP local provider will be blocked by the browser; serve the provider over HTTPS, or access Foundry over HTTP on the same trusted local network. Local servers must also allow the exact Foundry browser origin through CORS.
 
-> **Provider security:** requests go straight from the GM's browser to the configured provider. API keys are client settings, never synced to the world, and are sent only to the exact Base URL they were authorized for. Saving a key or changing the Base URL disables it until confirmation. Open the generator, verify the displayed endpoint, and click **Authorize for this endpoint**. Existing keys from older SimplyPF2e versions also start disabled after this upgrade. Generated prompts and character data are sent to remote providers when a remote endpoint is configured.
+> **Provider security:** requests go straight from the GM's browser to the configured provider. API keys are client settings, never synced to the world, and are sent only to the exact Base URL they were authorized for. **Save & Authorize** in the focused setup performs that explicit authorization for the displayed endpoint. Changing endpoints clears the old provider's key unless a replacement is entered; changes made through the raw Foundry setting still leave a key disabled until the endpoint is confirmed. Existing keys from older SimplyPF2e versions also start disabled after this upgrade. Generated prompts and character data are sent to remote providers when a remote endpoint is configured.
 
 ### Compendium sources
 
