@@ -350,6 +350,20 @@ try {
     "a pasted full endpoint must be requested exactly once with its query intact"
   );
 
+  providerReplies.push({
+    rawBody: `data: ${JSON.stringify({
+      choices: [{ delta: { content: '{"ok":true}' }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 4, completion_tokens: 3, total_tokens: 7 }
+    })}`,
+    contentType: "text/event-stream"
+  });
+  const unterminatedStreamUsage = await testProviderConnection();
+  assert.deepEqual(
+    unterminatedStreamUsage,
+    { prompt: 4, completion: 3, total: 7, estimated: false },
+    "an SSE provider's final data record must be consumed even without a trailing newline"
+  );
+
   providerReplies.push({ data: [
     { id: "qwen3:8b" }, { id: "gemma3:4b" }, { id: "qwen3:8b" }, { id: "" }
   ] });

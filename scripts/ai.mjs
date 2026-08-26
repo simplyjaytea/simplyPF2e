@@ -1105,6 +1105,34 @@ async function readEventStream(response, { onProgress, resetIdle }) {
   let reasoningChars = 0;
   let finishReason = null;
   let usage = null;
+
+  const consumeLine = (line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    let chunk;
+    try {
+      chunk = JSON.parse(payload);
+    } catch {
+      return; // partial keep-alive noise
+    }
+    if (chunk?.usage) usage = chunk.usage; // exact tokens, sent on the final chunk
+    const choice = chunk?.choices?.[0] ?? {};
+    if (choice.finish_reason) finishReason = choice.finish_reason;
+    const delta = choice.delta ?? {};
+    // Providers use several fields for separated reasoning traces.
+    const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
+    if (typeof reasoning === "string" && reasoning) {
+      reasoningChars += reasoning.length;
+      onProgress?.({ phase: "thinking", tokens: estimateTokens(reasoningChars) });
+    }
+    if (typeof delta.content === "string" && delta.content) {
+      content += delta.content;
+      onProgress?.({ phase: "writing", tokens: estimateTokens(content.length) });
+    }
+  };
+
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -1112,33 +1140,13 @@ async function readEventStream(response, { onProgress, resetIdle }) {
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop();
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === "[DONE]") continue;
-      let chunk;
-      try {
-        chunk = JSON.parse(payload);
-      } catch {
-        continue; // partial keep-alive noise
-      }
-      if (chunk?.usage) usage = chunk.usage; // exact tokens, sent on the final chunk
-      const choice = chunk?.choices?.[0] ?? {};
-      if (choice.finish_reason) finishReason = choice.finish_reason;
-      const delta = choice.delta ?? {};
-      // Providers use several fields for separated reasoning traces.
-      const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-      if (typeof reasoning === "string" && reasoning) {
-        reasoningChars += reasoning.length;
-        onProgress?.({ phase: "thinking", tokens: estimateTokens(reasoningChars) });
-      }
-      if (typeof delta.content === "string" && delta.content) {
-        content += delta.content;
-        onProgress?.({ phase: "writing", tokens: estimateTokens(content.length) });
-      }
-    }
+    for (const line of lines) consumeLine(line);
   }
+  // A stream may close immediately after its final data record. Flush the
+  // decoder and consume that unterminated line instead of reporting a false
+  // empty response or losing the provider's final usage block.
+  buffer += decoder.decode();
+  for (const line of buffer.split("\n")) consumeLine(line);
   return { content, finishReason, usage, reasoningChars };
 }
 
