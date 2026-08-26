@@ -55,11 +55,7 @@ export async function listProviderModels() {
       throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.NetworkError", { message: err.message }));
     }
     if (!response.ok) {
-      const detail = await safeErrorDetail(response);
-      throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.ApiError", {
-        status: response.status,
-        detail
-      }));
+      throw await providerApiError(response);
     }
     let payload;
     try { payload = await response.json(); }
@@ -995,7 +991,10 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
     // names it (checked longest-first so "stream" can't match the others);
     // any other validation error fails fast with its own message.
     while (response.status === 400 || response.status === 422) {
-      const detail = await safeErrorDetail(response);
+      // Keep enough provider text to find a named compatibility field even
+      // after a verbose gateway preamble. The user-facing formatter below
+      // still caps the detail to a compact notification.
+      const detail = await safeErrorDetail(response, 4096);
       const normalizedDetail = detail.toLowerCase();
       if (
         body.messages[0]?.role === "developer"
@@ -1015,9 +1014,7 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
         "temperature", "max_tokens", "thinking", "stream"
       ].find((param) => param in body && normalizedDetail.includes(param));
       if (!offending) {
-        throw new AIRequestError(
-          game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
-        );
+        throw providerApiErrorFromDetail(response, detail);
       }
       const value = body[offending];
       delete body[offending];
@@ -1033,10 +1030,7 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
       response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
     }
     if (!response.ok) {
-      const detail = await safeErrorDetail(response);
-      throw new AIRequestError(
-        game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
-      );
+      throw await providerApiError(response);
     }
 
     const contentType = response.headers.get("content-type") ?? "";
@@ -1050,7 +1044,11 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
       ));
     } else {
       resetIdle();
-      const data = await response.json();
+      let data;
+      try { data = await response.json(); }
+      catch {
+        throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.InvalidResponse"));
+      }
       content = data?.choices?.[0]?.message?.content;
       const reasoning = data?.choices?.[0]?.message?.reasoning_content
         ?? data?.choices?.[0]?.message?.reasoning
@@ -1161,18 +1159,52 @@ async function postChatCompletion(baseUrl, apiKey, body, signal) {
   }
 }
 
-async function safeErrorDetail(response) {
+async function safeErrorDetail(response, maxLength = 240) {
   try {
     const text = await response.text();
     try {
       const json = JSON.parse(text);
-      return json?.error?.message ?? text.slice(0, 300);
+      return compactErrorDetail(json?.error?.message ?? json?.message ?? json?.detail ?? text, maxLength);
     } catch {
-      return text.slice(0, 300);
+      return compactErrorDetail(text || response.statusText, maxLength);
     }
   } catch {
-    return "";
+    return compactErrorDetail(response.statusText, maxLength);
   }
+}
+
+function compactErrorDetail(value, maxLength = 240) {
+  const text = String(value ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return game.i18n.localize("SIMPLYPF2E.Errors.NoErrorDetail");
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function providerStatusHint(status) {
+  const key = status === 401 || status === 403
+    ? "SIMPLYPF2E.Errors.ApiAuthHint"
+    : status === 404
+      ? "SIMPLYPF2E.Errors.ApiNotFoundHint"
+      : status === 429
+        ? "SIMPLYPF2E.Errors.ApiRateLimitHint"
+        : status >= 500
+          ? "SIMPLYPF2E.Errors.ApiServerHint"
+          : "SIMPLYPF2E.Errors.ApiRequestHint";
+  return game.i18n.localize(key);
+}
+
+function providerApiErrorFromDetail(response, detail) {
+  return new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.ApiError", {
+    status: response.status,
+    detail: compactErrorDetail(detail),
+    hint: providerStatusHint(response.status)
+  }));
+}
+
+async function providerApiError(response) {
+  return providerApiErrorFromDetail(response, await safeErrorDetail(response));
 }
 
 /**

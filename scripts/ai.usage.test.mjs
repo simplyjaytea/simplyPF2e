@@ -51,9 +51,12 @@ globalThis.fetch = async (url, options) => {
   requestHeaders.push(options.headers);
   const reply = providerReplies.shift();
   assert.ok(reply, "production path must make exactly the expected provider calls");
-  return new Response(JSON.stringify(reply.body ?? reply), {
+  const responseBody = Object.hasOwn(reply, "rawBody")
+    ? reply.rawBody
+    : JSON.stringify(reply.body ?? reply);
+  return new Response(responseBody, {
     status: reply.httpStatus ?? 200,
-    headers: { "content-type": "application/json" }
+    headers: { "content-type": reply.contentType ?? "application/json" }
   });
 };
 
@@ -91,7 +94,7 @@ try {
   providerReplies.push(
     {
       httpStatus: 400,
-      body: { error: { message: "Unsupported parameter: reasoning_effort" } }
+      body: { error: { message: `${"gateway preamble ".repeat(20)}Unsupported parameter: reasoning_effort` } }
     },
     {
       choices: [{
@@ -359,6 +362,43 @@ try {
     requestUrls[modelsStart],
     "http://localhost:11434/v1/models?tenant=demo",
     "model discovery resolves from a full Chat Completions endpoint"
+  );
+
+  providerReplies.push({
+    httpStatus: 401,
+    body: { error: { message: `invalid key ${"x".repeat(1000)}` } }
+  });
+  await assert.rejects(
+    listProviderModels(),
+    (error) => {
+      assert.match(error.message, /SIMPLYPF2E\.Errors\.ApiAuthHint/);
+      assert.ok(error.message.length < 600, "provider error details must be bounded for compact notifications");
+      assert.doesNotMatch(error.message, /x{300}/, "oversized provider payloads must be truncated");
+      return true;
+    },
+    "authorization failures must include key/endpoint recovery guidance"
+  );
+
+  providerReplies.push({
+    httpStatus: 404,
+    rawBody: "<html><body><h1>Not Found</h1><p>unknown compatibility route</p></body></html>",
+    contentType: "text/html"
+  });
+  await assert.rejects(
+    listProviderModels(),
+    (error) => {
+      assert.match(error.message, /SIMPLYPF2E\.Errors\.ApiNotFoundHint/);
+      assert.match(error.message, /Not Found unknown compatibility route/);
+      assert.doesNotMatch(error.message, /<html>/, "HTML gateway errors must become readable text");
+      return true;
+    }
+  );
+
+  providerReplies.push({ rawBody: "OK", contentType: "text/plain" });
+  await assert.rejects(
+    testProviderConnection(),
+    { message: "SIMPLYPF2E.Errors.InvalidResponse" },
+    "a non-JSON success response must explain that the endpoint is not Chat Completions compatible"
   );
   assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
 } finally {
