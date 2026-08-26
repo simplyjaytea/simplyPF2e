@@ -79,7 +79,10 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
     name: "SIMPLYPF2E.Settings.ApiKey.Name",
     hint: "SIMPLYPF2E.Settings.ApiKey.Hint",
     scope: "client",
-    config: true,
+    // The ordinary settings form renders String values as visible text.
+    // Keep credentials editable only through ProviderSetupApp, which uses a
+    // password input and requires explicit endpoint authorization.
+    config: false,
     restricted: true,
     type: String,
     default: "",

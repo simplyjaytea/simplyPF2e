@@ -7,7 +7,7 @@
       },
       "ApiKey": {
         "Name": "API Key",
-        "Hint": "API key for the current API Base URL. It stays in this browser and is never synced to the world or other users. Use AI Provider Setup for guided Save & Authorize; direct changes here remain disabled until the displayed endpoint is confirmed. Leave blank for a keyless local server such as Ollama or LM Studio."
+        "Hint": "API key for the current API Base URL. It stays in this browser and is never synced to the world or other users. Manage it through AI Provider Setup, which masks the value and authorizes it only for the displayed endpoint. Leave blank for a keyless local server such as Ollama or LM Studio."
       },
       "Model": {
         "Name": "Model",

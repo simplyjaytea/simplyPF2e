@@ -225,6 +225,12 @@ assert.equal(
 registerSettings(class SourcesConfigApp {});
 const keyConfig = registrations.get(SETTINGS.apiKey);
 const baseConfig = registrations.get(SETTINGS.apiBaseUrl);
+assert.equal(keyConfig?.scope, "client", "API keys must remain local to the GM client");
+assert.equal(
+  keyConfig?.config,
+  false,
+  "API keys must not appear as plaintext fields in Foundry's ordinary settings form"
+);
 assert.equal(
   registrations.get(SETTINGS.model)?.default,
   "deepseek-v4-flash",
