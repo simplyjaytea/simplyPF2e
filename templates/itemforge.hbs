@@ -14,7 +14,7 @@
       <button type="button" data-action="configureProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-gear"></i>
       </button>
-      <i class="fa-solid {{#if providerReady}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}} spf-provider-state" data-tooltip="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}"></i>
+      <i class="fa-solid {{#if providerReady}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}} spf-provider-state" role="img" aria-label="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}" data-tooltip="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}"></i>
     </span>
   </div>
   {{#if apiKeyWarning}}
@@ -30,33 +30,33 @@
   <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
     <legend>{{localize "SIMPLYPF2E.ItemForge.ConceptLegend"}}</legend>
     <div class="form-group">
-      <label>{{localize "SIMPLYPF2E.ItemForge.Kind"}}</label>
-      <select name="kind">
+      <label for="spf-itemforge-kind">{{localize "SIMPLYPF2E.ItemForge.Kind"}}</label>
+      <select id="spf-itemforge-kind" name="kind">
         {{#each kinds}}
           <option value="{{this.value}}" {{#if (eq this.value @root.input.kind)}}selected{{/if}}>{{localize this.label}}</option>
         {{/each}}
       </select>
     </div>
     <div class="form-group stacked">
-      <label>{{localize "SIMPLYPF2E.ItemForge.Prompt"}}</label>
-      <textarea name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.ItemForge.PromptPlaceholder'}}">{{input.prompt}}</textarea>
+      <label for="spf-itemforge-prompt">{{localize "SIMPLYPF2E.ItemForge.Prompt"}}</label>
+      <textarea id="spf-itemforge-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.ItemForge.PromptPlaceholder'}}">{{input.prompt}}</textarea>
     </div>
     <div class="spf-row">
       <div class="form-group">
-        <label>{{localize "SIMPLYPF2E.ItemForge.Level"}}</label>
+        <label for="spf-itemforge-level">{{localize "SIMPLYPF2E.ItemForge.Level"}}</label>
         <div class="spf-level-controls">
-          <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
+          <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
             <i class="fa-solid fa-minus"></i>
           </button>
-          <input type="number" name="level" min="{{minLevel}}" max="{{maxLevel}}" step="1" value="{{input.level}}">
-          <button type="button" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
+          <input id="spf-itemforge-level" type="number" name="level" min="{{minLevel}}" max="{{maxLevel}}" step="1" value="{{input.level}}">
+          <button type="button" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
             <i class="fa-solid fa-plus"></i>
           </button>
         </div>
       </div>
       <div class="form-group">
-        <label>{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
-        <select name="rarity">
+        <label for="spf-itemforge-rarity">{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
+        <select id="spf-itemforge-rarity" name="rarity">
           {{#each rarities}}
             <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
           {{/each}}

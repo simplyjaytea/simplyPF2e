@@ -8,10 +8,11 @@ import { readFile } from "node:fs/promises";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-const [generator, itemForge, providerSetup, css] = await Promise.all([
+const [generator, itemForge, providerSetup, managePresets, css] = await Promise.all([
   read("templates/generator.hbs"),
   read("templates/itemforge.hbs"),
   read("templates/provider-setup.hbs"),
+  read("templates/manage-presets.hbs"),
   read("styles/simplypf2e.css")
 ]);
 
@@ -24,6 +25,39 @@ for (const [name, template] of [
   assert.match(template, /providerReady/, `${name} must expose provider readiness at a glance`);
   assert.match(template, /data-action="configureProvider"/, `${name} must offer direct provider setup`);
   assert.match(template, /data-action="testProvider"/, `${name} must offer a connection check`);
+  assert.match(
+    template,
+    /spf-provider-state" role="img" aria-label=/,
+    `${name} provider readiness must not depend on color or a tooltip`
+  );
+}
+
+for (const [name, template] of [
+  ["generator", generator],
+  ["item forge", itemForge],
+  ["preset manager", managePresets]
+]) {
+  for (const match of template.matchAll(/<button\b([^>]*)>\s*<i\b[^>]*><\/i>\s*<\/button>/g)) {
+    assert.match(
+      match[1],
+      /\baria-label=/,
+      `${name} icon-only buttons must have an accessible name: ${match[0]}`
+    );
+  }
+}
+
+for (const [name, template] of [
+  ["generator", generator],
+  ["item forge", itemForge]
+]) {
+  const ids = new Set([...template.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+  for (const match of template.matchAll(/<label\b[^>]*\bfor="([^"]+)"[^>]*>/g)) {
+    assert.ok(ids.has(match[1]), `${name} label must target an existing control: ${match[0]}`);
+  }
+  for (const match of template.matchAll(/<(?:input|select|textarea)\b([^>]*)\bname="[^"]+"[^>]*>/g)) {
+    if (/type="(?:checkbox|radio)"/.test(match[0])) continue;
+    assert.match(match[1], /\bid="[^"]+"/, `${name} named fields must have a label target: ${match[0]}`);
+  }
 }
 
 assert.match(providerSetup, /data-provider="\{\{this\.id\}\}"/, "provider setup must render preset choices");
