@@ -65,7 +65,7 @@ Open **AI Provider Setup** under **Game Settings → Configure Settings → Simp
 - **OpenAI** — `https://api.openai.com/v1`, model `gpt-5.6-luna`
 - **OpenRouter** — `https://openrouter.ai/api/v1`, any hosted model
 - **Ollama (local)** — `http://localhost:11434/v1`, usually no key. Set `OLLAMA_ORIGINS` to the exact Foundry browser origin (for example `http://localhost:30000`) so the browser may call it; avoid wildcard origins.
-- **LM Studio (local)** — `http://localhost:1234/v1`, no key unless server authentication is enabled. Keep the server bound to loopback; require authentication if LAN serving or cross-origin access is enabled. LM Studio 0.4.8+ honors Chat Completions reasoning controls; older versions still work through compatibility fallback but may not disable reasoning.
+- **LM Studio (local)** — `http://localhost:1234/v1`, no key unless server authentication is enabled. Enable CORS in **Developer → Server Settings** (or start with `lms server start --cors`) for browser access. Keep the server bound to loopback, and enable authentication when CORS or LAN serving is enabled. LM Studio 0.4.8+ honors Chat Completions reasoning controls; older versions still work through compatibility fallback but may not disable reasoning.
 
 SimplyPF2e uses current OpenAI Chat Completions fields for OpenAI and the broadly supported OpenAI-compatible fields everywhere else. If a provider explicitly rejects an optional field, instruction role, or token-limit spelling, the module removes or negotiates only that part and retries the request. It also disables separate model reasoning for structured generation where the provider supports that control, so bounded response budgets are spent on complete JSON.
 
