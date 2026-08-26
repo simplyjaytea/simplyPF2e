@@ -117,8 +117,22 @@
   box-shadow: inset 0 0 0 1px var(--spf-brand-accent);
 }
 
+.simplypf2e .spf-mode-toggle label:focus-within {
+  opacity: 1;
+  outline: 2px solid var(--color-border-highlight, var(--spf-brand-accent));
+  outline-offset: 2px;
+}
+
 .simplypf2e .spf-mode-toggle input[type="radio"] {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Opens the item forge (a separate app, not a mode of this one) — same tile

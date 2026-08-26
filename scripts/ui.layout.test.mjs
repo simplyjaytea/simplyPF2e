@@ -69,6 +69,11 @@ assert.match(providerSetup, /type="password" name="apiKey"/, "the saved key must
 assert.match(providerSetup, /data-action="saveAndTest"/, "provider setup must offer direct save-and-test");
 assert.match(providerSetup, /data-action="loadModels"/, "provider setup must offer authorized model discovery");
 assert.match(providerSetup, /<datalist id="spf-provider-model-list">/, "discovered models must remain editable suggestions");
+assert.match(
+  generator,
+  /spf-mode-toggle" role="radiogroup" aria-label=/,
+  "generation modes must expose a named native radio group"
+);
 
 for (const [name, source] of [
   ["generator", generatorApp],
@@ -97,5 +102,15 @@ assert.match(css, /\.simplypf2e \.spf-actions\s*\{[^}]*flex-wrap:\s*wrap;/s,
   "action rows must wrap when localized labels do not fit");
 assert.match(css, /\.simplypf2e \.spf-model-picker\s*\{[^}]*flex-wrap:\s*wrap;/s,
   "the model input and discovery action must wrap in narrow windows");
+assert.match(
+  css,
+  /\.simplypf2e \.spf-mode-toggle input\[type="radio"\]\s*\{[^}]*position:\s*absolute;[^}]*clip:/s,
+  "mode radios must stay keyboard-accessible while visually hidden"
+);
+assert.match(
+  css,
+  /\.simplypf2e \.spf-mode-toggle label:focus-within\s*\{[^}]*outline:/s,
+  "keyboard focus on a mode must remain visible on its compact tile"
+);
 
 console.log("UI layout contract checks passed.");

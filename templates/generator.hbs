@@ -29,7 +29,7 @@
 
   <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
     <legend>{{localize "SIMPLYPF2E.Generator.ConceptLegend"}}</legend>
-    <div class="spf-mode-toggle">
+    <div class="spf-mode-toggle" role="radiogroup" aria-label="{{localize 'SIMPLYPF2E.Generator.ModeLabel'}}">
       <label class="{{#if singleMode}}spf-mode-active{{/if}}">
         <input type="radio" name="mode" value="single" {{#if singleMode}}checked{{/if}}>
         <i class="fa-solid fa-person"></i> {{localize "SIMPLYPF2E.Mode.Single"}}

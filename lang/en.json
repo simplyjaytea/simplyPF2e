@@ -112,6 +112,7 @@
       "ApiKeyAuthorized": "API key authorized for the current endpoint.",
       "ApiKeyAuthorizationFailed": "The API endpoint changed before authorization completed. Review it and try again.",
       "ProviderReady": "Provider configuration is ready",
+      "ModeLabel": "Generation mode",
       "NoModelShort": "No model"
     },
     "Presets": {
