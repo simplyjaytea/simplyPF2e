@@ -7,13 +7,27 @@ import { ProviderSetupApp } from "./provider-setup-app.mjs";
 let app = null;
 let itemForgeApp = null;
 
+function canOpenApps() {
+  if (game.system?.id !== "pf2e") {
+    if (game.user?.isGM) ui.notifications.error(game.i18n.localize("SIMPLYPF2E.Errors.WrongSystem"));
+    return false;
+  }
+  if (!game.user?.isGM) {
+    ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.GMOnly"));
+    return false;
+  }
+  return true;
+}
+
 function openGenerator() {
+  if (!canOpenApps()) return null;
   app ??= new GeneratorApp();
   app.render(true);
   return app;
 }
 
 function openItemForge() {
+  if (!canOpenApps()) return null;
   itemForgeApp ??= new ItemForgeApp();
   itemForgeApp.render(true);
   return itemForgeApp;

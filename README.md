@@ -105,7 +105,7 @@ Starting wealth buys real gear rather than turning into raw coin, and fundamenta
 
 ### Item forge
 
-> The UI buttons are hidden while this is unverified in a live game. Open it with `game.modules.get("simplypf2e").api.openItemForge()`.
+> The UI buttons are hidden while this is unverified in a live game. A GM can open it from the browser console with `game.modules.get("simplypf2e").api.openItemForge()`; player calls are rejected.
 
 Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rarity, and **Generate**.
 
