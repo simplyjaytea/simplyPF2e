@@ -6,6 +6,7 @@ import {
   MODULE_ID,
   SETTINGS,
   authorizeApiKeyForCurrentBaseUrl,
+  chatCompletionsUrl,
   describeProvider,
   getProviderAuthWarningKey,
   getProviderRequestConfig,
@@ -47,6 +48,21 @@ assert.equal(
   normalizeApiBaseUrl("  HTTPS://API.Example.COM:443/v1///#fragment  "),
   "https://api.example.com/v1",
   "normalization must canonicalize the host and remove trailing slashes/fragments"
+);
+assert.equal(
+  chatCompletionsUrl("https://api.example.com/v1"),
+  "https://api.example.com/v1/chat/completions",
+  "an API root must resolve to its Chat Completions route"
+);
+assert.equal(
+  chatCompletionsUrl("https://api.example.com/v1/chat/completions/"),
+  "https://api.example.com/v1/chat/completions",
+  "a pasted full endpoint must not get a duplicate route"
+);
+assert.equal(
+  chatCompletionsUrl("https://gateway.example/openai/v1?tenant=demo"),
+  "https://gateway.example/openai/v1/chat/completions?tenant=demo",
+  "gateway query parameters must remain after the appended request path"
 );
 
 assert.equal(isOfficialDeepSeekEndpoint("https://api.deepseek.com/v1"), true);

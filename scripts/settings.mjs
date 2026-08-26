@@ -165,6 +165,32 @@ export function normalizeApiBaseUrl(value) {
   }
 }
 
+/**
+ * Resolve the configured API root (or an already-complete Chat Completions
+ * endpoint) to the exact request URL. URL.pathname is changed instead of
+ * concatenating strings so gateway query parameters remain in the right
+ * place. The configured value itself remains the key-binding identity.
+ */
+export function chatCompletionsUrl(value) {
+  const normalized = normalizeApiBaseUrl(value);
+  if (!normalized) return "";
+  try {
+    const url = new URL(normalized);
+    const path = url.pathname.replace(/\/+$/, "");
+    if (!path.endsWith("/chat/completions")) {
+      url.pathname = `${path}/chat/completions`;
+    }
+    url.hash = "";
+    return url.href;
+  } catch {
+    // Preserve the old free-form setting's useful fetch error while avoiding
+    // an obvious duplicate suffix when possible.
+    return normalized.endsWith("/chat/completions")
+      ? normalized
+      : `${normalized}/chat/completions`;
+  }
+}
+
 /** True only for DeepSeek's first-party API hostname. */
 export function isOfficialDeepSeekEndpoint(value) {
   try {

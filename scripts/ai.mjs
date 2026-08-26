@@ -1,5 +1,5 @@
 import {
-  SETTINGS, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
+  SETTINGS, chatCompletionsUrl, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
   isOfficialOpenAIEndpoint, resolveProviderModel
 } from "./settings.mjs";
 import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
@@ -1108,7 +1108,7 @@ async function postChatCompletion(baseUrl, apiKey, body, signal) {
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
   try {
-    return await fetch(`${baseUrl}/chat/completions`, {
+    return await fetch(chatCompletionsUrl(baseUrl), {
       method: "POST",
       headers,
       body: JSON.stringify(body),

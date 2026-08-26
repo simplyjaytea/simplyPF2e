@@ -38,7 +38,7 @@
       "Intro": "Choose a provider to fill in its endpoint, then enter the exact model identifier it offers. Local servers must be running before generation.",
       "ChooseProvider": "Choose provider",
       "LocalServerHint": "Ollama: add {origin} to OLLAMA_ORIGINS. LM Studio: enable CORS (Developer → Server Settings, or lms server start --cors) and authentication. An HTTPS Foundry page cannot call an HTTP provider.",
-      "BaseUrlHint": "The OpenAI-compatible API root, normally ending in /v1.",
+      "BaseUrlHint": "The OpenAI-compatible API root (normally ending in /v1) or a full /chat/completions endpoint.",
       "ModelPlaceholder": "Exact provider model ID",
       "ModelHint": "Cloud model IDs come from the provider. For Ollama or LM Studio, use the name of a model installed on that server.",
       "ApiKeyLabel": "API key (this browser only)",

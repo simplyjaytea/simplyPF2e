@@ -51,7 +51,7 @@ Open **AI Provider Setup** under **Game Settings → Configure Settings → Simp
 
 | Setting | Description |
 | --- | --- |
-| API Base URL | Any OpenAI-compatible endpoint. Defaults to DeepSeek. |
+| API Base URL | Any OpenAI-compatible API root or full `/chat/completions` endpoint. Defaults to DeepSeek. |
 | API Key | Your provider key, stored in this browser and bound to the exact API Base URL. Leave blank for a keyless local server. |
 | Model | e.g. `deepseek-v4-flash`, `deepseek-v4-pro`, `gpt-5.6-luna` — the exact API identifier, not the marketing name. |
 | Creativity | Sampling temperature (0–2) for creative generation. Grounding/selectors always use temperature 0. |

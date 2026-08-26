@@ -41,8 +41,10 @@ const providerReplies = [
 ];
 const requestBodies = [];
 const requestHeaders = [];
+const requestUrls = [];
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async (_url, options) => {
+globalThis.fetch = async (url, options) => {
+  requestUrls.push(String(url));
   requestBodies.push(JSON.parse(options.body));
   requestHeaders.push(options.headers);
   const reply = providerReplies.shift();
@@ -321,6 +323,7 @@ try {
   assert.equal(localModernBody.max_completion_tokens, 768, "local providers can negotiate the newer token-limit spelling");
   assert.equal(Object.hasOwn(localModernBody, "max_tokens"), false);
 
+  settings.set(SETTINGS.apiBaseUrl, "http://localhost:11434/v1/chat/completions?tenant=demo");
   providerReplies.push({
     choices: [{
       message: { content: '{"ok":true}' },
@@ -336,6 +339,11 @@ try {
   assert.equal(testBody.temperature, 0);
   assert.equal(testBody.stream, true, "connection checks must exercise the real streaming request path");
   assert.deepEqual(testBody.response_format, { type: "json_object" });
+  assert.equal(
+    requestUrls[testStart],
+    "http://localhost:11434/v1/chat/completions?tenant=demo",
+    "a pasted full endpoint must be requested exactly once with its query intact"
+  );
   assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
 } finally {
   globalThis.fetch = originalFetch;
