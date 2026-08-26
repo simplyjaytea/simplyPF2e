@@ -3,6 +3,7 @@ import {
   isOfficialOpenAIEndpoint, resolveProviderModel
 } from "./settings.mjs";
 import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
+import { propertyRuneRestrictionNote } from "./runes.mjs";
 import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
 import { encodeFeatCandidateSlots, resolveEncodedFeatPicks } from "./ai-candidate-format.mjs";
 import { taskResponseProblem } from "./ai-response-validation.mjs";
@@ -792,9 +793,18 @@ export async function generateRunedItemConcept({
   prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyTiers, secondaryTiers, onProgress
 }) {
   const secondaryLabel = kind === "weapon" ? "striking" : "resilient";
-  const baseList = baseCandidates.map((c) => (c.level > 0 ? `${c.name} (L${c.level})` : c.name)).join("; ");
+  const baseList = baseCandidates.map((c) => {
+    const category = kind === "armor" && c.category ? `${c.category} armor, ` : "";
+    return c.level > 0 || category ? `${c.name} (${category}L${c.level})` : c.name;
+  }).join("; ");
+  // Category-restricted armor runes are annotated ("light armor only") so the
+  // AI picks runes that fit its base; normalizeRunedItemConcept still drops a
+  // mismatch, this just spends the pick on something that survives.
   const runeList = runeCandidates.length
-    ? runeCandidates.map((c) => `${c.name} (L${c.level})`).join("; ")
+    ? runeCandidates.map((c) => {
+      const note = propertyRuneRestrictionNote(c.usage);
+      return `${c.name} (L${c.level}${note ? `, ${note}` : ""})`;
+    }).join("; ")
     : "(none available at this level)";
 
   const system = `You are an expert Pathfinder 2e (remaster) magic ${kind} designer. You choose real components; the system computes the mechanical name, price and item level from whatever you pick.
@@ -819,7 +829,8 @@ ${runeList}
 Design guidance:
 - Pick a base ${kind} and runes that together tell a clear, thematic story for the GM's concept.
 - Avoid combining runes that are thematically opposed (e.g. never pick both Holy and Unholy, or both Anarchic and Axiomatic) unless the concept explicitly wants that tension.
-- "propertyRunes" length must never exceed "potency" (potency N grants N property rune slots) — prefer fewer, more thematic runes over maxing out every slot.`;
+- "propertyRunes" length must never exceed "potency" (potency N grants N property rune slots) — prefer fewer, more thematic runes over maxing out every slot.${kind === "armor" ? `
+- A property rune marked "light armor only" / "heavy armor only" / "medium/heavy armor only" may ONLY be picked when the chosen base armor's category matches — a mismatched rune is dropped.` : ""}`;
 
   const user = [
     `${kind === "weapon" ? "Weapon" : "Armor"} target level: ${level}`,

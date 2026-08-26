@@ -16,7 +16,7 @@ import {
 } from "./compendium.mjs";
 import { slugify, capitalized, esc } from "./text.mjs";
 import {
-  RUNED_ITEM_KINDS, SECONDARY_ADJECTIVE, SECONDARY_RUNE_FIELD, propertyRuneKey,
+  RUNED_ITEM_KINDS, SECONDARY_ADJECTIVE, SECONDARY_RUNE_FIELD, propertyRuneKey, propertyRuneFitsBase,
   findFundamentalRune, getBaseItemCandidates, getPropertyRuneCandidates, getFundamentalRuneTiers
 } from "./runes.mjs";
 
@@ -234,6 +234,13 @@ export function normalizeRunedItemConcept(raw, { kind, rarity, baseCandidates, r
     const match = findByName(runeCandidates, name);
     if (!match) {
       if (name) console.warn(`simplypf2e | itemforge: dropped unmatched property rune "${name}"`);
+      continue;
+    }
+    // Category-restricted armor runes (e.g. "etched-onto-light-armor") must
+    // fit the chosen base armor's real system.category — a mismatch is
+    // dropped, never bent to fit.
+    if (!propertyRuneFitsBase(kind, match.usage, base?.category)) {
+      console.warn(`simplypf2e | itemforge: dropped property rune "${match.name}" (${match.usage}) — not etchable onto ${base?.category ?? "unknown-category"} ${kind} "${base?.name}"`);
       continue;
     }
     const key = slugify(match.name);

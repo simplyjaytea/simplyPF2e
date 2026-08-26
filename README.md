@@ -117,7 +117,7 @@ Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rar
 
 **Activated items** add a 1/day ability — damage, heal, condition, or self-buff — as a companion **macro**, with a clickable Activate link in the description and the macros filed in a "SimplyPF2e Item Forge" folder (auto-deleted with the item). Target a token, click Activate; damage and healing post as normal PF2e chat cards so the built-in Apply buttons handle the rest. Each copy tracks its own charge and recharges on a night's rest.
 
-**Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates; the final price and level are summed from the resolved documents.
+**Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string and the base armor category, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates; the final price and level are summed from the resolved documents. Runes whose published restriction depends on armor material are excluded because the compendium index cannot prove material compatibility.
 
 ### Presets
 
@@ -177,7 +177,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
 - **Free Archetype.** The archetype feat can land in the same slot location as a regular class feat at that level, so it embeds on the character but may not appear in a distinct Free Archetype slot on the sheet.
 - **Spontaneous spell-slot counts** for high-level PC casters are derived from the standard progression rather than copied from a verified table. Check a high-level caster's slots against Player Core before trusting them.
-- **The item forge**, all three phases. If an item looks right in the preview but misbehaves on a sheet, that's the first thing to check. Its rune path has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), armor property runes aren't filtered to the base armor's category, and shield/ammunition runes are out of scope.
+- **The item forge**, all three phases. If an item looks right in the preview but misbehaves on a sheet, that's the first thing to check. Its rune path has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
 - **Activated-item macros** lean on PF2e system APIs that can change between versions. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.
 
 ## Roadmap
