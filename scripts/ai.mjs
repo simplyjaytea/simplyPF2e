@@ -1,6 +1,6 @@
 import {
   SETTINGS, chatCompletionsUrl, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
-  isOfficialOpenAIEndpoint, resolveProviderModel
+  isOfficialOpenAIEndpoint, modelsUrl, resolveProviderModel
 } from "./settings.mjs";
 import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
 import { propertyRuneRestrictionNote } from "./runes.mjs";
@@ -33,6 +33,46 @@ export async function testProviderConnection() {
     user: 'Return exactly {"ok":true}.'
   });
   return usage;
+}
+
+/** List model identifiers through the exact saved and authorized endpoint. */
+export async function listProviderModels() {
+  const { apiKey, baseUrl } = getProviderRequestConfig();
+  if (!baseUrl) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoBaseUrl"));
+  const headers = {};
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  const timeoutSeconds = Math.max(10, Number(getSetting(SETTINGS.requestTimeout)) || 90);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+  try {
+    let response;
+    try {
+      response = await fetch(modelsUrl(baseUrl), { method: "GET", headers, signal: controller.signal });
+    } catch (err) {
+      if (err.name === "AbortError" || controller.signal.aborted) {
+        throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.Timeout", { seconds: timeoutSeconds }));
+      }
+      throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.NetworkError", { message: err.message }));
+    }
+    if (!response.ok) {
+      const detail = await safeErrorDetail(response);
+      throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.ApiError", {
+        status: response.status,
+        detail
+      }));
+    }
+    let payload;
+    try { payload = await response.json(); }
+    catch { throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.ProviderSetup.ModelsInvalid")); }
+    const entries = Array.isArray(payload?.data) ? payload.data : [];
+    const models = [...new Set(entries
+      .map((entry) => String(entry?.id ?? "").trim())
+      .filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    if (!models.length) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.ProviderSetup.ModelsEmpty"));
+    return models;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /* The grounding passes below tell the model to copy names EXACTLY from a

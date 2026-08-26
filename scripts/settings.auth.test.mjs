@@ -13,6 +13,7 @@ import {
   isOfficialDeepSeekEndpoint,
   isOfficialOpenAIEndpoint,
   isLikelyKeylessLocalEndpoint,
+  modelsUrl,
   normalizeApiBaseUrl,
   registerSettings,
   resolveProviderModel
@@ -64,6 +65,12 @@ assert.equal(
   "https://gateway.example/openai/v1/chat/completions?tenant=demo",
   "gateway query parameters must remain after the appended request path"
 );
+assert.equal(
+  modelsUrl("https://gateway.example/openai/v1/chat/completions?tenant=demo"),
+  "https://gateway.example/openai/v1/models?tenant=demo",
+  "model discovery must resolve from a pasted full endpoint and preserve its query"
+);
+assert.equal(modelsUrl("http://localhost:11434/v1"), "http://localhost:11434/v1/models");
 
 assert.equal(isOfficialDeepSeekEndpoint("https://api.deepseek.com/v1"), true);
 assert.equal(isOfficialDeepSeekEndpoint("https://api.deepseek.com.evil.example/v1"), false);
@@ -113,6 +120,17 @@ assert.equal(
   getProviderAuthWarningKey(),
   "SIMPLYPF2E.Generator.ApiKeyNotAuthorized",
   "legacy keys must explain how to authorize the current endpoint"
+);
+assert.equal(
+  getProviderAuthWarningKey({
+    baseUrl: "http://localhost:11434/v1",
+    model: "",
+    hasConfiguredApiKey: false,
+    apiKeyIsBound: false,
+    keylessLocal: true
+  }, undefined, false),
+  null,
+  "model discovery may validate an otherwise-ready provider before a model is selected"
 );
 
 assert.equal(

@@ -2,7 +2,7 @@ import {
   MODULE_ID, SETTINGS, authorizeApiKeyForCurrentBaseUrl,
   describeProvider, getProviderAuthWarningKey, getProviderRequestConfig, normalizeApiBaseUrl
 } from "./settings.mjs";
-import { testProviderConnection } from "./ai.mjs";
+import { listProviderModels, testProviderConnection } from "./ai.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -19,6 +19,7 @@ export const PROVIDER_PRESETS = Object.freeze([
 export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) {
   #onSaved;
   #selectedPreset = null;
+  #availableModels = [];
 
   constructor(options = {}, onSaved = null) {
     if (typeof options === "function") {
@@ -46,6 +47,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     },
     actions: {
       chooseProvider: ProviderSetupApp.#onChooseProvider,
+      loadModels: ProviderSetupApp.#onLoadModels,
       saveAndTest: ProviderSetupApp.#onSaveAndTest,
       cancel: ProviderSetupApp.#onCancel
     }
@@ -68,6 +70,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
       })),
       apiBaseUrl: state.baseUrl,
       model: state.model,
+      availableModels: this.#availableModels,
       hasApiKey: state.hasConfiguredApiKey,
       localServerHint: game.i18n.format("SIMPLYPF2E.ProviderSetup.LocalServerHint", {
         origin: globalThis.location?.origin ?? "Foundry"
@@ -90,7 +93,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     }
   }
 
-  static async #saveSettings({ notify = true } = {}) {
+  static async #saveSettings({ notify = true, requireModel = true } = {}) {
     const baseUrl = normalizeApiBaseUrl(this.element.querySelector("[name='apiBaseUrl']")?.value);
     const model = String(this.element.querySelector("[name='model']")?.value ?? "").trim();
     const enteredApiKey = String(this.element.querySelector("[name='apiKey']")?.value ?? "").trim();
@@ -102,7 +105,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw new Error(game.i18n.localize("SIMPLYPF2E.ProviderSetup.InvalidBaseUrl"));
     }
-    if (!model) throw new Error(game.i18n.localize("SIMPLYPF2E.Errors.NoModel"));
+    if (requireModel && !model) throw new Error(game.i18n.localize("SIMPLYPF2E.Errors.NoModel"));
 
     const currentBaseUrl = normalizeApiBaseUrl(game.settings.get(MODULE_ID, SETTINGS.apiBaseUrl));
     const baseChanged = currentBaseUrl !== baseUrl;
@@ -142,6 +145,39 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
   static async #onSubmit() {
     await ProviderSetupApp.#saveSettings.call(this);
+  }
+
+  /** Save/bind the displayed endpoint first, then populate model suggestions. */
+  static async #onLoadModels(_event, target) {
+    if (target.disabled) return;
+    const buttons = [...new Set([target, ...this.element.querySelectorAll("button")])];
+    const icon = target.querySelector("i");
+    const originalClass = icon?.className;
+    for (const button of buttons) button.disabled = true;
+    if (icon) icon.className = "fa-solid fa-spinner fa-spin";
+    try {
+      const { state } = await ProviderSetupApp.#saveSettings.call(this, {
+        notify: false,
+        requireModel: false
+      });
+      const warningKey = getProviderAuthWarningKey(
+        state, globalThis.location?.protocol, false
+      );
+      if (warningKey) throw new Error(game.i18n.localize(warningKey));
+      this.#availableModels = await listProviderModels();
+      await this.render();
+      ui.notifications.info(game.i18n.format("SIMPLYPF2E.ProviderSetup.ModelsLoaded", {
+        count: this.#availableModels.length
+      }));
+    } catch (err) {
+      console.error("simplypf2e | provider model discovery failed", err);
+      ui.notifications.error(game.i18n.format("SIMPLYPF2E.ProviderSetup.ModelsFailed", {
+        message: err?.message ?? String(err)
+      }));
+    } finally {
+      for (const button of buttons) button.disabled = false;
+      if (icon && originalClass) icon.className = originalClass;
+    }
   }
 
   /** Save first, then exercise the exact production request path. */

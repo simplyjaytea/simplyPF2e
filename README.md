@@ -47,7 +47,7 @@ The link is permanent — it always resolves to the newest release, so Foundry o
 
 ## Setup
 
-Open **AI Provider Setup** under **Game Settings → Configure Settings → SimplyPF2e** (GM only), or click the gear beside the provider name in the generator. Pick a cloud/local preset, confirm the exact model ID, then click **Save & Test**. It makes a tiny 64-token check through the same streaming request path used for generation and keeps setup open if the provider rejects the endpoint, key, model, CORS, or request shape. **Save & Authorize** skips the check for an offline provider. A cloud provider may charge its normal small token cost for a test; the signal button beside a ready provider repeats it later.
+Open **AI Provider Setup** under **Game Settings → Configure Settings → SimplyPF2e** (GM only), or click the gear beside the provider name in the generator. Pick a cloud/local preset. If its Model field is blank, click **Load Models**: setup saves and authorizes the displayed endpoint/key, then offers the provider's `/models` IDs without preventing manual entry. Confirm the model and click **Save & Test**. It makes a tiny 64-token check through the same streaming request path used for generation and keeps setup open if the provider rejects the endpoint, key, model, CORS, or request shape. **Save & Authorize** skips the check for an offline provider. A cloud provider may charge its normal small token cost for a test; model listing itself does not generate tokens, and the signal button beside a ready provider repeats the generation check later.
 
 | Setting | Description |
 | --- | --- |
@@ -65,7 +65,7 @@ Open **AI Provider Setup** under **Game Settings → Configure Settings → Simp
 - **OpenAI** — `https://api.openai.com/v1`, model `gpt-5.6-luna`
 - **OpenRouter** — `https://openrouter.ai/api/v1`, any hosted model
 - **Ollama (local)** — `http://localhost:11434/v1`, usually no key. Set `OLLAMA_ORIGINS` to the exact Foundry browser origin (for example `http://localhost:30000`) so the browser may call it; avoid wildcard origins.
-- **LM Studio (local)** — `http://localhost:1234/v1`, no key unless server authentication is enabled. Enable CORS in **Developer → Server Settings** (or start with `lms server start --cors`) for browser access. Keep the server bound to loopback, and enable authentication when CORS or LAN serving is enabled. LM Studio 0.4.8+ honors Chat Completions reasoning controls; older versions still work through compatibility fallback but may not disable reasoning.
+- **LM Studio (local)** — `http://localhost:1234/v1`, no key unless server authentication is enabled. Enable CORS in **Developer → Server Settings** (or start with `lms server start --cors`) for browser access. Keep the server bound to loopback, and enable authentication when CORS or LAN serving is enabled. **Load Models** lists only loaded models unless LM Studio's Just-In-Time loading is enabled. LM Studio 0.4.8+ honors Chat Completions reasoning controls; older versions still work through compatibility fallback but may not disable reasoning.
 
 SimplyPF2e uses current OpenAI Chat Completions fields for OpenAI and the broadly supported OpenAI-compatible fields everywhere else. If a provider explicitly rejects an optional field, instruction role, or token-limit spelling, the module removes or negotiates only that part and retries the request. It also disables separate model reasoning for structured generation where the provider supports that control, so bounded response budgets are spent on complete JSON.
 

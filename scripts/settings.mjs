@@ -191,6 +191,24 @@ export function chatCompletionsUrl(value) {
   }
 }
 
+/** Resolve an API root or full Chat Completions endpoint to its model list. */
+export function modelsUrl(value) {
+  const normalized = normalizeApiBaseUrl(value);
+  if (!normalized) return "";
+  try {
+    const url = new URL(normalized);
+    let path = url.pathname.replace(/\/+$/, "");
+    if (path.endsWith("/chat/completions")) {
+      path = path.slice(0, -"/chat/completions".length);
+    }
+    if (!path.endsWith("/models")) url.pathname = `${path}/models`;
+    url.hash = "";
+    return url.href;
+  } catch {
+    return normalized.endsWith("/models") ? normalized : `${normalized}/models`;
+  }
+}
+
 /** True only for DeepSeek's first-party API hostname. */
 export function isOfficialDeepSeekEndpoint(value) {
   try {
@@ -299,10 +317,11 @@ export function getProviderRequestConfig() {
 /** Localization key for a useful provider-auth warning, or null when ready. */
 export function getProviderAuthWarningKey(
   state = getProviderRequestConfig(),
-  pageProtocol = globalThis.location?.protocol
+  pageProtocol = globalThis.location?.protocol,
+  requireModel = true
 ) {
   if (!state.baseUrl) return "SIMPLYPF2E.Errors.NoBaseUrl";
-  if (!String(state.model ?? "").trim()) return "SIMPLYPF2E.Errors.NoModel";
+  if (requireModel && !String(state.model ?? "").trim()) return "SIMPLYPF2E.Errors.NoModel";
   if (state.hasConfiguredApiKey && !state.apiKeyIsBound) {
     return "SIMPLYPF2E.Generator.ApiKeyNotAuthorized";
   }

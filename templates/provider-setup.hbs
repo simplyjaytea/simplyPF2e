@@ -19,7 +19,13 @@
 
   <div class="form-group stacked">
     <label for="spf-provider-model">{{localize "SIMPLYPF2E.Settings.Model.Name"}}</label>
-    <input id="spf-provider-model" type="text" name="model" value="{{model}}" required spellcheck="false" autocomplete="off" placeholder="{{localize 'SIMPLYPF2E.ProviderSetup.ModelPlaceholder'}}">
+    <div class="spf-model-picker">
+      <input id="spf-provider-model" type="text" name="model" value="{{model}}" list="spf-provider-model-list" required spellcheck="false" autocomplete="off" placeholder="{{localize 'SIMPLYPF2E.ProviderSetup.ModelPlaceholder'}}">
+      <button type="button" data-action="loadModels"><i class="fa-solid fa-rotate"></i> {{localize "SIMPLYPF2E.ProviderSetup.LoadModels"}}</button>
+    </div>
+    <datalist id="spf-provider-model-list">
+      {{#each availableModels}}<option value="{{this}}"></option>{{/each}}
+    </datalist>
     <p class="hint">{{localize "SIMPLYPF2E.ProviderSetup.ModelHint"}}</p>
   </div>
 

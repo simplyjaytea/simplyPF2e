@@ -42,10 +42,12 @@ const providerReplies = [
 const requestBodies = [];
 const requestHeaders = [];
 const requestUrls = [];
+const requestMethods = [];
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (url, options) => {
   requestUrls.push(String(url));
-  requestBodies.push(JSON.parse(options.body));
+  requestMethods.push(options.method);
+  requestBodies.push(options.body ? JSON.parse(options.body) : null);
   requestHeaders.push(options.headers);
   const reply = providerReplies.shift();
   assert.ok(reply, "production path must make exactly the expected provider calls");
@@ -56,7 +58,7 @@ globalThis.fetch = async (url, options) => {
 };
 
 try {
-  const { chooseSpellFocus, testProviderConnection } = await import("./ai.mjs");
+  const { chooseSpellFocus, listProviderModels, testProviderConnection } = await import("./ai.mjs");
   const result = await chooseSpellFocus({
     concept: {
       name: "Ember Adept",
@@ -343,6 +345,20 @@ try {
     requestUrls[testStart],
     "http://localhost:11434/v1/chat/completions?tenant=demo",
     "a pasted full endpoint must be requested exactly once with its query intact"
+  );
+
+  providerReplies.push({ data: [
+    { id: "qwen3:8b" }, { id: "gemma3:4b" }, { id: "qwen3:8b" }, { id: "" }
+  ] });
+  const modelsStart = requestBodies.length;
+  const models = await listProviderModels();
+  assert.deepEqual(models, ["gemma3:4b", "qwen3:8b"], "model IDs are deduped and sorted");
+  assert.equal(requestMethods[modelsStart], "GET");
+  assert.equal(requestBodies[modelsStart], null, "model discovery sends no request body");
+  assert.equal(
+    requestUrls[modelsStart],
+    "http://localhost:11434/v1/models?tenant=demo",
+    "model discovery resolves from a full Chat Completions endpoint"
   );
   assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
 } finally {

@@ -708,6 +708,22 @@
   gap: var(--spf-space-sm);
 }
 
+.simplypf2e .spf-model-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spf-space-sm);
+}
+
+.simplypf2e .spf-model-picker input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.simplypf2e .spf-model-picker button {
+  flex: 1 0 auto;
+  width: auto;
+}
+
 .simplypf2e .spf-provider-privacy {
   margin: 0;
 }

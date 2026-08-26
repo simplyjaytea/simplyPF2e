@@ -158,6 +158,21 @@ try {
   assert.equal(success.target.disabled, false, "the test action restores its button state");
   assert.ok(notices.info.some((message) => message.includes("SIMPLYPF2E.ProviderSetup.TestSuccess")));
 
+  setCurrent({ baseUrl: "http://localhost:11434/v1", model: "", apiKey: "", bound: "" });
+  globalThis.fetch = async () => new Response(JSON.stringify({ data: [
+    { id: "qwen3:8b" }, { id: "gemma3:4b" }
+  ] }), { headers: { "content-type": "application/json" } });
+  const discovery = makeSaveTestApp({ baseUrl: "http://localhost:11434/v1", model: "" });
+  await ProviderSetupApp.DEFAULT_OPTIONS.actions.loadModels.call(discovery.app, null, discovery.target);
+  assert.equal(discovery.getSaved(), 1, "model discovery saves the displayed endpoint before requesting it");
+  assert.equal(discovery.getClosed(), 0, "model discovery keeps setup open for selection");
+  assert.deepEqual(
+    (await discovery.app._prepareContext()).availableModels,
+    ["gemma3:4b", "qwen3:8b"],
+    "discovered identifiers become editable datalist suggestions"
+  );
+  assert.ok(notices.info.some((message) => message.includes("SIMPLYPF2E.ProviderSetup.ModelsLoaded")));
+
   console.error = () => {};
   globalThis.fetch = async () => { throw new TypeError("provider offline"); };
   const failure = makeSaveTestApp({ baseUrl: "http://localhost:11434/v1", model: "qwen3:8b" });
