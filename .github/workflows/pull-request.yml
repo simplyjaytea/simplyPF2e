@@ -1,0 +1,56 @@
+name: Pull Request Checks
+
+# Main auto-releases after verification, but contributors need the same signal
+# before merge. Keep this read-only: it validates the proposed tree and cannot
+# create tags, releases, or repository content.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find scripts -type f -name '*.mjs' -print0 | sort -z)
+          if (( ${#files[@]} == 0 )); then
+            echo "No .mjs files found under scripts/" >&2
+            exit 1
+          fi
+          for file in "${files[@]}"; do
+            node --check "$file"
+          done
+
+      - name: Run regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' tests < <(find scripts -type f -name '*.test.mjs' -print0 | sort -z)
+          if (( ${#tests[@]} == 0 )); then
+            echo "No regression checks found under scripts/" >&2
+            exit 1
+          fi
+          for test_file in "${tests[@]}"; do
+            echo "Running $test_file"
+            node "$test_file"
+          done
+
+      - name: Validate manifests and patch formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq empty module.json lang/en.json
+          git diff --check "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"

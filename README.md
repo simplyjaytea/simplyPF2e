@@ -193,7 +193,7 @@ Shipped features and their versions are in the [release notes](https://github.co
 
 Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](HISTORY.md).
 
-Standalone, dependency-free regression checks guard historical bugs and production-safe pure helpers — `node scripts/<name>.test.mjs`, no framework required. CI syntax-checks every module and runs every `*.test.mjs` before any release is created. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
+Standalone, dependency-free regression checks guard historical bugs and production-safe pure helpers — `node scripts/<name>.test.mjs`, no framework required. CI syntax-checks every module, runs every `*.test.mjs`, and validates the JSON manifests on pull requests; the release pipeline repeats syntax and regression verification before publishing. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
 
 **Releases are automatic.** Every push to `main` triggers `auto-release.yml`, which bumps the last segment of the latest tag (`v0.3.5.1` → `v0.3.5.2`) and calls `release.yml` to build and publish. This means **merging to `main` is not a quiet, reversible action** — it ships a public release immediately, and every existing install is offered that update right away. Treat it with the care of a manual `gh release create`.
 
