@@ -21,6 +21,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
   #selectedPreset = null;
   #availableModels = [];
   #modelsBaseUrl = "";
+  #busy = false;
 
   constructor(options = {}, onSaved = null) {
     if (typeof options === "function") {
@@ -98,7 +99,37 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     this.element.querySelector("#spf-provider-model-list")?.replaceChildren?.();
   }
 
+  /**
+   * Freeze the displayed provider configuration for an async setup action.
+   * Otherwise a second action or a mid-request edit can make the dialog show
+   * a different configuration from the one that was saved and tested.
+   */
+  #beginBusy(target) {
+    if (this.#busy) return null;
+    this.#busy = true;
+    const controls = [...this.element.querySelectorAll("button, input, select, textarea")];
+    const disabled = controls.map((control) => control.disabled);
+    const icon = target?.querySelector?.("i");
+    const originalIconClass = icon?.className;
+    for (const control of controls) control.disabled = true;
+    if (icon) icon.className = "fa-solid fa-spinner fa-spin";
+    this.element.setAttribute?.("aria-busy", "true");
+    return { controls, disabled, icon, originalIconClass };
+  }
+
+  #endBusy(state) {
+    state.controls.forEach((control, index) => {
+      control.disabled = state.disabled[index];
+    });
+    if (state.icon && state.originalIconClass) {
+      state.icon.className = state.originalIconClass;
+    }
+    this.element.removeAttribute?.("aria-busy");
+    this.#busy = false;
+  }
+
   static async #onChooseProvider(_event, target) {
+    if (this.#busy) return;
     const preset = PROVIDER_PRESETS.find((entry) => entry.id === target.dataset.provider);
     if (!preset) return;
     this.#selectedPreset = preset.id;
@@ -166,18 +197,20 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     return { provider, model, state };
   }
 
-  static async #onSubmit() {
-    await ProviderSetupApp.#saveSettings.call(this);
+  static async #onSubmit(_event, _form, _formData) {
+    const state = this.#beginBusy(this.element.querySelector("button[type='submit']"));
+    if (!state) return;
+    try {
+      await ProviderSetupApp.#saveSettings.call(this);
+    } finally {
+      this.#endBusy(state);
+    }
   }
 
   /** Save/bind the displayed endpoint first, then populate model suggestions. */
   static async #onLoadModels(_event, target) {
-    if (target.disabled) return;
-    const buttons = [...new Set([target, ...this.element.querySelectorAll("button")])];
-    const icon = target.querySelector("i");
-    const originalClass = icon?.className;
-    for (const button of buttons) button.disabled = true;
-    if (icon) icon.className = "fa-solid fa-spinner fa-spin";
+    const busy = this.#beginBusy(target);
+    if (!busy) return;
     try {
       const { state } = await ProviderSetupApp.#saveSettings.call(this, {
         notify: false,
@@ -199,19 +232,14 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
         message: err?.message ?? String(err)
       }));
     } finally {
-      for (const button of buttons) button.disabled = false;
-      if (icon && originalClass) icon.className = originalClass;
+      this.#endBusy(busy);
     }
   }
 
   /** Save first, then exercise the exact production request path. */
   static async #onSaveAndTest(_event, target) {
-    if (target.disabled) return;
-    const buttons = [...this.element.querySelectorAll("footer button")];
-    const icon = target.querySelector("i");
-    const originalClass = icon?.className;
-    for (const button of buttons) button.disabled = true;
-    if (icon) icon.className = "fa-solid fa-spinner fa-spin";
+    const busy = this.#beginBusy(target);
+    if (!busy) return;
     try {
       const { provider, model, state } = await ProviderSetupApp.#saveSettings.call(this, { notify: false });
       const warningKey = getProviderAuthWarningKey(state);
@@ -229,12 +257,12 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
         message: err?.message ?? String(err)
       }));
     } finally {
-      for (const button of buttons) button.disabled = false;
-      if (icon && originalClass) icon.className = originalClass;
+      this.#endBusy(busy);
     }
   }
 
   static async #onCancel() {
+    if (this.#busy) return;
     await this.close();
   }
 }
