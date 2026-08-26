@@ -20,6 +20,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
   #onSaved;
   #selectedPreset = null;
   #availableModels = [];
+  #modelsBaseUrl = "";
 
   constructor(options = {}, onSaved = null) {
     if (typeof options === "function") {
@@ -59,6 +60,10 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
 
   async _prepareContext() {
     const state = getProviderRequestConfig();
+    if (this.#modelsBaseUrl && state.baseUrl !== this.#modelsBaseUrl) {
+      this.#availableModels = [];
+      this.#modelsBaseUrl = "";
+    }
     const inferred = PROVIDER_PRESETS.some((provider) => provider.id === state.provider.id)
       ? state.provider.id
       : "custom";
@@ -78,6 +83,21 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     };
   }
 
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    this.element.querySelector("[name='apiBaseUrl']")?.addEventListener("input", (event) => {
+      if (normalizeApiBaseUrl(event.currentTarget.value) !== this.#modelsBaseUrl) {
+        this.#clearModelSuggestions();
+      }
+    });
+  }
+
+  #clearModelSuggestions() {
+    this.#availableModels = [];
+    this.#modelsBaseUrl = "";
+    this.element.querySelector("#spf-provider-model-list")?.replaceChildren?.();
+  }
+
   static async #onChooseProvider(_event, target) {
     const preset = PROVIDER_PRESETS.find((entry) => entry.id === target.dataset.provider);
     if (!preset) return;
@@ -90,6 +110,9 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     if (!preset.preserve) {
       this.element.querySelector("[name='apiBaseUrl']").value = preset.baseUrl;
       this.element.querySelector("[name='model']").value = preset.model;
+      if (normalizeApiBaseUrl(preset.baseUrl) !== this.#modelsBaseUrl) {
+        this.#clearModelSuggestions();
+      }
     }
   }
 
@@ -165,6 +188,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
       );
       if (warningKey) throw new Error(game.i18n.localize(warningKey));
       this.#availableModels = await listProviderModels();
+      this.#modelsBaseUrl = state.baseUrl;
       await this.render();
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.ProviderSetup.ModelsLoaded", {
         count: this.#availableModels.length

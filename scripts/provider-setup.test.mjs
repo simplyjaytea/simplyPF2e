@@ -131,8 +131,13 @@ const makeSaveTestApp = ({ baseUrl, model }) => {
   const app = new ProviderSetupApp(() => { saved += 1; });
   const target = makeTestButton();
   const otherButton = { disabled: false };
+  const inputListeners = new Map();
+  const baseControl = {
+    value: baseUrl,
+    addEventListener: (name, callback) => inputListeners.set(name, callback)
+  };
   const controls = new Map([
-    ["[name='apiBaseUrl']", { value: baseUrl }],
+    ["[name='apiBaseUrl']", baseControl],
     ["[name='model']", { value: model }],
     ["[name='apiKey']", { value: "" }],
     ["[name='clearApiKey']", { checked: false }]
@@ -142,7 +147,15 @@ const makeSaveTestApp = ({ baseUrl, model }) => {
     querySelectorAll: (selector) => selector === "footer button" ? [target, otherButton] : []
   };
   app.close = async () => { closed += 1; };
-  return { app, target, getSaved: () => saved, getClosed: () => closed };
+  return {
+    app, target,
+    getSaved: () => saved,
+    getClosed: () => closed,
+    changeBaseUrl: (value) => {
+      baseControl.value = value;
+      inputListeners.get("input")?.({ currentTarget: baseControl });
+    }
+  };
 };
 
 try {
@@ -172,6 +185,13 @@ try {
     "discovered identifiers become editable datalist suggestions"
   );
   assert.ok(notices.info.some((message) => message.includes("SIMPLYPF2E.ProviderSetup.ModelsLoaded")));
+  discovery.app._onRender();
+  discovery.changeBaseUrl("http://localhost:1234/v1");
+  assert.deepEqual(
+    (await discovery.app._prepareContext()).availableModels,
+    [],
+    "manually changing the endpoint clears model suggestions from the previous provider"
+  );
 
   console.error = () => {};
   globalThis.fetch = async () => { throw new TypeError("provider offline"); };
