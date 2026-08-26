@@ -30,6 +30,7 @@ assert.match(providerSetup, /data-provider="\{\{this\.id\}\}"/, "provider setup 
 assert.match(providerSetup, /name="apiBaseUrl"/);
 assert.match(providerSetup, /name="model"/);
 assert.match(providerSetup, /type="password" name="apiKey"/, "the saved key must never be rendered back into the form");
+assert.match(providerSetup, /data-action="saveAndTest"/, "provider setup must offer direct save-and-test");
 
 assert.match(
   css,
@@ -43,5 +44,7 @@ assert.match(
 );
 assert.match(css, /\.simplypf2e \.spf-provider-model\s*\{[^}]*text-overflow:\s*ellipsis;/s);
 assert.match(css, /\.simplypf2e \.spf-provider-presets\s*\{[^}]*grid-template-columns:\s*repeat\(3/s);
+assert.match(css, /\.simplypf2e \.spf-actions\s*\{[^}]*flex-wrap:\s*wrap;/s,
+  "action rows must wrap when localized labels do not fit");
 
 console.log("UI layout contract checks passed.");

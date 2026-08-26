@@ -522,12 +522,13 @@
 
 .simplypf2e .spf-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: var(--spf-space-md);
 }
 
 .simplypf2e .spf-actions button {
-  flex: 1;
+  flex: 1 1 7rem;
 }
 
 /* Compendium Sources menu */

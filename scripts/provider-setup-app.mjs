@@ -1,7 +1,8 @@
 import {
   MODULE_ID, SETTINGS, authorizeApiKeyForCurrentBaseUrl,
-  describeProvider, getProviderRequestConfig, normalizeApiBaseUrl
+  describeProvider, getProviderAuthWarningKey, getProviderRequestConfig, normalizeApiBaseUrl
 } from "./settings.mjs";
+import { testProviderConnection } from "./ai.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -45,6 +46,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     },
     actions: {
       chooseProvider: ProviderSetupApp.#onChooseProvider,
+      saveAndTest: ProviderSetupApp.#onSaveAndTest,
       cancel: ProviderSetupApp.#onCancel
     }
   };
@@ -88,7 +90,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     }
   }
 
-  static async #onSubmit() {
+  static async #saveSettings({ notify = true } = {}) {
     const baseUrl = normalizeApiBaseUrl(this.element.querySelector("[name='apiBaseUrl']")?.value);
     const model = String(this.element.querySelector("[name='model']")?.value ?? "").trim();
     const enteredApiKey = String(this.element.querySelector("[name='apiKey']")?.value ?? "").trim();
@@ -125,14 +127,51 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
       : state.keylessLocal
         ? "SIMPLYPF2E.ProviderSetup.Saved"
         : "SIMPLYPF2E.ProviderSetup.SavedNeedsKey";
-    const notify = !authorized && !state.keylessLocal
-      ? ui.notifications.warn.bind(ui.notifications)
-      : ui.notifications.info.bind(ui.notifications);
-    notify(game.i18n.format(
-      messageKey,
-      { provider: provider.name, model }
-    ));
+    if (notify) {
+      const notifySaved = !authorized && !state.keylessLocal
+        ? ui.notifications.warn.bind(ui.notifications)
+        : ui.notifications.info.bind(ui.notifications);
+      notifySaved(game.i18n.format(
+        messageKey,
+        { provider: provider.name, model }
+      ));
+    }
     await this.#onSaved?.();
+    return { provider, model, state };
+  }
+
+  static async #onSubmit() {
+    await ProviderSetupApp.#saveSettings.call(this);
+  }
+
+  /** Save first, then exercise the exact production request path. */
+  static async #onSaveAndTest(_event, target) {
+    if (target.disabled) return;
+    const buttons = [...this.element.querySelectorAll("footer button")];
+    const icon = target.querySelector("i");
+    const originalClass = icon?.className;
+    for (const button of buttons) button.disabled = true;
+    if (icon) icon.className = "fa-solid fa-spinner fa-spin";
+    try {
+      const { provider, model, state } = await ProviderSetupApp.#saveSettings.call(this, { notify: false });
+      const warningKey = getProviderAuthWarningKey(state);
+      if (warningKey) throw new Error(game.i18n.localize(warningKey));
+      const usage = await testProviderConnection();
+      ui.notifications.info(game.i18n.format("SIMPLYPF2E.ProviderSetup.TestSuccess", {
+        provider: provider.name,
+        model,
+        total: usage.total.toLocaleString()
+      }));
+      await this.close();
+    } catch (err) {
+      console.error("simplypf2e | provider save-and-test failed", err);
+      ui.notifications.error(game.i18n.format("SIMPLYPF2E.ProviderSetup.TestFailed", {
+        message: err?.message ?? String(err)
+      }));
+    } finally {
+      for (const button of buttons) button.disabled = false;
+      if (icon && originalClass) icon.className = originalClass;
+    }
   }
 
   static async #onCancel() {

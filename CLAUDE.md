@@ -82,7 +82,7 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 
 ## Current state (2026-08-26)
 
-Current work: consumer-readiness pass on `codex/consumer-readiness`. Cloud/local provider setup now has guided presets, direct endpoint/model/key editing, an exact production-path connection check, explicit provider/model identity, empty-model and browser mixed-content checks, exact endpoint-bound keys, modern first-party OpenAI request fields, and compatibility negotiation for older OpenAI-compatible servers. The generator and item forge share a compact provider strip; responsive generator controls and the focused setup were browser-checked down to 360 px without overflow. See the newest HISTORY.md entry for the exact scope and tests.
+Current work: consumer-readiness pass on `codex/consumer-readiness`. Cloud/local provider setup now has guided presets, direct endpoint/model/key editing, direct Save & Test with failure recovery, an exact production-path connection check, explicit provider/model identity, empty-model and browser mixed-content checks, exact endpoint-bound keys, modern first-party OpenAI request fields, and compatibility negotiation for older OpenAI-compatible servers. The generator and item forge share a compact provider strip; responsive generator controls and the focused setup were browser-checked down to 360 px without overflow. See the newest HISTORY.md entry for the exact scope and tests.
 
 Earlier audit/optimization work extracted shared `text.mjs`/`runes.mjs`, level-gated and real-source-priced runes, deduped feat picks, preserved PC spellcasting on empty grounding, and consolidated preview/build helpers.
 

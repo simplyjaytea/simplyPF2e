@@ -37,7 +37,12 @@ globalThis.game = {
     format: (key, data) => `${key}:${JSON.stringify(data)}`
   }
 };
-globalThis.ui = { notifications: { info: () => {}, warn: () => {} } };
+const notices = { info: [], warn: [], error: [] };
+globalThis.ui = { notifications: {
+  info: (message) => notices.info.push(message),
+  warn: (message) => notices.warn.push(message),
+  error: (message) => notices.error.push(message)
+} };
 
 registerSettings(class SourcesConfigApp {}, class ProviderSetupApp {});
 const { ProviderSetupApp, PROVIDER_PRESETS } = await import("./provider-setup-app.mjs");
@@ -111,5 +116,58 @@ assert.equal(
   "https://api.deepseek.com/v1",
   "an explicitly entered replacement key must bind only to the displayed new endpoint"
 );
+
+// Save & Test uses the production Chat Completions path, closes only on
+// success, and leaves the saved dialog open for correction after a failure.
+const originalFetch = globalThis.fetch;
+const originalError = console.error;
+const makeTestButton = () => {
+  const icon = { className: "fa-solid fa-signal" };
+  return { disabled: false, querySelector: () => icon, icon };
+};
+const makeSaveTestApp = ({ baseUrl, model }) => {
+  let saved = 0;
+  let closed = 0;
+  const app = new ProviderSetupApp(() => { saved += 1; });
+  const target = makeTestButton();
+  const otherButton = { disabled: false };
+  const controls = new Map([
+    ["[name='apiBaseUrl']", { value: baseUrl }],
+    ["[name='model']", { value: model }],
+    ["[name='apiKey']", { value: "" }],
+    ["[name='clearApiKey']", { checked: false }]
+  ]);
+  app.element = {
+    querySelector: (selector) => controls.get(selector) ?? null,
+    querySelectorAll: (selector) => selector === "footer button" ? [target, otherButton] : []
+  };
+  app.close = async () => { closed += 1; };
+  return { app, target, getSaved: () => saved, getClosed: () => closed };
+};
+
+try {
+  setCurrent({ baseUrl: "http://localhost:11434/v1", model: "qwen3:8b", apiKey: "", bound: "" });
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    choices: [{ message: { content: '{"ok":true}' }, finish_reason: "stop" }],
+    usage: { prompt_tokens: 6, completion_tokens: 3, total_tokens: 9 }
+  }), { headers: { "content-type": "application/json" } });
+  const success = makeSaveTestApp({ baseUrl: "http://localhost:11434/v1", model: "qwen3:8b" });
+  await ProviderSetupApp.DEFAULT_OPTIONS.actions.saveAndTest.call(success.app, null, success.target);
+  assert.equal(success.getSaved(), 1, "save-and-test must refresh the calling generator after saving");
+  assert.equal(success.getClosed(), 1, "a successful connection test closes setup");
+  assert.equal(success.target.disabled, false, "the test action restores its button state");
+  assert.ok(notices.info.some((message) => message.includes("SIMPLYPF2E.ProviderSetup.TestSuccess")));
+
+  console.error = () => {};
+  globalThis.fetch = async () => { throw new TypeError("provider offline"); };
+  const failure = makeSaveTestApp({ baseUrl: "http://localhost:11434/v1", model: "qwen3:8b" });
+  await ProviderSetupApp.DEFAULT_OPTIONS.actions.saveAndTest.call(failure.app, null, failure.target);
+  assert.equal(failure.getSaved(), 1, "a failed test must not roll back valid saved settings");
+  assert.equal(failure.getClosed(), 0, "a failed test keeps setup open for correction");
+  assert.ok(notices.error.some((message) => message.includes("provider offline")));
+} finally {
+  globalThis.fetch = originalFetch;
+  console.error = originalError;
+}
 
 console.log("provider-setup.test.mjs: setup save assertions passed");
