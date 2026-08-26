@@ -149,6 +149,9 @@ export class ItemForgeApp extends SpfApp {
   }
 
   static async #onAuthorizeApiKey(_event, target) {
+    // Authorization refreshes the provider strip. Preserve any concept or
+    // controls the GM changed before the re-render, just like Configure does.
+    this.#readForm();
     const authorized = await authorizeApiKeyForCurrentBaseUrl(target.dataset.baseUrl);
     if (authorized) {
       ui.notifications.info(game.i18n.localize("SIMPLYPF2E.Generator.ApiKeyAuthorized"));

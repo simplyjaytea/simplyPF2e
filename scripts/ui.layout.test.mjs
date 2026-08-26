@@ -8,11 +8,13 @@ import { readFile } from "node:fs/promises";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-const [generator, itemForge, providerSetup, managePresets, css] = await Promise.all([
+const [generator, itemForge, providerSetup, managePresets, generatorApp, itemForgeApp, css] = await Promise.all([
   read("templates/generator.hbs"),
   read("templates/itemforge.hbs"),
   read("templates/provider-setup.hbs"),
   read("templates/manage-presets.hbs"),
+  read("scripts/generator-app.mjs"),
+  read("scripts/itemforge-app.mjs"),
   read("styles/simplypf2e.css")
 ]);
 
@@ -67,6 +69,17 @@ assert.match(providerSetup, /type="password" name="apiKey"/, "the saved key must
 assert.match(providerSetup, /data-action="saveAndTest"/, "provider setup must offer direct save-and-test");
 assert.match(providerSetup, /data-action="loadModels"/, "provider setup must offer authorized model discovery");
 assert.match(providerSetup, /<datalist id="spf-provider-model-list">/, "discovered models must remain editable suggestions");
+
+for (const [name, source] of [
+  ["generator", generatorApp],
+  ["item forge", itemForgeApp]
+]) {
+  assert.match(
+    source,
+    /static async #onAuthorizeApiKey\([^)]*\)\s*\{\s*(?:\/\/[^\n]*\n\s*)+this\.#readForm\(\);/,
+    `${name} must preserve unsaved form input before authorization re-renders the app`
+  );
+}
 
 assert.match(
   css,
