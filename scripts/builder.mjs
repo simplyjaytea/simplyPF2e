@@ -21,6 +21,133 @@ const STANDARD_SKILLS = new Set([
   "society", "stealth", "survival", "thievery"
 ]);
 
+/*
+ * IWR (immunity/weakness/resistance) type slugs, senses, and languages are
+ * AI-invented free text like traits (see the validTraits filter below) — bare
+ * slugify has no bound on what comes out, and createActor writes the result
+ * straight into actor system data. Per invariant 5 these are validated against
+ * the REAL pf2e allowed-value lists (invariant 2: fetched live, not recalled)
+ * and anything that doesn't match is dropped with a console.warn.
+ *
+ * Sources (fetched 2026-08-28 from raw.githubusercontent.com/foundryvtt/pf2e/master):
+ *
+ * - src/scripts/config/iwr.ts — immunityTypes / weaknessTypes / resistanceTypes
+ *   each `...`-spread three shared pieces before their own explicit keys:
+ *     - materialDamageEffects from src/scripts/config/damage.ts: precious
+ *       materials with IWR effects, R.pick()'d from preciousMaterials as
+ *       ["abysium","adamantine","cold-iron","dawnsilver","djezet","duskwood",
+ *       "inubrix","keep-stone","noqual","orichalcum","peachwood","siccatite",
+ *       "silver","sisterstone-dusk","sisterstone-scarlet","sovereign-steel",
+ *       "warpglass"], then iwr.ts itself R.omit()s six of those as niche
+ *       ("keep-stone","peachwood","sisterstone-dusk","sisterstone-scarlet",
+ *       "sovereign-steel","warpglass") — the 11 below are what's left.
+ *     - magicTraditions from src/scripts/config/traits.ts: arcane/divine/
+ *       occult/primal.
+ *     - a local `sanctifiedIWR` object: holy/unholy.
+ * - src/module/actor/creature/values.ts — SENSE_TYPES (the Sense DataModel's
+ *   StringField choices in creature/sense.ts) and LANGUAGES (built from
+ *   COMMON_LANGUAGES + UNCOMMON_LANGUAGES + RARE_LANGUAGES + "common" +
+ *   "wildsong").
+ */
+const IWR_MATERIALS = [
+  "abysium", "adamantine", "cold-iron", "dawnsilver", "djezet", "duskwood",
+  "inubrix", "noqual", "orichalcum", "siccatite", "silver"
+];
+const IWR_SANCTIFIED = ["holy", "unholy"];
+const IWR_TRADITIONS = ["arcane", "divine", "occult", "primal"];
+
+const IMMUNITY_TYPES = new Set([
+  ...IWR_MATERIALS, ...IWR_SANCTIFIED, ...IWR_TRADITIONS,
+  "acid", "air", "alchemical", "area-damage", "auditory", "bleed", "blinded",
+  "bludgeoning", "clumsy", "cold", "confused", "controlled", "critical-hits",
+  "curse", "custom", "dazzled", "deafened", "death-effects", "detection",
+  "disease", "doomed", "drained", "earth", "electricity", "emotion", "energy",
+  "enfeebled", "fascinated", "fatigued", "fear-effects", "fire", "fleeing",
+  "force", "fortune-effects", "frightened", "grabbed", "healing", "illusion",
+  "immobilized", "inhaled", "light", "magic", "mental", "metal",
+  "misfortune-effects", "non-magical", "nonlethal-attacks",
+  "object-immunities", "off-guard", "olfactory", "paralyzed",
+  "persistent-damage", "petrified", "physical", "piercing", "plant", "poison",
+  "polymorph", "possession", "precision", "prone", "radiation", "restrained",
+  "salt-water", "scrying", "sickened", "slashing", "sleep", "slowed", "sonic",
+  "spell-deflection", "spirit", "stunned", "stupefied", "swarm-attacks",
+  "swarm-mind", "trip", "unarmed-attacks", "unconscious", "visual", "vitality",
+  "void", "water", "wood", "wounded"
+]);
+
+const WEAKNESS_TYPES = new Set([
+  ...IWR_MATERIALS, ...IWR_SANCTIFIED, ...IWR_TRADITIONS,
+  "acid", "air", "alchemical", "all-damage", "area-damage",
+  "arrow-vulnerability", "axe-vulnerability", "bleed", "bludgeoning", "cold",
+  "critical-hits", "custom", "earth", "electricity", "emotion", "energy",
+  "fire", "force", "ghost-touch", "glass", "light", "magical", "mental",
+  "metal", "mythic", "non-magical", "nonlethal-attacks", "persistent-damage",
+  "physical", "piercing", "plant", "poison", "precision", "radiation", "salt",
+  "salt-water", "slashing", "sonic", "spells", "spirit", "splash-damage",
+  "unarmed-attacks", "vampire-weaknesses", "vitality", "void", "vorpal",
+  "vorpal-fear", "vulnerable-to-sunlight", "water", "weapons",
+  "weapons-shedding-bright-light", "wood"
+]);
+
+const RESISTANCE_TYPES = new Set([
+  ...IWR_MATERIALS, ...IWR_SANCTIFIED, ...IWR_TRADITIONS,
+  "acid", "air", "alchemical", "all-damage", "area-damage", "axes", "bleed",
+  "bludgeoning", "cold", "critical-hits", "custom", "damage-from-spells",
+  "earth", "electricity", "energy", "fire", "force", "ghost-touch", "light",
+  "magical", "mental", "metal", "mythic", "non-magical", "nonlethal",
+  "nonlethal-attacks", "persistent-damage", "physical", "piercing", "plant",
+  "poison", "precision", "protean-anatomy", "radiation", "salt", "salt-water",
+  "slashing", "sonic", "spells", "spirit", "unarmed-attacks", "vitality",
+  "void", "vorpal", "vorpal-adamantine", "water", "weapons",
+  "weapons-shedding-bright-light", "wood"
+]);
+
+const SENSE_TYPES = new Set([
+  "darkvision", "echolocation", "greater-darkvision", "infrared-vision",
+  "lifesense", "low-light-vision", "magicsense", "motion-sense", "scent",
+  "see-invisibility", "spiritsense", "thoughtsense", "tremorsense",
+  "truesight", "wavesense"
+]);
+
+const LANGUAGE_TYPES = new Set([
+  "common",
+  // COMMON_LANGUAGES
+  "draconic", "dwarven", "elven", "fey", "gnomish", "goblin", "halfling",
+  "jotun", "orcish", "sakvroth", "taldane",
+  // UNCOMMON_LANGUAGES
+  "adlet", "aklo", "alghollthu", "amurrun", "arboreal", "boggard", "calda",
+  "caligni", "chthonian", "cyclops", "daemonic", "diabolic", "ekujae",
+  "empyrean", "grippli", "hallit", "iruxi", "kelish", "kholo", "kibwani",
+  "kitsune", "lirgeni", "muan", "mwangi", "mzunu", "nagaji", "necril",
+  "ocotan", "osiriani", "petran", "protean", "pyric", "requian",
+  "shadowtongue", "shoanti", "skald", "sphinx", "sussuran", "tang", "tengu",
+  "thalassic", "tien", "utopian", "vanara", "varisian", "vudrani", "xanmba",
+  "wayang", "ysoki",
+  // RARE_LANGUAGES
+  "akitonian", "anadi", "ancient-osiriani", "androffan", "anugobu",
+  "arcadian", "azlanti", "destrachan", "drooni", "dziriak", "elder-thing",
+  "erutaki", "formian", "garundi", "girtablilu", "goloma", "grioth", "hwan",
+  "iblydan", "ikeshti", "immolis", "jistkan", "jyoti", "kaava", "kashrishi",
+  "kovintal", "lashunta", "mahwek", "migo", "minaten", "minkaian", "munavri",
+  "okaiyan", "orvian", "rasu", "ratajin", "razatlani", "russian", "samsaran",
+  "sasquatch", "senzar", "shae", "shisk", "shobhad", "shoony", "shory",
+  "strix", "surki", "talican", "tanuki", "tekritanin", "thassilonian",
+  "varki", "vishkanyan", "wyrwood", "yaksha", "yithian",
+  // secret
+  "wildsong"
+]);
+
+/**
+ * Filter a slugified list against a real allowed-value set (invariant 5:
+ * fail closed, never guess). Shared by the IWR/sense/language whitelists.
+ */
+function filterAllowed(values, allowed, label) {
+  const kept = values.filter((v) => allowed.has(v));
+  const dropped = values.filter((v) => !allowed.has(v));
+  if (dropped.length) console.warn(`simplypf2e | dropped invalid ${label}: ${dropped.join(", ")}`);
+  return kept;
+}
+
 function scale4(value, fallback = "moderate") {
   return SCALE4.has(value) ? value : fallback;
 }
@@ -66,7 +193,9 @@ export function normalizeConcept(raw, { level, rarity }) {
     });
   }
 
-  const maxSpellRank = Math.max(1, Math.ceil(clampedLevel / 2));
+  // PF2e's hard ceiling is rank 10 — a level 21-24 creature's naive
+  // ceil(level/2) would compute 11-12, which doesn't exist as a spell rank.
+  const maxSpellRank = Math.min(10, Math.max(1, Math.ceil(clampedLevel / 2)));
   let spellcasting = null;
   if (c.spellcasting && TRADITIONS.has(c.spellcasting.tradition)) {
     // Spells may be empty at this point; the grounded compendium selection
@@ -107,7 +236,10 @@ export function normalizeConcept(raw, { level, rarity }) {
     rarity: RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common",
     size: SIZES.has(c.size) ? c.size : "med",
     traits: validTraits,
-    languages: (Array.isArray(c.languages) ? c.languages : []).map(slugify).filter(Boolean),
+    languages: filterAllowed(
+      (Array.isArray(c.languages) ? c.languages : []).map(slugify).filter(Boolean),
+      LANGUAGE_TYPES, "creature languages"
+    ),
     abilityScales: abilities,
     acScale: scale4(c.acScale),
     hpScale: ["high", "moderate", "low"].includes(c.hpScale) ? c.hpScale : "moderate",
@@ -124,7 +256,12 @@ export function normalizeConcept(raw, { level, rarity }) {
         type: slugify(s.type),
         acuity: ["precise", "imprecise", "vague"].includes(s.acuity) ? s.acuity : null,
         range: Number(s.range) > 0 ? Number(s.range) : null
-      })),
+      }))
+      .filter((s) => {
+        if (SENSE_TYPES.has(s.type)) return true;
+        console.warn(`simplypf2e | dropped invalid creature sense: ${s.type}`);
+        return false;
+      }),
     skills: (Array.isArray(c.skills) ? c.skills : [])
       .filter((s) => s?.name)
       .slice(0, 8)
@@ -173,11 +310,18 @@ export function normalizeConcept(raw, { level, rarity }) {
       .filter((e) => e && !parseCoins(e.name))
       .slice(0, 12),
     loot: normalizeLoot(c.loot),
-    resistances: (Array.isArray(c.resistances) ? c.resistances : [])
-      .map((r) => slugify(r?.type ?? r)).filter(Boolean).slice(0, 4),
-    weaknesses: (Array.isArray(c.weaknesses) ? c.weaknesses : [])
-      .map((w) => slugify(w?.type ?? w)).filter(Boolean).slice(0, 4),
-    immunities: (Array.isArray(c.immunities) ? c.immunities : []).map(slugify).filter(Boolean).slice(0, 8)
+    resistances: filterAllowed(
+      (Array.isArray(c.resistances) ? c.resistances : []).map((r) => slugify(r?.type ?? r)).filter(Boolean),
+      RESISTANCE_TYPES, "resistance types"
+    ).slice(0, 4),
+    weaknesses: filterAllowed(
+      (Array.isArray(c.weaknesses) ? c.weaknesses : []).map((w) => slugify(w?.type ?? w)).filter(Boolean),
+      WEAKNESS_TYPES, "weakness types"
+    ).slice(0, 4),
+    immunities: filterAllowed(
+      (Array.isArray(c.immunities) ? c.immunities : []).map(slugify).filter(Boolean),
+      IMMUNITY_TYPES, "immunity types"
+    ).slice(0, 8)
   };
 }
 
