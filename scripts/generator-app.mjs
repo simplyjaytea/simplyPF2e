@@ -12,7 +12,7 @@ import {
 } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
-  applyTreasureBudget, lootValueGp, parseCoins, parseScroll, slugify
+  applyTreasureBudget, equipmentValueGp, lootValueGp, parseCoins, parseScroll, slugify
 } from "./builder.mjs";
 import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp
@@ -718,19 +718,30 @@ export class GeneratorApp extends SpfApp {
       resolved = { ...final, feats: resolved.feats };
       // Starting wealth: the character's OWN accumulated wealth-by-level
       // (pcStartingWealthGp), NOT treasureBudget() (an NPC per-encounter
-      // share). applyTreasureBudget is reused completely unchanged — it only
-      // ever flexes COIN entries, so the magic items #refinePCLoot just
-      // grounded are left alone and only the coin remainder is padded/
-      // trimmed to hit the target (issue: starting wealth should buy magic
-      // items, not just sit as raw gold).
+      // share). PC equipment embeds at its real gp value (unlike NPC gear,
+      // which is free by design), so that value is paid for out of starting
+      // wealth FIRST — only the remainder is left as a loot budget for
+      // applyTreasureBudget to fill with items/coin. Without this, equipment
+      // and loot both drew on the full wealth target and a PC's total assets
+      // exceeded it by the gear's full value (worse at higher level, where
+      // runes scale). applyTreasureBudget itself is reused completely
+      // unchanged — it only ever flexes COIN entries, so the magic items
+      // #refinePCLoot just grounded are left alone and only the coin
+      // remainder is padded/trimmed to hit the (reduced) target.
       const wealthTarget = pcStartingWealthGp(concept.level, this.#input.treasureAmount);
-      resolved.loot = await applyTreasureBudget(resolved.loot, wealthTarget);
+      const equipmentGp = await equipmentValueGp(resolved.equipment);
+      if (equipmentGp > wealthTarget) {
+        console.warn(`${MODULE_ID} | PC equipment (${equipmentGp} gp) alone exceeds the starting wealth target (${wealthTarget} gp) — keeping the gear and flooring the loot budget at 0`);
+      }
+      const lootBudget = Math.max(wealthTarget - equipmentGp, 0);
+      resolved.loot = await applyTreasureBudget(resolved.loot, lootBudget);
 
-      // If most of the wealth still sits as coin after the first purchase pass,
-      // make ONE more pass to convert it into real items (issue #64 item 6:
-      // PCs were leaving too much unspent gold). Bounded to a single retry.
+      // If most of the (equipment-adjusted) loot budget still sits as coin
+      // after the first purchase pass, make ONE more pass to convert it into
+      // real items (issue #64 item 6: PCs were leaving too much unspent
+      // gold). Bounded to a single retry.
       const coinGp = lootValueGp(resolved.loot.filter((l) => parseCoins(l.name)));
-      if (coinGp > wealthTarget * 0.25) {
+      if (coinGp > lootBudget * 0.25) {
         try {
           const { loot: draft, usage: extraUsage } = await generatePCLoot({
             concept, amount: this.#input.treasureAmount, onProgress: (p) => this._onAIProgress(p)
@@ -741,7 +752,7 @@ export class GeneratorApp extends SpfApp {
           await this.#refineLoot(concept);
           const topUp = await resolvePCConcept(concept);
           resolved = { ...topUp, feats: resolved.feats };
-          resolved.loot = await applyTreasureBudget(resolved.loot, wealthTarget);
+          resolved.loot = await applyTreasureBudget(resolved.loot, lootBudget);
         } catch (err) {
           console.warn(`${MODULE_ID} | extra PC purchase pass failed, leaving remaining wealth as coin`, err);
         }

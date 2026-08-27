@@ -511,6 +511,32 @@ export async function resolveEquipment(concept) {
 }
 
 /**
+ * Total gp value of a resolved equipment list (real base price + real rune
+ * price where a compendium entry matched, else the AI's own estimate) —
+ * mirrors resolveLoot()'s resolvedValue logic exactly, since resolveEquipment
+ * doesn't precompute a resolvedValue field the way resolveLoot does. PC
+ * equipment embeds at this real value (buildEquipmentItems), so the PC
+ * pipeline deducts this from starting wealth before budgeting loot; NPC gear
+ * is free by design and never calls this.
+ * @param {object[]} equipment  entries from resolveEquipment()
+ * @returns {Promise<number>}
+ */
+export async function equipmentValueGp(equipment) {
+  let total = 0;
+  for (const { quantity, value, runes, entry } of equipment ?? []) {
+    let unitGp = Number(value) || 0;
+    if (entry) {
+      const doc = await getDocument(entry);
+      const gp = priceToGp(doc?.system?.price?.value);
+      if (gp > 0) unitGp = gp + await runeGp(runes, entry.type);
+      else if (hasRunes(runes)) unitGp = unitGp + await runeGp(runes, entry.type);
+    }
+    total += unitGp * (Number(quantity) || 1);
+  }
+  return total;
+}
+
+/**
  * Resolve focus-spell names against the spell packs. Focus spells carry the
  * "focus" trait and have an EMPTY system.traits.traditions (verified against
  * real pack data, e.g. lay-on-hands.json), so the tradition-filtered
