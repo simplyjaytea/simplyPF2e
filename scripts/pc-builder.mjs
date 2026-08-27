@@ -6,7 +6,7 @@ import {
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
-import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
+import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
 
 /**
@@ -118,21 +118,25 @@ export function normalizePCConcept(raw, { level }) {
 }
 
 /**
- * Expected starting wealth (gp) for a character of `level`: the GM Core/CRB
- * Table 10-9 Treasure by Level total for that level (a character's OWN
- * accumulated wealth-by-level — see the doc comment on T.TREASURE_BY_LEVEL),
- * scaled by the GM's Treasure amount setting. Deliberately NOT
- * treasureBudget() — that divides by ENCOUNTERS_PER_LEVEL, an NPC-per-
- * encounter share, which is the wrong number for a PC's own starting wealth.
+ * Expected starting wealth (gp) for a character created at `level`: the lump
+ * sum from GM Core Table 10-10 "Character Wealth" (see PC_WEALTH_BY_LEVEL in
+ * pc-tables.mjs for the verified source and column), scaled by the GM's
+ * Treasure amount setting.
  *
- * Level 1 is a special case: the Core Rulebook gives every 1st-level
- * character a flat 15 gp, independent of class/ancestry — the Treasure by
- * Level table only applies when starting a campaign ABOVE 1st level (or
- * replacing a character mid-campaign). Reusing the table for level 1 gave a
- * brand-new character ~175 gp, over 10x the real starting amount.
+ * Deliberately NOT tables.mjs's TREASURE_BY_LEVEL, which this function used
+ * to read: that is Table 10-9 Treasure by Level, the total treasure a whole
+ * PARTY should accumulate across a level of play, not one character's own
+ * starting wealth. Reading it here overpaid every PC above level 1 by an
+ * order of magnitude (level 2: 300 gp instead of 30). Also not
+ * treasureBudget(), which divides that party total by ENCOUNTERS_PER_LEVEL
+ * for an NPC's per-encounter share.
+ *
+ * Level 1 needs no special case: Table 10-10's own level-1 lump sum is the
+ * same flat 15 gp a character gets at normal character creation.
  */
 export function pcStartingWealthGp(level, amount = "standard") {
-  const gp = level <= 1 ? 15 : T.lookup(T.TREASURE_BY_LEVEL, level, "total", []);
+  const lv = Math.min(Math.max(Math.round(Number(level)) || 1, 1), 20);
+  const gp = PC_WEALTH_BY_LEVEL[lv - 1];
   return Math.round(gp * (T.TREASURE_AMOUNT_MULTIPLIER[amount] ?? 1));
 }
 
@@ -688,8 +692,10 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // skills.<slug>.rank,
   // attributes.hp.{value,temp}. Remaining best-effort (see comments where
   // used): the spontaneous spell-slot COUNTS (rules-derived, not from source —
-  // pc-tables.spontaneousSpellSlots) and per-generation starting WEALTH
-  // (pcStartingWealthGp — flagged for a human wealth-table cross-check).
+  // pc-tables.spontaneousSpellSlots). Starting WEALTH is now transcribed from
+  // GM Core Table 10-10 (pc-tables.PC_WEALTH_BY_LEVEL), so it no longer needs
+  // a human cross-check — but that table's permanent-item ladder is still not
+  // modeled (HANDOFF.md finding #15).
   // -----------------------------------------------------------------------
 
   // Bonus languages: capped to the ancestry's own slot count and allowed-list

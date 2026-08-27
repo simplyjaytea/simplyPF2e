@@ -716,9 +716,9 @@ export class GeneratorApp extends SpfApp {
       // feat picks already made).
       const final = await resolvePCConcept(concept);
       resolved = { ...final, feats: resolved.feats };
-      // Starting wealth: the character's OWN accumulated wealth-by-level
-      // (pcStartingWealthGp), NOT treasureBudget() (an NPC per-encounter
-      // share). applyTreasureBudget is reused completely unchanged — it only
+      // Starting wealth: GM Core Table 10-10 Character Wealth's lump sum for
+      // a character created at this level (pcStartingWealthGp), NOT
+      // treasureBudget() (an NPC per-encounter share of a PARTY total). applyTreasureBudget is reused completely unchanged — it only
       // ever flexes COIN entries, so the magic items #refinePCLoot just
       // grounded are left alone and only the coin remainder is padded/
       // trimmed to hit the target (issue: starting wealth should buy magic
