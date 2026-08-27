@@ -77,6 +77,34 @@ assert.match(
   /spf-mode-toggle" role="radiogroup" aria-label=/,
   "generation modes must expose a named native radio group"
 );
+for (const legendKey of ["ConceptLegend", "EncounterLegend", "CharacterLegend"]) {
+  assert.match(
+    generator,
+    new RegExp(`SIMPLYPF2E\\.Generator\\.${legendKey}`),
+    `generation mode must expose its own fieldset legend: ${legendKey}`
+  );
+}
+for (const [mode, preview] of [
+  ["single", "preview"],
+  ["encounter", "encounterPreview"],
+  ["character", "pcPreview"]
+]) {
+  assert.match(
+    generatorApp,
+    new RegExp(`${preview}: this\\.#input\\.mode === "${mode}" \\?`),
+    `generator must hide other modes' stale previews while ${mode} mode is active`
+  );
+}
+assert.match(
+  generatorApp,
+  /#modePrompts = \{ single: "", encounter: "", character: "" \}/,
+  "each generator mode must keep an independent prompt draft"
+);
+assert.match(
+  generatorApp,
+  /this\.#modePrompts\[previousMode\] = renderedPrompt[\s\S]*?this\.#modePrompts\[mode\] \?\? ""/,
+  "mode changes must save the old draft and restore the new mode's draft"
+);
 
 for (const [name, source] of [
   ["generator", generatorApp],

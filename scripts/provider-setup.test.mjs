@@ -164,7 +164,12 @@ const makeSaveTestApp = ({ baseUrl, model }) => {
     setAttribute: (name, value) => attributes.set(name, value),
     removeAttribute: (name) => attributes.delete(name)
   };
-  app.close = async () => { closed += 1; };
+  app.close = async () => {
+    closed += 1;
+    // ApplicationV2 clears its element during close. Save & Test must still
+    // complete its finally cleanup without dereferencing the destroyed dialog.
+    app.element = null;
+  };
   return {
     app, target,
     getSaved: () => saved,

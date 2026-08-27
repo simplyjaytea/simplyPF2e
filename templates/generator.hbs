@@ -28,7 +28,15 @@
   {{/if}}
 
   <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
-    <legend>{{localize "SIMPLYPF2E.Generator.ConceptLegend"}}</legend>
+    <legend>
+      {{#if encounterMode}}
+        {{localize "SIMPLYPF2E.Generator.EncounterLegend"}}
+      {{else if characterMode}}
+        {{localize "SIMPLYPF2E.Generator.CharacterLegend"}}
+      {{else}}
+        {{localize "SIMPLYPF2E.Generator.ConceptLegend"}}
+      {{/if}}
+    </legend>
     <div class="spf-mode-toggle" role="radiogroup" aria-label="{{localize 'SIMPLYPF2E.Generator.ModeLabel'}}">
       <label class="{{#if singleMode}}spf-mode-active{{/if}}">
         <input type="radio" name="mode" value="single" {{#if singleMode}}checked{{/if}}>

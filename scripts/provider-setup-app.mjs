@@ -107,14 +107,18 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
   #beginBusy(target) {
     if (this.#busy) return null;
     this.#busy = true;
-    const controls = [...this.element.querySelectorAll("button, input, select, textarea")];
+    const element = this.element;
+    const controls = [...element.querySelectorAll("button, input, select, textarea")];
     const disabled = controls.map((control) => control.disabled);
     const icon = target?.querySelector?.("i");
     const originalIconClass = icon?.className;
     for (const control of controls) control.disabled = true;
     if (icon) icon.className = "fa-solid fa-spinner fa-spin";
-    this.element.setAttribute?.("aria-busy", "true");
-    return { controls, disabled, icon, originalIconClass };
+    element.setAttribute?.("aria-busy", "true");
+    // Foundry clears this.element when a successful Save & Test closes the
+    // application. Keep the element that was made busy so cleanup remains
+    // safe even after the dialog has been destroyed.
+    return { element, controls, disabled, icon, originalIconClass };
   }
 
   #endBusy(state) {
@@ -124,7 +128,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     if (state.icon && state.originalIconClass) {
       state.icon.className = state.originalIconClass;
     }
-    this.element.removeAttribute?.("aria-busy");
+    state.element?.removeAttribute?.("aria-busy");
     this.#busy = false;
   }
 
