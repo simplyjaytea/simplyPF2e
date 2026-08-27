@@ -11,6 +11,7 @@ import {
   normalizeRunedItemConcept, buildRunedItemData, SECONDARY_ADJECTIVE, RUNED_ITEM_KINDS
 } from "./item-builder.mjs";
 import { createActivationMacro } from "./macro-templates.mjs";
+import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
 
 /**
@@ -36,6 +37,7 @@ export class ItemForgeApp extends SpfApp {
       discard: ItemForgeApp.#onDiscard,
       authorizeApiKey: ItemForgeApp.#onAuthorizeApiKey,
       configureProvider: ItemForgeApp.#onConfigureProvider,
+      configureSources: ItemForgeApp.#onConfigureSources,
       testProvider: ItemForgeApp.#onTestProvider,
       levelUp: ItemForgeApp.#onLevelUp,
       levelDown: ItemForgeApp.#onLevelDown
@@ -80,9 +82,9 @@ export class ItemForgeApp extends SpfApp {
       minLevel: MIN_ITEM_LEVEL,
       maxLevel: MAX_ITEM_LEVEL,
       kinds: [
-        { value: "wondrous", label: "SIMPLYPF2E.ItemForge.KindWondrous" },
-        { value: "weapon", label: "SIMPLYPF2E.ItemForge.KindWeapon" },
-        { value: "armor", label: "SIMPLYPF2E.ItemForge.KindArmor" }
+        { value: "wondrous", label: "SIMPLYPF2E.ItemForge.KindWondrous", icon: "fa-ring" },
+        { value: "weapon", label: "SIMPLYPF2E.ItemForge.KindWeapon", icon: "fa-sword" },
+        { value: "armor", label: "SIMPLYPF2E.ItemForge.KindArmor", icon: "fa-shield-halved" }
       ],
       rarities: [
         { value: "common", label: "SIMPLYPF2E.Rarity.Common" },
@@ -124,7 +126,9 @@ export class ItemForgeApp extends SpfApp {
     const level = Math.min(MAX_ITEM_LEVEL, Math.max(MIN_ITEM_LEVEL,
       Number(form.querySelector('[name="level"]')?.value ?? this.#input.level)));
     const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
-    const rawKind = form.querySelector('[name="kind"]')?.value ?? this.#input.kind;
+    // "kind" is a segmented radio group (same component as the generator's
+    // mode switch), so read the CHECKED radio, not the first one.
+    const rawKind = form.querySelector('[name="kind"]:checked')?.value ?? this.#input.kind;
     const kind = rawKind === "wondrous" || RUNED_ITEM_KINDS.has(rawKind) ? rawKind : "wondrous";
     this.#input = { prompt, level, rarity, kind };
   }
@@ -169,12 +173,32 @@ export class ItemForgeApp extends SpfApp {
     this._openProviderSetup();
   }
 
+  /** Open the shared Compendium Sources settings app (same as the generator's gear). */
+  static #onConfigureSources() {
+    this.#readForm();
+    new SourcesConfigApp().render(true);
+  }
+
   static async #onTestProvider(_event, target) {
     await this._testProvider(target);
   }
 
   static #onLevelDown() {
     this.#stepLevel(-1);
+  }
+
+  /**
+   * Re-render when the item kind changes so the segmented switch's active
+   * tile tracks the selection — same wiring as the generator's mode switch.
+   */
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    for (const radio of this.element.querySelectorAll('input[name="kind"]')) {
+      radio.addEventListener("change", () => {
+        this.#readForm();
+        this.render();
+      });
+    }
   }
 
   #stepLevel(delta) {

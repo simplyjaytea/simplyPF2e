@@ -65,7 +65,7 @@
       "TestFailed": "Provider connection test failed: {message}"
     },
     "Generator": {
-      "Title": "SimplyPF2e",
+      "Title": "SimplyPF2e — Generator",
       "OpenButton": "SimplyPF2e",
       "ConceptLegend": "Creature Concept",
       "EncounterLegend": "Encounter Concept",
@@ -81,8 +81,8 @@
       "PartyLevel": "Party level",
       "PartySize": "Party size",
       "Threat": "Threat",
-      "EncounterTheme": "Encounter theme (optional — leave blank for a surprise)",
-      "EncounterThemePlaceholder": "e.g. A smuggler ring run by wererats beneath the fish market...",
+      "EncounterTheme": "Describe the encounter theme (optional)",
+      "EncounterThemePlaceholder": "e.g. A smuggler ring run by wererats beneath the fish market... (leave blank for a surprise)",
       "CharacterPrompt": "Describe the character",
       "CharacterPromptPlaceholder": "e.g. A gruff dwarven artillerist who left the family forge to hunt the beast that killed her mentor...",
       "Character": "Character",
@@ -94,7 +94,7 @@
       "PartySizeUp": "Increase party size",
       "PartySizeDown": "Decrease party size",
       "Rarity": "Rarity",
-      "RarityCap": "Max rarity",
+      "RarityCap": "Rarity cap",
       "RarityCapTooltip": "Excludes ancestries, backgrounds, and heritages rarer than this from what the AI can pick — e.g. capping at Uncommon rules out Rare/Unique options like Fetchling or Duskwalker",
       "TreasureAmount": "Treasure amount",
       "TreasureReadoutTooltip": "Total loot value across all members vs. the treasure budget (per-creature budget × count, from the GM Core Treasure by Level table)",
@@ -114,6 +114,7 @@
       "ApiKeyAuthorized": "API key authorized for the current endpoint.",
       "ApiKeyAuthorizationFailed": "The API endpoint changed before authorization completed. Review it and try again.",
       "ProviderReady": "Provider configuration is ready",
+      "ConfigureSources": "Configure compendium sources",
       "ModeLabel": "Generation mode",
       "NoModelShort": "No model",
       "EmptyHint": "Nothing generated yet — describe a concept above and press Generate. The preview appears here before anything is created."
@@ -273,7 +274,7 @@
       "MatchSummary": "{matched}/{total} compendium matches"
     },
     "ItemForge": {
-      "Title": "SimplyPF2e Item Forge",
+      "Title": "SimplyPF2e — Item Forge",
       "OpenButton": "Item Forge",
       "ConceptLegend": "Magic Item Concept",
       "Prompt": "Describe the magic item",

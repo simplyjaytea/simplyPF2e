@@ -421,13 +421,17 @@ Design guidance:
  * counterpart of generateConcept().
  * @returns {Promise<{concept: object, usage: object}>} parsed concept JSON + token usage
  */
-export async function generatePCConcept({ prompt, level, allowSpellcasting, onProgress }) {
+export async function generatePCConcept({ prompt, level, allowSpellcasting, preset, onProgress }) {
   const userPrompt = [
     `Character level: ${level}`,
     `Spellcasting allowed: ${allowSpellcasting ? "yes, if the class you choose casts spells" : "NO - choose a non-caster class, or a caster with spellcasting set to null"}`,
+    // The build presets are written in NPC scale words ("high AC, moderate
+    // HP"); for a PC they may only steer class/style choice — the system
+    // computes every number — so say exactly that.
+    preset ? `Build preset (class and fighting-style guidance only; ignore any numeric stat scales — the game system computes all statistics): ${preset}` : null,
     "",
     `Concept from the GM: ${prompt}`
-  ].join("\n");
+  ].filter((line) => line !== null).join("\n");
 
   const { data, usage } = await requestJSON({
     task: AI_TASK.PC_CONCEPT,

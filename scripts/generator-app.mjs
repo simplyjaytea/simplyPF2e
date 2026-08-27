@@ -23,6 +23,7 @@ import {
   examplePrompt, randomBrief
 } from "./presets.mjs";
 import { ManagePresetsApp, promptPresetDialog, confirmDeletePreset } from "./manage-presets-app.mjs";
+import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryArt } from "./art.mjs";
 import { SpfApp } from "./app-base.mjs";
@@ -60,6 +61,7 @@ export class GeneratorApp extends SpfApp {
       rerollLoot: GeneratorApp.#onRerollLoot,
       authorizeApiKey: GeneratorApp.#onAuthorizeApiKey,
       configureProvider: GeneratorApp.#onConfigureProvider,
+      configureSources: GeneratorApp.#onConfigureSources,
       testProvider: GeneratorApp.#onTestProvider
     }
   };
@@ -387,6 +389,12 @@ export class GeneratorApp extends SpfApp {
     this._openProviderSetup();
   }
 
+  /** Open the shared Compendium Sources settings app (same as the forge's gear). */
+  static #onConfigureSources() {
+    this.#readForm();
+    new SourcesConfigApp().render(true);
+  }
+
   static async #onTestProvider(_event, target) {
     await this._testProvider(target);
   }
@@ -595,7 +603,10 @@ export class GeneratorApp extends SpfApp {
           level: slot.level,
           rarity,
           allowSpellcasting: this.#input.allowSpellcasting,
-          preset: null,
+          // The preset row is now a stable slot in every mode: a selected
+          // preset shapes each member the same way it shapes a single
+          // creature (and, matching the Single dice button, Random ignores it).
+          preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
           amount: this.#input.treasureAmount,
           onProgress: (p) => this._onAIProgress(p)
         });
@@ -690,6 +701,10 @@ export class GeneratorApp extends SpfApp {
         prompt: isRandom ? randomBrief() : this.#input.prompt,
         level: this.#input.level,
         allowSpellcasting: this.#input.allowSpellcasting,
+        // Stable preset slot, PC flavor: the guidance steers class/style
+        // choice only (generatePCConcept tells the model to ignore any
+        // numeric scale wording — a PC's numbers come from the system).
+        preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
         onProgress: (p) => this._onAIProgress(p)
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.PCConcept"), usage);
