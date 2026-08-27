@@ -47,6 +47,12 @@ Low-severity list (17 items) lives in the session scratchpad review.json and in 
 - **Important learning:** the native embed path opens blocking pf2e `PickAThingPrompt` dialogs (Fighter key-skill choice, Dwarf clan-weapon choice) and the `createEmbeddedDocuments` promise **waits on them silently**. The module does not pre-answer or suppress these — a GM generating a character must answer the popups or generation appears hung. Consider a future UX note or pre-supplied `flags.pf2e.rulesSelections`.
 - **AI-dependent live QA (full generation, item forge)** still open: the Claude in-app browser blocks page-initiated cross-origin fetches (`ERR_BLOCKED_BY_CLIENT`), so the module's AI calls can't run there. Endpoint itself is healthy (TLS + CORS verified from shell). Needs the user's own browser or the Claude in Chrome extension.
 
+## Fix status (2026-08-28, end of session)
+
+All 15 confirmed findings are FIXED on `release/audit-fixes` (one stacked integration branch: 9 fix branches + this docs branch, each independently reviewed by a second agent before merging; two reviewer findings — a forge-preview double-escape and an empty `error:{}` stream-abort — were fixed pre-merge, and an equipment-value/dedup mismatch was fixed post-review). Full test suite green (30 standalone checks). NOT yet merged to main. Remaining un-fixed: the en.json jq step in the release workflows (workflow-file change, needs its own carefully-tested PR) and the 17 low-severity findings (heritage-fallback inefficiency added as an 18th).
+
+`feat/ui-overhaul` (separate branch/PR): full visual overhaul of all five apps — shared token-based CSS kit, segmented mode switch, progress step chips; JS↔template contracts script-verified; needs live-Foundry eyeballing (list in the branch report/PR).
+
 ## Next steps (in order)
 2. Fix PR wave 1 (branch per theme, PR each): (a) high #1–#3, (b) escaping cluster #8/#9, (c) NPC data validation #5/#6, (d) SSE error surfacing #4, (e) UI fixes #11/#12, (f) price-write removal #10, heritage validation #7.
 3. Independent second-agent review on each fix PR before requesting merge.
