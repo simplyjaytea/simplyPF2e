@@ -508,6 +508,25 @@ export async function applyTreasureBudget(loot, targetGp) {
   }
 }
 
+/**
+ * Decide whether an embedded NPC spell needs `location.heightenedLevel` set
+ * so it groups under the AI-assigned (possibly heightened) rank instead of
+ * falling back to its own base rank. Returns the rank to record, or null
+ * when nothing should be written (cantrip, or rank matches the base rank —
+ * matching real bestiary data convention of only recording a heightened
+ * level when one actually applies).
+ * @param {object} spellSystemData  the spell doc's `system` data (post toItemData)
+ * @param {number} assignedRank     the rank resolveConcept clamped the AI's pick to
+ * @returns {number|null}
+ */
+export function heightenedLevelFor(spellSystemData, assignedRank) {
+  const isCantrip = (spellSystemData?.traits?.value ?? []).includes("cantrip");
+  if (isCantrip) return null;
+  const baseRank = spellSystemData?.level?.value ?? 0;
+  if (assignedRank === baseRank) return null;
+  return assignedRank;
+}
+
 const RANK_ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
 
 /** Find the blank "Scroll of Nth-rank Spell" template item for a rank. */
@@ -652,6 +671,39 @@ export async function resolveEquipment(concept) {
     equipment.push({ name, quantity, value, runes, entry });
   }
   return equipment;
+}
+
+/**
+ * Total gp value of a resolved equipment list (real base price + real rune
+ * price where a compendium entry matched, else the AI's own estimate) —
+ * mirrors resolveLoot()'s resolvedValue logic exactly, since resolveEquipment
+ * doesn't precompute a resolvedValue field the way resolveLoot does. PC
+ * equipment embeds at this real value (buildEquipmentItems), so the PC
+ * pipeline deducts this from starting wealth before budgeting loot; NPC gear
+ * is free by design and never calls this.
+ * @param {object[]} equipment  entries from resolveEquipment()
+ * @returns {Promise<number>}
+ */
+export async function equipmentValueGp(equipment) {
+  let total = 0;
+  // Same name-dedup rule as buildEquipmentItems({ dedup: true }) — the PC
+  // embed drops repeated names (AI pads thin lists), so a duplicate's value
+  // must not be deducted from the wealth budget either.
+  const seen = new Set();
+  for (const { name, quantity, value, runes, entry } of equipment ?? []) {
+    const key = slugify(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    let unitGp = Number(value) || 0;
+    if (entry) {
+      const doc = await getDocument(entry);
+      const gp = priceToGp(doc?.system?.price?.value);
+      if (gp > 0) unitGp = gp + await runeGp(runes, entry.type);
+      else if (hasRunes(runes)) unitGp = unitGp + await runeGp(runes, entry.type);
+    }
+    total += unitGp * (Number(quantity) || 1);
+  }
+  return total;
 }
 
 /**
@@ -1076,6 +1128,14 @@ export async function createActor(concept, resolved, { img = null } = {}) {
       if (!doc) continue;
       const data = toItemData(doc);
       data.system.location = { ...(data.system.location ?? {}), value: entryId };
+      // Record the AI-assigned rank when it heightens the spell above its
+      // base rank — otherwise SpellPF2e#rank falls back to the base rank
+      // (heightenedLevel unset) and the spell groups under the wrong slot
+      // row with 0/0 slots, becoming uncastable. Never set this on cantrips:
+      // the system auto-heightens cantrips itself, and cantrips have no
+      // slot rank to mismatch against.
+      const heightenedLevel = heightenedLevelFor(data.system, spell.rank);
+      if (heightenedLevel != null) data.system.location.heightenedLevel = heightenedLevel;
       items.push(data);
     }
   }

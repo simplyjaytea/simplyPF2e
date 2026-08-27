@@ -493,8 +493,10 @@ function normalizeActivation(raw, { level, rarity, available }) {
         return null;
       }
       const saveType = SAVE_TYPES.has(p.saveType) ? p.saveType : null;
+      // AI free text concatenated into the macro's chat HTML — escaped here
+      // at build time, same as selfBuff's effectName/description below.
       const duration = typeof p.duration === "string" && p.duration.trim()
-        ? p.duration.trim().slice(0, 40) : null;
+        ? esc(p.duration.trim().slice(0, 40)) : null;
       params = {
         conditionSlug,
         value: VALUED_CONDITIONS.has(conditionSlug) ? clampInt(p.value, 1, 6, 1) : null,
