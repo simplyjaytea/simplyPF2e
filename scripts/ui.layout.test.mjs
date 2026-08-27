@@ -84,6 +84,17 @@ for (const legendKey of ["ConceptLegend", "EncounterLegend", "CharacterLegend"])
     `generation mode must expose its own fieldset legend: ${legendKey}`
   );
 }
+for (const [mode, preview] of [
+  ["single", "preview"],
+  ["encounter", "encounterPreview"],
+  ["character", "pcPreview"]
+]) {
+  assert.match(
+    generatorApp,
+    new RegExp(`${preview}: this\\.#input\\.mode === "${mode}" \\?`),
+    `generator must hide other modes' stale previews while ${mode} mode is active`
+  );
+}
 
 for (const [name, source] of [
   ["generator", generatorApp],

@@ -139,9 +139,11 @@ export class GeneratorApp extends SpfApp {
         label: `SIMPLYPF2E.TreasureAmount.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
         selected: this.#input.treasureAmount === key
       })),
-      preview: this.#buildPreviewContext(),
-      encounterPreview: this.#buildEncounterPreviewContext(),
-      pcPreview: this.#buildPCPreviewContext(),
+      // Keep each mode's previous result available when the GM switches back,
+      // but never render an incompatible preview under the active form.
+      preview: this.#input.mode === "single" ? this.#buildPreviewContext() : null,
+      encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
+      pcPreview: this.#input.mode === "character" ? this.#buildPCPreviewContext() : null,
       tokenReport: this._buildTokenReport()
     };
   }
