@@ -1049,7 +1049,7 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
       catch {
         throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.InvalidResponse"));
       }
-      if (data?.error) throw providerStreamError(data.error);
+      if (isRealProviderError(data?.error)) throw providerStreamError(data.error);
       content = data?.choices?.[0]?.message?.content;
       const reasoning = data?.choices?.[0]?.message?.reasoning_content
         ?? data?.choices?.[0]?.message?.reasoning
@@ -1124,7 +1124,7 @@ async function readEventStream(response, { onProgress, resetIdle }) {
     // and the caller reports a generic retryable EmptyResponse — burning a
     // second attempt against the same failing provider and hiding the real
     // reason from the user.
-    if (chunk?.error) throw providerStreamError(chunk.error);
+    if (isRealProviderError(chunk?.error)) throw providerStreamError(chunk.error);
     if (chunk?.usage) usage = chunk.usage; // exact tokens, sent on the final chunk
     const choice = chunk?.choices?.[0] ?? {};
     if (choice.finish_reason) finishReason = choice.finish_reason;
@@ -1209,6 +1209,20 @@ function providerStatusHint(status) {
           ? "SIMPLYPF2E.Errors.ApiServerHint"
           : "SIMPLYPF2E.Errors.ApiRequestHint";
   return game.i18n.localize(key);
+}
+
+/**
+ * True when an error field actually reports a failure. Some OpenAI-compatible
+ * relays attach a benign empty `error: {}` (or `""`) to every chunk; treating
+ * those as fatal would abort successful generations, so only a non-empty
+ * string or an object with a non-empty message counts.
+ */
+function isRealProviderError(error) {
+  if (typeof error === "string") return error.trim().length > 0;
+  if (error && typeof error === "object") {
+    return typeof error.message === "string" && error.message.trim().length > 0;
+  }
+  return false;
 }
 
 /**

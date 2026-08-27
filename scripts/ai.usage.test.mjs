@@ -464,6 +464,22 @@ try {
     "a non-streaming 200 response carrying only an error object must not be read as an empty success"
   );
 
+  // A benign placeholder error field ({} or "") attached to an otherwise
+  // healthy stream must NOT abort the generation — only an error carrying an
+  // actual message is fatal.
+  providerReplies.push({
+    rawBody: [
+      `data: ${JSON.stringify({ error: {}, choices: [{ delta: { content: "{\"ok\":" } }] })}`,
+      `data: ${JSON.stringify({ error: "", choices: [{ delta: { content: "true}" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 2 } })}`,
+      "data: [DONE]"
+    ].join("\n\n"),
+    contentType: "text/event-stream"
+  });
+  {
+    const result = await testProviderConnection();
+    assert.ok(result, "empty error placeholders on stream chunks must not abort a successful generation");
+  }
+
   assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
 } finally {
   globalThis.fetch = originalFetch;
