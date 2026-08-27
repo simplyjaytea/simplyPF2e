@@ -168,9 +168,9 @@ try {
 /**
  * condition: apply a named condition to each user target. When a save is
  * defined we roll it and only apply on a DETECTED failure (degree of success
- * < 2); if the degree can't be read we apply and note it, and if the save API
- * itself fails we post a plain "must attempt a save; on a failure apply X"
- * message and leave application to the GM. Duration is shown as text only —
+ * < 2); if the degree can't be read we skip automatic application and note
+ * it, and if the save API itself fails we post a plain "must attempt a save;
+ * on a failure apply X" message and leave application to the GM. Duration is shown as text only —
  * increaseCondition doesn't take a duration, so we don't fake enforcing one.
  */
 const CONDITION_BODY = `
