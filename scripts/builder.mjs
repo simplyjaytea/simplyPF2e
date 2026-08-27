@@ -364,6 +364,25 @@ export async function applyTreasureBudget(loot, targetGp) {
   }
 }
 
+/**
+ * Decide whether an embedded NPC spell needs `location.heightenedLevel` set
+ * so it groups under the AI-assigned (possibly heightened) rank instead of
+ * falling back to its own base rank. Returns the rank to record, or null
+ * when nothing should be written (cantrip, or rank matches the base rank —
+ * matching real bestiary data convention of only recording a heightened
+ * level when one actually applies).
+ * @param {object} spellSystemData  the spell doc's `system` data (post toItemData)
+ * @param {number} assignedRank     the rank resolveConcept clamped the AI's pick to
+ * @returns {number|null}
+ */
+export function heightenedLevelFor(spellSystemData, assignedRank) {
+  const isCantrip = (spellSystemData?.traits?.value ?? []).includes("cantrip");
+  if (isCantrip) return null;
+  const baseRank = spellSystemData?.level?.value ?? 0;
+  if (assignedRank === baseRank) return null;
+  return assignedRank;
+}
+
 const RANK_ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
 
 /** Find the blank "Scroll of Nth-rank Spell" template item for a rank. */
@@ -932,6 +951,14 @@ export async function createActor(concept, resolved, { img = null } = {}) {
       if (!doc) continue;
       const data = toItemData(doc);
       data.system.location = { ...(data.system.location ?? {}), value: entryId };
+      // Record the AI-assigned rank when it heightens the spell above its
+      // base rank — otherwise SpellPF2e#rank falls back to the base rank
+      // (heightenedLevel unset) and the spell groups under the wrong slot
+      // row with 0/0 slots, becoming uncastable. Never set this on cantrips:
+      // the system auto-heightens cantrips itself, and cantrips have no
+      // slot rank to mismatch against.
+      const heightenedLevel = heightenedLevelFor(data.system, spell.rank);
+      if (heightenedLevel != null) data.system.location.heightenedLevel = heightenedLevel;
       items.push(data);
     }
   }
