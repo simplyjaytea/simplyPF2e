@@ -74,7 +74,7 @@ export async function promptPresetDialog({
 export async function confirmDeletePreset(preset) {
   const confirmed = await DialogV2.confirm({
     window: { title: "SIMPLYPF2E.Presets.DeleteTitle" },
-    content: `<p>${game.i18n.format("SIMPLYPF2E.Presets.DeleteConfirm", { name: preset.name })}</p>`,
+    content: `<p>${game.i18n.format("SIMPLYPF2E.Presets.DeleteConfirm", { name: esc(preset.name) })}</p>`,
     rejectClose: false
   });
   if (!confirmed) return false;

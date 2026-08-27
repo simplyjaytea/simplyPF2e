@@ -18,6 +18,7 @@
  */
 
 import { MODULE_ID } from "./settings.mjs";
+import { esc } from "./text.mjs";
 import { cloneRulesForEffects } from "./item-builder.mjs";
 
 /* Folder the companion macros are filed under (created on first use). */
@@ -72,7 +73,12 @@ const targets = Array.from(game.user?.targets ?? []).filter((t) => t?.actor);
 if (!targets.length) { ui.notifications.warn(META.itemName + ": target one or more tokens first, then activate again."); return; }
 `;
 
-/** Serialize the header constants shared by every template. */
+/**
+ * Serialize the header constants shared by every template.
+ * `itemName` is embedded verbatim into every template body's chat/notification
+ * HTML strings, so callers must pass it already HTML-escaped (see
+ * createActivationMacro below) — this function does not escape it itself.
+ */
 function header({ forgeId, itemName, itemLevel }, params, extra = {}) {
   const lines = [
     `const MODULE_ID = ${JSON.stringify(MODULE_ID)};`,
@@ -318,7 +324,14 @@ export async function createActivationMacro({ item, concept }) {
   const forge = item.getFlag(MODULE_ID, "forge");
   if (!forge?.forgeId || !concept.activation) return null;
 
-  const meta = { forgeId: forge.forgeId, itemName: item.name, itemLevel: concept.level };
+  // The macro body is a pre-written template string executed later as a
+  // standalone script — esc() from text.mjs isn't importable there at
+  // runtime. So META.itemName (which the body interpolates straight into
+  // ChatMessage/notification HTML strings) must already be HTML-escaped
+  // before it's embedded as a JSON.stringify constant. The item's actual
+  // Foundry document name below is deliberately left as plain text: it's a
+  // document name field, not raw HTML, and the pf2e sheet escapes it itself.
+  const meta = { forgeId: forge.forgeId, itemName: esc(item.name), itemLevel: concept.level };
   const command = await buildActivationCommand(concept.activation, meta);
 
   const folder = await ensureForgeMacroFolder();
