@@ -80,15 +80,15 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 - Not writing `system.price`/`system.level` on a runed item is **correct** — `physical/document.ts` recomputes both via `computeLevelRarityPrice()` every prep.
 - A character's `resources.focus.max` is zeroed every prep and rebuilt only from ActiveEffectLike rules, so the PC focus pool needs a cloned RE; an NPC's can be plain actor data.
 
-## Current state (2026-07-30)
+## Current state (2026-08-27)
 
-Last work: a full project audit, then an optimization pass, on `claude/project-audit-s2ezn0`.
+Current work: consumer-readiness pass on `codex/consumer-readiness`. Cloud/local provider setup now has guided presets, authorized `/models` discovery with editable manual fallback, direct endpoint/model/key editing, direct Save & Test with failure recovery, an exact production-path connection check, explicit provider/model identity, empty-model and browser mixed-content checks, exact endpoint-bound keys, modern first-party OpenAI request fields, and compatibility negotiation for older OpenAI-compatible servers. Generator/item-forge entry points consistently enforce GM + PF2e access, including the public console API. The apps share a compact provider strip; responsive generator controls and the focused setup were browser-checked down to 360 px without overflow. See the newest HISTORY.md entry for the exact scope and tests.
 
-Shipped in that pass: shared `text.mjs`/`runes.mjs` extracted (four copies of `esc`, two halves of rune logic, ~45-line duplicated item-embedding loops in both actor pipelines, four duplicated preview mappers); rune tiers now level-gated and priced from real rune docs; both grounding prompts carve out the `+N striking` prefix they were silently stripping; `resolveFeatPicks` dedupes across slots; a PC caster no longer loses spellcasting when grounding comes up empty; Create Actor follows the visible preview instead of the mode radio; missing `SIMPLYPF2E.Generator.Creature` i18n key added.
+Earlier audit/optimization work extracted shared `text.mjs`/`runes.mjs`, level-gated and real-source-priced runes, deduped feat picks, preserved PC spellcasting on empty grounding, and consolidated preview/build helpers.
 
-**Unverified in a live world** (all logic-level checked only): focus spells (PC + NPC), Free Archetype, Int languages, PC runes, PC gold spend, the six new presets, the consolidated progress UI, and the **entire item forge**.
+**Unverified in a live world** (logic/browser checks only): save/test through the focused provider setup; a real keyed OpenAI generation; local-provider setup and full actor creation in Foundry; the provider strip in real Foundry chrome; focus spells (PC + NPC); Free Archetype; Int languages; PC runes; PC gold spend; the six new presets; the consolidated progress UI; and the **entire item forge**. The production request path itself has been browser-integration-tested cross-origin for CORS/preflight, SSE, compatibility retry, a bound bearer key, and an unbound key being withheld. A real Ollama `qwen3.8:latest` service also passed production `/models` discovery from a separate browser origin, the production 64-token connection check with exact usage, and direct production creature/PC/item-concept requests (26, 27, and 10 parsed fields respectively); Foundry compendium grounding, UI, and document creation remain the local-provider gap.
 
-**Next task: a live-Foundry test.** The PC pipeline has the largest unverified surface; the item forge's first live item creation is the other major gap.
+**Next task: a live-Foundry test.** Start with one cloud and one local generation, then cover the PC pipeline (largest unverified surface) and the item forge's first live item creation.
 
 ## Known gaps
 
@@ -96,5 +96,5 @@ Shipped in that pass: shared `text.mjs`/`runes.mjs` extracted (four copies of `e
 - **Free Archetype slot placement is approximate** — the archetype feat can collide with a regular class feat on `system.location` at the same even level. The real variant rule uses a separate feat group; this doesn't.
 - **Focus spells, v1 scope:** a focus-only NPC (no casting tradition, so no DC) is unsupported, and the pool-size convention (spell count, capped at 3) is a module default, not GM Core guidance. Both are signed-off decisions.
 - **Rarity cap covers ancestry/background/heritage only** — feats/spells/equipment were explicitly excluded. `getFullCandidates()`'s `maxRarity` + `RARITY_RANK` are already in place if extending is wanted.
-- **Item forge Phase 3:** no rune prerequisite/exclusivity validation, armor property runes aren't filtered to the base armor's category, shield/ammunition runes out of scope.
+- **Item forge Phase 3:** no rune prerequisite/exclusivity validation, shield/ammunition runes out of scope. Armor property runes ARE now gated to the base armor's category (`propertyRuneFitsBase` in `runes.mjs`), but the three MATERIAL-constrained usages (`etched-onto-metal-armor`, `etched-onto-lm-nonmetal-armor`, `etched-onto-medium-heavy-metal-armor`) are excluded from candidates entirely — an armor's metal-ness isn't in the index data, so they fail closed.
 - **Unbuilt roadmap:** chat command, reskin-existing-creature, elite/weak adjustments, multiclass.

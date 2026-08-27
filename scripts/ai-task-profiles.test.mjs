@@ -2,6 +2,15 @@ import assert from "node:assert/strict";
 import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
 
 assert.deepEqual(
+  completionOptionsFor(AI_TASK.CONNECTION_TEST, {
+    configuredTemperature: 1.8,
+    configuredMaxTokens: 8000
+  }),
+  { temperature: 0, maxTokens: 64, reasoningEffort: "none", thinkingType: "disabled" },
+  "connection checks must be deterministic and inexpensive"
+);
+
+assert.deepEqual(
   completionOptionsFor(AI_TASK.SPELL_FOCUS, {
     configuredTemperature: 1.4,
     configuredMaxTokens: 8000

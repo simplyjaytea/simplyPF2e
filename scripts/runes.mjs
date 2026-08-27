@@ -41,10 +41,45 @@ export const SECONDARY_RUNE_FIELD = { weapon: "striking", armor: "resilient" };
 export const RUNED_ITEM_KINDS = new Set(["weapon", "armor"]);
 
 /* Real system.usage.value strings marking a property rune as valid for a
- * weapon vs. armor (verified against several published rune items;
- * shield/ammunition-only runes are deliberately excluded — out of scope). */
+ * weapon vs. armor, with the armor-category constraint each armor usage
+ * encodes (null = any category). Verified against the real pf2e config
+ * (src/scripts/config/index.ts usages) and published rune items. The three
+ * usages that encode a MATERIAL constraint (etched-onto-metal-armor,
+ * etched-onto-lm-nonmetal-armor, etched-onto-medium-heavy-metal-armor) are
+ * deliberately absent: an armor's metal-ness isn't in the index data, so
+ * those runes fail closed out of the candidate list instead of landing on an
+ * illegal base. Shield/ammunition-only runes stay out of scope. */
 const WEAPON_RUNE_USAGE = new Set(["etched-onto-a-weapon"]);
-const ARMOR_RUNE_USAGE = new Set(["etched-onto-armor", "etched-onto-light-armor", "etched-onto-med-heavy-armor"]);
+const ARMOR_RUNE_USAGE_CATEGORIES = new Map([
+  ["etched-onto-armor", null],
+  ["etched-onto-light-armor", ["light"]],
+  ["etched-onto-heavy-armor", ["heavy"]],
+  ["etched-onto-med-heavy-armor", ["medium", "heavy"]]
+]);
+const ARMOR_RUNE_USAGE = new Set(ARMOR_RUNE_USAGE_CATEGORIES.keys());
+
+/**
+ * Whether a property rune (by its real usage string) may be etched onto a
+ * base item of this kind and system.category. Weapon-rune usages in the
+ * candidate list carry no per-weapon constraint; armor usages map to the
+ * category table above. An unknown usage or category fails closed.
+ */
+export function propertyRuneFitsBase(kind, usage, category) {
+  if (kind !== "armor") return WEAPON_RUNE_USAGE.has(usage);
+  const allowed = ARMOR_RUNE_USAGE_CATEGORIES.get(usage);
+  if (allowed === undefined) return false;
+  return allowed === null || allowed.includes(category);
+}
+
+/**
+ * Short human-readable note for a category-restricted armor rune usage
+ * ("light armor only"), or null when the usage carries no restriction —
+ * shown next to each candidate so the AI can pick runes that fit its base.
+ */
+export function propertyRuneRestrictionNote(usage) {
+  const allowed = ARMOR_RUNE_USAGE_CATEGORIES.get(usage);
+  return allowed ? `${allowed.join("/")} armor only` : null;
+}
 
 /* -------------------- parsing runes out of a name -------------------- */
 
@@ -217,15 +252,17 @@ export async function runeGp(runes, kind) {
 
 /**
  * Real base weapons/armor at or below a target level, so the AI picks a base
- * item that exists instead of naming one from memory.
- * @returns {Promise<{name: string, level: number}[]>}
+ * item that exists instead of naming one from memory. `category` is the base
+ * item's real system.category (light/medium/heavy for armor), which gates
+ * category-restricted property runes downstream.
+ * @returns {Promise<{name: string, level: number, category: string|null}[]>}
  */
 export async function getBaseItemCandidates(kind, maxLevel) {
   const entries = await getAllEquipmentEntries();
   return entries
     .filter((e) => e.type === kind && e.level <= maxLevel)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-    .map((e) => ({ name: e.name, level: e.level }));
+    .map((e) => ({ name: e.name, level: e.level, category: e.category ?? null }));
 }
 
 /* Fundamental rune items share the same "etched onto a weapon/armor" usage
@@ -240,8 +277,10 @@ function fundamentalRuneNames(kind) {
 
 /**
  * Real property rune items (identified by their "etched onto a weapon/armor"
- * usage string) at or below a target level.
- * @returns {Promise<{name: string, level: number}[]>}
+ * usage string) at or below a target level. `usage` is the rune's real
+ * system.usage.value, kept so callers can check category-restricted armor
+ * runes against the chosen base (see propertyRuneFitsBase).
+ * @returns {Promise<{name: string, level: number, usage: string}[]>}
  */
 export async function getPropertyRuneCandidates(kind, maxLevel) {
   const usageSet = kind === "weapon" ? WEAPON_RUNE_USAGE : ARMOR_RUNE_USAGE;
@@ -251,7 +290,7 @@ export async function getPropertyRuneCandidates(kind, maxLevel) {
     .filter((e) => e.type === "equipment" && usageSet.has(e.usage) && e.level <= maxLevel
       && !excluded.has(slugify(e.name)))
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-    .map((e) => ({ name: e.name, level: e.level }));
+    .map((e) => ({ name: e.name, level: e.level, usage: e.usage }));
 }
 
 /* -------------------- property rune keys -------------------- */

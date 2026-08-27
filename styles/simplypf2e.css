@@ -117,8 +117,22 @@
   box-shadow: inset 0 0 0 1px var(--spf-brand-accent);
 }
 
+.simplypf2e .spf-mode-toggle label:focus-within {
+  opacity: 1;
+  outline: 2px solid var(--color-border-highlight, var(--spf-brand-accent));
+  outline-offset: 2px;
+}
+
 .simplypf2e .spf-mode-toggle input[type="radio"] {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Opens the item forge (a separate app, not a mode of this one) — same tile
@@ -242,7 +256,8 @@
 
 .simplypf2e .spf-row {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: var(--spf-space-md);
   align-items: flex-end;
   margin: var(--spf-space-md) 0;
 }
@@ -250,7 +265,13 @@
 .simplypf2e .spf-row .form-group {
   display: flex;
   flex-direction: column;
+  flex: 1 1 8.5rem;
+  min-width: 0;
   gap: 0.15rem;
+}
+
+.simplypf2e .spf-row select {
+  width: 100%;
 }
 
 .simplypf2e .spf-row input[type="number"] {
@@ -515,12 +536,13 @@
 
 .simplypf2e .spf-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: var(--spf-space-md);
 }
 
 .simplypf2e .spf-actions button {
-  flex: 1;
+  flex: 1 1 7rem;
 }
 
 /* Compendium Sources menu */
@@ -591,4 +613,165 @@
 .simplypf2e .spf-provider-warning button {
   flex: 0 0 auto;
   width: auto;
+}
+
+/* Always-visible provider identity. The endpoint stays in the tooltip so the
+ * strip is useful without taking over the top of a compact generator window. */
+.simplypf2e .spf-provider-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spf-space-sm);
+  min-width: 0;
+  padding: var(--spf-space-xs) var(--spf-space-md);
+  border: 1px solid var(--color-border, #7a7971);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  font-size: var(--spf-text-sm);
+}
+
+.simplypf2e .spf-provider-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spf-space-xs);
+  white-space: nowrap;
+}
+
+.simplypf2e .spf-provider-model {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.simplypf2e .spf-provider-state {
+  flex: 0 0 auto;
+}
+
+.simplypf2e .spf-provider-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spf-space-xs);
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.simplypf2e .spf-provider-actions button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  line-height: 1;
+}
+
+.simplypf2e .spf-provider-ready .spf-provider-state {
+  color: var(--spf-success);
+}
+
+.simplypf2e .spf-provider-attention .spf-provider-state {
+  color: var(--spf-danger);
+}
+
+.simplypf2e .simplypf2e-provider-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spf-space-lg);
+  padding: var(--spf-space-sm);
+}
+
+.simplypf2e .simplypf2e-provider-setup .form-group {
+  margin: 0;
+}
+
+.simplypf2e .simplypf2e-provider-setup .hint {
+  margin: 0.15rem 0 0;
+  font-size: var(--spf-text-sm);
+  opacity: 0.75;
+}
+
+.simplypf2e .spf-provider-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spf-space-sm);
+}
+
+.simplypf2e .spf-provider-presets button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spf-space-xs);
+  min-width: 0;
+  padding: var(--spf-space-sm);
+  opacity: 0.72;
+}
+
+.simplypf2e .spf-provider-presets button.spf-provider-preset-active {
+  opacity: 1;
+  font-weight: bold;
+  border-color: var(--spf-brand-accent);
+  box-shadow: inset 0 0 0 1px var(--spf-brand-accent);
+}
+
+.simplypf2e .spf-provider-clear-key {
+  display: flex;
+  align-items: center;
+  gap: var(--spf-space-sm);
+}
+
+.simplypf2e .spf-model-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spf-space-sm);
+}
+
+.simplypf2e .spf-model-picker input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.simplypf2e .spf-model-picker button {
+  flex: 1 0 auto;
+  width: auto;
+}
+
+.simplypf2e .spf-provider-privacy {
+  margin: 0;
+}
+
+@media (max-width: 520px) {
+  .simplypf2e .spf-inputs,
+  .simplypf2e .spf-preview {
+    padding-inline: var(--spf-space-md);
+  }
+
+  .simplypf2e .spf-mode-toggle {
+    gap: var(--spf-space-xs);
+  }
+
+  .simplypf2e .spf-mode-toggle label {
+    gap: var(--spf-space-xs);
+    padding-inline: var(--spf-space-xs);
+    font-size: var(--spf-text-sm);
+  }
+
+  .simplypf2e .spf-preset-controls select {
+    min-width: 0;
+  }
+
+  .simplypf2e .spf-row .form-group {
+    flex-basis: calc(50% - var(--spf-space-md));
+  }
+
+  .simplypf2e .spf-statblock-header {
+    flex-wrap: wrap;
+    gap: var(--spf-space-xs);
+  }
+
+  .simplypf2e .spf-provider-presets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

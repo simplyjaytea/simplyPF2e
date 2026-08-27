@@ -1,7 +1,9 @@
 import {
-  SETTINGS, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint, resolveProviderModel
+  SETTINGS, chatCompletionsUrl, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
+  isOfficialOpenAIEndpoint, modelsUrl, resolveProviderModel
 } from "./settings.mjs";
 import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
+import { propertyRuneRestrictionNote } from "./runes.mjs";
 import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
 import { encodeFeatCandidateSlots, resolveEncodedFeatPicks } from "./ai-candidate-format.mjs";
 import { taskResponseProblem } from "./ai-response-validation.mjs";
@@ -18,6 +20,56 @@ import { taskResponseProblem } from "./ai-response-validation.mjs";
 const REMASTER_NOTE = `using CURRENT PF2e REMASTER names, never the old pre-Remaster name — e.g. "Thunderstone" is now "Blasting Stone", the old "Bag of Holding" is now "Spacious Pouch"`;
 
 let warnedLegacyDeepSeekModel = false;
+
+/**
+ * Exercise the exact configured Chat Completions path with a tiny structured
+ * response. Unlike a /models probe, this verifies CORS, endpoint binding,
+ * authentication, the selected model, streaming, and compatibility fallback.
+ */
+export async function testProviderConnection() {
+  const { usage } = await requestCompletion({
+    task: AI_TASK.CONNECTION_TEST,
+    system: "You are a connection health check. Return only valid JSON.",
+    user: 'Return exactly {"ok":true}.'
+  });
+  return usage;
+}
+
+/** List model identifiers through the exact saved and authorized endpoint. */
+export async function listProviderModels() {
+  const { apiKey, baseUrl } = getProviderRequestConfig();
+  if (!baseUrl) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoBaseUrl"));
+  const headers = {};
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  const timeoutSeconds = Math.max(10, Number(getSetting(SETTINGS.requestTimeout)) || 90);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutSeconds * 1000);
+  try {
+    let response;
+    try {
+      response = await fetch(modelsUrl(baseUrl), { method: "GET", headers, signal: controller.signal });
+    } catch (err) {
+      if (err.name === "AbortError" || controller.signal.aborted) {
+        throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.Timeout", { seconds: timeoutSeconds }));
+      }
+      throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.NetworkError", { message: err.message }));
+    }
+    if (!response.ok) {
+      throw await providerApiError(response);
+    }
+    let payload;
+    try { payload = await response.json(); }
+    catch { throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.ProviderSetup.ModelsInvalid")); }
+    const entries = Array.isArray(payload?.data) ? payload.data : [];
+    const models = [...new Set(entries
+      .map((entry) => String(entry?.id ?? "").trim())
+      .filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    if (!models.length) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.ProviderSetup.ModelsEmpty"));
+    return models;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 /* The grounding passes below tell the model to copy names EXACTLY from a
  * candidate list, and those lists hold plain BASE items only — no runed
@@ -777,9 +829,18 @@ export async function generateRunedItemConcept({
   prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyTiers, secondaryTiers, onProgress
 }) {
   const secondaryLabel = kind === "weapon" ? "striking" : "resilient";
-  const baseList = baseCandidates.map((c) => (c.level > 0 ? `${c.name} (L${c.level})` : c.name)).join("; ");
+  const baseList = baseCandidates.map((c) => {
+    const category = kind === "armor" && c.category ? `${c.category} armor, ` : "";
+    return c.level > 0 || category ? `${c.name} (${category}L${c.level})` : c.name;
+  }).join("; ");
+  // Category-restricted armor runes are annotated ("light armor only") so the
+  // AI picks runes that fit its base; normalizeRunedItemConcept still drops a
+  // mismatch, this just spends the pick on something that survives.
   const runeList = runeCandidates.length
-    ? runeCandidates.map((c) => `${c.name} (L${c.level})`).join("; ")
+    ? runeCandidates.map((c) => {
+      const note = propertyRuneRestrictionNote(c.usage);
+      return `${c.name} (L${c.level}${note ? `, ${note}` : ""})`;
+    }).join("; ")
     : "(none available at this level)";
 
   const system = `You are an expert Pathfinder 2e (remaster) magic ${kind} designer. You choose real components; the system computes the mechanical name, price and item level from whatever you pick.
@@ -804,7 +865,8 @@ ${runeList}
 Design guidance:
 - Pick a base ${kind} and runes that together tell a clear, thematic story for the GM's concept.
 - Avoid combining runes that are thematically opposed (e.g. never pick both Holy and Unholy, or both Anarchic and Axiomatic) unless the concept explicitly wants that tension.
-- "propertyRunes" length must never exceed "potency" (potency N grants N property rune slots) — prefer fewer, more thematic runes over maxing out every slot.`;
+- "propertyRunes" length must never exceed "potency" (potency N grants N property rune slots) — prefer fewer, more thematic runes over maxing out every slot.${kind === "armor" ? `
+- A property rune marked "light armor only" / "heavy armor only" / "medium/heavy armor only" may ONLY be picked when the chosen base armor's category matches — a mismatched rune is dropped.` : ""}`;
 
   const user = [
     `${kind === "weapon" ? "Weapon" : "Armor"} target level: ${level}`,
@@ -883,15 +945,18 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
   });
   const configuredModel = String(getSetting(SETTINGS.model) ?? "").trim();
   const model = resolveProviderModel(baseUrl, configuredModel);
+  if (!model) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoModel"));
   if (!warnedLegacyDeepSeekModel && model !== configuredModel) {
     console.warn(`simplypf2e | DeepSeek model ${configuredModel} was retired; using ${model} for this request`);
     warnedLegacyDeepSeekModel = true;
   }
   const officialDeepSeek = isOfficialDeepSeekEndpoint(baseUrl);
+  const officialOpenAI = isOfficialOpenAIEndpoint(baseUrl);
+  const tokenLimitField = officialOpenAI ? "max_completion_tokens" : "max_tokens";
   const body = {
     model,
     temperature: completionOptions.temperature,
-    max_tokens: completionOptions.maxTokens,
+    [tokenLimitField]: completionOptions.maxTokens,
     ...(completionOptions.reasoningEffort && !officialDeepSeek
       ? { reasoning_effort: completionOptions.reasoningEffort }
       : {}),
@@ -903,7 +968,7 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
     // DeepSeek sends it regardless). Dropped first if the provider 400s.
     stream_options: { include_usage: true },
     messages: [
-      { role: "system", content: system },
+      { role: officialOpenAI ? "developer" : "system", content: system },
       { role: "user", content: user }
     ],
     response_format: { type: "json_object" }
@@ -920,28 +985,52 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
   try {
     resetIdle();
     let response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
+    const rejectedParameters = new Set();
     // Some OpenAI-compatible providers reject stream_options, response_format
     // or streaming. Retry without a parameter ONLY when a 400/422 body actually
     // names it (checked longest-first so "stream" can't match the others);
     // any other validation error fails fast with its own message.
     while (response.status === 400 || response.status === 422) {
-      const detail = await safeErrorDetail(response);
-      const offending = ["reasoning_effort", "stream_options", "response_format", "thinking", "stream"]
-        .find((param) => param in body && detail.includes(param));
-      if (!offending) {
-        throw new AIRequestError(
-          game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
-        );
+      // Keep enough provider text to find a named compatibility field even
+      // after a verbose gateway preamble. The user-facing formatter below
+      // still caps the detail to a compact notification.
+      const detail = await safeErrorDetail(response, 4096);
+      const normalizedDetail = detail.toLowerCase();
+      if (
+        body.messages[0]?.role === "developer"
+        && normalizedDetail.includes("developer")
+        && !rejectedParameters.has("developer_role")
+      ) {
+        // Current OpenAI models prefer developer instructions, while older
+        // Chat Completions models may only recognize the system role.
+        body.messages[0].role = "system";
+        rejectedParameters.add("developer_role");
+        resetIdle();
+        response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
+        continue;
       }
+      const offending = [
+        "max_completion_tokens", "reasoning_effort", "stream_options", "response_format",
+        "temperature", "max_tokens", "thinking", "stream"
+      ].find((param) => param in body && normalizedDetail.includes(param));
+      if (!offending) {
+        throw providerApiErrorFromDetail(response, detail);
+      }
+      const value = body[offending];
       delete body[offending];
+      rejectedParameters.add(offending);
+      // OpenAI reasoning models require max_completion_tokens, while some
+      // local compatibility servers still implement only max_tokens.
+      // Negotiate in either direction without ever looping between names.
+      if (offending === "max_tokens" || offending === "max_completion_tokens") {
+        const alternate = offending === "max_tokens" ? "max_completion_tokens" : "max_tokens";
+        if (!rejectedParameters.has(alternate)) body[alternate] = value;
+      }
       resetIdle();
       response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
     }
     if (!response.ok) {
-      const detail = await safeErrorDetail(response);
-      throw new AIRequestError(
-        game.i18n.format("SIMPLYPF2E.Errors.ApiError", { status: response.status, detail })
-      );
+      throw await providerApiError(response);
     }
 
     const contentType = response.headers.get("content-type") ?? "";
@@ -955,7 +1044,11 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
       ));
     } else {
       resetIdle();
-      const data = await response.json();
+      let data;
+      try { data = await response.json(); }
+      catch {
+        throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.InvalidResponse"));
+      }
       content = data?.choices?.[0]?.message?.content;
       const reasoning = data?.choices?.[0]?.message?.reasoning_content
         ?? data?.choices?.[0]?.message?.reasoning
@@ -967,8 +1060,9 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
     // Never accept a parseable prefix from a length-truncated response. It
     // can omit required fields while still looking like valid JSON.
     if (finishReason === "length") {
+      const maxTokens = body.max_completion_tokens ?? body.max_tokens ?? completionOptions.maxTokens;
       throw new AIRequestError(
-        game.i18n.format("SIMPLYPF2E.Errors.Truncated", { max: body.max_tokens }),
+        game.i18n.format("SIMPLYPF2E.Errors.Truncated", { max: maxTokens }),
         {
           retryable: true,
           usage: normalizeUsage(usage, { content, system, user, reasoningChars })
@@ -1011,6 +1105,34 @@ async function readEventStream(response, { onProgress, resetIdle }) {
   let reasoningChars = 0;
   let finishReason = null;
   let usage = null;
+
+  const consumeLine = (line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    let chunk;
+    try {
+      chunk = JSON.parse(payload);
+    } catch {
+      return; // partial keep-alive noise
+    }
+    if (chunk?.usage) usage = chunk.usage; // exact tokens, sent on the final chunk
+    const choice = chunk?.choices?.[0] ?? {};
+    if (choice.finish_reason) finishReason = choice.finish_reason;
+    const delta = choice.delta ?? {};
+    // Providers use several fields for separated reasoning traces.
+    const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
+    if (typeof reasoning === "string" && reasoning) {
+      reasoningChars += reasoning.length;
+      onProgress?.({ phase: "thinking", tokens: estimateTokens(reasoningChars) });
+    }
+    if (typeof delta.content === "string" && delta.content) {
+      content += delta.content;
+      onProgress?.({ phase: "writing", tokens: estimateTokens(content.length) });
+    }
+  };
+
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -1018,33 +1140,13 @@ async function readEventStream(response, { onProgress, resetIdle }) {
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop();
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith("data:")) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === "[DONE]") continue;
-      let chunk;
-      try {
-        chunk = JSON.parse(payload);
-      } catch {
-        continue; // partial keep-alive noise
-      }
-      if (chunk?.usage) usage = chunk.usage; // exact tokens, sent on the final chunk
-      const choice = chunk?.choices?.[0] ?? {};
-      if (choice.finish_reason) finishReason = choice.finish_reason;
-      const delta = choice.delta ?? {};
-      // Providers use several fields for separated reasoning traces.
-      const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-      if (typeof reasoning === "string" && reasoning) {
-        reasoningChars += reasoning.length;
-        onProgress?.({ phase: "thinking", tokens: estimateTokens(reasoningChars) });
-      }
-      if (typeof delta.content === "string" && delta.content) {
-        content += delta.content;
-        onProgress?.({ phase: "writing", tokens: estimateTokens(content.length) });
-      }
-    }
+    for (const line of lines) consumeLine(line);
   }
+  // A stream may close immediately after its final data record. Flush the
+  // decoder and consume that unterminated line instead of reporting a false
+  // empty response or losing the provider's final usage block.
+  buffer += decoder.decode();
+  for (const line of buffer.split("\n")) consumeLine(line);
   return { content, finishReason, usage, reasoningChars };
 }
 
@@ -1052,7 +1154,7 @@ async function postChatCompletion(baseUrl, apiKey, body, signal) {
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
   try {
-    return await fetch(`${baseUrl}/chat/completions`, {
+    return await fetch(chatCompletionsUrl(baseUrl), {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -1065,18 +1167,52 @@ async function postChatCompletion(baseUrl, apiKey, body, signal) {
   }
 }
 
-async function safeErrorDetail(response) {
+async function safeErrorDetail(response, maxLength = 240) {
   try {
     const text = await response.text();
     try {
       const json = JSON.parse(text);
-      return json?.error?.message ?? text.slice(0, 300);
+      return compactErrorDetail(json?.error?.message ?? json?.message ?? json?.detail ?? text, maxLength);
     } catch {
-      return text.slice(0, 300);
+      return compactErrorDetail(text || response.statusText, maxLength);
     }
   } catch {
-    return "";
+    return compactErrorDetail(response.statusText, maxLength);
   }
+}
+
+function compactErrorDetail(value, maxLength = 240) {
+  const text = String(value ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return game.i18n.localize("SIMPLYPF2E.Errors.NoErrorDetail");
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function providerStatusHint(status) {
+  const key = status === 401 || status === 403
+    ? "SIMPLYPF2E.Errors.ApiAuthHint"
+    : status === 404
+      ? "SIMPLYPF2E.Errors.ApiNotFoundHint"
+      : status === 429
+        ? "SIMPLYPF2E.Errors.ApiRateLimitHint"
+        : status >= 500
+          ? "SIMPLYPF2E.Errors.ApiServerHint"
+          : "SIMPLYPF2E.Errors.ApiRequestHint";
+  return game.i18n.localize(key);
+}
+
+function providerApiErrorFromDetail(response, detail) {
+  return new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.ApiError", {
+    status: response.status,
+    detail: compactErrorDetail(detail),
+    hint: providerStatusHint(response.status)
+  }));
+}
+
+async function providerApiError(response) {
+  return providerApiErrorFromDetail(response, await safeErrorDetail(response));
 }
 
 /**

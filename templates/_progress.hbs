@@ -1,6 +1,6 @@
 {{#if progress}}
   <div class="spf-progress">
-    <div class="spf-progress-bar">
+    <div class="spf-progress-bar" role="progressbar" aria-label="{{localize 'SIMPLYPF2E.Progress.Label'}}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{progress.percent}}">
       <div class="spf-progress-fill" style="width: {{progress.percent}}%"></div>
     </div>
     <p class="spf-progress-percent">{{progress.percent}}%</p>
@@ -8,7 +8,7 @@
     <p class="spf-model">{{model}}</p>
   </div>
 {{else}}
-  <div class="spf-busy">
+  <div class="spf-busy" role="status" aria-live="polite">
     <i class="fa-solid fa-spinner fa-spin"></i>
     {{localize "SIMPLYPF2E.Generator.Busy"}} <span class="spf-model">({{model}})</span>
   </div>

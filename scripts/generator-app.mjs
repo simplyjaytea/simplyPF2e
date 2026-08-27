@@ -1,5 +1,5 @@
 import {
-  MODULE_ID, SETTINGS, getSetting, getProviderAuthWarningKey, getProviderRequestConfig,
+  MODULE_ID, getProviderAuthWarningKey, getProviderRequestConfig,
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
 import {
@@ -58,7 +58,9 @@ export class GeneratorApp extends SpfApp {
       memberUp: GeneratorApp.#onMemberUp,
       memberDown: GeneratorApp.#onMemberDown,
       rerollLoot: GeneratorApp.#onRerollLoot,
-      authorizeApiKey: GeneratorApp.#onAuthorizeApiKey
+      authorizeApiKey: GeneratorApp.#onAuthorizeApiKey,
+      configureProvider: GeneratorApp.#onConfigureProvider,
+      testProvider: GeneratorApp.#onTestProvider
     }
   };
 
@@ -94,10 +96,12 @@ export class GeneratorApp extends SpfApp {
       progress: this._progress,
       apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
       providerBaseUrl: authState.baseUrl,
+      provider: authState.provider,
+      providerReady: !authWarningKey,
       canAuthorizeApiKey: Boolean(
         authState.baseUrl && authState.hasConfiguredApiKey && !authState.apiKeyIsBound
       ),
-      model: getSetting(SETTINGS.model),
+      model: authState.model,
       rarities: [
         { value: "common", label: "SIMPLYPF2E.Rarity.Common" },
         { value: "uncommon", label: "SIMPLYPF2E.Rarity.Uncommon" },
@@ -343,6 +347,9 @@ export class GeneratorApp extends SpfApp {
   }
 
   static async #onAuthorizeApiKey(_event, target) {
+    // Authorization refreshes the provider strip. Preserve any concept or
+    // controls the GM changed before the re-render, just like Configure does.
+    this.#readForm();
     const authorized = await authorizeApiKeyForCurrentBaseUrl(target.dataset.baseUrl);
     if (authorized) {
       ui.notifications.info(game.i18n.localize("SIMPLYPF2E.Generator.ApiKeyAuthorized"));
@@ -350,6 +357,15 @@ export class GeneratorApp extends SpfApp {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ApiKeyAuthorizationFailed"));
     }
     await this.render();
+  }
+
+  static #onConfigureProvider() {
+    this.#readForm();
+    this._openProviderSetup();
+  }
+
+  static async #onTestProvider(_event, target) {
+    await this._testProvider(target);
   }
 
   static #onLevelDown() {

@@ -3,15 +3,15 @@
     "Settings": {
       "ApiBaseUrl": {
         "Name": "API Base URL",
-        "Hint": "Base URL of an OpenAI-compatible API. DeepSeek: https://api.deepseek.com/v1 — OpenAI: https://api.openai.com/v1 — OpenRouter: https://openrouter.ai/api/v1 — Ollama (local): http://localhost:11434/v1"
+        "Hint": "Base URL of an OpenAI-compatible API. The guided AI Provider Setup supplies presets for DeepSeek, OpenAI, OpenRouter, Ollama, and LM Studio."
       },
       "ApiKey": {
         "Name": "API Key",
-        "Hint": "API key for the current API Base URL. It stays in this browser and is never synced to the world or other users. Saving the key or changing the Base URL leaves it disabled until you verify the displayed endpoint and authorize it from the generator. Leave blank for a keyless local server such as Ollama or LM Studio."
+        "Hint": "API key for the current API Base URL. It stays in this browser and is never synced to the world or other users. Manage it through AI Provider Setup, which masks the value and authorizes it only for the displayed endpoint. Leave blank for a keyless local server such as Ollama or LM Studio."
       },
       "Model": {
         "Name": "Model",
-        "Hint": "Model identifier, e.g. deepseek-v4-flash, deepseek-v4-pro, gpt-4o, or any model your provider offers."
+        "Hint": "Model identifier, e.g. deepseek-v4-flash, deepseek-v4-pro, gpt-5.6-luna, or any model your provider offers."
       },
       "Temperature": {
         "Name": "Creativity (temperature)",
@@ -29,6 +29,40 @@
         "Name": "Free Archetype variant rule",
         "Hint": "When enabled, generated player characters gain an extra archetype class-feat slot at every even level, matching the Free Archetype campaign variant rule."
       }
+    },
+    "ProviderSetup": {
+      "Title": "AI Provider Setup",
+      "MenuName": "AI Provider Setup",
+      "MenuLabel": "Configure Provider",
+      "MenuHint": "Choose a cloud or local OpenAI-compatible provider, then save and authorize its endpoint.",
+      "Intro": "Choose a provider, confirm its exact model identifier, then save or run a small connection test. Local servers must be running before testing or generation.",
+      "ChooseProvider": "Choose provider",
+      "LocalServerHint": "Ollama: add {origin} to OLLAMA_ORIGINS. LM Studio: enable CORS (Developer → Server Settings, or lms server start --cors) and authentication. An HTTPS Foundry page cannot call an HTTP provider.",
+      "BaseUrlHint": "The OpenAI-compatible API root (normally ending in /v1) or a full /chat/completions endpoint.",
+      "ModelPlaceholder": "Exact provider model ID",
+      "ModelHint": "Use Load Models for IDs exposed by the saved provider, or enter an exact ID manually. LM Studio lists loaded models unless Just-In-Time loading is enabled.",
+      "LoadModels": "Load Models",
+      "ModelsLoaded": "Loaded {count} available model IDs. Choose one from the Model field.",
+      "ModelsFailed": "Could not load models: {message}",
+      "ModelsEmpty": "The provider returned no model IDs. For LM Studio, load a model or enable Just-In-Time loading; otherwise enter the exact ID manually.",
+      "ModelsInvalid": "The provider's model-list response was not valid JSON.",
+      "ApiKeyLabel": "API key (this browser only)",
+      "ApiKeySaved": "A key is saved — leave blank to keep it",
+      "ApiKeyOptional": "Leave blank for a keyless local server",
+      "ApiKeyHint": "Changing endpoints clears the old saved key unless you enter a replacement here.",
+      "ClearApiKey": "Clear the saved API key",
+      "Privacy": "The key stays in this browser and is sent only to the exact endpoint authorized when you save.",
+      "SaveAuthorize": "Save & Authorize",
+      "SaveTest": "Save & Test",
+      "Cancel": "Cancel",
+      "Configure": "Configure AI provider",
+      "TestConnection": "Test provider connection",
+      "InvalidBaseUrl": "Enter a complete HTTP or HTTPS API Base URL.",
+      "Saved": "Saved {provider} with model {model}.",
+      "SavedAuthorized": "Saved {provider} with model {model}; the key is authorized for this endpoint.",
+      "SavedNeedsKey": "Saved {provider} with model {model}, but this remote provider still needs an API key.",
+      "TestSuccess": "Connected to {provider} with model {model} ({total} tokens).",
+      "TestFailed": "Provider connection test failed: {message}"
     },
     "Generator": {
       "Title": "SimplyPF2e",
@@ -76,7 +110,10 @@
       "ApiKeyEndpoint": "Endpoint:",
       "AuthorizeApiKey": "Authorize for this endpoint",
       "ApiKeyAuthorized": "API key authorized for the current endpoint.",
-      "ApiKeyAuthorizationFailed": "The API endpoint changed before authorization completed. Review it and try again."
+      "ApiKeyAuthorizationFailed": "The API endpoint changed before authorization completed. Review it and try again.",
+      "ProviderReady": "Provider configuration is ready",
+      "ModeLabel": "Generation mode",
+      "NoModelShort": "No model"
     },
     "Presets": {
       "None": "— No preset —",
@@ -146,6 +183,7 @@
       "Minion": "Minion"
     },
     "Progress": {
+      "Label": "Generation progress",
       "Concept": "Creature concept",
       "SpellFocus": "Spell focus",
       "Spells": "Spell selection",
@@ -279,13 +317,23 @@
       "CustomItem": "Generated by SimplyPF2e. No compendium match was found for this item, so it stands in as plain gear at an estimated price — replace it with the real item if you have it."
     },
     "Errors": {
+      "GMOnly": "Only a GM can use SimplyPF2e generation and provider setup.",
       "NoPrompt": "Describe the creature first.",
       "NoBaseUrl": "No API base URL is configured in the module settings.",
-      "ApiError": "The AI provider returned an error ({status}): {detail}",
+      "NoModel": "No model identifier is configured. Set one in Module Settings → SimplyPF2e before generating.",
+      "MixedContentProvider": "This Foundry page uses HTTPS, but the configured AI provider uses HTTP. Browsers block that mixed-content request. Serve the provider over HTTPS or open Foundry over HTTP on the same trusted local network.",
+      "ApiError": "The AI provider returned an error ({status}): {detail} {hint}",
+      "NoErrorDetail": "No additional details were provided.",
+      "ApiAuthHint": "Check the API key, then use AI Provider Setup to authorize it for this exact endpoint.",
+      "ApiNotFoundHint": "Check the API Base URL and exact model identifier; this server may not expose the expected OpenAI-compatible route.",
+      "ApiRateLimitHint": "Wait and retry, or check the provider account's quota and billing status.",
+      "ApiServerHint": "The provider is unavailable or failed internally; retry shortly or check its server logs/status page.",
+      "ApiRequestHint": "Check the endpoint, model identifier, and provider compatibility settings.",
       "NetworkError": "Could not reach the AI provider: {message}. If you are using a local or self-hosted provider, make sure it allows requests from Foundry (CORS).",
+      "InvalidResponse": "The provider returned a response that was not valid OpenAI-compatible Chat Completions JSON. Check the API Base URL and provider compatibility mode.",
       "EmptyResponse": "The AI provider returned an empty response. This was retried once already — check the provider's status page and your model name.",
       "Truncated": "The AI ran out of tokens before finishing its answer ({max} allowed). Try a model with efficient structured output or shorten the prompt; raise \"Max response tokens\" only when it is below this operation's safety cap.",
-      "Timeout": "The AI provider sent no data for {seconds} seconds and the request was aborted. Check the model name and provider status, or raise the timeout in the module settings.",
+      "Timeout": "The AI provider sent no data for {seconds} seconds and the request was aborted. Check the model name and provider status. For a local model, make sure it is loaded and the server is not busy; then retry or raise the timeout in module settings.",
       "BadJson": "The AI response was not valid JSON. Try generating again.",
       "BadStructure": "The AI response was incomplete ({detail}). Try a stronger structured-output model or generate again.",
       "WrongSystem": "SimplyPF2e requires the Pathfinder Second Edition (pf2e) game system."

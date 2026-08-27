@@ -6,10 +6,14 @@ import {
   MODULE_ID,
   SETTINGS,
   authorizeApiKeyForCurrentBaseUrl,
+  chatCompletionsUrl,
+  describeProvider,
   getProviderAuthWarningKey,
   getProviderRequestConfig,
   isOfficialDeepSeekEndpoint,
+  isOfficialOpenAIEndpoint,
   isLikelyKeylessLocalEndpoint,
+  modelsUrl,
   normalizeApiBaseUrl,
   registerSettings,
   resolveProviderModel
@@ -38,6 +42,7 @@ const setAuth = ({ baseUrl, apiKey = "", apiKeyBaseUrl = "" }) => {
   values.set(SETTINGS.apiBaseUrl, baseUrl);
   values.set(SETTINGS.apiKey, apiKey);
   values.set(SETTINGS.apiKeyBaseUrl, apiKeyBaseUrl);
+  values.set(SETTINGS.model, "test-model");
 };
 
 assert.equal(
@@ -45,9 +50,49 @@ assert.equal(
   "https://api.example.com/v1",
   "normalization must canonicalize the host and remove trailing slashes/fragments"
 );
+assert.equal(
+  chatCompletionsUrl("https://api.example.com/v1"),
+  "https://api.example.com/v1/chat/completions",
+  "an API root must resolve to its Chat Completions route"
+);
+assert.equal(
+  chatCompletionsUrl("https://api.example.com/v1/chat/completions/"),
+  "https://api.example.com/v1/chat/completions",
+  "a pasted full endpoint must not get a duplicate route"
+);
+assert.equal(
+  chatCompletionsUrl("https://gateway.example/openai/v1?tenant=demo"),
+  "https://gateway.example/openai/v1/chat/completions?tenant=demo",
+  "gateway query parameters must remain after the appended request path"
+);
+assert.equal(
+  modelsUrl("https://gateway.example/openai/v1/chat/completions?tenant=demo"),
+  "https://gateway.example/openai/v1/models?tenant=demo",
+  "model discovery must resolve from a pasted full endpoint and preserve its query"
+);
+assert.equal(modelsUrl("http://localhost:11434/v1"), "http://localhost:11434/v1/models");
 
 assert.equal(isOfficialDeepSeekEndpoint("https://api.deepseek.com/v1"), true);
 assert.equal(isOfficialDeepSeekEndpoint("https://api.deepseek.com.evil.example/v1"), false);
+assert.equal(isOfficialOpenAIEndpoint("https://api.openai.com/v1"), true);
+assert.equal(isOfficialOpenAIEndpoint("https://api.openai.com.evil.example/v1"), false);
+assert.deepEqual(
+  describeProvider("http://localhost:11434/v1", "qwen3:8b"),
+  { id: "ollama", name: "Ollama", local: true, model: "qwen3:8b" }
+);
+assert.deepEqual(
+  describeProvider("https://gateway.example/v1", "hosted-model"),
+  { id: "custom", name: "Custom provider", local: false, model: "hosted-model" }
+);
+assert.equal(
+  isLikelyKeylessLocalEndpoint("https://public.example:11434/v1"),
+  false,
+  "a well-known local-model port must not make an arbitrary public host keyless"
+);
+assert.deepEqual(
+  describeProvider("https://public.example:11434/v1", "hosted-model"),
+  { id: "custom", name: "Custom provider", local: false, model: "hosted-model" }
+);
 assert.equal(
   resolveProviderModel("https://api.deepseek.com/v1", "deepseek-chat"),
   "deepseek-v4-flash",
@@ -75,6 +120,17 @@ assert.equal(
   getProviderAuthWarningKey(),
   "SIMPLYPF2E.Generator.ApiKeyNotAuthorized",
   "legacy keys must explain how to authorize the current endpoint"
+);
+assert.equal(
+  getProviderAuthWarningKey({
+    baseUrl: "http://localhost:11434/v1",
+    model: "",
+    hasConfiguredApiKey: false,
+    apiKeyIsBound: false,
+    keylessLocal: true
+  }, undefined, false),
+  null,
+  "model discovery may validate an otherwise-ready provider before a model is selected"
 );
 
 assert.equal(
@@ -138,6 +194,18 @@ for (const localUrl of [
   assert.equal(getProviderAuthWarningKey(), null, `${localUrl} must not show a missing-key warning`);
 }
 
+setAuth({ baseUrl: "http://localhost:11434/v1" });
+assert.equal(
+  getProviderAuthWarningKey(getProviderRequestConfig(), "https:"),
+  "SIMPLYPF2E.Errors.MixedContentProvider",
+  "an HTTPS Foundry page must warn before the browser blocks an HTTP local provider"
+);
+assert.equal(
+  getProviderAuthWarningKey(getProviderRequestConfig(), "http:"),
+  null,
+  "an HTTP local Foundry page can call an HTTP local provider when CORS permits it"
+);
+
 setAuth({ baseUrl: "https://api.openai.com/v1" });
 assert.equal(
   getProviderAuthWarningKey(),
@@ -145,11 +213,24 @@ assert.equal(
   "remote providers must retain useful missing-key guidance"
 );
 
+values.set(SETTINGS.model, "");
+assert.equal(
+  getProviderAuthWarningKey(),
+  "SIMPLYPF2E.Errors.NoModel",
+  "an empty model identifier must be caught before generation"
+);
+
 // Registration is the forward migration: settings saves never authorize a
 // key without the exact endpoint confirmation rendered by the generator.
 registerSettings(class SourcesConfigApp {});
 const keyConfig = registrations.get(SETTINGS.apiKey);
 const baseConfig = registrations.get(SETTINGS.apiBaseUrl);
+assert.equal(keyConfig?.scope, "client", "API keys must remain local to the GM client");
+assert.equal(
+  keyConfig?.config,
+  false,
+  "API keys must not appear as plaintext fields in Foundry's ordinary settings form"
+);
 assert.equal(
   registrations.get(SETTINGS.model)?.default,
   "deepseek-v4-flash",

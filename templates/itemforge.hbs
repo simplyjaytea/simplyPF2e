@@ -1,6 +1,24 @@
 <div class="simplypf2e-generator">
+  <div class="spf-provider-summary {{#if providerReady}}spf-provider-ready{{else}}spf-provider-attention{{/if}}" data-tooltip="{{providerBaseUrl}}">
+    <span class="spf-provider-name">
+      <i class="fa-solid {{#if provider.local}}fa-server{{else}}fa-cloud{{/if}}"></i>
+      <strong>{{provider.name}}</strong>
+    </span>
+    <code class="spf-provider-model">{{#if provider.model}}{{provider.model}}{{else}}{{localize "SIMPLYPF2E.Generator.NoModelShort"}}{{/if}}</code>
+    <span class="spf-provider-actions">
+      {{#if providerReady}}
+        <button type="button" data-action="testProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" {{#if busy}}disabled{{/if}}>
+          <i class="fa-solid fa-signal"></i>
+        </button>
+      {{/if}}
+      <button type="button" data-action="configureProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-gear"></i>
+      </button>
+      <i class="fa-solid {{#if providerReady}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}} spf-provider-state" role="img" aria-label="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}" data-tooltip="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}"></i>
+    </span>
+  </div>
   {{#if apiKeyWarning}}
-    <p class="notification warning spf-provider-warning">
+    <p class="notification warning spf-provider-warning" role="status">
       <span>{{apiKeyWarning}}</span>
       {{#if canAuthorizeApiKey}}
         <span class="spf-provider-endpoint"><strong>{{localize "SIMPLYPF2E.Generator.ApiKeyEndpoint"}}</strong> <code>{{providerBaseUrl}}</code></span>
@@ -12,33 +30,33 @@
   <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
     <legend>{{localize "SIMPLYPF2E.ItemForge.ConceptLegend"}}</legend>
     <div class="form-group">
-      <label>{{localize "SIMPLYPF2E.ItemForge.Kind"}}</label>
-      <select name="kind">
+      <label for="spf-itemforge-kind">{{localize "SIMPLYPF2E.ItemForge.Kind"}}</label>
+      <select id="spf-itemforge-kind" name="kind">
         {{#each kinds}}
           <option value="{{this.value}}" {{#if (eq this.value @root.input.kind)}}selected{{/if}}>{{localize this.label}}</option>
         {{/each}}
       </select>
     </div>
     <div class="form-group stacked">
-      <label>{{localize "SIMPLYPF2E.ItemForge.Prompt"}}</label>
-      <textarea name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.ItemForge.PromptPlaceholder'}}">{{input.prompt}}</textarea>
+      <label for="spf-itemforge-prompt">{{localize "SIMPLYPF2E.ItemForge.Prompt"}}</label>
+      <textarea id="spf-itemforge-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.ItemForge.PromptPlaceholder'}}">{{input.prompt}}</textarea>
     </div>
     <div class="spf-row">
       <div class="form-group">
-        <label>{{localize "SIMPLYPF2E.ItemForge.Level"}}</label>
+        <label for="spf-itemforge-level">{{localize "SIMPLYPF2E.ItemForge.Level"}}</label>
         <div class="spf-level-controls">
-          <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
+          <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
             <i class="fa-solid fa-minus"></i>
           </button>
-          <input type="number" name="level" min="{{minLevel}}" max="{{maxLevel}}" step="1" value="{{input.level}}">
-          <button type="button" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
+          <input id="spf-itemforge-level" type="number" name="level" min="{{minLevel}}" max="{{maxLevel}}" step="1" value="{{input.level}}">
+          <button type="button" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
             <i class="fa-solid fa-plus"></i>
           </button>
         </div>
       </div>
       <div class="form-group">
-        <label>{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
-        <select name="rarity">
+        <label for="spf-itemforge-rarity">{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
+        <select id="spf-itemforge-rarity" name="rarity">
           {{#each rarities}}
             <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
           {{/each}}
@@ -54,13 +72,13 @@
   </fieldset>
 
   {{#if unavailableNote}}
-    <p class="notification warning">{{unavailableNote}}</p>
+    <p class="notification warning" role="status">{{unavailableNote}}</p>
   {{/if}}
 
   {{#if busy}}{{> simplypf2e-progress}}{{/if}}
 
   {{#if error}}
-    <p class="notification error">{{error}}</p>
+    <p class="notification error" role="alert">{{error}}</p>
   {{/if}}
 
   {{#if preview}}
@@ -102,7 +120,7 @@
         </ul>
       {{else}}
         {{#unless preview.activation}}
-          <p class="notification warning">{{localize "SIMPLYPF2E.ItemForge.NoEffects"}}</p>
+          <p class="notification warning" role="status">{{localize "SIMPLYPF2E.ItemForge.NoEffects"}}</p>
         {{/unless}}
       {{/if}}
 

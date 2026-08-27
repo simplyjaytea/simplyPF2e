@@ -1,3 +1,7 @@
+import { testProviderConnection } from "./ai.mjs";
+import { getProviderRequestConfig } from "./settings.mjs";
+import { ProviderSetupApp } from "./provider-setup-app.mjs";
+
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
 /**
@@ -9,6 +13,40 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** Exact token usage per AI call of the last generation: [{label, usage}]. */
   _tokenUsage = [];
   _progress = null;
+
+  /** Open the focused provider setup and refresh this app after it saves. */
+  _openProviderSetup() {
+    new ProviderSetupApp(() => this.render()).render(true);
+  }
+
+  /**
+   * Verify the exact production request path without re-rendering the form,
+   * which would otherwise discard text the GM has typed but not generated.
+   */
+  async _testProvider(target) {
+    if (target.disabled) return;
+    const icon = target.querySelector("i");
+    const originalClass = icon?.className;
+    target.disabled = true;
+    if (icon) icon.className = "fa-solid fa-spinner fa-spin";
+    try {
+      const usage = await testProviderConnection();
+      const { provider, model } = getProviderRequestConfig();
+      ui.notifications.info(game.i18n.format("SIMPLYPF2E.ProviderSetup.TestSuccess", {
+        provider: provider.name,
+        model,
+        total: usage.total.toLocaleString()
+      }));
+    } catch (err) {
+      console.error("simplypf2e | provider connection test failed", err);
+      ui.notifications.error(game.i18n.format("SIMPLYPF2E.ProviderSetup.TestFailed", {
+        message: err?.message ?? String(err)
+      }));
+    } finally {
+      target.disabled = false;
+      if (icon && originalClass) icon.className = originalClass;
+    }
+  }
 
   /** Record one AI call's token usage under a step label. */
   _recordTokens(label, usage) {

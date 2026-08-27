@@ -47,13 +47,13 @@ The link is permanent — it always resolves to the newest release, so Foundry o
 
 ## Setup
 
-Configure your AI provider under **Game Settings → Configure Settings → SimplyPF2e** (GM only).
+Open **AI Provider Setup** under **Game Settings → Configure Settings → SimplyPF2e** (GM only), or click the gear beside the provider name in the generator. Pick a cloud/local preset. If its Model field is blank, click **Load Models**: setup saves and authorizes the displayed endpoint/key, then offers the provider's `/models` IDs without preventing manual entry. Confirm the model and click **Save & Test**. It makes a tiny 64-token check through the same streaming request path used for generation and keeps setup open if the provider rejects the endpoint, key, model, CORS, or request shape. **Save & Authorize** skips the check for an offline provider. A cloud provider may charge its normal small token cost for a test; model listing itself does not generate tokens, and the signal button beside a ready provider repeats the generation check later.
 
 | Setting | Description |
 | --- | --- |
-| API Base URL | Any OpenAI-compatible endpoint. Defaults to DeepSeek. |
+| API Base URL | Any OpenAI-compatible API root or full `/chat/completions` endpoint. Defaults to DeepSeek. |
 | API Key | Your provider key, stored in this browser and bound to the exact API Base URL. Leave blank for a keyless local server. |
-| Model | e.g. `deepseek-v4-flash`, `deepseek-v4-pro`, `gpt-4o` — the exact API identifier, not the marketing name. |
+| Model | e.g. `deepseek-v4-flash`, `deepseek-v4-pro`, `gpt-5.6-luna` — the exact API identifier, not the marketing name. |
 | Creativity | Sampling temperature (0–2) for creative generation. Grounding/selectors always use temperature 0. |
 | Max response tokens | Global ceiling. Each operation applies a smaller production-safe cap where possible. |
 | Request timeout | Aborts only if the provider sends *no data* for this long (default 90 s). |
@@ -62,14 +62,16 @@ Configure your AI provider under **Game Settings → Configure Settings → Simp
 **Providers**
 
 - **DeepSeek** — `https://api.deepseek.com/v1`, model `deepseek-v4-flash`. Cheap, strong JSON, the recommended default.
-- **OpenAI** — `https://api.openai.com/v1`, model `gpt-4o`
+- **OpenAI** — `https://api.openai.com/v1`, model `gpt-5.6-luna`
 - **OpenRouter** — `https://openrouter.ai/api/v1`, any hosted model
 - **Ollama (local)** — `http://localhost:11434/v1`, usually no key. Set `OLLAMA_ORIGINS` to the exact Foundry browser origin (for example `http://localhost:30000`) so the browser may call it; avoid wildcard origins.
-- **LM Studio (local)** — `http://localhost:1234/v1`, no key unless server authentication is enabled. Keep the server bound to loopback; require authentication if LAN serving or cross-origin access is enabled. LM Studio 0.4.8+ honors Chat Completions reasoning controls; older versions still work through compatibility fallback but may not disable reasoning.
+- **LM Studio (local)** — `http://localhost:1234/v1`, no key unless server authentication is enabled. Enable CORS in **Developer → Server Settings** (or start with `lms server start --cors`) for browser access. Keep the server bound to loopback, and enable authentication when CORS or LAN serving is enabled. **Load Models** lists only loaded models unless LM Studio's Just-In-Time loading is enabled. LM Studio 0.4.8+ honors Chat Completions reasoning controls; older versions still work through compatibility fallback but may not disable reasoning.
 
-SimplyPF2e disables separate model reasoning for its structured generation calls so bounded response budgets are spent on complete JSON. Providers that do not support the control fall back to their ordinary OpenAI-compatible request behavior.
+SimplyPF2e uses current OpenAI Chat Completions fields for OpenAI and the broadly supported OpenAI-compatible fields everywhere else. If a provider explicitly rejects an optional field, instruction role, or token-limit spelling, the module removes or negotiates only that part and retries the request. It also disables separate model reasoning for structured generation where the provider supports that control, so bounded response budgets are spent on complete JSON.
 
-> **Provider security:** requests go straight from the GM's browser to the configured provider. API keys are client settings, never synced to the world, and are sent only to the exact Base URL they were authorized for. Saving a key or changing the Base URL disables it until confirmation. Open the generator, verify the displayed endpoint, and click **Authorize for this endpoint**. Existing keys from older SimplyPF2e versions also start disabled after this upgrade. Generated prompts and character data are sent to remote providers when a remote endpoint is configured.
+The provider and model currently in use are always shown at the top of the generator. An empty model is caught before generation. If Foundry is served over HTTPS, an HTTP local provider will be blocked by the browser; serve the provider over HTTPS, or access Foundry over HTTP on the same trusted local network. Local servers must also allow the exact Foundry browser origin through CORS.
+
+> **Provider security:** requests go straight from the GM's browser to the configured provider. API keys are client settings, never synced to the world, and the ordinary Foundry settings form does not expose them as plaintext fields. Manage keys through the masked **AI Provider Setup** dialog; both save actions authorize a key only for the exact Base URL displayed there, and **Save & Test** additionally makes the small provider request described above. Changing endpoints clears the old provider's key unless a replacement is entered; changing the raw Base URL setting leaves any saved key disabled until the endpoint is confirmed. Existing keys from older SimplyPF2e versions also start disabled after this upgrade. Generated prompts and character data are sent to remote providers when a remote endpoint is configured.
 
 ### Compendium sources
 
@@ -103,7 +105,7 @@ Starting wealth buys real gear rather than turning into raw coin, and fundamenta
 
 ### Item forge
 
-> The UI buttons are hidden while this is unverified in a live game. Open it with `game.modules.get("simplypf2e").api.openItemForge()`.
+> The UI buttons are hidden while this is unverified in a live game. A GM can open it from the browser console with `game.modules.get("simplypf2e").api.openItemForge()`; player calls are rejected.
 
 Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rarity, and **Generate**.
 
@@ -115,7 +117,7 @@ Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rar
 
 **Activated items** add a 1/day ability — damage, heal, condition, or self-buff — as a companion **macro**, with a clickable Activate link in the description and the macros filed in a "SimplyPF2e Item Forge" folder (auto-deleted with the item). Target a token, click Activate; damage and healing post as normal PF2e chat cards so the built-in Apply buttons handle the rest. Each copy tracks its own charge and recharges on a night's rest.
 
-**Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates; the final price and level are summed from the resolved documents.
+**Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string and the base armor category, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates; the final price and level are summed from the resolved documents. Runes whose published restriction depends on armor material are excluded because the compendium index cannot prove material compatibility.
 
 ### Presets
 
@@ -143,6 +145,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 - Generation is **streamed** — you'll see one animated progress bar with a live percentage and token ticker. Reasoning models show "The model is thinking…" first; that's normal and can take a while.
 - The **request timeout** aborts only on total silence from the provider, so slow-but-alive generations are never cut off. If you get timeouts, check the provider's status page and your model name.
+- A large Ollama or LM Studio model may be silent while it loads, or while another request owns its only generation slot. Load/warm the model in the server first, wait for other work to finish, or temporarily raise **Request timeout**; a warm retry should start streaming much sooner.
 - Check **Model** is the exact API identifier from your provider's docs. A wrong id normally returns an immediate error rather than hanging.
 - Spellcasters make **three** AI calls (concept, a small spell-focus pass, then grounded selection), so they take longer. Creatures carrying gear make one more.
 - After generation the preview shows an exact **token usage report** per call. If a provider doesn't report usage, the step is a clearly-marked estimate.
@@ -175,7 +178,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
 - **Free Archetype.** The archetype feat can land in the same slot location as a regular class feat at that level, so it embeds on the character but may not appear in a distinct Free Archetype slot on the sheet.
 - **Spontaneous spell-slot counts** for high-level PC casters are derived from the standard progression rather than copied from a verified table. Check a high-level caster's slots against Player Core before trusting them.
-- **The item forge**, all three phases. If an item looks right in the preview but misbehaves on a sheet, that's the first thing to check. Its rune path has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), armor property runes aren't filtered to the base armor's category, and shield/ammunition runes are out of scope.
+- **The item forge**, all three phases. If an item looks right in the preview but misbehaves on a sheet, that's the first thing to check. Its rune path has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
 - **Activated-item macros** lean on PF2e system APIs that can change between versions. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.
 
 ## Roadmap
@@ -191,7 +194,7 @@ Shipped features and their versions are in the [release notes](https://github.co
 
 Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](HISTORY.md).
 
-Standalone, dependency-free regression checks guard historical bugs and production-safe pure helpers — `node scripts/<name>.test.mjs`, no framework required. CI syntax-checks every module and runs every `*.test.mjs` before any release is created. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
+Standalone, dependency-free regression checks guard historical bugs and production-safe pure helpers — `node scripts/<name>.test.mjs`, no framework required. CI syntax-checks every module, runs every `*.test.mjs`, and validates the JSON manifests on pull requests; the release pipeline repeats syntax and regression verification before publishing. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
 
 **Releases are automatic.** Every push to `main` triggers `auto-release.yml`, which bumps the last segment of the latest tag (`v0.3.5.1` → `v0.3.5.2`) and calls `release.yml` to build and publish. This means **merging to `main` is not a quiet, reversible action** — it ships a public release immediately, and every existing install is offered that update right away. Treat it with the care of a manual `gh release create`.
 
