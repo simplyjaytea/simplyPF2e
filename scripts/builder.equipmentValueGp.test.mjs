@@ -86,4 +86,16 @@ assert.match(
   "the unspent-coin shortfall check must compare against the equipment-adjusted loot budget, not the raw wealth target"
 );
 
+// Duplicate names must be counted once — buildEquipmentItems({ dedup: true })
+// drops repeated names at embed time, so the budget deduction must match.
+{
+  const dupes = [
+    { name: "Longsword", quantity: 1, value: 1, runes: null, entry: null },
+    { name: "Longsword", quantity: 1, value: 1, runes: null, entry: null },
+    { name: "longsword", quantity: 1, value: 1, runes: null, entry: null }
+  ];
+  const gp = await equipmentValueGp(dupes);
+  assert.equal(gp, 1, "repeated equipment names must be valued once, matching the dedup embed");
+}
+
 console.log("builder equipmentValueGp / PC wealth-deduction regression check: all assertions passed");

@@ -523,7 +523,14 @@ export async function resolveEquipment(concept) {
  */
 export async function equipmentValueGp(equipment) {
   let total = 0;
-  for (const { quantity, value, runes, entry } of equipment ?? []) {
+  // Same name-dedup rule as buildEquipmentItems({ dedup: true }) — the PC
+  // embed drops repeated names (AI pads thin lists), so a duplicate's value
+  // must not be deducted from the wealth budget either.
+  const seen = new Set();
+  for (const { name, quantity, value, runes, entry } of equipment ?? []) {
+    const key = slugify(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
     let unitGp = Number(value) || 0;
     if (entry) {
       const doc = await getDocument(entry);
