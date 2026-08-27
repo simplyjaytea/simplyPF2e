@@ -136,28 +136,6 @@ export function pcStartingWealthGp(level, amount = "standard") {
   return Math.round(gp * (T.TREASURE_AMOUNT_MULTIPLIER[amount] ?? 1));
 }
 
-/** Resolve one document's granted feature items (UUID-keyed system.items
- * records — see the SCHEMA NOTE in createCharacterActor for the verification
- * caveat on this field name), filtered to level <= maxLevel. */
-async function resolveGrants(doc, maxLevel) {
-  const grants = [];
-  const records = doc?.system?.items;
-  if (!records || typeof records !== "object") return grants;
-  for (const record of Object.values(records)) {
-    const grantLevel = Number(record?.level) || 0;
-    if (grantLevel > maxLevel) continue;
-    const uuid = record?.uuid;
-    if (!uuid) continue;
-    try {
-      const granted = await fromUuid(uuid);
-      if (granted) grants.push(granted);
-    } catch (err) {
-      console.warn(`simplypf2e | failed to resolve granted item ${uuid}`, err);
-    }
-  }
-  return grants;
-}
-
 /**
  * Resolve every compendium reference in a PC concept — the PC counterpart of
  * builder.mjs's resolveConcept(). Assumes concept.ancestry/heritage/
@@ -197,18 +175,6 @@ export async function resolvePCConcept(concept) {
       console.warn(`simplypf2e | heritage "${concept.heritage}" not found in the compendium — dropping (character will have no heritage)`);
     }
   }
-
-  // Tagged with which ABC item granted each one (issue: background's own
-  // built-in feat — e.g. Acolyte's "Student of the Canon" — was landing in
-  // Bonus Feats): createCharacterActor needs to know the granting item so it
-  // can set the granted feat's system.location to that item's own embedded
-  // id, matching the real system's ABCItemPF2e.createGrantedItems().
-  const grants = [
-    ...(await resolveGrants(ancestryDoc, concept.level)).map((doc) => ({ doc, parent: "ancestry" })),
-    ...(await resolveGrants(heritageDoc, concept.level)).map((doc) => ({ doc, parent: "heritage" })),
-    ...(await resolveGrants(backgroundDoc, concept.level)).map((doc) => ({ doc, parent: "background" })),
-    ...(await resolveGrants(classDoc, concept.level)).map((doc) => ({ doc, parent: "class" }))
-  ];
 
   // Feat slots: candidates only (no picks yet — generator-app runs
   // selectFeats() and resolveFeatPicks() below once it has these lists).
@@ -253,7 +219,7 @@ export async function resolvePCConcept(concept) {
   // pcStartingWealthGp()) is what actually fills it with coins.
   const loot = await resolveLoot(concept);
 
-  return { ancestryDoc, heritageDoc, backgroundDoc, classDoc, grants, featSlots, spells, focusSpells, equipment, loot };
+  return { ancestryDoc, heritageDoc, backgroundDoc, classDoc, featSlots, spells, focusSpells, equipment, loot };
 }
 
 /**
@@ -566,13 +532,10 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   const skills = {};
   for (const slug of trained) skills[slug] = { rank: skillRanks.get(slug) ?? 1 };
 
-  // Explicit ids for the ABC items, assigned BEFORE embedding rather than
-  // left to Foundry to generate on create: a background/ancestry/class's own
-  // granted feat (e.g. Acolyte's "Student of the Canon") needs to reference
-  // its granting item's id in system.location below, which has to be known
-  // up front to wire the two together (verified against the real
-  // ABCItemPF2e.createGrantedItems(), which does the same — sets the granted
-  // feat's location to `this.id`, its own embedded id).
+  // Assign ABC ids before embedding and preserve them with `keepId` below.
+  // Generated feat slots already reference these ids, and PF2e's native
+  // ABCItemPF2e.createGrantedItems() uses the same parent ids when it links
+  // background/ancestry/class grants into their system locations.
   const ancestryId = foundry.utils.randomID();
   const heritageId = resolved.heritageDoc ? foundry.utils.randomID() : null;
   const backgroundId = foundry.utils.randomID();
@@ -603,17 +566,6 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
 
   // Background Lore: a real embedded lore item (not a system.skills entry).
   if (loreName) items.push(loreItem(loreName, skillRanks.get(loreSlug) ?? 1));
-
-  // A background/ancestry/class's own granted feat (Student of the Canon,
-  // a level-1 class feature, ...) needs system.location set to its granting
-  // item's id, or the feat-slotting logic can't place it and it silently
-  // falls into Bonus Feats — it was never set at all before this fix.
-  const parentIds = { ancestry: ancestryId, heritage: heritageId, background: backgroundId, class: classId };
-  for (const { doc, parent } of resolved.grants) {
-    const data = toItemData(doc);
-    if (data.type === "feat") data.system.location = parentIds[parent] ?? null;
-    items.push(data);
-  }
 
   // Feats: PCs allow the real "feat" item type directly — skip builder.mjs's
   // featToAction() NPC-only conversion entirely for this path. Each feat's
@@ -749,7 +701,11 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   const actorData = {
     name: concept.name,
     type: "character",
-    items: safeItems,
+    // Add items after Actor creation through PF2e's Item.createDocuments
+    // override. That native path recursively creates ABC grants and runs
+    // ChoiceSet/GrantItem pre-create rules; embedding raw item sources here
+    // bypasses it and leaves choices such as a dwarf's clan weapon invalid.
+    items: [],
     system: {
       details: {
         level: { value: concept.level },
@@ -813,6 +769,17 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   }
 
   const actor = await Actor.create(actorData);
+  try {
+    // The explicit ABC ids above are referenced by feat slots. `keepId`
+    // preserves them while PF2e expands and links all native granted items.
+    await actor.createEmbeddedDocuments("Item", safeItems, { keepId: true });
+  } catch (err) {
+    // Character creation is one operation from the user's perspective. Do
+    // not leave an empty or partially populated Actor behind on failure.
+    try { await actor.delete(); }
+    catch (cleanupErr) { console.error("simplypf2e | failed to roll back incomplete character", cleanupErr); }
+    throw err;
+  }
 
   // Int-modifier bonus languages (issue #64 item 1): the character gets extra
   // language slots equal to their Intelligence modifier on top of the
