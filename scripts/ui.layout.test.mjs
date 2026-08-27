@@ -154,4 +154,62 @@ assert.match(
   "indeterminate generation work must be announced without interrupting the user"
 );
 
+// --- Shared visual system (UI overhaul) ---------------------------------
+// One primary action per window, shared icon-button/card/empty-state kit.
+
+for (const [name, template, createAction] of [
+  ["generator", generator, "createActor"],
+  ["item forge", itemForge, "createItem"]
+]) {
+  assert.match(
+    template,
+    /class="spf-primary" data-action="generate"/,
+    `${name} generate must be the styled primary action`
+  );
+  assert.match(
+    template,
+    new RegExp(`class="spf-primary" data-action="${createAction}"`),
+    `${name} create must be the styled primary action`
+  );
+  assert.match(template, /spf-empty/, `${name} must show an empty state before the first generation`);
+  assert.match(template, /spf-inputs spf-card/, `${name} inputs must use the shared card surface`);
+}
+
+assert.match(generatorApp, /showEmptyState:/, "generator must expose the empty-state flag");
+assert.match(itemForgeApp, /showEmptyState:/, "item forge must expose the empty-state flag");
+
+// Reading order: mode switch → prompt → presets → advanced options → generate.
+{
+  const promptAt = generator.indexOf('id="spf-generator-prompt"');
+  const presetAt = generator.indexOf('id="spf-generator-preset"');
+  const modeAt = generator.indexOf("spf-mode-toggle");
+  const rowAt = generator.indexOf('class="spf-row"');
+  assert.ok(modeAt >= 0 && promptAt >= 0 && presetAt >= 0 && rowAt >= 0, "generator flow anchors must exist");
+  assert.ok(modeAt < promptAt, "the mode switch must precede the prompt");
+  assert.ok(promptAt < presetAt, "the prompt must precede the preset controls");
+  assert.ok(presetAt < rowAt, "presets must precede the advanced options row");
+}
+
+assert.match(providerSetup, /class="spf-primary" data-action="saveAndTest"/,
+  "provider setup must mark Save & Test as the primary action");
+
+// Progress: the step list and the live-updated detail line form one status system.
+assert.match(progress, /spf-progress-steps/, "progress must list the pipeline steps");
+assert.match(progress, /spf-step-\{\{this\.state\}\}/, "each progress step must carry its state class");
+assert.match(progress, /<p class="spf-progress-detail">\{\{progress\.detail\}\}<\/p>/,
+  "the streaming detail line must stay a direct-textContent target for app-base");
+
+for (const rule of ["spf-card", "spf-icon-btn", "spf-empty"]) {
+  assert.match(css, new RegExp(`\\.simplypf2e \\.${rule}\\s*\\{`), `shared kit class .${rule} must be defined`);
+}
+assert.match(css, /\.simplypf2e button\.spf-primary\s*\{/, "the primary button treatment must be defined");
+assert.match(
+  css,
+  /\.simplypf2e :is\(button, input, select, textarea\):focus-visible\s*\{[^}]*outline:/s,
+  "every control must have a visible focus state"
+);
+assert.match(css, /\.simplypf2e button:disabled\s*\{[^}]*opacity/s, "disabled controls must read as disabled");
+assert.match(css, /\.application\.simplypf2e\s*\{[^}]*min-width/s,
+  "resizable windows must clamp to a usable minimum size");
+
 console.log("UI layout contract checks passed.");

@@ -27,7 +27,7 @@
     </p>
   {{/if}}
 
-  <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
+  <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
     <legend>{{localize "SIMPLYPF2E.ItemForge.ConceptLegend"}}</legend>
     <div class="form-group">
       <label for="spf-itemforge-kind">{{localize "SIMPLYPF2E.ItemForge.Kind"}}</label>
@@ -45,11 +45,11 @@
       <div class="form-group">
         <label for="spf-itemforge-level">{{localize "SIMPLYPF2E.ItemForge.Level"}}</label>
         <div class="spf-level-controls">
-          <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
+          <button type="button" class="spf-icon-btn" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
             <i class="fa-solid fa-minus"></i>
           </button>
           <input id="spf-itemforge-level" type="number" name="level" min="{{minLevel}}" max="{{maxLevel}}" step="1" value="{{input.level}}">
-          <button type="button" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
+          <button type="button" class="spf-icon-btn" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
             <i class="fa-solid fa-plus"></i>
           </button>
         </div>
@@ -64,7 +64,7 @@
       </div>
     </div>
     <div class="spf-generate-row">
-      <button type="button" data-action="generate" {{#if busy}}disabled{{/if}}>
+      <button type="button" class="spf-primary" data-action="generate" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-wand-sparkles"></i>
         {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
       </button>
@@ -81,8 +81,12 @@
     <p class="notification error" role="alert">{{error}}</p>
   {{/if}}
 
+  {{#if showEmptyState}}
+    <p class="spf-empty">{{localize "SIMPLYPF2E.ItemForge.EmptyHint"}}</p>
+  {{/if}}
+
   {{#if preview}}
-  <section class="spf-preview">
+  <section class="spf-preview spf-card">
     <header class="spf-statblock-header">
       <h2>{{preview.concept.name}}</h2>
       <span class="spf-level">{{localize "SIMPLYPF2E.ItemForge.Item"}} {{preview.concept.level}}</span>
@@ -150,7 +154,7 @@
     {{/if}}
 
     <footer class="spf-actions">
-      <button type="button" data-action="createItem" {{#if busy}}disabled{{/if}}>
+      <button type="button" class="spf-primary" data-action="createItem" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-box-open"></i> {{localize "SIMPLYPF2E.ItemForge.CreateItem"}}
       </button>
       <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>

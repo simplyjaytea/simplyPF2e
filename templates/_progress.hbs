@@ -1,5 +1,15 @@
 {{#if progress}}
-  <div class="spf-progress">
+  <div class="spf-progress spf-card">
+    <ol class="spf-progress-steps">
+      {{#each progress.steps}}
+        <li class="spf-step-{{this.state}}">
+          {{#if (eq this.state "done")}}<i class="fa-solid fa-circle-check"></i>
+          {{else if (eq this.state "active")}}<i class="fa-solid fa-spinner fa-spin"></i>
+          {{else}}<i class="fa-regular fa-circle"></i>{{/if}}
+          {{this.label}}
+        </li>
+      {{/each}}
+    </ol>
     <div class="spf-progress-bar" role="progressbar" aria-label="{{localize 'SIMPLYPF2E.Progress.Label'}}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{progress.percent}}">
       <div class="spf-progress-fill" style="width: {{progress.percent}}%"></div>
     </div>
