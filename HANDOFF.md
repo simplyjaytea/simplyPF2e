@@ -63,7 +63,15 @@ All merged fixes spot-checked LIVE on the updated world (Foundry 14.365 / PF2e 8
 - Preset-name XSS: hostile `<img onerror>` name renders fully escaped in the delete dialog, nothing executes. ✓
 - UI overhaul: generator renders with segmented mode switch, cards, primary Generate, empty state; encounter mode shows partySize/threat, character mode hides partySize with correct legend; item forge renders with own primary; provider setup usable at 360px with no horizontal overflow; no module console errors. ✓
 
-NOT live-tested (blocked: the Claude in-app browser blocks page-initiated cross-origin fetches, so the module's AI calls can't run there): full AI generation on any pipeline, SSE error surfacing against a real failing provider, heightened-spell sheet rendering on a generated caster, PC wealth/equipment deduction end-to-end, item forge creation. These need a normal browser session (user-driven or Claude in Chrome extension).
+FULL AI-path live QA (2026-08-28, user's real browser via Claude in Chrome extension, v0.3.5.39):
+- Production connection check: PASS, exact usage 442/8/450 tokens against the tailnet provider.
+- Creature workflow END-TO-END: level-7 "Stormcaller Shaman" generated (24/27 matches), actor created — HP 86 / AC 24, slots ranks 1-4, and the heightened-spell fix PROVEN: Gust of Wind (base rank 1) embedded with location.heightenedLevel 2 and the sheet groups it at rank 2. IWR/language whitelists held (electricity resistance, sussuran language).
+- PC workflow END-TO-END: level-5 "Bryndra Ironveil" (Dwarf / Strong-Blooded Dwarf / Miner / Fighter, 31/31 matches), ChoiceSet popups answered, 49 items, HP 80 / AC 23, wealth deduction ACTIVE (29.5 gp coin vs ~1350 before the fix).
+- Item forge FIRST LIVE CREATION: "Stormwarden's Amulet" level 8, 450 gp, cloned Resistance RE, companion 1/day macro created with @UUID link in the description. Phases 1+2 verified.
+- NEW FINDINGS from the PC run (fix in flight on `fix/pc-loot-budget-enforcement`): (1) equipment/loot cross-bucket duplication — the same named item can ship twice, dedup only runs within equipment; (2) named-loot budget bypass — applyTreasureBudget flexes only coins (NPC-treasure design), so AI-named valuable loot (three +1 armors, 1154 gp total on a 270 gp budget) ships regardless. PC path needs named-item budget enforcement.
+- QA artifacts left in the world for inspection: actors "Stormcaller Shaman" and "Bryndra Ironveil", item "Stormwarden's Amulet" + its macro. Delete when done.
+
+Previously blocked (my in-app browser blocks page-initiated cross-origin fetches): (blocked: the Claude in-app browser blocks page-initiated cross-origin fetches, so the module's AI calls can't run there): full AI generation on any pipeline, SSE error surfacing against a real failing provider, heightened-spell sheet rendering on a generated caster, PC wealth/equipment deduction end-to-end, item forge creation. These need a normal browser session (user-driven or Claude in Chrome extension).
 
 ## Next steps (in order)
 2. Fix PR wave 1 (branch per theme, PR each): (a) high #1–#3, (b) escaping cluster #8/#9, (c) NPC data validation #5/#6, (d) SSE error surfacing #4, (e) UI fixes #11/#12, (f) price-write removal #10, heritage validation #7.
