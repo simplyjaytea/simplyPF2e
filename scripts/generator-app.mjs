@@ -322,7 +322,15 @@ export class GeneratorApp extends SpfApp {
     const rarity = form.querySelector('[name="rarity"]')?.value ?? this.#input.rarity;
     const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked ?? true;
     const preset = form.querySelector('[name="preset"]')?.value ?? this.#input.preset;
-    const partySize = Math.min(8, Math.max(1, Number(form.querySelector('[name="partySize"]')?.value ?? 4)));
+    // partySize is only rendered in Encounter mode ({{#if encounterMode}} in
+    // generator.hbs) — outside that mode the selector is null, so fall back
+    // to the prior #input value like every other optional field here, not a
+    // literal default that would silently discard the GM's saved party size.
+    const partySizeEl = form.querySelector('[name="partySize"]');
+    const rawPartySize = partySizeEl ? Number(partySizeEl.value) : NaN;
+    const partySize = partySizeEl
+      ? Math.min(8, Math.max(1, Number.isNaN(rawPartySize) ? this.#input.partySize : rawPartySize))
+      : this.#input.partySize;
     const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
     const treasureAmount = form.querySelector('[name="treasureAmount"]')?.value ?? this.#input.treasureAmount;
     const rarityCap = form.querySelector('[name="rarityCap"]')?.value ?? this.#input.rarityCap;
@@ -494,7 +502,22 @@ export class GeneratorApp extends SpfApp {
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Concept"), usage);
       this.#concept = normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity });
-      if (this.#concept.spellcasting) await this._setStep("spells");
+      // Defensive filter: allowSpellcasting is only enforced in the AI prompt,
+      // so a non-compliant model output can still return a valid tradition.
+      // Strip it here (focus spells ride on it — normalizeConcept already
+      // ties focusSpells to spellcasting, and every downstream resolve/build
+      // step re-checks concept.spellcasting, so nulling it here is enough).
+      if (!this.#input.allowSpellcasting) {
+        this.#concept.spellcasting = null;
+        this.#concept.focusSpells = [];
+      }
+      // Gate on the SAME condition the step list above was built from — the
+      // "spells" step key only exists in progress.steps when allowSpellcasting
+      // was true. Calling _setStep with a key that isn't in that list left every
+      // step "reached: false" and marked them all "done", pushing percent past
+      // 100%; this used to be reachable when allowSpellcasting was false but a
+      // non-compliant model returned spellcasting anyway.
+      if (this.#input.allowSpellcasting && this.#concept.spellcasting) await this._setStep("spells");
       await this.#refineSpells(this.#concept);
       if (this.#concept.equipment.length) await this._setStep("equipment");
       await this.#refineEquipment(this.#concept);
@@ -578,6 +601,13 @@ export class GeneratorApp extends SpfApp {
         });
         this._recordTokens(memberLabel(i), usage);
         const concept = normalizeConcept(raw, { level: slot.level, rarity });
+        // Same defensive filter as the single-creature pipeline: the prompt
+        // asks for no spellcasting, but a non-compliant model can still
+        // return a valid tradition.
+        if (!this.#input.allowSpellcasting) {
+          concept.spellcasting = null;
+          concept.focusSpells = [];
+        }
         await this.#refineSpells(concept);
         await this.#refineEquipment(concept);
         await this.#refineLoot(concept);
@@ -702,10 +732,20 @@ export class GeneratorApp extends SpfApp {
         resolved.feats = [];
       }
 
+      // Same defensive filter as the NPC pipeline: allowSpellcasting is only
+      // enforced in the AI prompt, so a non-compliant model output can still
+      // return a valid tradition.
+      if (!this.#input.allowSpellcasting) concept.spellcasting = null;
+
       // Both refine helpers are the EXISTING NPC ones, reused unchanged — the
       // PC concept carries the same fields they read (blurb/description/
       // traits/strikes/equipment/loot/level/name/rarity).
-      if (concept.spellcasting) await this._setStep("spells");
+      // Gate on the SAME condition the step list above was built from, same
+      // reasoning as the NPC pipeline: calling _setStep with a "spells" key
+      // that isn't in progress.steps (when allowSpellcasting was false) left
+      // every step "reached: false" and marked them all "done", pushing
+      // percent past 100%.
+      if (this.#input.allowSpellcasting && concept.spellcasting) await this._setStep("spells");
       await this.#refineSpells(concept, { requireSpells: true });
 
       await this._setStep("equipment");
