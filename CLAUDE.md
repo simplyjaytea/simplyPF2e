@@ -53,6 +53,7 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 | `settings.mjs` | Foundry settings plus exact-endpoint API-key binding and local/keyless provider readiness. |
 | `builder.mjs` | NPC pipeline + shared resolve/build helpers used by both actor pipelines (`resolveEquipment`, `resolveLoot`, `resolveFocusSpells`, `buildEquipmentItems`, `buildLootItems`, `filterItemTypes`, `applyTreasureBudget`, `enrichDescription`). |
 | `pc-builder.mjs` | PC pipeline. First file to check when PC generation misbehaves. |
+| `choice-set.mjs` | Pre-answers PF2e `ChoiceSet` rule elements on embedded item sources so PC creation opens no blocking prompts. Deliberately **fails open** (inverts invariant #5) — see its header. Zero deps, node-testable. |
 | `compendium.mjs` | `findEntry` fuzzy match, pack indexes (incl. the extended equipment index), candidate lists, `getPacksFor`/`getAllPacksFor`, `priceToGp`, `RARITY_RANK`. |
 | `runes.mjs` | All rune knowledge: parse out of a name, apply as system data, cap tiers to level, price from real rune docs, item-forge candidate lists. Never hardcodes a rune level or price. |
 | `text.mjs` | `slugify`, `capitalized`, `esc`, `toHtml`. Zero deps, node-testable. |
