@@ -8,11 +8,12 @@ import { readFile } from "node:fs/promises";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-const [generator, itemForge, providerSetup, managePresets, generatorApp, itemForgeApp, css] = await Promise.all([
+const [generator, itemForge, providerSetup, managePresets, progress, generatorApp, itemForgeApp, css] = await Promise.all([
   read("templates/generator.hbs"),
   read("templates/itemforge.hbs"),
   read("templates/provider-setup.hbs"),
   read("templates/manage-presets.hbs"),
+  read("templates/_progress.hbs"),
   read("scripts/generator-app.mjs"),
   read("scripts/itemforge-app.mjs"),
   read("styles/simplypf2e.css")
@@ -32,6 +33,8 @@ for (const [name, template] of [
     /spf-provider-state" role="img" aria-label=/,
     `${name} provider readiness must not depend on color or a tooltip`
   );
+  assert.match(template, /notification warning spf-provider-warning" role="status"/, `${name} provider warnings must expose status semantics`);
+  assert.match(template, /notification error" role="alert"/, `${name} generation failures must be announced as alerts`);
 }
 
 for (const [name, template] of [
@@ -111,6 +114,16 @@ assert.match(
   css,
   /\.simplypf2e \.spf-mode-toggle label:focus-within\s*\{[^}]*outline:/s,
   "keyboard focus on a mode must remain visible on its compact tile"
+);
+assert.match(
+  progress,
+  /spf-progress-bar" role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"[^>]*aria-valuenow="\{\{progress\.percent\}\}"/,
+  "visual generation progress must expose its current value to assistive technology"
+);
+assert.match(
+  progress,
+  /spf-busy" role="status" aria-live="polite"/,
+  "indeterminate generation work must be announced without interrupting the user"
 );
 
 console.log("UI layout contract checks passed.");

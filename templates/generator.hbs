@@ -18,7 +18,7 @@
     </span>
   </div>
   {{#if apiKeyWarning}}
-    <p class="notification warning spf-provider-warning">
+    <p class="notification warning spf-provider-warning" role="status">
       <span>{{apiKeyWarning}}</span>
       {{#if canAuthorizeApiKey}}
         <span class="spf-provider-endpoint"><strong>{{localize "SIMPLYPF2E.Generator.ApiKeyEndpoint"}}</strong> <code>{{providerBaseUrl}}</code></span>
@@ -176,7 +176,7 @@
   {{#if busy}}{{> simplypf2e-progress}}{{/if}}
 
   {{#if error}}
-    <p class="notification error">{{error}}</p>
+    <p class="notification error" role="alert">{{error}}</p>
   {{/if}}
 
   {{#if preview}}

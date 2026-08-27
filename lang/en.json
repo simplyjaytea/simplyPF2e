@@ -183,6 +183,7 @@
       "Minion": "Minion"
     },
     "Progress": {
+      "Label": "Generation progress",
       "Concept": "Creature concept",
       "SpellFocus": "Spell focus",
       "Spells": "Spell selection",

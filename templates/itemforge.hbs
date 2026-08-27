@@ -18,7 +18,7 @@
     </span>
   </div>
   {{#if apiKeyWarning}}
-    <p class="notification warning spf-provider-warning">
+    <p class="notification warning spf-provider-warning" role="status">
       <span>{{apiKeyWarning}}</span>
       {{#if canAuthorizeApiKey}}
         <span class="spf-provider-endpoint"><strong>{{localize "SIMPLYPF2E.Generator.ApiKeyEndpoint"}}</strong> <code>{{providerBaseUrl}}</code></span>
@@ -72,13 +72,13 @@
   </fieldset>
 
   {{#if unavailableNote}}
-    <p class="notification warning">{{unavailableNote}}</p>
+    <p class="notification warning" role="status">{{unavailableNote}}</p>
   {{/if}}
 
   {{#if busy}}{{> simplypf2e-progress}}{{/if}}
 
   {{#if error}}
-    <p class="notification error">{{error}}</p>
+    <p class="notification error" role="alert">{{error}}</p>
   {{/if}}
 
   {{#if preview}}
@@ -120,7 +120,7 @@
         </ul>
       {{else}}
         {{#unless preview.activation}}
-          <p class="notification warning">{{localize "SIMPLYPF2E.ItemForge.NoEffects"}}</p>
+          <p class="notification warning" role="status">{{localize "SIMPLYPF2E.ItemForge.NoEffects"}}</p>
         {{/unless}}
       {{/if}}
 
