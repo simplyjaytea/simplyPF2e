@@ -54,7 +54,7 @@
     <div class="form-group stacked">
       {{#if encounterMode}}
         <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.EncounterTheme"}}</label>
-        <textarea id="spf-generator-prompt" name="prompt" rows="2" placeholder="{{localize 'SIMPLYPF2E.Generator.EncounterThemePlaceholder'}}">{{input.prompt}}</textarea>
+        <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.Generator.EncounterThemePlaceholder'}}">{{input.prompt}}</textarea>
       {{else if characterMode}}
         <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.CharacterPrompt"}}</label>
         <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.Generator.CharacterPromptPlaceholder'}}">{{input.prompt}}</textarea>
@@ -63,7 +63,10 @@
         <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{promptPlaceholder}}">{{input.prompt}}</textarea>
       {{/if}}
     </div>
-    {{#if singleMode}}
+    {{! One stable slot in every mode: presets guide the creature pipeline
+        directly and steer encounter members / character class choice as
+        generation guidance, and their saved generator defaults apply
+        everywhere. }}
     <div class="form-group spf-preset">
       <label for="spf-generator-preset">{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
       <div class="spf-preset-controls">
@@ -86,7 +89,6 @@
         </button>
       </div>
     </div>
-    {{/if}}
     <div class="spf-row">
       <div class="form-group">
         <label for="spf-generator-level">{{#if encounterMode}}{{localize "SIMPLYPF2E.Generator.PartyLevel"}}{{else}}{{localize "SIMPLYPF2E.Generator.Level"}}{{/if}}</label>
@@ -99,6 +101,43 @@
             <i class="fa-solid fa-plus"></i>
           </button>
         </div>
+      </div>
+      {{! Stable shared column order in every mode: Level → Rarity (a cap in
+          Character mode) → Treasure amount → Allow spellcasting. Encounter's
+          extra controls append AFTER the shared columns so switching modes
+          never moves a shared control. }}
+      {{#if characterMode}}
+        <div class="form-group">
+          <label for="spf-generator-rarity-cap" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RarityCapTooltip'}}">{{localize "SIMPLYPF2E.Generator.RarityCap"}}</label>
+          <select id="spf-generator-rarity-cap" name="rarityCap">
+            {{#each rarities}}
+              <option value="{{this.value}}" {{#if (eq this.value @root.input.rarityCap)}}selected{{/if}}>{{localize this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+      {{else}}
+        <div class="form-group">
+          <label for="spf-generator-rarity">{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
+          <select id="spf-generator-rarity" name="rarity">
+            {{#each rarities}}
+              <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
+            {{/each}}
+          </select>
+        </div>
+      {{/if}}
+      <div class="form-group">
+        <label for="spf-generator-treasure-amount">{{localize "SIMPLYPF2E.Generator.TreasureAmount"}}</label>
+        <select id="spf-generator-treasure-amount" name="treasureAmount">
+          {{#each treasureAmounts}}
+            <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{localize this.label}}</option>
+          {{/each}}
+        </select>
+      </div>
+      <div class="form-group spf-checkbox">
+        <label>
+          <input type="checkbox" name="allowSpellcasting" {{#if input.allowSpellcasting}}checked{{/if}}>
+          {{localize "SIMPLYPF2E.Generator.AllowSpellcasting"}}
+        </label>
       </div>
       {{#if encounterMode}}
         <div class="form-group">
@@ -121,47 +160,7 @@
             {{/each}}
           </select>
         </div>
-        <div class="form-group">
-          <label for="spf-generator-rarity">{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
-          <select id="spf-generator-rarity" name="rarity">
-            {{#each rarities}}
-              <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
-            {{/each}}
-          </select>
-        </div>
-      {{else if singleMode}}
-        <div class="form-group">
-          <label for="spf-generator-rarity">{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
-          <select id="spf-generator-rarity" name="rarity">
-            {{#each rarities}}
-              <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
-            {{/each}}
-          </select>
-        </div>
-      {{else if characterMode}}
-        <div class="form-group">
-          <label for="spf-generator-rarity-cap" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RarityCapTooltip'}}">{{localize "SIMPLYPF2E.Generator.RarityCap"}}</label>
-          <select id="spf-generator-rarity-cap" name="rarityCap">
-            {{#each rarities}}
-              <option value="{{this.value}}" {{#if (eq this.value @root.input.rarityCap)}}selected{{/if}}>{{localize this.label}}</option>
-            {{/each}}
-          </select>
-        </div>
       {{/if}}
-      <div class="form-group">
-        <label for="spf-generator-treasure-amount">{{localize "SIMPLYPF2E.Generator.TreasureAmount"}}</label>
-        <select id="spf-generator-treasure-amount" name="treasureAmount">
-          {{#each treasureAmounts}}
-            <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{localize this.label}}</option>
-          {{/each}}
-        </select>
-      </div>
-      <div class="form-group spf-checkbox">
-        <label>
-          <input type="checkbox" name="allowSpellcasting" {{#if input.allowSpellcasting}}checked{{/if}}>
-          {{localize "SIMPLYPF2E.Generator.AllowSpellcasting"}}
-        </label>
-      </div>
     </div>
     <div class="spf-generate-row">
       <button type="button" class="spf-primary" data-action="generate" {{#if busy}}disabled{{/if}}>
@@ -178,6 +177,9 @@
           <i class="fa-solid fa-dice-d20"></i>
         </button>
       {{/if}}
+      <button type="button" class="spf-random-button" data-action="configureSources" data-tooltip="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-gear"></i>
+      </button>
     </div>
   </fieldset>
 
