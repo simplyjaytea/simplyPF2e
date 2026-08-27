@@ -13,7 +13,14 @@ export const CATEGORIES = [
 ];
 
 export const DEFAULT_PACKS = {
-  abilities: ["pf2e.bestiary-ability-glossary-srd", "pf2e.bestiary-family-ability-glossary-srd"],
+  // PF2e 8 removed the `-srd` suffix from the family glossary collection.
+  // Keep both identifiers so the supported PF2e 6+ range selects whichever
+  // version its installed system exposes.
+  abilities: [
+    "pf2e.bestiary-ability-glossary-srd",
+    "pf2e.bestiary-family-ability-glossary",
+    "pf2e.bestiary-family-ability-glossary-srd"
+  ],
   spells: ["pf2e.spells-srd"],
   equipment: ["pf2e.equipment-srd"],
   feats: ["pf2e.feats-srd"],
@@ -54,11 +61,12 @@ export const RARITY_RANK = { common: 0, uncommon: 1, rare: 2, unique: 3 };
  */
 export function getPacksFor(category) {
   const stored = getSetting(SETTINGS.sourcePacks) ?? {};
-  const ids = Array.isArray(stored[category]) && stored[category].length
-    ? stored[category]
-    : DEFAULT_PACKS[category];
-  for (const id of ids) {
-    if (!game.packs.get(id)) console.warn(`simplypf2e | configured ${category} pack "${id}" is not available (uninstalled/disabled?) — skipping`);
+  const configured = Array.isArray(stored[category]) && stored[category].length;
+  const ids = configured ? stored[category] : DEFAULT_PACKS[category];
+  if (configured) {
+    for (const id of ids) {
+      if (!game.packs.get(id)) console.warn(`simplypf2e | configured ${category} pack "${id}" is not available (uninstalled/disabled?) — skipping`);
+    }
   }
   const packs = ids.filter((id) => game.packs.get(id));
   if (packs.length || !DEFAULT_PACKS[category]) return packs;
