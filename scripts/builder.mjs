@@ -706,6 +706,83 @@ export async function equipmentValueGp(equipment) {
   return total;
 }
 
+/** Resolved loot/equipment line's total gp value (per-unit resolvedValue/value × quantity). */
+function lineGp(line) {
+  const unit = Number(line?.resolvedValue ?? line?.value) || 0;
+  return unit * (Number(line?.quantity) || 1);
+}
+
+/**
+ * PC-only cross-bucket dedup: buildEquipmentItems({ dedup: true }) already
+ * drops repeated names WITHIN the equipment list, and buildLootItems does the
+ * same within loot — but neither checks the other bucket, so the AI listing
+ * the same item as both starting gear AND treasure (e.g. a named weapon in
+ * both `concept.equipment` and `concept.loot`) ships two physical copies.
+ * Drops any loot entry whose slugified name also appears in the resolved
+ * equipment list, before treasure budgeting ever sees it — dropping later
+ * would let the budget count gp for an item that then vanishes anyway.
+ * NPC path never calls this (NPC gear is free by design, separate from
+ * dropped loot, and no cross-bucket check has ever applied there).
+ * @param {object[]} loot        entries from resolveLoot()
+ * @param {object[]} equipment   entries from resolveEquipment()
+ * @returns {object[]} loot with equipment-duplicate names removed
+ */
+export function dedupeLootAgainstEquipment(loot, equipment) {
+  if (!Array.isArray(loot)) return loot;
+  const equipNames = new Set((Array.isArray(equipment) ? equipment : []).map((e) => slugify(e?.name ?? "")));
+  const kept = [];
+  for (const line of loot) {
+    const key = slugify(line?.name ?? "");
+    if (key && equipNames.has(key)) {
+      console.warn(`simplypf2e | dropped loot item "${line?.name}" — already carried as starting equipment`);
+      continue;
+    }
+    kept.push(line);
+  }
+  return kept;
+}
+
+/**
+ * PC-only budget enforcement for NAMED loot. applyTreasureBudget() only ever
+ * flexes coin entries by design (NPC treasure must never lose a named item),
+ * so for PCs that leaves AI-named valuable loot (extra runed armor, etc.)
+ * free to ship far over the starting-wealth budget. Keeps named (non-coin)
+ * entries in ascending resolved-value order for as long as the running total
+ * still fits budgetGp, and drops the rest with one summarizing console.warn —
+ * ascending order means cheap consumables (potions/scrolls) tend to survive
+ * while the priciest overflow items are what gets cut. Coin lines pass
+ * through untouched; applyTreasureBudget() handles padding/trimming those
+ * afterward against whatever value remains. Never throws: a non-array input
+ * or a zero/negative budget just yields an empty named list.
+ * @param {object[]} loot     entries from resolveLoot()
+ * @param {number} budgetGp   gp remaining for loot after equipment (see equipmentValueGp)
+ * @returns {object[]} loot with named entries trimmed to fit budgetGp
+ */
+export function enforceNamedLootBudget(loot, budgetGp) {
+  if (!Array.isArray(loot)) return loot;
+  const budget = Number.isFinite(budgetGp) ? Math.max(budgetGp, 0) : 0;
+  const coinLines = loot.filter((l) => parseCoins(l?.name));
+  const named = loot.filter((l) => !parseCoins(l?.name));
+  const sorted = [...named].sort((a, b) => lineGp(a) - lineGp(b));
+  const kept = [];
+  const dropped = [];
+  let running = 0;
+  for (const line of sorted) {
+    const gp = lineGp(line);
+    if (running + gp <= budget) {
+      kept.push(line);
+      running += gp;
+    } else {
+      dropped.push(line);
+    }
+  }
+  if (dropped.length) {
+    const droppedGp = dropped.reduce((sum, l) => sum + lineGp(l), 0);
+    console.warn(`simplypf2e | dropped ${dropped.length} named loot item(s) worth ~${Math.round(droppedGp)} gp over the PC loot budget (~${Math.round(budget)} gp): ${dropped.map((l) => l?.name).join(", ")}`);
+  }
+  return [...coinLines, ...kept];
+}
+
 /**
  * Resolve focus-spell names against the spell packs. Focus spells carry the
  * "focus" trait and have an EMPTY system.traits.traditions (verified against
