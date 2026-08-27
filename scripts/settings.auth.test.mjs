@@ -225,6 +225,7 @@ assert.equal(
 registerSettings(class SourcesConfigApp {});
 const keyConfig = registrations.get(SETTINGS.apiKey);
 const baseConfig = registrations.get(SETTINGS.apiBaseUrl);
+const modelConfig = registrations.get(SETTINGS.model);
 assert.equal(keyConfig?.scope, "client", "API keys must remain local to the GM client");
 assert.equal(
   keyConfig?.config,
@@ -232,7 +233,17 @@ assert.equal(
   "API keys must not appear as plaintext fields in Foundry's ordinary settings form"
 );
 assert.equal(
-  registrations.get(SETTINGS.model)?.default,
+  baseConfig?.config,
+  false,
+  "the guided provider setup must be the only ordinary configuration surface for an API endpoint"
+);
+assert.equal(
+  modelConfig?.config,
+  false,
+  "the guided provider setup must keep the selected model alongside its provider"
+);
+assert.equal(
+  modelConfig?.default,
   "deepseek-v4-flash",
   "fresh installs must use a current DeepSeek model identifier"
 );

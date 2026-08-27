@@ -47,13 +47,20 @@ The link is permanent — it always resolves to the newest release, so Foundry o
 
 ## Setup
 
-Open **AI Provider Setup** under **Game Settings → Configure Settings → SimplyPF2e** (GM only), or click the gear beside the provider name in the generator. Pick a cloud/local preset. If its Model field is blank, click **Load Models**: setup saves and authorizes the displayed endpoint/key, then offers the provider's `/models` IDs without preventing manual entry. Confirm the model and click **Save & Test**. It makes a tiny 64-token check through the same streaming request path used for generation and keeps setup open if the provider rejects the endpoint, key, model, CORS, or request shape. **Save & Authorize** skips the check for an offline provider. A cloud provider may charge its normal small token cost for a test; model listing itself does not generate tokens, and the signal button beside a ready provider repeats the generation check later.
+Open **AI Provider Setup** under **Game Settings → Configure Settings → SimplyPF2e** (GM only), or click the gear beside the provider name in the generator. It is the single place to configure a provider's API Base URL, API Key, and Model. Pick a cloud/local preset. If its Model field is blank, click **Load Models**: setup saves and authorizes the displayed endpoint/key, then offers the provider's `/models` IDs without preventing manual entry. Confirm the model and click **Save & Test**. It makes a tiny 64-token check through the same streaming request path used for generation and keeps setup open if the provider rejects the endpoint, key, model, CORS, or request shape. **Save & Authorize** skips the check for an offline provider. A cloud provider may charge its normal small token cost for a test; model listing itself does not generate tokens, and the signal button beside a ready provider repeats the generation check later.
+
+Provider setup:
 
 | Setting | Description |
 | --- | --- |
 | API Base URL | Any OpenAI-compatible API root or full `/chat/completions` endpoint. Defaults to DeepSeek. |
 | API Key | Your provider key, stored in this browser and bound to the exact API Base URL. Leave blank for a keyless local server. |
 | Model | e.g. `deepseek-v4-flash`, `deepseek-v4-pro`, `gpt-5.6-luna` — the exact API identifier, not the marketing name. |
+
+Advanced module settings:
+
+| Setting | Description |
+| --- | --- |
 | Creativity | Sampling temperature (0–2) for creative generation. Grounding/selectors always use temperature 0. |
 | Max response tokens | Global ceiling. Each operation applies a smaller production-safe cap where possible. |
 | Request timeout | Aborts only if the provider sends *no data* for this long (default 90 s). |
