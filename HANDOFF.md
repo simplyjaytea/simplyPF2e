@@ -53,6 +53,18 @@ All 15 confirmed findings are FIXED on `release/audit-fixes` (one stacked integr
 
 `feat/ui-overhaul` (separate branch/PR): full visual overhaul of all five apps — shared token-based CSS kit, segmented mode switch, progress step chips; JS↔template contracts script-verified; needs live-Foundry eyeballing (list in the branch report/PR).
 
+## Post-merge live QA (v0.3.5.39, 2026-08-28, VPS Foundry)
+
+All merged fixes spot-checked LIVE on the updated world (Foundry 14.365 / PF2e 8.4.1 / module v0.3.5.39):
+- `propertyRuneKey`: "Quenching (True)" → `trueQuenching`, "Dread (Lesser)" → `lesserDread`, Greater/plain unchanged. ✓
+- `heightenedLevelFor`: heightened → rank recorded, same-rank → null, cantrip → null. ✓
+- `PC_WEALTH_BY_LEVEL`: 15 / 270 / 112000 at levels 1/5/20. ✓
+- `heritageMatchesAncestry`: versatile-null accepts, cross-ancestry rejects. ✓
+- Preset-name XSS: hostile `<img onerror>` name renders fully escaped in the delete dialog, nothing executes. ✓
+- UI overhaul: generator renders with segmented mode switch, cards, primary Generate, empty state; encounter mode shows partySize/threat, character mode hides partySize with correct legend; item forge renders with own primary; provider setup usable at 360px with no horizontal overflow; no module console errors. ✓
+
+NOT live-tested (blocked: the Claude in-app browser blocks page-initiated cross-origin fetches, so the module's AI calls can't run there): full AI generation on any pipeline, SSE error surfacing against a real failing provider, heightened-spell sheet rendering on a generated caster, PC wealth/equipment deduction end-to-end, item forge creation. These need a normal browser session (user-driven or Claude in Chrome extension).
+
 ## Next steps (in order)
 2. Fix PR wave 1 (branch per theme, PR each): (a) high #1–#3, (b) escaping cluster #8/#9, (c) NPC data validation #5/#6, (d) SSE error surfacing #4, (e) UI fixes #11/#12, (f) price-write removal #10, heritage validation #7.
 3. Independent second-agent review on each fix PR before requesting merge.
