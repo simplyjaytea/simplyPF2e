@@ -65,7 +65,10 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
     name: "SIMPLYPF2E.Settings.ApiBaseUrl.Name",
     hint: "SIMPLYPF2E.Settings.ApiBaseUrl.Hint",
     scope: "world",
-    config: true,
+    // ProviderSetupApp owns this value alongside the key and model. Keeping
+    // it registered but hidden preserves saved worlds and script access
+    // without presenting two competing configuration surfaces.
+    config: false,
     restricted: true,
     type: String,
     default: "https://api.deepseek.com/v1",
@@ -93,7 +96,9 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
     name: "SIMPLYPF2E.Settings.Model.Name",
     hint: "SIMPLYPF2E.Settings.Model.Hint",
     scope: "world",
-    config: true,
+    // See apiBaseUrl above: provider identity is configured together in the
+    // guided provider dialog, not piecemeal in ordinary module settings.
+    config: false,
     restricted: true,
     type: String,
     default: "deepseek-v4-flash"
