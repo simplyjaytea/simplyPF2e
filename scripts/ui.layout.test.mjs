@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-const [generator, itemForge, providerSetup, managePresets, progress, generatorApp, itemForgeApp, css] = await Promise.all([
+const [generator, itemForge, providerSetup, managePresets, progress, generatorApp, itemForgeApp, css, langJson] = await Promise.all([
   read("templates/generator.hbs"),
   read("templates/itemforge.hbs"),
   read("templates/provider-setup.hbs"),
@@ -16,7 +16,8 @@ const [generator, itemForge, providerSetup, managePresets, progress, generatorAp
   read("templates/_progress.hbs"),
   read("scripts/generator-app.mjs"),
   read("scripts/itemforge-app.mjs"),
-  read("styles/simplypf2e.css")
+  read("styles/simplypf2e.css"),
+  read("lang/en.json")
 ]);
 
 for (const [name, template] of [
@@ -211,5 +212,114 @@ assert.match(
 assert.match(css, /\.simplypf2e button:disabled\s*\{[^}]*opacity/s, "disabled controls must read as disabled");
 assert.match(css, /\.application\.simplypf2e\s*\{[^}]*min-width/s,
   "resizable windows must clamp to a usable minimum size");
+
+// --- Cross-app uniformity (UI uniformity pass) --------------------------
+// The two apps must share one mental model: same segmented switch, same
+// preset slot, same sources gear, same title pattern, same options order.
+
+// 1. The forge's kind selector is the SAME segmented control as the
+//    generator's mode switch — a radio group whose name/value contract
+//    ("kind": wondrous|weapon|armor) the app reads back.
+assert.match(
+  itemForge,
+  /spf-mode-toggle" role="radiogroup" aria-label=/,
+  "item forge kind selector must use the shared segmented control"
+);
+assert.match(
+  itemForge,
+  /<input type="radio" name="kind" value="\{\{this\.value\}\}"/,
+  "the kind switch must stay a radio group named 'kind'"
+);
+assert.match(
+  itemForgeApp,
+  /\[name="kind"\]:checked/,
+  "the forge must read the CHECKED kind radio, not the first one"
+);
+assert.match(
+  itemForgeApp,
+  /querySelectorAll\('input\[name="kind"\]'\)/,
+  "the forge must re-render when the kind switch changes"
+);
+
+// 2. The preset row renders in EVERY generator mode (one stable slot; the
+//    guidance feeds all three pipelines, Random ignores it like Single's
+//    dice button always has).
+{
+  const presetAt = generator.indexOf('class="form-group spf-preset"');
+  assert.ok(presetAt >= 0, "the preset row must exist");
+  const before = generator.slice(Math.max(0, presetAt - 400), presetAt);
+  assert.ok(
+    !before.includes("{{#if singleMode}}"),
+    "the preset row must not be gated to Single mode"
+  );
+}
+assert.match(
+  generatorApp,
+  /preset: isRandom \? null : findPreset\(this\.#input\.preset\)\?\.prompt \?\? null,[\s\S]*?amount: this\.#input\.treasureAmount/,
+  "encounter members must honor the selected preset"
+);
+assert.match(
+  generatorApp,
+  /generatePCConcept\(\{[\s\S]*?preset: isRandom \? null : findPreset\(this\.#input\.preset\)\?\.prompt \?\? null/,
+  "character generation must honor the selected preset"
+);
+
+// 3. One compendium-sources gear beside Generate in BOTH apps, wired to the
+//    same shared settings app.
+for (const [name, template] of [
+  ["generator", generator],
+  ["item forge", itemForge]
+]) {
+  const rowAt = template.indexOf('class="spf-generate-row"');
+  const gearAt = template.indexOf('data-action="configureSources"');
+  const fieldsetEnd = template.indexOf("</fieldset>");
+  assert.ok(rowAt >= 0 && gearAt >= 0 && fieldsetEnd >= 0, `${name} must have a generate row and a sources gear`);
+  assert.ok(rowAt < gearAt && gearAt < fieldsetEnd, `${name} sources gear must sit in the generate row`);
+}
+for (const [name, source] of [
+  ["generator", generatorApp],
+  ["item forge", itemForgeApp]
+]) {
+  assert.match(source, /configureSources:/, `${name} must register the sources gear action`);
+  assert.match(source, /new SourcesConfigApp\(\)\.render\(true\)/, `${name} sources gear must open the shared sources app`);
+}
+
+// 4. One stable options order in every mode: Level → rarity control →
+//    Treasure → Spellcasting, with encounter extras appended AFTER the
+//    shared columns.
+{
+  const levelAt = generator.indexOf('id="spf-generator-level"');
+  const rarityCapAt = generator.indexOf('id="spf-generator-rarity-cap"');
+  const rarityAt = generator.indexOf('id="spf-generator-rarity"');
+  const treasureAt = generator.indexOf('id="spf-generator-treasure-amount"');
+  const spellsAt = generator.indexOf('name="allowSpellcasting"');
+  const partyAt = generator.indexOf('id="spf-generator-party-size"');
+  const threatAt = generator.indexOf('id="spf-generator-threat"');
+  for (const [label, at] of [["level", levelAt], ["rarity cap", rarityCapAt], ["rarity", rarityAt], ["treasure", treasureAt], ["spellcasting", spellsAt], ["party size", partyAt], ["threat", threatAt]]) {
+    assert.ok(at >= 0, `options anchor must exist: ${label}`);
+  }
+  assert.ok(levelAt < rarityCapAt && levelAt < rarityAt, "Level must lead the options row");
+  assert.ok(rarityAt < treasureAt && rarityCapAt < treasureAt, "the rarity control must precede Treasure amount");
+  assert.ok(treasureAt < spellsAt, "Treasure amount must precede Allow spellcasting");
+  assert.ok(spellsAt < partyAt && partyAt < threatAt, "encounter extras must append after the shared columns");
+}
+
+// 5. Window titles and prompt labels follow one pattern.
+{
+  const lang = JSON.parse(langJson).SIMPLYPF2E;
+  assert.match(lang.Generator.Title, /^SimplyPF2e — /, "generator title must follow the shared pattern");
+  assert.match(lang.ItemForge.Title, /^SimplyPF2e — /, "item forge title must follow the shared pattern");
+  for (const [key, value] of [
+    ["Generator.Prompt", lang.Generator.Prompt],
+    ["Generator.CharacterPrompt", lang.Generator.CharacterPrompt],
+    ["ItemForge.Prompt", lang.ItemForge.Prompt]
+  ]) {
+    assert.match(value, /^Describe the /, `${key} must follow the shared 'Describe the …' pattern`);
+  }
+  assert.match(lang.Generator.EncounterTheme, /^Describe the encounter theme \(optional\)$/,
+    "the encounter label must follow the shared pattern with the surprise hint moved out");
+  assert.match(lang.Generator.EncounterThemePlaceholder, /leave blank for a surprise/,
+    "the surprise hint must live in the encounter placeholder");
+}
 
 console.log("UI layout contract checks passed.");
