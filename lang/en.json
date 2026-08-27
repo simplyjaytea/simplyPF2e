@@ -325,6 +325,7 @@
       "NoModel": "No model identifier is configured. Set one in Module Settings → SimplyPF2e before generating.",
       "MixedContentProvider": "This Foundry page uses HTTPS, but the configured AI provider uses HTTP. Browsers block that mixed-content request. Serve the provider over HTTPS or open Foundry over HTTP on the same trusted local network.",
       "ApiError": "The AI provider returned an error ({status}): {detail} {hint}",
+      "ProviderError": "The AI provider reported an error: {detail}",
       "NoErrorDetail": "No additional details were provided.",
       "ApiAuthHint": "Check the API key, then use AI Provider Setup to authorize it for this exact endpoint.",
       "ApiNotFoundHint": "Check the API Base URL and exact model identifier; this server may not expose the expected OpenAI-compatible route.",
