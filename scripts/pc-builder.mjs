@@ -6,6 +6,7 @@ import {
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
+import { applyChoiceSelections, applyGrantPreselections } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
 
@@ -554,6 +555,64 @@ const CHARACTER_ITEM_TYPES = new Set([
 ]);
 
 /**
+ * Every real name this concept already committed to, used by choice-set.mjs's
+ * middle-priority policy step: a ChoiceSet option the character was already
+ * given (a clan weapon in its equipment, a named feat) beats the deterministic
+ * first-option fallback.
+ */
+function conceptChoiceNames(concept, resolved) {
+  return [
+    ...(concept.equipment ?? []).map((e) => e?.name),
+    ...(concept.feats ?? []),
+    ...(resolved.feats ?? []).map((f) => f?.name),
+    ...(concept.spellcasting?.spells ?? []).map((s) => s?.name),
+    ...(concept.focusSpells ?? []).map((s) => s?.name),
+    resolved.ancestryDoc?.name,
+    resolved.heritageDoc?.name,
+    resolved.backgroundDoc?.name,
+    resolved.classDoc?.name
+  ].filter((n) => typeof n === "string" && n.length);
+}
+
+/**
+ * Walk every item source about to be embedded and pre-answer its ChoiceSet
+ * rules (and, one level down, the ChoiceSets of items its GrantItem rules
+ * grant) so no blocking prompt opens during createEmbeddedDocuments().
+ *
+ * Fail-open by design — see choice-set.mjs's header. Anything auto-picked
+ * purely because it was first in the list is warned about by item + choice +
+ * pick, so the GM knows what to review on the sheet.
+ */
+async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility) {
+  const context = { keyAbility, names: conceptChoiceNames(concept, resolved) };
+  const config = CONFIG?.PF2E ?? {};
+  const cache = new Map();
+  const loadItemSource = async (uuid) => {
+    if (cache.has(uuid)) return cache.get(uuid);
+    let source = null;
+    try {
+      const doc = await fromUuid(uuid);
+      source = doc?.toObject?.() ?? null;
+    } catch { source = null; }
+    cache.set(uuid, source);
+    return source;
+  };
+
+  for (const itemData of itemSources) {
+    const applied = [
+      ...applyChoiceSelections(itemData, context, config),
+      ...await applyGrantPreselections(itemData, loadItemSource, context, config)
+    ];
+    for (const pick of applied) {
+      if (pick.reason !== "first") continue;
+      console.warn(
+        `simplypf2e | auto-picked "${pick.label}" (${pick.value}) for the "${pick.flag ?? "unnamed"}" choice on "${pick.item}" — nothing in the concept matched, so the first valid option was taken; change it on the sheet if you want another`
+      );
+    }
+  }
+}
+
+/**
  * Build the full actor + embedded item data and create the `type: "character"`
  * actor. Unlike builder.mjs's createActor() (NPC), no stats are computed here
  * — embedding real ancestry/background/class/feat/spell items with correct
@@ -751,6 +810,14 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   items.push(...await buildLootItems(resolved.loot));
 
   const safeItems = filterItemTypes(items, CHARACTER_ITEM_TYPES, "character");
+
+  // Pre-answer ChoiceSet rule elements so createEmbeddedDocuments() below never
+  // blocks on a PickAThingPrompt the GM has to click through (a Dwarf Fighter
+  // stopped on four of them in live QA). See choice-set.mjs for the verified
+  // pf2e mechanism, the selection policy, and — importantly — its DELIBERATE
+  // inversion of invariant #5: an unresolvable ChoiceSet is left alone so the
+  // prompt still appears, because a dialog beats a silently invalid item.
+  await preresolveChoiceSets(safeItems, concept, resolved, keyAbility);
 
   // -----------------------------------------------------------------------
   // SCHEMA NOTE — the actor `system.*` field names below were VERIFIED against
