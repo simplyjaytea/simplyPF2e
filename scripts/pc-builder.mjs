@@ -1,5 +1,5 @@
 import * as T from "./tables.mjs";
-import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates } from "./compendium.mjs";
+import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates } from "./compendium.mjs";
 import {
   parseCoins, resolveLoot, resolveEquipment, resolveFocusSpells,
   buildEquipmentItems, buildLootItems, filterItemTypes
@@ -137,6 +137,60 @@ export function pcStartingWealthGp(level, amount = "standard") {
 }
 
 /**
+ * Whether a heritage document is legal for a given ancestry document.
+ *
+ * Verified against the real pf2e source (`src/module/item/heritage/data.ts`,
+ * HeritageSystemSchema): a heritage's `system.ancestry` field is a
+ * `SchemaField` that is either `null` (a "versatile heritage" such as
+ * Dhampir or Duskwalker — see e.g.
+ * `packs/heritages/versatile-heritages/dhampir.json`, which has
+ * `"ancestry": null` — valid for ANY ancestry) or an object
+ * `{name, slug, uuid}` naming the single ancestry it belongs to (e.g.
+ * `packs/heritages/dwarf/rock-dwarf.json` has
+ * `"ancestry": {"name": "Dwarf", "slug": "dwarf", "uuid":
+ * "Compendium.pf2e.ancestries.Item.BYj5ZvlXZdpaEgA6"}`). Every pf2e item
+ * also carries a base `system.slug` (nullable, auto-derived from name —
+ * `src/module/item/base/data/model.ts`), so a same-slug fallback covers an
+ * ancestry doc whose `system.slug` hasn't been generated yet.
+ * @param {{system?: {ancestry?: {slug?: string, uuid?: string}|null}}|null} heritageDoc
+ * @param {{name: string, uuid?: string, system?: {slug?: string|null}}|null} ancestryDoc
+ * @returns {boolean}
+ */
+export function heritageMatchesAncestry(heritageDoc, ancestryDoc) {
+  const link = heritageDoc?.system?.ancestry ?? null;
+  if (!link) return true; // versatile heritage — valid for any ancestry
+  if (!ancestryDoc) return false;
+  if (link.uuid && ancestryDoc.uuid && link.uuid === ancestryDoc.uuid) return true;
+  const ancestrySlug = ancestryDoc.system?.slug || slugify(ancestryDoc.name ?? "");
+  return Boolean(link.slug) && Boolean(ancestrySlug) && link.slug === ancestrySlug;
+}
+
+/**
+ * Deterministic fallback heritage for `ancestryDoc`, used when the AI's
+ * heritage pick didn't resolve or belonged to a different ancestry. Heritage
+ * is ABC-adjacent (falls under invariant #5's PC-feat-slot exception, same
+ * as resolveFeatPicks()'s `candidates[0]` fallback below): a PC with no
+ * heritage at all is a worse outcome than a plausible, GM-swappable
+ * substitute. Walks getHeritageCandidates()'s full name-sorted list (NOT
+ * rarity-capped — resolvePCConcept has no rarityCap in scope here, so this
+ * fallback may surface a rarer heritage than the generator's own cap would
+ * normally offer) and resolves+checks each one until a match for
+ * `ancestryDoc` turns up.
+ * @param {object} ancestryDoc
+ * @returns {Promise<object|null>}
+ */
+async function fallbackHeritageFor(ancestryDoc) {
+  const candidates = await getHeritageCandidates();
+  const packIds = await getAllPacksFor("heritages");
+  for (const candidate of candidates) {
+    const entry = await findEntry(packIds, candidate.name, (e) => e.type === "heritage");
+    const doc = await getDocument(entry);
+    if (doc && heritageMatchesAncestry(doc, ancestryDoc)) return doc;
+  }
+  return null;
+}
+
+/**
  * Resolve every compendium reference in a PC concept — the PC counterpart of
  * builder.mjs's resolveConcept(). Assumes concept.ancestry/heritage/
  * background/class already carry GROUNDED real names (i.e. generator-app has
@@ -144,8 +198,14 @@ export function pcStartingWealthGp(level, amount = "standard") {
  * concept) — this just does the findEntry/getDocument/grant-resolution work.
  * Ancestry/background/class are REQUIRED: the build is meaningless without
  * them, so a failure to resolve any of the three throws rather than silently
- * producing a broken actor. Heritage is optional and fails closed (dropped
- * with a console.warn) like every other unresolved AI pick in this module.
+ * producing a broken actor. Heritage: if the AI didn't name one, it's left
+ * empty (like any other unresolved AI pick). If it DID name one, that pick
+ * is validated against the resolved ancestry doc (heritageMatchesAncestry())
+ * — a heritage that doesn't resolve, or resolves to a document belonging to
+ * a DIFFERENT ancestry (a fuzzy-match near-miss, or the AI simply ignoring
+ * the "match the ancestry" prompt instruction), is dropped and replaced with
+ * fallbackHeritageFor(ancestryDoc)'s deterministic ancestry-matched pick
+ * rather than silently embedding a wrong-ancestry heritage.
  *
  * Returns feat SLOTS with their candidate lists (not yet picked) — picking
  * happens in generator-app via ai.mjs's selectFeats(), mirroring how AI calls
@@ -170,9 +230,19 @@ export async function resolvePCConcept(concept) {
   let heritageDoc = null;
   if (concept.heritage) {
     const heritageEntry = await findEntry(await getAllPacksFor("heritages"), concept.heritage, (e) => e.type === "heritage");
-    heritageDoc = await getDocument(heritageEntry);
+    const pickedDoc = await getDocument(heritageEntry);
+    if (!pickedDoc) {
+      console.warn(`simplypf2e | heritage "${concept.heritage}" not found in the compendium — falling back to an ancestry-matched heritage`);
+    } else if (!heritageMatchesAncestry(pickedDoc, ancestryDoc)) {
+      console.warn(`simplypf2e | heritage "${concept.heritage}" does not belong to ancestry "${ancestryDoc.name}" — dropping and falling back to an ancestry-matched heritage`);
+    } else {
+      heritageDoc = pickedDoc;
+    }
     if (!heritageDoc) {
-      console.warn(`simplypf2e | heritage "${concept.heritage}" not found in the compendium — dropping (character will have no heritage)`);
+      heritageDoc = await fallbackHeritageFor(ancestryDoc);
+      if (!heritageDoc) {
+        console.warn(`simplypf2e | no heritage in the compendium matches ancestry "${ancestryDoc.name}" — character will have no heritage`);
+      }
     }
   }
 
