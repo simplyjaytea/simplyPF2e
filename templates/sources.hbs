@@ -2,7 +2,7 @@
   <p class="spf-hint">{{localize "SIMPLYPF2E.Sources.Hint"}}</p>
 
   {{#each categories}}
-    <fieldset class="spf-source-category">
+    <fieldset class="spf-source-category spf-card">
       <legend>{{localize this.label}}</legend>
       {{#if this.packs.length}}
         {{#each this.packs}}
@@ -19,7 +19,7 @@
   {{/each}}
 
   <footer class="spf-actions">
-    <button type="submit">
+    <button type="submit" class="spf-primary">
       <i class="fa-solid fa-floppy-disk"></i> {{localize "SIMPLYPF2E.Sources.Save"}}
     </button>
     <button type="button" data-action="reset">

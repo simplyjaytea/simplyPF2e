@@ -5,16 +5,16 @@
         <li>
           <span class="spf-manage-name">{{this.name}}</span>
           <span class="spf-manage-buttons">
-            <button type="button" data-action="editPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.EditTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.EditTooltip'}}">
+            <button type="button" class="spf-icon-btn" data-action="editPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.EditTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.EditTooltip'}}">
               <i class="fa-solid fa-pen"></i>
             </button>
-            <button type="button" data-action="duplicatePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}">
+            <button type="button" class="spf-icon-btn" data-action="duplicatePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}">
               <i class="fa-solid fa-copy"></i>
             </button>
-            <button type="button" data-action="exportPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ExportTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.ExportTooltip'}}">
+            <button type="button" class="spf-icon-btn" data-action="exportPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ExportTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.ExportTooltip'}}">
               <i class="fa-solid fa-file-export"></i>
             </button>
-            <button type="button" data-action="deletePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}">
+            <button type="button" class="spf-icon-btn" data-action="deletePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}">
               <i class="fa-solid fa-trash"></i>
             </button>
           </span>
@@ -22,7 +22,7 @@
       {{/each}}
     </ul>
   {{else}}
-    <p class="spf-hint">{{localize "SIMPLYPF2E.Presets.ManageEmpty"}}</p>
+    <p class="spf-empty">{{localize "SIMPLYPF2E.Presets.ManageEmpty"}}</p>
   {{/if}}
 
   <footer class="spf-actions">

@@ -145,7 +145,13 @@ export class GeneratorApp extends SpfApp {
       preview: this.#input.mode === "single" ? this.#buildPreviewContext() : null,
       encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
       pcPreview: this.#input.mode === "character" ? this.#buildPCPreviewContext() : null,
-      tokenReport: this._buildTokenReport()
+      tokenReport: this._buildTokenReport(),
+      // Presentation only: show the getting-started panel when the active
+      // mode has no result (busy/error states render their own blocks).
+      showEmptyState: !this.#busy && !this.#error
+        && !(this.#input.mode === "single" && this.#concept)
+        && !(this.#input.mode === "encounter" && this.#encounter)
+        && !(this.#input.mode === "character" && this.#pcConcept)
     };
   }
 

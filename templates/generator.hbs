@@ -27,7 +27,7 @@
     </p>
   {{/if}}
 
-  <fieldset class="spf-inputs" {{#if busy}}disabled{{/if}}>
+  <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
     <legend>
       {{#if encounterMode}}
         {{localize "SIMPLYPF2E.Generator.EncounterLegend"}}
@@ -51,30 +51,6 @@
         <i class="fa-solid fa-user"></i> {{localize "SIMPLYPF2E.Mode.Character"}}
       </label>
     </div>
-    {{#if singleMode}}
-    <div class="form-group spf-preset">
-      <label for="spf-generator-preset">{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
-      <div class="spf-preset-controls">
-        <select id="spf-generator-preset" name="preset">
-          {{#each presets}}
-            <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-          {{/each}}
-        </select>
-        <button type="button" data-action="savePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.SaveTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.SaveTooltip'}}">
-          <i class="fa-solid fa-floppy-disk"></i>
-        </button>
-        <button type="button" data-action="duplicatePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" {{#unless presetSelected}}disabled{{/unless}}>
-          <i class="fa-solid fa-copy"></i>
-        </button>
-        <button type="button" data-action="deletePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" {{#unless selectedPresetIsCustom}}disabled{{/unless}}>
-          <i class="fa-solid fa-trash"></i>
-        </button>
-        <button type="button" data-action="managePresets" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ManageTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.ManageTooltip'}}">
-          <i class="fa-solid fa-gear"></i>
-        </button>
-      </div>
-    </div>
-    {{/if}}
     <div class="form-group stacked">
       {{#if encounterMode}}
         <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.EncounterTheme"}}</label>
@@ -87,15 +63,39 @@
         <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{promptPlaceholder}}">{{input.prompt}}</textarea>
       {{/if}}
     </div>
+    {{#if singleMode}}
+    <div class="form-group spf-preset">
+      <label for="spf-generator-preset">{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
+      <div class="spf-preset-controls">
+        <select id="spf-generator-preset" name="preset">
+          {{#each presets}}
+            <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+          {{/each}}
+        </select>
+        <button type="button" class="spf-icon-btn" data-action="savePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.SaveTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.SaveTooltip'}}">
+          <i class="fa-solid fa-floppy-disk"></i>
+        </button>
+        <button type="button" class="spf-icon-btn" data-action="duplicatePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" {{#unless presetSelected}}disabled{{/unless}}>
+          <i class="fa-solid fa-copy"></i>
+        </button>
+        <button type="button" class="spf-icon-btn" data-action="deletePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" {{#unless selectedPresetIsCustom}}disabled{{/unless}}>
+          <i class="fa-solid fa-trash"></i>
+        </button>
+        <button type="button" class="spf-icon-btn" data-action="managePresets" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ManageTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.ManageTooltip'}}">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+      </div>
+    </div>
+    {{/if}}
     <div class="spf-row">
       <div class="form-group">
         <label for="spf-generator-level">{{#if encounterMode}}{{localize "SIMPLYPF2E.Generator.PartyLevel"}}{{else}}{{localize "SIMPLYPF2E.Generator.Level"}}{{/if}}</label>
         <div class="spf-level-controls">
-          <button type="button" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
+          <button type="button" class="spf-icon-btn" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
             <i class="fa-solid fa-minus"></i>
           </button>
           <input id="spf-generator-level" type="number" name="level" min="{{levelMin}}" max="{{levelMax}}" step="1" value="{{input.level}}">
-          <button type="button" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
+          <button type="button" class="spf-icon-btn" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
             <i class="fa-solid fa-plus"></i>
           </button>
         </div>
@@ -104,11 +104,11 @@
         <div class="form-group">
           <label for="spf-generator-party-size">{{localize "SIMPLYPF2E.Generator.PartySize"}}</label>
           <div class="spf-level-controls">
-            <button type="button" data-action="partyDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.PartySizeDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.PartySizeDown'}}">
+            <button type="button" class="spf-icon-btn" data-action="partyDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.PartySizeDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.PartySizeDown'}}">
               <i class="fa-solid fa-minus"></i>
             </button>
             <input id="spf-generator-party-size" type="number" name="partySize" min="1" max="8" step="1" value="{{input.partySize}}">
-            <button type="button" data-action="partyUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.PartySizeUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.PartySizeUp'}}">
+            <button type="button" class="spf-icon-btn" data-action="partyUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.PartySizeUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.PartySizeUp'}}">
               <i class="fa-solid fa-plus"></i>
             </button>
           </div>
@@ -164,7 +164,7 @@
       </div>
     </div>
     <div class="spf-generate-row">
-      <button type="button" data-action="generate" {{#if busy}}disabled{{/if}}>
+      <button type="button" class="spf-primary" data-action="generate" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-wand-sparkles"></i>
         {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else if encounterPreview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else if pcPreview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
       </button>
@@ -187,8 +187,12 @@
     <p class="notification error" role="alert">{{error}}</p>
   {{/if}}
 
+  {{#if showEmptyState}}
+    <p class="spf-empty">{{localize "SIMPLYPF2E.Generator.EmptyHint"}}</p>
+  {{/if}}
+
   {{#if preview}}
-  <section class="spf-preview">
+  <section class="spf-preview spf-card">
     <header class="spf-statblock-header">
       <h2>{{preview.concept.name}}</h2>
       <span class="spf-level">{{localize "SIMPLYPF2E.Generator.Creature"}} {{preview.concept.level}}</span>
@@ -321,7 +325,7 @@
     {{/if}}
 
     <footer class="spf-actions">
-      <button type="button" data-action="createActor" {{#if busy}}disabled{{/if}}>
+      <button type="button" class="spf-primary" data-action="createActor" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-user-plus"></i> {{localize "SIMPLYPF2E.Generator.CreateActor"}}
       </button>
       {{#if preview.loot.length}}
@@ -337,7 +341,7 @@
   {{/if}}
 
   {{#if encounterPreview}}
-  <section class="spf-preview spf-encounter">
+  <section class="spf-preview spf-card spf-encounter">
     <header class="spf-statblock-header">
       <h2>{{encounterPreview.name}}</h2>
       <span class="spf-level {{#if encounterPreview.overBudget}}spf-over-budget{{/if}}">{{encounterPreview.spent}} / {{encounterPreview.budget}} XP</span>
@@ -345,15 +349,15 @@
     </header>
     <ul class="spf-encounter-members">
       {{#each encounterPreview.members}}
-        <li class="spf-encounter-member {{#if this.skipped}}spf-member-skipped{{/if}}">
+        <li class="spf-encounter-member spf-card {{#if this.skipped}}spf-member-skipped{{/if}}">
           <div class="spf-member-head">
             <strong>{{this.name}}</strong>
             <span class="spf-member-count">
-              <button type="button" data-action="memberDown" data-index="{{this.index}}" data-tooltip="{{localize 'SIMPLYPF2E.Generator.MemberDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.MemberDown'}}" {{#if @root.busy}}disabled{{/if}}>
+              <button type="button" class="spf-icon-btn" data-action="memberDown" data-index="{{this.index}}" data-tooltip="{{localize 'SIMPLYPF2E.Generator.MemberDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.MemberDown'}}" {{#if @root.busy}}disabled{{/if}}>
                 <i class="fa-solid fa-minus"></i>
               </button>
               <span class="spf-member-count-value">×{{this.count}}</span>
-              <button type="button" data-action="memberUp" data-index="{{this.index}}" data-tooltip="{{localize 'SIMPLYPF2E.Generator.MemberUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.MemberUp'}}" {{#if @root.busy}}disabled{{/if}}>
+              <button type="button" class="spf-icon-btn" data-action="memberUp" data-index="{{this.index}}" data-tooltip="{{localize 'SIMPLYPF2E.Generator.MemberUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.MemberUp'}}" {{#if @root.busy}}disabled{{/if}}>
                 <i class="fa-solid fa-plus"></i>
               </button>
             </span>
@@ -376,7 +380,7 @@
       </div>
     {{/if}}
     <footer class="spf-actions">
-      <button type="button" data-action="createActor" {{#if busy}}disabled{{/if}}>
+      <button type="button" class="spf-primary" data-action="createActor" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-users"></i> {{localize "SIMPLYPF2E.Generator.CreateAll"}}
       </button>
       <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>
@@ -387,7 +391,7 @@
   {{/if}}
 
   {{#if pcPreview}}
-  <section class="spf-preview spf-character">
+  <section class="spf-preview spf-card spf-character">
     <header class="spf-statblock-header">
       <h2>{{pcPreview.concept.name}}</h2>
       <span class="spf-level">{{localize "SIMPLYPF2E.Generator.Character"}} {{pcPreview.concept.level}}</span>
@@ -478,7 +482,7 @@
     {{/if}}
 
     <footer class="spf-actions">
-      <button type="button" data-action="createActor" {{#if busy}}disabled{{/if}}>
+      <button type="button" class="spf-primary" data-action="createActor" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-user-plus"></i> {{localize "SIMPLYPF2E.Generator.CreateActor"}}
       </button>
       <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>

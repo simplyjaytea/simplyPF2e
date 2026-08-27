@@ -94,7 +94,10 @@ export class ItemForgeApp extends SpfApp {
         ? game.i18n.format("SIMPLYPF2E.ItemForge.KindsUnavailable", { kinds: this.#unavailableKinds.join(", ") })
         : null,
       preview: this.#kind === "wondrous" ? this.#buildPreviewContext() : this.#buildRunedPreviewContext(),
-      tokenReport: this._buildTokenReport()
+      tokenReport: this._buildTokenReport(),
+      // Presentation only: getting-started panel when there is no result yet.
+      showEmptyState: !this.#busy && !this.#error
+        && !(this.#kind === "wondrous" ? this.#concept : this.#itemData)
     };
   }
 
