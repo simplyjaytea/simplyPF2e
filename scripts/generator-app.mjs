@@ -12,7 +12,8 @@ import {
 } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
-  applyTreasureBudget, equipmentValueGp, lootValueGp, parseCoins, parseScroll, slugify
+  applyTreasureBudget, equipmentValueGp, lootValueGp, parseCoins, parseScroll, slugify,
+  dedupeLootAgainstEquipment, enforceNamedLootBudget
 } from "./builder.mjs";
 import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp
@@ -762,6 +763,15 @@ export class GeneratorApp extends SpfApp {
       // feat picks already made).
       const final = await resolvePCConcept(concept);
       resolved = { ...final, feats: resolved.feats };
+      // Cross-bucket dedup BEFORE any budget math sees the loot list: the AI
+      // sometimes lists the same named item as both starting equipment and
+      // loot (issue found in live QA — a "+1 Striking Dwarven War Axe" and a
+      // "Sturdy Shield (Minor)" both shipped twice). buildEquipmentItems's own
+      // dedup only catches repeats WITHIN equipment, so this drops any loot
+      // entry whose name already appears in equipment. Must happen before the
+      // budget below, or the budget counts gp for an item that then gets
+      // dropped and the PC ends up under-provisioned.
+      resolved.loot = dedupeLootAgainstEquipment(resolved.loot, resolved.equipment);
       // Starting wealth: GM Core Table 10-10 Character Wealth's lump sum for
       // a character created at this level (pcStartingWealthGp), NOT
       // treasureBudget() (an NPC per-encounter share of a PARTY total). PC
@@ -781,6 +791,14 @@ export class GeneratorApp extends SpfApp {
         console.warn(`${MODULE_ID} | PC equipment (${equipmentGp} gp) alone exceeds the starting wealth target (${wealthTarget} gp) — keeping the gear and flooring the loot budget at 0`);
       }
       const lootBudget = Math.max(wealthTarget - equipmentGp, 0);
+      // PC-only: applyTreasureBudget() never trims NAMED items (by design,
+      // for NPC treasure), so AI-named loot (e.g. three separate +1 armors)
+      // could ship far over the starting-wealth budget. Trim named loot to
+      // the budget FIRST — ascending price order naturally keeps cheap
+      // consumables and drops the priciest overflow — then let
+      // applyTreasureBudget do its usual coin-only pad/trim against whatever
+      // value remains.
+      resolved.loot = enforceNamedLootBudget(resolved.loot, lootBudget);
       resolved.loot = await applyTreasureBudget(resolved.loot, lootBudget);
 
       // If most of the (equipment-adjusted) loot budget still sits as coin
@@ -799,6 +817,8 @@ export class GeneratorApp extends SpfApp {
           await this.#refineLoot(concept);
           const topUp = await resolvePCConcept(concept);
           resolved = { ...topUp, feats: resolved.feats };
+          resolved.loot = dedupeLootAgainstEquipment(resolved.loot, resolved.equipment);
+          resolved.loot = enforceNamedLootBudget(resolved.loot, lootBudget);
           resolved.loot = await applyTreasureBudget(resolved.loot, lootBudget);
         } catch (err) {
           console.warn(`${MODULE_ID} | extra PC purchase pass failed, leaving remaining wealth as coin`, err);
