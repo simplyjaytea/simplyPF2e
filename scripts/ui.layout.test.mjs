@@ -77,6 +77,13 @@ assert.match(
   /spf-mode-toggle" role="radiogroup" aria-label=/,
   "generation modes must expose a named native radio group"
 );
+for (const legendKey of ["ConceptLegend", "EncounterLegend", "CharacterLegend"]) {
+  assert.match(
+    generator,
+    new RegExp(`SIMPLYPF2E\\.Generator\\.${legendKey}`),
+    `generation mode must expose its own fieldset legend: ${legendKey}`
+  );
+}
 
 for (const [name, source] of [
   ["generator", generatorApp],

@@ -68,6 +68,8 @@
       "Title": "SimplyPF2e",
       "OpenButton": "SimplyPF2e",
       "ConceptLegend": "Creature Concept",
+      "EncounterLegend": "Encounter Concept",
+      "CharacterLegend": "Player Character Concept",
       "Preset": "Preset",
       "Prompt": "Describe the creature",
       "PromptExample": "e.g.",
