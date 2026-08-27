@@ -414,6 +414,72 @@ try {
     { message: "SIMPLYPF2E.Errors.InvalidResponse" },
     "a non-JSON success response must explain that the endpoint is not Chat Completions compatible"
   );
+
+  // A gateway (OpenRouter, DeepSeek, a local Ollama proxy) can send HTTP 200
+  // and stream: true, then emit an SSE data record carrying only an error
+  // object — insufficient credits, a revoked key, a rate limit — instead of
+  // a choices delta. This must surface the provider's real message instead
+  // of falling through to a generic "empty response" retry.
+  providerReplies.push({
+    rawBody: `data: ${JSON.stringify({ error: { message: "insufficient credits" } })}`,
+    contentType: "text/event-stream"
+  });
+  await assert.rejects(
+    testProviderConnection(),
+    (error) => {
+      assert.match(error.message, /SIMPLYPF2E\.Errors\.ProviderError/);
+      assert.match(error.message, /insufficient credits/);
+      assert.equal(error.retryable, false, "a provider-reported error must not burn a second identical attempt");
+      return true;
+    },
+    "a mid-stream error event must abort the stream with the provider's own message"
+  );
+
+  // Some gateways send the error as a bare string rather than {message}.
+  providerReplies.push({
+    rawBody: `data: ${JSON.stringify({ error: "rate limited" })}`,
+    contentType: "text/event-stream"
+  });
+  await assert.rejects(
+    testProviderConnection(),
+    (error) => {
+      assert.match(error.message, /rate limited/);
+      return true;
+    },
+    "a bare string error payload must also be surfaced"
+  );
+
+  // The non-streaming JSON fallback (a provider that ignores stream: true,
+  // or the compatibility-negotiation path with streaming dropped) can return
+  // the same {error: {...}} shape in an otherwise-200 body with no choices.
+  providerReplies.push({ error: { message: "model overloaded" } });
+  await assert.rejects(
+    testProviderConnection(),
+    (error) => {
+      assert.match(error.message, /SIMPLYPF2E\.Errors\.ProviderError/);
+      assert.match(error.message, /model overloaded/);
+      assert.equal(error.retryable, false);
+      return true;
+    },
+    "a non-streaming 200 response carrying only an error object must not be read as an empty success"
+  );
+
+  // A benign placeholder error field ({} or "") attached to an otherwise
+  // healthy stream must NOT abort the generation — only an error carrying an
+  // actual message is fatal.
+  providerReplies.push({
+    rawBody: [
+      `data: ${JSON.stringify({ error: {}, choices: [{ delta: { content: "{\"ok\":" } }] })}`,
+      `data: ${JSON.stringify({ error: "", choices: [{ delta: { content: "true}" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 2 } })}`,
+      "data: [DONE]"
+    ].join("\n\n"),
+    contentType: "text/event-stream"
+  });
+  {
+    const result = await testProviderConnection();
+    assert.ok(result, "empty error placeholders on stream chunks must not abort a successful generation");
+  }
+
   assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
 } finally {
   globalThis.fetch = originalFetch;
