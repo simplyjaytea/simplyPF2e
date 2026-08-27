@@ -308,10 +308,13 @@ const kebabToCamel = (s) => String(s).replace(/-([a-z0-9])/g, (_, c) => c.toUppe
  * a LEADING key prefix — "Flaming (Greater)" is `greaterFlaming`, not
  * `flamingGreater` (verified against multiple real examples in
  * foundryvtt/pf2e's runes.ts: greaterFortification, greaterCorrosive,
- * greaterInvisibility, majorQuenching, ...).
+ * greaterInvisibility, majorQuenching, ...). All five grade words that
+ * appear as leading key prefixes in that source were confirmed by grepping
+ * it directly: greater*, major*, true* (trueQuenching, trueRooting,
+ * trueStanching), and lesser-/moderate- (lesserDread, moderateDread).
  */
 export function propertyRuneKey(name) {
-  const match = /^(.+?)\s*\((Greater|Major)\)$/i.exec(String(name).trim());
+  const match = /^(.+?)\s*\((Greater|Major|True|Lesser|Moderate)\)$/i.exec(String(name).trim());
   if (!match) return kebabToCamel(slugify(name));
   const grade = match[2].toLowerCase();
   const base = kebabToCamel(slugify(match[1]));
