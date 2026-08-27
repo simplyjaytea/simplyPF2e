@@ -95,6 +95,16 @@ for (const [mode, preview] of [
     `generator must hide other modes' stale previews while ${mode} mode is active`
   );
 }
+assert.match(
+  generatorApp,
+  /#modePrompts = \{ single: "", encounter: "", character: "" \}/,
+  "each generator mode must keep an independent prompt draft"
+);
+assert.match(
+  generatorApp,
+  /this\.#modePrompts\[previousMode\] = renderedPrompt[\s\S]*?this\.#modePrompts\[mode\] \?\? ""/,
+  "mode changes must save the old draft and restore the new mode's draft"
+);
 
 for (const [name, source] of [
   ["generator", generatorApp],

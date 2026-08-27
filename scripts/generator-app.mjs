@@ -74,6 +74,7 @@ export class GeneratorApp extends SpfApp {
     allowSpellcasting: true, preset: "", partySize: 4, threat: "moderate",
     treasureAmount: "standard", rarityCap: "unique"
   };
+  #modePrompts = { single: "", encounter: "", character: "" };
   #busy = false;
   #error = null;
   #concept = null;
@@ -295,10 +296,16 @@ export class GeneratorApp extends SpfApp {
   /** Read the current form inputs into #input. */
   #readForm() {
     const form = this.element;
-    // The textarea is hidden in Random mode; keep the last typed prompt then.
+    const previousMode = this.#input.mode;
+    // Preserve each mode's draft independently. Creature descriptions,
+    // encounter themes, and character briefs are not interchangeable, but a
+    // GM switching back should not lose unfinished text.
     const promptEl = form.querySelector('[name="prompt"]');
-    const prompt = promptEl ? promptEl.value : this.#input.prompt;
+    const renderedPrompt = promptEl ? promptEl.value : this.#input.prompt;
+    if (promptEl) this.#modePrompts[previousMode] = renderedPrompt;
     const mode = form.querySelector('[name="mode"]:checked')?.value ?? this.#input.mode;
+    const prompt = mode === previousMode ? renderedPrompt : (this.#modePrompts[mode] ?? "");
+    this.#modePrompts[mode] = prompt;
     // Clamp to the mode's own range, the same way partySize is clamped below:
     // only Single mode's creature level goes -1..24, and a level left over
     // from a previous mode would otherwise be sent verbatim to the AI prompt
