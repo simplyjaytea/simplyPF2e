@@ -65,6 +65,18 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 | `presets.mjs` | 18 built-in build presets + custom preset CRUD + random briefs. |
 | `*.test.mjs` | Standalone regression checks (`node scripts/<name>.test.mjs`); CI runs every check before release. |
 
+## Agent workflow
+
+Cross-tool operating rules live in [AGENTS.md](AGENTS.md); the live session baton is [HANDOFF.md](HANDOFF.md) — read it at session start, overwrite it at session end. Codex sessions read those same two files.
+
+Claude-side orchestration (when running as Fable/Opus with subagent tools):
+
+- **Fable acts as coordinator**: plans, delegates, verifies, integrates, and owns the final report. It writes HANDOFF.md itself.
+- **Delegate down aggressively**: Sonnet for mechanical execution of an already-specified plan (apply a mapped-out fix, write a test mirroring an existing one, mechanical renames). Opus for open-ended design, hard debugging, or anything where the plan itself is the hard part. Haiku only for trivial bulk text operations — this repo rarely has any.
+- **Never delegate the two things that bite this repo**: (1) pf2e schema verification — the delegate must be explicitly told to fetch real `foundryvtt/pf2e` source, and the coordinator spot-checks the citation; (2) release/workflow `.yml` reasoning.
+- **Every schema-dependent or balance-sensitive diff gets an independent reviewer agent** (fresh context, not the builder) before the PR is called done — proven to catch real bugs three separate times (HISTORY.md process notes).
+- Subagent claims of "verified" require a quoted source line; treat unquoted verification claims as recalled, i.e. unverified.
+
 ## How to work here
 
 - **Branch + PR, never direct to main.** A merge to `main` auto-publishes a public release to every install's "latest" manifest — treat it like a manual `gh release create`. `.github/workflows/*.yml` changes need a real test merge; syntax validity doesn't catch trigger-chain bugs (two were found that way).
@@ -80,9 +92,9 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 - Not writing `system.price`/`system.level` on a runed item is **correct** — `physical/document.ts` recomputes both via `computeLevelRarityPrice()` every prep.
 - A character's `resources.focus.max` is zeroed every prep and rebuilt only from ActiveEffectLike rules, so the PC focus pool needs a cloned RE; an NPC's can be plain actor data.
 
-## Current state (2026-08-27)
+## Current state (2026-08-28)
 
-Current work: live Foundry QA follow-up on `codex/fix-provider-setup-cleanup` (PR #70). A configured cloud OpenAI-compatible provider completed its production-path connection check and full creature, non-spellcasting character, and encounter workflows in Foundry V14 / PF2e 8.4.1. The resulting level-1 character sheet had derived HP, AC, saves, ABC data, feats, and inventory; the encounter created its actor folder at the expected 30/40 XP trivial budget. QA found and fixed provider-dialog cleanup after close, mode-specific legends/previews/prompt drafts, PF2e 8's renamed ability-glossary pack, and native PF2e character grants. The fixes are green in PR checks but not deployed; re-test the grant chain after release.
+PR #70 (live-QA fixes) **merged 2026-08-27; release v0.3.5.34 auto-published**. The post-merge live re-test of the native character grant chain has NOT happened yet — the merging session ended abruptly. A full-codebase multi-agent audit (2026-08-28) produced 12 adversarially-confirmed findings (3 high: PC starting-wealth table misuse at level ≥2, "(True)"-grade property rune keys, preset-name XSS) — full list and fix plan in [HANDOFF.md](HANDOFF.md). No fixes written yet. Live QA target: user's VPS-hosted Foundry.
 
 Cloud/local provider setup retains guided presets, authorized `/models` discovery with editable manual fallback, direct endpoint/model/key editing, failure recovery, an exact production-path connection check, explicit provider/model identity, empty-model and browser mixed-content checks, exact endpoint-bound keys, modern first-party OpenAI request fields, and compatibility negotiation for older OpenAI-compatible servers. Generator/item-forge entry points consistently enforce GM + PF2e access, including the public console API. The apps share a compact provider strip; responsive generator controls and the focused setup were browser-checked down to 360 px without overflow. See the newest HISTORY.md entry for background and regression scope.
 
