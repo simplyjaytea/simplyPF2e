@@ -2,6 +2,14 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-27 — Live Foundry QA and follow-up fixes
+
+- Connected a configured cloud OpenAI-compatible provider to the production Foundry V14 / PF2e 8.4.1 test world. The in-app **Test provider connection** path succeeded with the configured model and reported provider token usage.
+- Exercised the full creature preview, non-spellcasting character, and encounter paths. The character preview matched 23/24 grounded picks; its created level-1 sheet had derived HP, AC, saves, ancestry, heritage, background, class, feats, and inventory. The encounter created a 30/40 XP trivial encounter folder and actor. Test actors remain in the world intentionally.
+- Live QA found and fixed six release blockers in PR #70: closing a successful **Save & Test** dialog no longer dereferences a destroyed application element; generation modes now have their own legend, visible preview, primary action state, and retained prompt draft; the PF2e 8 ability glossary's current pack id is accepted alongside older ids; Compendium Sources no longer calls module-wide behavior Item Forge-only; and PCs now embed items through PF2e's native document pipeline so recursive grants and Rule Elements execute. The observed prior failure was a Dwarf's missing Clan Dagger with an unresolved `clanWeapon` validation warning.
+- Validation for PR #70: 50 JavaScript syntax checks, 25 regression files, JSON validation, `git diff --check`, and GitHub PR workflow run #20 all passed. The fix is deliberately not claimed live-proven until it is merged, the test world updates, and the character-grant path is re-run.
+- Remaining live gap: Item Forge is still hidden from ordinary UI until one actual item is forged and inspected. It can be opened with the documented GM-only API, but creating the temporary Foundry macro required for that test awaits user authorization.
+
 ## 2026-08-26 — Consumer readiness pass (cloud/local providers and compact UI)
 
 - Modernized first-party OpenAI Chat Completions requests to use a `developer` message and `max_completion_tokens`; other OpenAI-compatible providers retain the broadly supported `system`/`max_tokens` shape. A targeted 400/422 compatibility retry can remove rejected optional controls or negotiate the token-limit field in either direction without looping.
