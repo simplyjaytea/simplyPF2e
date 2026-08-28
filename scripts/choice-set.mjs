@@ -114,6 +114,49 @@ function hasPredicate(entry) {
     && !(Array.isArray(entry.predicate) && entry.predicate.length === 0);
 }
 
+/**
+ * Read-only hints from the final embedded items, including native ABC grants.
+ * PF2e master/8.4.1 ChoiceSet constructor accepts string/number/plain-object
+ * selections. A dismissed prompt can set ignored, but so can other conditions:
+ * neither ignored nor a missing selection proves a required choice is broken.
+ * Never evaluate predicates, reapply rules, or certify the character complete.
+ */
+export function reviewUnresolvedChoices(items) {
+  const report = { choices: [], incomplete: false };
+  if (!Array.isArray(items)) return { choices: [], incomplete: true };
+  for (const item of items) {
+    try {
+      if (!item || typeof item !== "object") { report.incomplete = true; continue; }
+      if (item.type === "feat" && item.suppressed === true) continue;
+      const rules = item.system?.rules;
+      if (rules === undefined) continue;
+      if (!Array.isArray(rules)) { report.incomplete = true; continue; }
+      for (const rule of rules) {
+        if (!rule || typeof rule !== "object") { report.incomplete = true; continue; }
+        if (rule.key !== "ChoiceSet" || rule.allowNoSelection === true) continue;
+        const selection = rule.selection;
+        const objectSelection = isPlainObject(selection)
+          && [Object.prototype, null].includes(Object.getPrototypeOf(selection));
+        if (typeof selection === "string" || (typeof selection === "number" && Number.isFinite(selection))
+          || objectSelection) continue;
+        report.choices.push({
+          itemId: typeof item.id === "string" ? item.id : "",
+          itemName: typeof item.name === "string" ? item.name : "",
+          prompt: typeof rule.prompt === "string" && rule.prompt ? rule.prompt
+            : typeof rule.label === "string" && rule.label ? rule.label : "PF2E.UI.RuleElements.ChoiceSet.Prompt",
+          flag: normalizeChoiceFlag(rule.flag) ?? "",
+          conditional: hasPredicate(rule),
+          ignored: rule.ignored === true
+        });
+      }
+    } catch {
+      // A malformed/homebrew item must not turn a successful creation into a failure.
+      report.incomplete = true;
+    }
+  }
+  return report;
+}
+
 function isItemUuid(value) {
   return typeof value === "string" && /^(?:Compendium|Item)\./.test(value);
 }

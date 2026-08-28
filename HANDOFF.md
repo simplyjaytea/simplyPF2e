@@ -4,7 +4,7 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Current session — 2026-08-28
 
-- User goal: bug repairs, QOL, and greater automation using Sol/Terra. Item Forge remains deferred.
+- Latest user goal: finish the current feature/work and update documentation. The native-choice review follow-up is complete locally; no new automation scope was started. Item Forge remains deferred.
 - Working branch: `codex/pc-spellcasting`, stacked on local `6f188d0` and `be5859d`, based on `origin/main` `004bffc` (PR #82 / release v0.3.5.42 at last API check, not refreshed this pass). Check git for authoritative current state.
 - No authenticated GitHub writes, push, PR, merge, or deployment in these local sessions. User permission to push/open a PR was requested and has not been granted. Branch + PR only; never direct main.
 - User-owned untracked `.claude/` is untouched.
@@ -34,12 +34,20 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 - Preview labels planned signatures and reports selected/eligible counts; missing or rejected choices remain manual. Prepared and unsupported/legacy profiles do not gain signatures. Bonus-signature feats and subclass-dependent casting remain outside this ordinary-class implementation.
 - All 41 regression files, all `.mjs` syntax, module/localization JSON, and diff whitespace checks pass. Sol independently approved the final diff and targeted tests. No provider or live Foundry calls; actual virtual signature rows, upward/downward casting, and slot expenditure need VPS QA.
 
+## Completed current feature — native-choice review
+
+- Added a read-only post-creation snapshot of embedded ChoiceSets lacking a recorded selection, including native ABC-generated features. Optional choices and suppressed feats are excluded; ignored/predicated rules are review hints, not proof of a required missing choice. Malformed/unreadable items produce an incomplete-inspection warning. No predicate evaluation, rule reapplication, actor mutation, or deletion.
+- Generator retains an escaped report for the last created PC until dismissed, replaced by another successful PC creation, or the app closes. Open Character targets that exact actor. Copy explicitly says the snapshot does not refresh after edits and is not full validation; no empty “all complete” report is shown.
+- Fixed PC duplicate-retry risk: the draft clears as soon as native creation succeeds, before report/notification/sheet presentation. Failed sheet or final report rendering warns that the actor exists; genuine creation failure retains the draft.
+- Fresh PF2e master and 8.4.1 source checks confirm there is no supported general ABC preselection seam: ABC children are fetched/cloned inside native creation. Existing direct/one-level GrantItem preselection remains intact. Native flags are selection outputs, not a generic child-choice input.
+- Independent reviewer approved the final diff after its report-render failure finding was fixed. All 43 regression files pass, including pure review and unmodified-production-app lifecycle tests with mocked imports/platform. All module syntax, JSON parsing, and whitespace checks pass. Template rendering itself and live native behavior still require VPS QA; no real provider or Foundry requests in this pass.
+
 ## Exact next steps
 
 1. Check git for the local HP, choice automation, base spellcasting, and signature/repertoire commits. Obtain user permission before pushing/opening a PR; do not treat this goal continuation as publication approval.
 2. PR/live QA checklist after release: create a level-1 Dwarf Fighter and a higher-level/high-Int PC; inspect grounded skill/feature selections, native grant chains, bonus languages, and current HP equal to final max.
 3. Verify the UI transitions from AI selection to native feature application; complete remaining dialogs. Exercise a failing provider in a disposable test context and confirm native fallback, spent token reporting, and no duplicate/partial actor.
-4. Automation still incomplete: ABC-generated/deeper/dynamic/predicated/optional/drop-enabled choices stay native. Closing a required native prompt can leave an ignored rule without rejecting creation. A future review report must distinguish this from suppressed or inapplicable choices; never delete actors merely for dismissed prompts.
+4. After publication, exercise the new review report: complete a normal PC, dismiss a native feature prompt, inspect a conditional/optional/suppressed feature, open the exact created actor, and dismiss the report. Confirm the warning is a snapshot, not a required-choice count or a live validator. ABC-generated/deeper/dynamic/predicated/optional/drop-enabled choices still stay native; never delete actors merely for dismissed prompts.
 5. Native HP caveat: Item._onCreate may launch detached actor updates (e.g. LoseHitPoints). The HP fix follows awaited item creation, not every rule/module follow-up; test unusual HP-mutating rules if present. No delays or hook overrides were added.
 6. Release-workflow `lang/en.json` validation remains a separate open gap. Focus spells, Free Archetype, PC runes, presets, and a full local-provider actor flow also need targeted QA.
 7. Spellcasting live QA after publication: create a level-1/5 Wizard or Cleric and level-2/3/19 Bard, Sorcerer, or Oracle; check base counts, five cantrips, prepared-slot IDs/casting/expending, repeated and heightened spells, entry ability/tradition, and unchanged native grants/full HP. At 3+ inspect signature virtual rows, cast a learned-heightened signature downward and upward, and confirm correct slot expenditure; at 19 verify two common rank-ten repertoire spells and one slot. Exercise an empty/failed plan and missing-signature preview; verify disabled casting stays disabled. Restricted bonus slots and bloodline/patron choices still need manual inspection.

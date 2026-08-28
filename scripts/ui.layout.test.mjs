@@ -333,4 +333,20 @@ for (const [name, source] of [
     "the surprise hint must live in the encounter placeholder");
 }
 
+// Native-choice review is an escaped, explicitly limited snapshot, not an actor repair.
+const reviewCard = generator.slice(generator.indexOf("{{#if characterReview}}"));
+assert.match(reviewCard, /role="status"/);
+assert.match(reviewCard, /\{\{characterReview.actorName\}\}/);
+assert.match(reviewCard, /\{\{this.itemName\}\}/);
+assert.match(reviewCard, /\{\{localize this.prompt\}\}/);
+assert.doesNotMatch(reviewCard, /\{\{\{/);
+for (const action of ["openReviewedCharacter", "dismissCharacterReview"]) {
+  assert.match(reviewCard, new RegExp(`data-action="${action}"`));
+  assert.match(generatorApp, new RegExp(`${action}: GeneratorApp\\.#on`));
+}
+const reviewLanguage = JSON.parse(langJson).SIMPLYPF2E.Generator;
+assert.match(reviewLanguage.ReviewHint, /snapshot.*not a full character validation/);
+assert.match(reviewLanguage.ReviewHint, /conditional or intentionally disabled/);
+assert.match(reviewLanguage.ReviewIncomplete, /Not every item/);
+
 console.log("UI layout contract checks passed.");

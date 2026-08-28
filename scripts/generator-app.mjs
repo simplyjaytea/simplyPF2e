@@ -19,6 +19,7 @@ import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp
 } from "./pc-builder.mjs";
 import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
+import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, updateCustomPreset,
@@ -50,6 +51,8 @@ export class GeneratorApp extends SpfApp {
       generateRandomEncounter: GeneratorApp.#onGenerateRandomEncounter,
       createActor: GeneratorApp.#onCreateActor,
       discard: GeneratorApp.#onDiscard,
+      dismissCharacterReview: GeneratorApp.#onDismissCharacterReview,
+      openReviewedCharacter: GeneratorApp.#onOpenReviewedCharacter,
       savePreset: GeneratorApp.#onSavePreset,
       duplicatePreset: GeneratorApp.#onDuplicatePreset,
       deletePreset: GeneratorApp.#onDeletePreset,
@@ -89,6 +92,8 @@ export class GeneratorApp extends SpfApp {
   /** Character mode result: normalized PC concept + resolved documents. */
   #pcConcept = null;
   #pcResolved = null;
+  /** Snapshot for the last created PC; UI-only, never written to actor flags. */
+  #characterReview = null;
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
 
@@ -151,10 +156,11 @@ export class GeneratorApp extends SpfApp {
       preview: this.#input.mode === "single" ? this.#buildPreviewContext() : null,
       encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
       pcPreview: this.#input.mode === "character" ? this.#buildPCPreviewContext() : null,
+      characterReview: this.#characterReview,
       tokenReport: this._buildTokenReport(),
       // Presentation only: show the getting-started panel when the active
       // mode has no result (busy/error states render their own blocks).
-      showEmptyState: !this.#busy && !this.#error
+      showEmptyState: !this.#busy && !this.#error && !this.#characterReview
         && !(this.#input.mode === "single" && this.#concept)
         && !(this.#input.mode === "encounter" && this.#encounter)
         && !(this.#input.mode === "character" && this.#pcConcept)
@@ -1101,6 +1107,7 @@ export class GeneratorApp extends SpfApp {
     this.#error = null;
     const applyingMessage = game.i18n.localize("SIMPLYPF2E.Progress.ApplyingCharacter");
     this.#busyMessage = applyingMessage;
+    let created = false;
     try {
       await this.render();
       const actor = await createCharacterActor(this.#pcConcept, this.#pcResolved, {
@@ -1129,10 +1136,30 @@ export class GeneratorApp extends SpfApp {
           }
         }
       });
-      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
-      actor.sheet.render(true);
+      // Creation has committed. Presentation failures must never leave a
+      // retryable draft that creates a second actor.
+      created = true;
       this.#pcConcept = null;
       this.#pcResolved = null;
+      this.#characterReview = null;
+      try {
+        let review;
+        try {
+          review = reviewUnresolvedChoices(actor.items.contents);
+        } catch {
+          review = { choices: [], incomplete: true };
+        }
+        if (review.choices.length || review.incomplete) {
+          this.#characterReview = { ...review, actorId: actor.id, actorName: actor.name };
+          ui.notifications.warn(game.i18n.format("SIMPLYPF2E.Generator.ReviewCreated", { name: actor.name }));
+        } else {
+          ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
+        }
+        await actor.sheet.render(true);
+      } catch (err) {
+        console.warn(`${MODULE_ID} | character created, but presentation failed`, err);
+        ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed"));
+      }
     } catch (err) {
       console.error(`${MODULE_ID} | character actor creation failed`, err);
       this.#error = err.message;
@@ -1140,8 +1167,28 @@ export class GeneratorApp extends SpfApp {
       this.#busy = false;
       this.#busyMessage = null;
       this._progress = null;
-      await this.render();
+      try {
+        await this.render();
+      } catch (err) {
+        if (!created) throw err;
+        console.warn(`${MODULE_ID} | character created, but review rendering failed`, err);
+        ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed"));
+      }
     }
+  }
+
+  static async #onDismissCharacterReview() {
+    this.#characterReview = null;
+    await this.render();
+  }
+
+  static async #onOpenReviewedCharacter() {
+    const actor = game.actors.get(this.#characterReview?.actorId);
+    if (!actor) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ReviewUnavailable"));
+      return;
+    }
+    await actor.sheet.render(true);
   }
 
   /** Create every encounter member, each with closest-match bestiary art. */

@@ -500,4 +500,23 @@
     </footer>
   </section>
   {{/if}}
+  {{#if characterReview}}
+  <section class="spf-preview spf-card" aria-label="{{localize 'SIMPLYPF2E.Generator.ReviewTitle'}}">
+    <h2>{{localize "SIMPLYPF2E.Generator.ReviewTitle"}}</h2>
+    <h3>{{characterReview.actorName}}</h3>
+    <p class="notification warning" role="status">{{localize "SIMPLYPF2E.Generator.ReviewHint"}}</p>
+    {{#if characterReview.incomplete}}
+      <p class="notification warning" role="status">{{localize "SIMPLYPF2E.Generator.ReviewIncomplete"}}</p>
+    {{/if}}
+    <ul class="spf-list">
+      {{#each characterReview.choices}}
+        <li><strong>{{this.itemName}}</strong> — {{localize this.prompt}}</li>
+      {{/each}}
+    </ul>
+    <footer class="spf-actions">
+      <button type="button" data-action="openReviewedCharacter">{{localize "SIMPLYPF2E.Generator.OpenCharacter"}}</button>
+      <button type="button" data-action="dismissCharacterReview">{{localize "SIMPLYPF2E.Generator.DismissReview"}}</button>
+    </footer>
+  </section>
+  {{/if}}
 </div>

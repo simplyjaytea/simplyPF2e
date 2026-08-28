@@ -1,0 +1,128 @@
+// Execute the unmodified production app with mocked imports/platform services.
+// No provider calls, Foundry documents, or test-only production hooks.
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import vm from "node:vm";
+import { reviewUnresolvedChoices } from "./choice-set.mjs";
+
+if (!vm.SourceTextModule) {
+  const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
+  process.exit(run.status ?? 1);
+}
+
+let actor, createFailure, creates = 0, sheetCalls = 0;
+const notices = [];
+class App {
+  element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
+    : selector.includes('name="allowSpellcasting"') ? { checked: false } : null };
+  async render() { this.context = await this._prepareContext(); }
+  _beginProgress() {}
+  async _setStep() {}
+  _recordTokens() {}
+  _buildTokenReport() { return null; }
+}
+const context = vm.createContext({
+  console: { log() {}, warn() {}, error() {} },
+  game: {
+    i18n: { localize: (key) => key, format: (key) => key },
+    actors: { get: (id) => id === actor?.id ? actor : null }
+  },
+  ui: { notifications: Object.fromEntries(["info", "warn"].map((kind) => [kind, (text) => notices.push([kind, text])])) }
+});
+const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fighter" },
+  backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [], equipment: [], loot: [] });
+const mocks = {
+  SpfApp: App, MODULE_ID: "simplypf2e", reviewUnresolvedChoices,
+  getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
+  BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
+  THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, randomBrief: () => "A dwarf",
+  generatePCConcept: async () => ({ concept: { name: "Test", level: 1, equipment: [], loot: [] } }),
+  normalizePCConcept: (raw) => raw,
+  getAncestryCandidates: () => [], getBackgroundCandidates: () => [], getClassCandidates: () => [], getHeritageCandidates: () => [],
+  selectAncestryBackgroundClass: async () => ({ ancestry: "Dwarf", background: "Warrior", class: "Fighter" }),
+  resolvePCConcept: async () => resolved(), pcSpellcastingProfile: () => null, slugify: (name) => name.toLowerCase(),
+  generatePCLoot: async () => ({ loot: [] }), normalizeLoot: (loot) => loot,
+  dedupeLootAgainstEquipment: (loot) => loot, enforceNamedLootBudget: (loot) => loot, applyTreasureBudget: (loot) => loot,
+  pcStartingWealthGp: () => 0, equipmentValueGp: () => 0, lootValueGp: () => 0,
+  createCharacterActor: async () => { creates++; if (createFailure) throw createFailure; return actor; }
+};
+const source = await readFile(new URL("./generator-app.mjs", import.meta.url), "utf8");
+const appModule = new vm.SourceTextModule(source, { context });
+await appModule.link((specifier) => {
+  const imports = [...source.matchAll(/import\s*\{([^}]+)\}\s*from\s*"([^"]+)"/g)]
+    .filter((match) => match[2] === specifier).flatMap((match) => match[1].split(",").map((name) => name.trim()));
+  return new vm.SyntheticModule(imports, function () {
+    for (const name of imports) this.setExport(name, mocks[name] ?? (() => { throw new Error(`Unexpected dependency: ${name}`); }));
+  }, { context });
+});
+await appModule.evaluate();
+const { GeneratorApp } = appModule.namespace;
+const actions = GeneratorApp.DEFAULT_OPTIONS.actions;
+async function generate() {
+  const app = new GeneratorApp();
+  await actions.generateRandom.call(app);
+  assert.equal(app.context.error, null);
+  assert.ok(app.context.pcPreview, "real generation flow must seed the private PC draft");
+  return app;
+}
+function setActor({ items = [], failSheet = false } = {}) {
+  actor = { id: "created", name: "<img src=x>", items: { contents: items }, sheet: { async render() {
+    sheetCalls++;
+    if (failSheet) throw new Error("sheet failure");
+  } } };
+}
+setActor({ items: [{ id: "feature", name: "Feature", type: "feat", system: { rules: [{ key: "ChoiceSet", ignored: true }] } }], failSheet: true });
+const app = await generate();
+await actions.createActor.call(app);
+assert.equal(app.context.error, null, "a presentation error is not a creation failure");
+assert.equal(app.context.pcPreview, null);
+assert.equal(app.context.characterReview.choices.length, 1);
+assert.equal(app.context.characterReview.actorName, "<img src=x>");
+assert.equal(app.context.showEmptyState, false);
+assert.ok(notices.some(([, text]) => text.endsWith("CreatedPresentationFailed")));
+await actions.createActor.call(app);
+assert.equal(creates, 1, "a failed sheet must not allow duplicate creation");
+actor.sheet.render = async () => { sheetCalls++; };
+await actions.openReviewedCharacter.call(app);
+assert.equal(sheetCalls, 2);
+actor = null;
+await actions.openReviewedCharacter.call(app);
+assert.ok(notices.some(([, text]) => text.endsWith("ReviewUnavailable")));
+await actions.dismissCharacterReview.call(app);
+assert.equal(app.context.characterReview, null);
+assert.equal(creates, 1, "review actions never create or recreate actors");
+
+setActor();
+Object.defineProperty(actor, "items", { get() { throw new Error("unreadable items"); } });
+const unreadable = await generate();
+await actions.createActor.call(unreadable);
+assert.equal(unreadable.context.characterReview.incomplete, true);
+assert.equal(unreadable.context.pcPreview, null);
+
+const renderFailure = await generate();
+renderFailure.render = async function () {
+  await App.prototype.render.call(this);
+  if (this.context.characterReview && !this.context.busy) throw new Error("review template failed");
+};
+const warningCount = notices.filter(([, text]) => text.endsWith("CreatedPresentationFailed")).length;
+await actions.createActor.call(renderFailure);
+assert.equal(renderFailure.context.pcPreview, null);
+assert.equal(notices.filter(([, text]) => text.endsWith("CreatedPresentationFailed")).length, warningCount + 1);
+const afterRenderFailure = creates;
+await actions.createActor.call(renderFailure);
+assert.equal(creates, afterRenderFailure);
+
+setActor();
+const clean = await generate();
+await actions.createActor.call(clean);
+assert.equal(clean.context.characterReview, null, "no empty all-complete claim");
+assert.equal(clean.context.pcPreview, null);
+
+createFailure = new Error("native creation rejected");
+const failed = await generate();
+await actions.createActor.call(failed);
+assert.equal(failed.context.error, createFailure.message);
+assert.ok(failed.context.pcPreview, "genuine creation failure retains the retryable draft");
+assert.equal(failed.context.busy, false);
+console.log("generator-app.review.test.mjs: production generation/creation/review lifecycle passed");
