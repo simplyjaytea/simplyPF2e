@@ -20,6 +20,7 @@ import {
 } from "./pc-builder.mjs";
 import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
+import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, updateCustomPreset,
@@ -190,6 +191,8 @@ export class GeneratorApp extends SpfApp {
       heritage,
       background,
       class: pcClass,
+      skillPriorities: skillPriorityOrder(concept.skillPriorities, concept.keyAbility).order.map((slug) => ({ name: GeneratorApp.#skillName(slug) })),
+      automaticSkills: normalizeSkillPriorities(concept.skillPriorities).length === 0,
       spellcastingNotice: concept.spellcastingNoticeKey ? game.i18n.localize(concept.spellcastingNoticeKey) : null,
       signatureSummary: signatureRanks.length ? game.i18n.format("SIMPLYPF2E.Preview.PCSignaturePlan", {
         selected: plannedSignatures.size, total: signatureRanks.length
@@ -199,6 +202,32 @@ export class GeneratorApp extends SpfApp {
       equipment,
       loot,
       matchSummary: this.#matchSummary([ancestry], heritage ? [heritage] : [], [background], [pcClass], feats, spells, equipment, loot)
+    };
+  }
+
+  static #skillName(slug) {
+    return game.i18n.localize(globalThis.CONFIG?.PF2E?.skills?.[slug]?.label ?? slug);
+  }
+
+  static #skillReportContext(report) {
+    if (!report) return null;
+    const warningKeys = {
+      "native-data": "NativeData", "training-data": "TrainingData", "schedule": "Schedule",
+      "grant-timing": "GrantTiming", "native-rank-rule": "NativeRule",
+      "intelligence-timing": "IntelligenceTiming",
+      "unspent-training": "UnspentTraining", "unspent-increases": "UnspentIncreases"
+    };
+    return {
+      rows: report.rows.map((row) => ({ name: row.name ?? this.#skillName(row.slug),
+        rank: game.i18n.localize(`SIMPLYPF2E.Skills.Rank${row.rank}`) })),
+      automatic: report.automatic,
+      budget: report.trainingBudget !== null && report.unspentTraining !== null
+        ? game.i18n.format("SIMPLYPF2E.Skills.Budget", {
+          spent: report.trainingBudget - report.unspentTraining, total: report.trainingBudget
+        }) : null,
+      warnings: report.warnings.map((code) => game.i18n.format(`SIMPLYPF2E.Skills.${warningKeys[code] ?? "NativeData"}`, {
+        count: code === "unspent-training" ? report.unspentTraining : report.unspentIncreases
+      }))
     };
   }
 
@@ -1110,7 +1139,7 @@ export class GeneratorApp extends SpfApp {
     let created = false;
     try {
       await this.render();
-      const actor = await createCharacterActor(this.#pcConcept, this.#pcResolved, {
+      const { actor, skillReport } = await createCharacterActor(this.#pcConcept, this.#pcResolved, {
         selectChoices: async (groups) => {
           const label = game.i18n.localize("SIMPLYPF2E.Progress.CharacterChoices");
           this.#busyMessage = null;
@@ -1149,8 +1178,11 @@ export class GeneratorApp extends SpfApp {
         } catch {
           review = { choices: [], incomplete: true };
         }
-        if (review.choices.length || review.incomplete) {
-          this.#characterReview = { ...review, actorId: actor.id, actorName: actor.name };
+        if (skillReport || review.choices.length || review.incomplete) {
+          this.#characterReview = { ...review, actorId: actor.id, actorName: actor.name,
+            skills: GeneratorApp.#skillReportContext(skillReport) };
+        }
+        if (review.choices.length || review.incomplete || skillReport?.warnings.length) {
           ui.notifications.warn(game.i18n.format("SIMPLYPF2E.Generator.ReviewCreated", { name: actor.name }));
         } else {
           ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));

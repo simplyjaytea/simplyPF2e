@@ -5,13 +5,14 @@ import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import vm from "node:vm";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
+import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 
 if (!vm.SourceTextModule) {
   const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
   process.exit(run.status ?? 1);
 }
 
-let actor, createFailure, creates = 0, sheetCalls = 0;
+let actor, createFailure, skillReport, creates = 0, sheetCalls = 0;
 const notices = [];
 class App {
   element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
@@ -33,7 +34,7 @@ const context = vm.createContext({
 const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fighter" },
   backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [], equipment: [], loot: [] });
 const mocks = {
-  SpfApp: App, MODULE_ID: "simplypf2e", reviewUnresolvedChoices,
+  SpfApp: App, MODULE_ID: "simplypf2e", reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
   THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, randomBrief: () => "A dwarf",
@@ -45,7 +46,7 @@ const mocks = {
   generatePCLoot: async () => ({ loot: [] }), normalizeLoot: (loot) => loot,
   dedupeLootAgainstEquipment: (loot) => loot, enforceNamedLootBudget: (loot) => loot, applyTreasureBudget: (loot) => loot,
   pcStartingWealthGp: () => 0, equipmentValueGp: () => 0, lootValueGp: () => 0,
-  createCharacterActor: async () => { creates++; if (createFailure) throw createFailure; return actor; }
+  createCharacterActor: async () => { creates++; if (createFailure) throw createFailure; return { actor, skillReport }; }
 };
 const source = await readFile(new URL("./generator-app.mjs", import.meta.url), "utf8");
 const appModule = new vm.SourceTextModule(source, { context });
@@ -118,6 +119,19 @@ const clean = await generate();
 await actions.createActor.call(clean);
 assert.equal(clean.context.characterReview, null, "no empty all-complete claim");
 assert.equal(clean.context.pcPreview, null);
+
+skillReport = { rows: [{ slug: "medicine", rank: 2, name: null }, { slug: "lore:owned", rank: 1, name: "<img src=x> Lore" }],
+  warnings: ["unspent-increases"], automatic: true, trainingBudget: 3, unspentTraining: 0, unspentIncreases: 1 };
+const skills = await generate();
+assert.equal(skills.context.pcPreview.automaticSkills, true);
+assert.equal(skills.context.pcPreview.skillPriorities.length, 16);
+await actions.createActor.call(skills);
+assert.equal(skills.context.characterReview.skills.rows[0].name, "medicine");
+assert.equal(skills.context.characterReview.skills.rows[0].rank, "SIMPLYPF2E.Skills.Rank2");
+assert.equal(skills.context.characterReview.skills.rows[1].name, "<img src=x> Lore");
+assert.deepEqual(Array.from(skills.context.characterReview.skills.warnings), ["SIMPLYPF2E.Skills.UnspentIncreases"]);
+assert.equal(skills.context.pcPreview, null);
+skillReport = undefined;
 
 createFailure = new Error("native creation rejected");
 const failed = await generate();

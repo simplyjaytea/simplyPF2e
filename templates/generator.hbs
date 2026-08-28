@@ -418,6 +418,12 @@
       </span>
     </div>
 
+    <h3>{{localize "SIMPLYPF2E.Skills.Priorities"}}</h3>
+    <p>{{#if pcPreview.automaticSkills}}{{localize "SIMPLYPF2E.Skills.Automatic"}}{{else}}{{localize "SIMPLYPF2E.Skills.PreferenceHint"}}{{/if}}</p>
+    <ul class="spf-list spf-inline">
+      {{#each pcPreview.skillPriorities}}<li>{{this.name}}</li>{{/each}}
+    </ul>
+
     {{#if pcPreview.feats.length}}
       <h3>{{localize "SIMPLYPF2E.Preview.Feats"}}</h3>
       <ul class="spf-list spf-inline">
@@ -504,7 +510,19 @@
   <section class="spf-preview spf-card" aria-label="{{localize 'SIMPLYPF2E.Generator.ReviewTitle'}}">
     <h2>{{localize "SIMPLYPF2E.Generator.ReviewTitle"}}</h2>
     <h3>{{characterReview.actorName}}</h3>
-    <p class="notification warning" role="status">{{localize "SIMPLYPF2E.Generator.ReviewHint"}}</p>
+    <p>{{localize "SIMPLYPF2E.Skills.Snapshot"}}</p>
+    {{#if characterReview.skills}}
+      <h3>{{localize "SIMPLYPF2E.Skills.Result"}}</h3>
+      {{#if characterReview.skills.automatic}}<p>{{localize "SIMPLYPF2E.Skills.Automatic"}}</p>{{/if}}
+      {{#if characterReview.skills.budget}}<p>{{characterReview.skills.budget}}</p>{{/if}}
+      <ul class="spf-list spf-inline">
+        {{#each characterReview.skills.rows}}<li>{{this.name}} — {{this.rank}}</li>{{/each}}
+      </ul>
+      {{#each characterReview.skills.warnings}}<p class="notification warning" role="status">{{this}}</p>{{/each}}
+    {{/if}}
+    {{#if characterReview.choices.length}}
+      <p class="notification warning" role="status">{{localize "SIMPLYPF2E.Generator.ReviewHint"}}</p>
+    {{/if}}
     {{#if characterReview.incomplete}}
       <p class="notification warning" role="status">{{localize "SIMPLYPF2E.Generator.ReviewIncomplete"}}</p>
     {{/if}}

@@ -4,8 +4,8 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Current session — 2026-08-28
 
-- Latest user goal: finish the current feature/work and update documentation. The native-choice review follow-up is complete locally; no new automation scope was started. Item Forge remains deferred.
-- Working branch: `codex/pc-spellcasting`, stacked on local `6f188d0` and `be5859d`, based on `origin/main` `004bffc` (PR #82 / release v0.3.5.42 at last API check, not refreshed this pass). Check git for authoritative current state.
+- Latest user request: implement the approved Character Skill Completion plan (concept-driven automatic training and class-aware progression through level 20). Item Forge remains deferred.
+- Working branch: `codex/character-skills`, based on local `edad6a9` from `codex/pc-spellcasting`; that stack is based on `origin/main` `004bffc` (PR #82 / release v0.3.5.42 at last API check, not refreshed this pass). Check git for authoritative current state.
 - No authenticated GitHub writes, push, PR, merge, or deployment in these local sessions. User permission to push/open a PR was requested and has not been granted. Branch + PR only; never direct main.
 - User-owned untracked `.claude/` is untouched.
 
@@ -44,7 +44,20 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Exact next steps
 
-1. Check git for the local HP, choice automation, base spellcasting, and signature/repertoire commits. Obtain user permission before pushing/opening a PR; do not treat this goal continuation as publication approval.
+### Character Skill Completion — finished locally, not live-verified
+
+- New pure `pc-skills.mjs` owns the core catalog, validated priority ordering, exact class schedule validation, and chronological allocation/reconciliation. AI adds only optional `skillPriorities` enum slugs in its existing concept request. Missing/invalid preferences use the explicitly labeled key-ability default; no extra provider request, setting, or arbitrary Lore creation.
+- Training uses `max(0, class additional + native Int base)` plus independently counted direct class/background duplicate replacements. Native `.base` is pre-RE integer Intelligence and can include apex. A detached level-1 ABC/heritage-only clone verifies initial Int; later additional training is available only at the creation level, conservatively, not retroactively. Skill schedules come from real `skillIncreaseLevels.value`; missing/malformed schedules warn and receive no fallback.
+- Provisional ranks (including fixed ABC training) are seeded before native preCreate so skill-predicate roll options remain valid. Purchased ranks and seeded native floors have separate ownership. After real item/grant creation, detached clones clear only still-owned sources to observe native floors, then project reconciliation. Native source writes and higher ranks survive; non-floor/injected transforms and uncertain timing produce warnings. Retained increases keep their prerequisite chains, and replacement training cannot consume a pinned increase. Skill/Lore writes happen before final HP/language finalization inside the existing rollback boundary.
+- Internal `createCharacterActor` now returns `{actor, skillReport}`; its generator caller is updated. No public module API/settings or persisted schema changes. Report data is passed in memory only. Preview shows priorities; the post-create snapshot shows actual ranks and unsupported/unspent cases. Presentation failures still cannot leave a duplicate-creation draft.
+- Independent schema/balance reviewer approved after catching and retesting refund-chain, late-Int, seed ownership, injected-path, replacement-collision, and negative-Int replacement bugs. Reviewer also checked 30,000 deterministic generated reconciliations for exact +1 events, rank monotonicity, and budget accounting.
+- Final verification: all 46 regression files pass, every `scripts/*.mjs` passes `node --check`, `module.json` and `lang/en.json` parse, and `git diff --check` passes. Older actor mocks intentionally exercise the missing-native-clone warning path; the new production-builder tests cover clone-based allocation. No live Foundry or real provider request was made.
+- Conservative limits: no historical reconstruction of arbitrary native grants; no inferred feat/subclass training allowances or duplicate native-feat replacements; no comprehensive feat-prerequisite validation. Later Int timing is intentionally under-assumed. Background Lore uses real embedded IDs rather than name-derived skill paths. Detached clones/native grant execution remain unverified in real Foundry.
+- Live acceptance after authorized publication: level-1 Fighter; high-Int Wizard; negative-Int character; Ranger/background duplicate Survival; level-2/7/15/20 Rogue or Investigator versus ordinary class cadence; a skill-dependent native ChoiceSet; Skilled Human and overlapping native skill grants; existing background Lore; skill summary/dismiss/open actions; final full HP and no duplicate after sheet/report failure. Include the preceding HP/choice/spell/signature QA below.
+
+### Publication and broader follow-up
+
+1. Check git for the local HP, choice automation, base spellcasting, signature/repertoire, native-review, and skill-completion commits. Obtain user permission before pushing/opening a PR; implementation approval is not publication approval.
 2. PR/live QA checklist after release: create a level-1 Dwarf Fighter and a higher-level/high-Int PC; inspect grounded skill/feature selections, native grant chains, bonus languages, and current HP equal to final max.
 3. Verify the UI transitions from AI selection to native feature application; complete remaining dialogs. Exercise a failing provider in a disposable test context and confirm native fallback, spent token reporting, and no duplicate/partial actor.
 4. After publication, exercise the new review report: complete a normal PC, dismiss a native feature prompt, inspect a conditional/optional/suppressed feature, open the exact created actor, and dismiss the report. Confirm the warning is a snapshot, not a required-choice count or a live validator. ABC-generated/deeper/dynamic/predicated/optional/drop-enabled choices still stay native; never delete actors merely for dismissed prompts.

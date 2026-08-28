@@ -110,6 +110,10 @@ Nothing here is scale-word math. A PC is assembled from real Ancestry, Backgroun
 
 Starting wealth buys real gear rather than turning into raw coin, and fundamental runes on weapons and armor are capped to what the character's level actually allows. Single-class builds only — no multiclass archetypes, and no pre-create screen for swapping individual picks (regenerate instead).
 
+**Skill completion:** the existing concept request supplies ordered core-skill preferences; no extra AI call or setup screen is needed. Preview shows those preferences followed by key-ability defaults. The module supplies the numbers: real class training plus native Intelligence, replacements for directly overlapping class/background training, and the class document's own skill-increase schedule. Increases are allocated in level order with the Expert/Master/Legendary gates, preserving native proficiencies and existing background Lore.
+
+After creation, the generator shows a dismissible snapshot of resulting skill ranks, unspent/unsupported allocations, and any native choices with no recorded selection. Open Character returns to that exact actor. This is not a live validator or a repair tool: existing characters are untouched. Missing preferences use labeled automatic defaults; missing or invalid class schedules are not guessed. Native grant timing and training from later Intelligence boosts are handled conservatively—unproven earlier availability is never assumed. Duplicate native feat grants, arbitrary new Lore replacements, and comprehensive feat-prerequisite checks remain manual. This local milestone still requires live Foundry QA before publication.
+
 ### Item forge
 
 > The UI buttons are hidden while this is unverified in a live game. A GM can open it from the browser console with `game.modules.get("simplypf2e").api.openItemForge()`; player calls are rejected.

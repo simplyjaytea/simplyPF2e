@@ -348,5 +348,11 @@ const reviewLanguage = JSON.parse(langJson).SIMPLYPF2E.Generator;
 assert.match(reviewLanguage.ReviewHint, /snapshot.*not a full character validation/);
 assert.match(reviewLanguage.ReviewHint, /conditional or intentionally disabled/);
 assert.match(reviewLanguage.ReviewIncomplete, /Not every item/);
+assert.match(generator, /pcPreview.skillPriorities/);
+assert.match(generator, /pcPreview.automaticSkills/);
+assert.match(reviewCard, /characterReview.skills.rows/);
+assert.match(reviewCard, /\{\{this.name\}\} — \{\{this.rank\}\}/);
+assert.match(reviewCard, /characterReview.skills.warnings/);
+assert.match(JSON.parse(langJson).SIMPLYPF2E.Skills.Snapshot, /not a full character validation/);
 
 console.log("UI layout contract checks passed.");

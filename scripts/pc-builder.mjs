@@ -7,8 +7,9 @@ import {
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
-import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
+import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
+import { CORE_SKILLS, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
@@ -40,6 +41,11 @@ export function normalizePCConcept(raw, { level }) {
   const c = typeof raw === "object" && raw !== null ? raw : {};
   const clampedLevel = Math.min(Math.max(Math.round(Number(level) || 1), 1), 20);
   const maxSpellRank = Math.max(1, Math.ceil(clampedLevel / 2));
+  const skillPriorities = normalizeSkillPriorities(c.skillPriorities);
+  if (c.skillPriorities !== undefined && (!Array.isArray(c.skillPriorities)
+    || c.skillPriorities.some((slug) => !skillPriorities.includes(slug)))) {
+    console.warn("simplypf2e | dropped invalid character skill priorities");
+  }
 
   let spellcasting = null;
   if (c.spellcasting && typeof c.spellcasting === "object"
@@ -60,6 +66,7 @@ export function normalizePCConcept(raw, { level }) {
     background: String(c.background || "Follower").slice(0, 80),
     class: String(c.class || "Fighter").slice(0, 80),
     keyAbility: ABILITY_KEYS.includes(c.keyAbility) ? c.keyAbility : "str",
+    skillPriorities,
     level: clampedLevel,
     // Inert PC defaults so the reused NPC refine helpers have legal input:
     rarity: "common",
@@ -435,16 +442,6 @@ function resolveKeyAbility(classSystem, requested) {
   return options[0] ?? (ABILITY_KEYS.includes(requested) ? requested : "str");
 }
 
-/** Core skill -> governing attribute, for deterministic auto-pick of a class's
- * `trainedSkills.additional` free trained skills (slugs verified against pf2e
- * CORE_SKILL_SLUGS — full words, not abbreviations). */
-const SKILL_ATTRIBUTE = {
-  acrobatics: "dex", arcana: "int", athletics: "str", crafting: "int",
-  deception: "cha", diplomacy: "cha", intimidation: "cha", medicine: "wis",
-  nature: "wis", occultism: "int", performance: "cha", religion: "wis",
-  society: "int", stealth: "dex", survival: "wis", thievery: "dex"
-};
-
 /**
  * Resolve the AI's freeform language names against the world's real language
  * list (`CONFIG.PF2E.languages`, a slug -> localized-label map read at
@@ -500,49 +497,6 @@ function loreItem(name, rank = 1) {
       description: { value: "" }
     }
   };
-}
-
-/**
- * Deterministic v1 skill-increase allocation (issue #56 item 5): a trained
- * skill's `rank` never advances past Trained (1) on its own — the system has
- * no build-tracking layer for skill increases the way it does for attribute
- * boosts (verified: CharacterBuildData only carries `attributes`/`languages`,
- * no `skills` — see the SCHEMA NOTE in createCharacterActor), so a skill increase, like an
- * ability boost, has to be applied directly as a plain source value.
- *
- * Round-robins one +1 rank per SKILL_INCREASE_LEVELS entry <= the character's
- * level across the already-trained skill/lore list (key-ability skills
- * first, same priority spirit as assignAbilityBoosts), capped by the CRB's
- * level gates (Expert any level once trained, Master requires level 7+,
- * Legendary requires level 15+). Not a tailored build — a reasonable default
- * a GM reviews, same spirit as assignAbilityBoosts/the trainedSkills.additional
- * auto-pick above.
- * @param {string[]} slugs skills/lore names already trained (rank 1)
- * @param {string} keyAbility
- * @param {number} level
- * @returns {Map<string, number>} slug -> final rank (2-4 only; rank-1 entries omitted)
- */
-function assignSkillRanks(slugs, keyAbility, level) {
-  const increases = SKILL_INCREASE_LEVELS.filter((lv) => lv <= level).length;
-  const maxRank = level >= 15 ? 4 : level >= 7 ? 3 : 2;
-  const order = [...slugs].sort((a, b) =>
-    ((SKILL_ATTRIBUTE[a] === keyAbility ? 0 : 1) - (SKILL_ATTRIBUTE[b] === keyAbility ? 0 : 1))
-    || a.localeCompare(b));
-  const ranks = new Map(order.map((s) => [s, 1]));
-  let remaining = increases;
-  while (remaining > 0) {
-    let advanced = false;
-    for (const slug of order) {
-      if (remaining <= 0) break;
-      if (ranks.get(slug) < maxRank) {
-        ranks.set(slug, ranks.get(slug) + 1);
-        remaining--;
-        advanced = true;
-      }
-    }
-    if (!advanced) break; // every skill already at this level's cap
-  }
-  return ranks;
 }
 
 /**
@@ -608,11 +562,12 @@ async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility, 
  * actor. Unlike builder.mjs's createActor() (NPC), no stats are computed here
  * — embedding real ancestry/background/class/feat/spell items with correct
  * system.build data is enough for the PF2e system's own derived-data
- * preparation to compute AC/HP/saves/proficiencies/spell slots.
+ * preparation to compute AC/HP/saves/proficiencies. Skill choices and verified
+ * class spell plans are allocated separately; no derived-stat math is copied.
  * @param {object} [options]
  * @param {string|null} [options.img]
  * @param {(groups: object[]) => Promise<unknown>} [options.selectChoices]
- * @returns {Promise<Actor>}
+ * @returns {Promise<{actor: Actor, skillReport: object}>}
  */
 export async function createCharacterActor(concept, resolved, { img = null, selectChoices = null } = {}) {
   const items = [];
@@ -622,40 +577,8 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // item's own keyAbility.selected, the actor-level boosts, and details.keyability.
   const keyAbility = resolveKeyAbility(resolved.classDoc.system, concept.keyAbility);
 
-  // Trained skills: the background and class fixed skills are auto-applied by
-  // their own items, but the class's `additional` count of FREE trained skills
-  // is not (the system can't know which) — auto-pick deterministically: skills
-  // governed by the key ability first, then alphabetical (a sensible default a
-  // GM reviews, same spirit as assignAbilityBoosts). Fixes classes like Fighter
-  // (trainedSkills.value == [], all skills come from `additional`) showing zero
-  // trained skills (issue #50 item 3). NOTE: Int-mod bonus skills omitted;
-  // a GM can train more by hand.
-  const trained = new Set([
-    ...(resolved.backgroundDoc.system?.trainedSkills?.value ?? []),
-    ...(resolved.classDoc.system?.trainedSkills?.value ?? [])
-  ]);
-  const additional = Math.max(0, Math.round(Number(resolved.classDoc.system?.trainedSkills?.additional) || 0));
-  const untrained = Object.keys(SKILL_ATTRIBUTE)
-    .filter((s) => !trained.has(s))
-    .sort((a, b) =>
-      ((SKILL_ATTRIBUTE[a] === keyAbility ? 0 : 1) - (SKILL_ATTRIBUTE[b] === keyAbility ? 0 : 1))
-      || a.localeCompare(b));
-  for (const s of untrained.slice(0, additional)) trained.add(s);
-
-  // Background Lore's slug: joins the same skill-increase rotation as core
-  // skills below (issue #56 item 5) even though it lives on its own embedded
-  // item rather than in system.skills.
-  const loreName = resolved.backgroundDoc.system?.trainedSkills?.lore?.[0];
-  const loreSlug = loreName ? slugify(loreName) : null;
-
-  // Skill increases (issue #56 item 5): ranks never advanced past Trained
-  // before — see assignSkillRanks's doc comment for why this has to be a
-  // direct source write, same as ability boosts.
-  const skillRanks = assignSkillRanks(
-    [...trained, ...(loreSlug ? [loreSlug] : [])], keyAbility, concept.level
-  );
-  const skills = {};
-  for (const slug of trained) skills[slug] = { rank: skillRanks.get(slug) ?? 1 };
+  const { ranks: initialRanks, replacements } = initialSkillTraining(resolved.classDoc.system, resolved.backgroundDoc.system);
+  const backgroundLore = [];
 
   // Assign ABC ids before embedding and preserve them with `keepId` below.
   // Generated feat slots already reference these ids, and PF2e's native
@@ -690,7 +613,14 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   items.push(classData);
 
   // Background Lore: a real embedded lore item (not a system.skills entry).
-  if (loreName) items.push(loreItem(loreName, skillRanks.get(loreSlug) ?? 1));
+  const loreNames = resolved.backgroundDoc.system?.trainedSkills?.lore;
+  for (const name of Array.isArray(loreNames) ? loreNames : []) {
+    if (typeof name !== "string" || !name.trim() || backgroundLore.some((entry) => slugify(entry.name) === slugify(name))) continue;
+    const data = { ...loreItem(name), _id: foundry.utils.randomID() };
+    backgroundLore.push(data);
+    initialRanks[`lore:${data._id}`] = 1;
+    items.push(data);
+  }
 
   // Feats: PCs allow the real "feat" item type directly — skip builder.mjs's
   // featToAction() NPC-only conversion entirely for this path. Each feat's
@@ -882,12 +812,10 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // details.{age,gender,height,weight,ethnicity,nationality}.value,
   // details.languages.{value,details}, build.attributes.boosts.{1,5,10,15,20},
   // skills.<slug>.rank,
-  // attributes.hp.{value,temp}. Remaining best-effort (see comments where
-  // used): the spontaneous spell-slot COUNTS (rules-derived, not from source —
-  // pc-tables.spontaneousSpellSlots). Starting WEALTH is now transcribed from
-  // GM Core Table 10-10 (pc-tables.PC_WEALTH_BY_LEVEL), so it no longer needs
-  // a human cross-check — but that table's permanent-item ladder is still not
-  // modeled (HANDOFF.md finding #15).
+  // attributes.hp.{value,temp}. Base spell plans are source-qualified in
+  // pc-tables; unsupported profiles remain explicitly approximate. Skill
+  // schedules come from class.skillIncreaseLevels, with native grant/Int data
+  // inspected on detached clones. Wealth uses GM Core Table 10-10's lump sum.
   // -----------------------------------------------------------------------
 
   // Bonus languages: capped to the ancestry's own slot count and allowed-list
@@ -950,7 +878,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
           boosts: assignAbilityBoosts(keyAbility)
         }
       },
-      skills
+      skills: {}
     },
     prototypeToken: {
       actorLink: true,
@@ -964,10 +892,117 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   }
 
   const actor = await Actor.create(actorData);
+  let skillPlan = null;
+  let initialIntelligence = null;
+  let seededSourceRanks = {};
+  const skillWarnings = [];
+  const loreIds = backgroundLore.map((item) => item._id);
+  const planSkills = (snapshot, previous = null) => allocateCharacterSkills({
+    ...snapshot, level: concept.level, initialRanks, initialIntelligence,
+    additional: classData.system.trainedSkills?.additional, replacements,
+    increaseLevels: classData.system.skillIncreaseLevels?.value,
+    priorities: concept.skillPriorities, keyAbility, previous
+  });
+  // These clones only prepare native data: no document writes, preCreate,
+  // grant expansion, or rule-source edits. Clear only sources we still own.
+  const skillCloneData = (plan, previous) => {
+    const patch = {};
+    for (const slug of CORE_SKILLS) {
+      const current = actor._source.system.skills?.[slug]?.rank ?? 0;
+      const owned = current === (seededSourceRanks[slug] ?? 0);
+      patch[`system.skills.${slug}.rank`] = Math.max(owned ? 0 : current, plan?.sourceRanks[slug] ?? 0);
+    }
+    const clonedItems = actor.toObject().items;
+    for (const item of clonedItems) {
+      if (!loreIds.includes(item._id)) continue;
+      const key = `lore:${item._id}`;
+      const current = item.system.proficient.value;
+      const owned = current === (previous?.sourceRanks[key] ?? 1);
+      item.system.proficient.value = Math.max(owned ? 1 : current, plan?.sourceRanks[key] ?? 1);
+    }
+    return { ...patch, items: clonedItems };
+  };
   try {
+    // Seed legal preferences before PF2e evaluates skill-dependent ChoiceSets.
+    let previewSnapshot;
+    try {
+      const firstLevel = actor.clone({
+        items: safeItems.filter((item) => ["ancestry", "background", "class", "heritage"].includes(item.type)),
+        "system.details.level.value": 1
+      }, { keepId: true });
+      initialIntelligence = firstLevel.system.abilities.int.base;
+      const preview = actor.clone({ items: safeItems }, { keepId: true });
+      previewSnapshot = characterSkillSnapshot(preview, loreIds);
+      skillPlan = planSkills(previewSnapshot);
+    } catch (err) {
+      console.warn("simplypf2e | could not inspect provisional native skills", err);
+      skillWarnings.push("native-data");
+    }
+    if (skillPlan) {
+      // Fixed ABC training also needs source ranks now: PF2e's preCreate
+      // item preparation does not refresh numeric skill roll options.
+      seededSourceRanks = Object.fromEntries(CORE_SKILLS.filter((slug) => !previewSnapshot.blocked.includes(slug))
+        .map((slug) => [slug, Math.max(previewSnapshot.nativeRanks[slug] ?? 0, skillPlan.sourceRanks[slug] ?? 0)]));
+      const coreUpdates = Object.fromEntries(Object.entries(seededSourceRanks).filter(([, rank]) => rank > 0)
+        .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]));
+      const projected = actor.clone({ items: safeItems, ...coreUpdates }, { keepId: true });
+      const projection = characterSkillSnapshot(projected, loreIds);
+      if (CORE_SKILLS.some((slug) => projection.nativeRanks[slug] !== Math.max(
+        previewSnapshot.nativeRanks[slug], seededSourceRanks[slug] ?? 0))) {
+        skillWarnings.push("native-rank-rule");
+        skillPlan = null;
+        seededSourceRanks = {};
+      }
+      if (skillPlan) {
+        if (Object.keys(coreUpdates).length) await actor.update(coreUpdates);
+        for (const item of backgroundLore) item.system.proficient.value = skillPlan.sourceRanks[`lore:${item._id}`] ?? 1;
+      }
+    }
     // The explicit ABC ids above are referenced by feat slots. `keepId`
     // preserves them while PF2e expands and links all native granted items.
     await actor.createEmbeddedDocuments("Item", safeItems, { keepId: true });
+
+    // Refund overlaps only when the native floor supplies the old rank.
+    // Confirm the real projected result is monotonic before applying it.
+    let finalSkillData = null;
+    if (skillPlan) {
+      let snapshot;
+      try {
+        const native = actor.clone(skillCloneData(null, skillPlan), { keepId: true });
+        snapshot = characterSkillSnapshot(native, loreIds);
+      } catch (err) {
+        console.warn("simplypf2e | could not inspect final native skills", err);
+        skillWarnings.push("native-data");
+      }
+      if (snapshot) {
+        const finalPlan = planSkills(snapshot, skillPlan);
+        const data = skillCloneData(finalPlan, skillPlan);
+        const projected = actor.clone(data, { keepId: true });
+        const before = characterSkillSnapshot(actor, loreIds);
+        const after = characterSkillSnapshot(projected, loreIds);
+        const changedUnexpectedly = Object.keys(after.nativeRanks).some((slug) =>
+          after.nativeRanks[slug] < before.nativeRanks[slug]
+          || after.nativeRanks[slug] !== Math.max(snapshot.nativeRanks[slug], finalPlan.sourceRanks[slug] ?? 0));
+        if (changedUnexpectedly) {
+          skillWarnings.push("native-rank-rule");
+          skillWarnings.push(...finalPlan.warnings);
+        } else {
+          skillPlan = finalPlan;
+          finalSkillData = data;
+        }
+      }
+    }
+
+    if (finalSkillData) {
+      const loreUpdates = finalSkillData.items.filter((item) => loreIds.includes(item._id))
+        .filter((item) => item.system.proficient.value !== actor.items.get(item._id)?.system.proficient.value)
+        .map((item) => ({ _id: item._id, "system.proficient.value": item.system.proficient.value }));
+      if (loreUpdates.length) await actor.updateEmbeddedDocuments("Item", loreUpdates);
+      const { items: _items, ...skillUpdates } = finalSkillData;
+      const changedSkills = Object.fromEntries(Object.entries(skillUpdates).filter(([path, rank]) =>
+        (actor._source.system.skills?.[path.split(".")[2]]?.rank ?? 0) !== rank));
+      if (Object.keys(changedSkills).length) await actor.update(changedSkills);
+    }
 
     // PF2e's ItemPF2e._preCreate adjusts current HP for each incoming ABC item
     // from the actor's then-current derived HP. A newly empty actor can be
@@ -1001,5 +1036,17 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     throw err;
   }
 
-  return actor;
+  // Reporting is presentation-only: a read failure must not roll back a
+  // successfully finalized character or leave a retryable generator draft.
+  let rows = [];
+  try {
+    const snapshot = characterSkillSnapshot(actor, loreIds);
+    rows = Object.entries(snapshot.nativeRanks).filter(([, rank]) => Number.isInteger(rank) && rank > 0)
+      .map(([slug, rank]) => ({ slug, rank, name: snapshot.lore.find((entry) => entry.key === slug)?.name ?? null }));
+  } catch { skillWarnings.push("native-data"); }
+  const warnings = [...new Set([...skillWarnings, ...(skillPlan?.warnings ?? [])])];
+  for (const warning of warnings) console.warn(`simplypf2e | character skill review: ${warning}`);
+  return { actor, skillReport: { rows, warnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
+    trainingBudget: skillPlan?.trainingBudget ?? null, unspentTraining: skillPlan?.unspentTraining ?? null,
+    unspentIncreases: skillPlan?.unspentIncreases ?? null } };
 }

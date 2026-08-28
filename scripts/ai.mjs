@@ -8,6 +8,7 @@ import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
 import { encodeFeatCandidateSlots, resolveEncodedFeatPicks } from "./ai-candidate-format.mjs";
 import { taskResponseProblem } from "./ai-response-validation.mjs";
 import { validateChoicePicks } from "./choice-set.mjs";
+import { CORE_SKILLS } from "./pc-skills.mjs";
 
 /**
  * Client for any OpenAI-compatible chat completions API (DeepSeek, OpenAI,
@@ -402,6 +403,7 @@ JSON schema (all keys required unless marked optional):
   "organizations": string, // 1-2 sentences naming factions, guilds, or organizations the character belongs to (can be "" if none fit)
   "languages": string[], // EXACT PF2e language names beyond the ancestry's automatic ones (e.g. "Common"), fitting the character's background/culture — lowercase is fine, [] if none fit. A character learns bonus languages equal to their Intelligence modifier ON TOP of the ancestry's own, so size this to the concept: 1-2 for an average character, but 4-6 for a high-Intelligence class (Wizard, Investigator, Magus) or a well-travelled scholar/diplomat
   "feats": string[], // 3-6 EXACT published PF2e feat names fitting the concept as a first draft wishlist — inspiration only, the final picks are chosen from real compendium lists per level in a second step
+  "skillPriorities": string[], // optional ordered core-skill preferences, most important first; choose unique slugs from: ${CORE_SKILLS.join(", ")}. Match the concept and intended role. Never provide ranks, counts, scores, or new Lore skills; the module allocates legal training and increases
   "spellcasting": null | {
     "tradition": "arcane"|"divine"|"occult"|"primal",
     "spells": [ { "name": string, "rank": number } ] // rank 0 = cantrip; real PF2e spell names as a first draft (${REMASTER_NOTE}; the final list is chosen from the compendium in a second step)
