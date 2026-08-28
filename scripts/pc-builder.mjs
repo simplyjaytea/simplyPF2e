@@ -577,7 +577,8 @@ function conceptChoiceNames(concept, resolved) {
 /**
  * Walk every item source about to be embedded and pre-answer its ChoiceSet
  * rules (and, one level down, the ChoiceSets of items its GrantItem rules
- * grant) so no blocking prompt opens during createEmbeddedDocuments().
+ * grant) to reduce prompts during createEmbeddedDocuments(). Native prompts
+ * can still open for unresolved choices and choices on deeper ABC grant paths.
  *
  * Fail-open by design — see choice-set.mjs's header. Anything auto-picked
  * purely because it was first in the list is warned about by item + choice +
@@ -811,12 +812,11 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
 
   const safeItems = filterItemTypes(items, CHARACTER_ITEM_TYPES, "character");
 
-  // Pre-answer ChoiceSet rule elements so createEmbeddedDocuments() below never
-  // blocks on a PickAThingPrompt the GM has to click through (a Dwarf Fighter
-  // stopped on four of them in live QA). See choice-set.mjs for the verified
-  // pf2e mechanism, the selection policy, and — importantly — its DELIBERATE
-  // inversion of invariant #5: an unresolvable ChoiceSet is left alone so the
-  // prompt still appears, because a dialog beats a silently invalid item.
+  // Pre-answer resolvable ChoiceSet rule elements to reduce native
+  // PickAThingPrompt dialogs. Unresolved choices and deeper ABC grant paths
+  // still prompt, because a dialog beats a silently invalid item. See
+  // choice-set.mjs for the selection policy and its deliberate inversion of
+  // invariant #5.
   await preresolveChoiceSets(safeItems, concept, resolved, keyAbility);
 
   // -----------------------------------------------------------------------
@@ -882,10 +882,7 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
           organizations: toHtml(concept.organizations)
         }
       },
-      // Full HP: a high sentinel the system clamps to the derived max on every
-      // data-prep pass (character/document.ts: stat.value = min(value, max)),
-      // so this resolves to full HP without us computing it (issue #50 item 6).
-      attributes: { hp: { value: 9999, temp: 0 } },
+      attributes: { hp: { temp: 0 } },
       // Focus pool starts full. Source `value` survives data prep (verified in
       // character/document.ts prepareBaseData — it keeps value, zeroes max);
       // `max` comes from the cloned rule on the focus spellcasting entry.
@@ -916,25 +913,37 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
     // The explicit ABC ids above are referenced by feat slots. `keepId`
     // preserves them while PF2e expands and links all native granted items.
     await actor.createEmbeddedDocuments("Item", safeItems, { keepId: true });
+
+    // PF2e's ItemPF2e._preCreate adjusts current HP for each incoming ABC item
+    // from the actor's then-current derived HP. A newly empty actor can be
+    // clamped before all grants finish, so fill this one new character from
+    // the system-derived maximum after awaited native item creation completes.
+    // This does not await detached onCreate updates from other rules/modules.
+    const hpMax = actor?.system?.attributes?.hp?.max;
+    if (typeof hpMax !== "number" || !Number.isFinite(hpMax) || hpMax <= 0) {
+      throw new Error("simplypf2e | character creation produced no usable derived HP maximum");
+    }
+
+    // Int-modifier bonus languages (issue #64 item 1): the character gets
+    // extra language slots equal to their Intelligence modifier on top of the
+    // ancestry's own count. Int is read from the system's own derived data
+    // after native creation rather than re-deriving the boost math here.
+    const updates = { "system.attributes.hp.value": hpMax };
+    const intMod = Number(actor?.system?.abilities?.int?.mod) || 0;
+    if (intMod > 0) {
+      const withBonus = resolveLanguages(concept.languages ?? [], resolved.ancestryDoc, intMod);
+      if (withBonus.length > languages.length) {
+        updates["system.details.languages.value"] = withBonus;
+      }
+    }
+
+    await actor.update(updates);
   } catch (err) {
     // Character creation is one operation from the user's perspective. Do
     // not leave an empty or partially populated Actor behind on failure.
     try { await actor.delete(); }
     catch (cleanupErr) { console.error("simplypf2e | failed to roll back incomplete character", cleanupErr); }
     throw err;
-  }
-
-  // Int-modifier bonus languages (issue #64 item 1): the character gets extra
-  // language slots equal to their Intelligence modifier on top of the
-  // ancestry's own count. Int is read from the system's own derived data after
-  // create rather than re-deriving the boost math here (the reliable source),
-  // so any AI language picks that overflowed the base cap are now applied.
-  const intMod = Number(actor?.system?.abilities?.int?.mod) || 0;
-  if (intMod > 0) {
-    const withBonus = resolveLanguages(concept.languages ?? [], resolved.ancestryDoc, intMod);
-    if (withBonus.length > languages.length) {
-      await actor.update({ "system.details.languages.value": withBonus });
-    }
   }
 
   return actor;
