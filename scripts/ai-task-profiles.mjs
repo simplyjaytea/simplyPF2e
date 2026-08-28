@@ -18,6 +18,7 @@ export const AI_TASK = Object.freeze({
   LOOT_SELECTION: "lootSelection",
   ABC_SELECTION: "abcSelection",
   FEAT_SELECTION: "featSelection",
+  CHARACTER_CHOICES: "characterChoices",
   MAGIC_ITEM_CONCEPT: "magicItemConcept",
   RUNED_ITEM_CONCEPT: "runedItemConcept",
   ENCOUNTER_DESIGN: "encounterDesign"
@@ -34,6 +35,7 @@ const TASK_PROFILES = Object.freeze({
   [AI_TASK.LOOT_SELECTION]: { maxTokens: 2048, deterministic: true, disableReasoning: true },
   [AI_TASK.ABC_SELECTION]: { maxTokens: 1024, deterministic: true, disableReasoning: true },
   [AI_TASK.FEAT_SELECTION]: { maxTokens: 3072, deterministic: true, disableReasoning: true },
+  [AI_TASK.CHARACTER_CHOICES]: { maxTokens: 3072, deterministic: true, disableReasoning: true },
   [AI_TASK.MAGIC_ITEM_CONCEPT]: { maxTokens: 4000, deterministic: false, disableReasoning: true },
   [AI_TASK.RUNED_ITEM_CONCEPT]: { maxTokens: 2000, deterministic: false, disableReasoning: true },
   [AI_TASK.ENCOUNTER_DESIGN]: { maxTokens: 1024, deterministic: false, disableReasoning: true }

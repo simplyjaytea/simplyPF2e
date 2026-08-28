@@ -73,4 +73,10 @@ assert.equal(
   "short creative tasks must also disable reasoning to preserve output budget"
 );
 
+assert.deepEqual(
+  completionOptionsFor(AI_TASK.CHARACTER_CHOICES, { configuredTemperature: 1.5, configuredMaxTokens: 8000 }),
+  { temperature: 0, maxTokens: 3072, reasoningEffort: "none", thinkingType: "disabled" },
+  "character choice grounding must use a bounded deterministic request"
+);
+
 console.log("ai-task-profiles.test.mjs: all task-profile assertions passed");

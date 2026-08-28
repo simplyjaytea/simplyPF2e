@@ -154,6 +154,17 @@ assert.match(
   /spf-busy" role="status" aria-live="polite"/,
   "indeterminate generation work must be announced without interrupting the user"
 );
+assert.match(progress, /\{\{#if busyMessage\}\}[\s\S]*?\{\{busyMessage\}\}[\s\S]*?\{\{else if progress\}\}/,
+  "native character creation must show an escaped status instead of a model progress percentage");
+assert.doesNotMatch(progress, /\{\{\{busyMessage\}\}\}/, "status text must never be rendered as raw HTML");
+assert.match(generatorApp, /busyMessage: this\.#busyMessage/, "generator must expose its native creation status");
+assert.match(generatorApp, /selectChoices: async \(groups\) =>[\s\S]*?selectCharacterChoices\([\s\S]*?this\._recordTokens\(label, usage\)/,
+  "character creation must use the grounded provider selector and record its usage");
+assert.match(generatorApp, /finally \{\s*this\.#busy = false;\s*this\.#busyMessage = null;\s*this\._progress = null;/,
+  "character success and failure must clear both native and AI progress state");
+const messages = JSON.parse(langJson).SIMPLYPF2E;
+assert.match(messages.Progress.ApplyingCharacter, /PF2e choice dialogs/);
+assert.match(messages.Generator.ChoicesNeedInput, /could not be selected automatically/);
 
 // --- Shared visual system (UI overhaul) ---------------------------------
 // One primary action per window, shared icon-button/card/empty-state kit.

@@ -4,7 +4,7 @@ import {
 } from "./settings.mjs";
 import {
   generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
-  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats
+  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCharacterChoices
 } from "./ai.mjs";
 import {
   getSpellCandidates, getEquipmentCandidates, getLootCandidates,
@@ -79,6 +79,7 @@ export class GeneratorApp extends SpfApp {
   };
   #modePrompts = { single: "", encounter: "", character: "" };
   #busy = false;
+  #busyMessage = null;
   #error = null;
   #concept = null;
   #resolved = null;
@@ -96,6 +97,7 @@ export class GeneratorApp extends SpfApp {
     return {
       input: this.#input,
       busy: this.#busy,
+      busyMessage: this.#busyMessage,
       error: this.#error,
       progress: this._progress,
       apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
@@ -1055,9 +1057,37 @@ export class GeneratorApp extends SpfApp {
   async #createCharacterActor() {
     if (!this.#pcConcept) return;
     this.#busy = true;
-    await this.render();
+    this.#error = null;
+    const applyingMessage = game.i18n.localize("SIMPLYPF2E.Progress.ApplyingCharacter");
+    this.#busyMessage = applyingMessage;
     try {
-      const actor = await createCharacterActor(this.#pcConcept, this.#pcResolved, {});
+      await this.render();
+      const actor = await createCharacterActor(this.#pcConcept, this.#pcResolved, {
+        selectChoices: async (groups) => {
+          const label = game.i18n.localize("SIMPLYPF2E.Progress.CharacterChoices");
+          this.#busyMessage = null;
+          this._beginProgress([["choices", label]]);
+          try {
+            await this._setStep("choices");
+            const { picks, usage } = await selectCharacterChoices({
+              concept: this.#pcConcept, groups, onProgress: (p) => this._onAIProgress(p)
+            });
+            this._recordTokens(label, usage);
+            if (picks.length < groups.length) {
+              ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ChoicesNeedInput"));
+            }
+            return picks;
+          } catch (err) {
+            this._recordTokens(label, err.usage);
+            ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ChoicesNeedInput"));
+            throw err; // The builder leaves unanswered choices to PF2e.
+          } finally {
+            this._progress = null;
+            this.#busyMessage = applyingMessage;
+            await this.render();
+          }
+        }
+      });
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
       actor.sheet.render(true);
       this.#pcConcept = null;
@@ -1067,6 +1097,8 @@ export class GeneratorApp extends SpfApp {
       this.#error = err.message;
     } finally {
       this.#busy = false;
+      this.#busyMessage = null;
+      this._progress = null;
       await this.render();
     }
   }

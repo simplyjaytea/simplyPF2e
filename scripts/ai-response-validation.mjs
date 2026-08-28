@@ -39,6 +39,7 @@ const RULES = Object.freeze({
     nonEmptyStrings: ["ancestry", "background", "class", "keyAbility"]
   },
   [AI_TASK.FEAT_SELECTION]: { required: ["picks"], arrays: ["picks"] },
+  [AI_TASK.CHARACTER_CHOICES]: { required: ["picks"], arrays: ["picks"] },
   [AI_TASK.MAGIC_ITEM_CONCEPT]: {
     required: ["name", "description", "level", "rarity", "usage", "traits", "bulk", "invested", "effects"],
     arrays: ["traits", "effects"],

@@ -24,5 +24,8 @@ assert.equal(
   null
 );
 assert.match(taskResponseProblem("unknown", {}), /unknown task/);
+assert.equal(taskResponseProblem(AI_TASK.CHARACTER_CHOICES, { picks: [] }), null);
+assert.match(taskResponseProblem(AI_TASK.CHARACTER_CHOICES, {}), /missing required fields: picks/);
+assert.match(taskResponseProblem(AI_TASK.CHARACTER_CHOICES, { picks: {} }), /fields must be arrays: picks/);
 
 console.log("ai-response-validation.test.mjs: all response-shape assertions passed");

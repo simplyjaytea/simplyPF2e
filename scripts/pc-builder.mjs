@@ -6,7 +6,7 @@ import {
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
-import { applyChoiceSelections, applyGrantPreselections } from "./choice-set.mjs";
+import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
 
@@ -580,11 +580,10 @@ function conceptChoiceNames(concept, resolved) {
  * grant) to reduce prompts during createEmbeddedDocuments(). Native prompts
  * can still open for unresolved choices and choices on deeper ABC grant paths.
  *
- * Fail-open by design — see choice-set.mjs's header. Anything auto-picked
- * purely because it was first in the list is warned about by item + choice +
- * pick, so the GM knows what to review on the sheet.
+ * Fail-open by design — see choice-set.mjs's header. Ambiguous, dynamic, and
+ * unanswered choices remain native rather than being guessed.
  */
-async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility) {
+async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility, selectChoices) {
   const context = { keyAbility, names: conceptChoiceNames(concept, resolved) };
   const config = CONFIG?.PF2E ?? {};
   const cache = new Map();
@@ -599,18 +598,7 @@ async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility) 
     return source;
   };
 
-  for (const itemData of itemSources) {
-    const applied = [
-      ...applyChoiceSelections(itemData, context, config),
-      ...await applyGrantPreselections(itemData, loadItemSource, context, config)
-    ];
-    for (const pick of applied) {
-      if (pick.reason !== "first") continue;
-      console.warn(
-        `simplypf2e | auto-picked "${pick.label}" (${pick.value}) for the "${pick.flag ?? "unnamed"}" choice on "${pick.item}" — nothing in the concept matched, so the first valid option was taken; change it on the sheet if you want another`
-      );
-    }
-  }
+  await preselectChoiceSets(itemSources, context, config, loadItemSource, selectChoices);
 }
 
 /**
@@ -621,9 +609,10 @@ async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility) 
  * preparation to compute AC/HP/saves/proficiencies/spell slots.
  * @param {object} [options]
  * @param {string|null} [options.img]
+ * @param {(groups: object[]) => Promise<unknown>} [options.selectChoices]
  * @returns {Promise<Actor>}
  */
-export async function createCharacterActor(concept, resolved, { img = null } = {}) {
+export async function createCharacterActor(concept, resolved, { img = null, selectChoices = null } = {}) {
   const items = [];
 
   // Key ability: validate the AI's pick against the class's legal options once,
@@ -815,9 +804,8 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // Pre-answer resolvable ChoiceSet rule elements to reduce native
   // PickAThingPrompt dialogs. Unresolved choices and deeper ABC grant paths
   // still prompt, because a dialog beats a silently invalid item. See
-  // choice-set.mjs for the selection policy and its deliberate inversion of
-  // invariant #5.
-  await preresolveChoiceSets(safeItems, concept, resolved, keyAbility);
+  // choice-set.mjs for the fail-open selection policy.
+  await preresolveChoiceSets(safeItems, concept, resolved, keyAbility, selectChoices);
 
   // -----------------------------------------------------------------------
   // SCHEMA NOTE — the actor `system.*` field names below were VERIFIED against
