@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { pcSpellcastingProfile, pcSpellSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
+import { pcSpellcastingProfile, pcSpellSlots, pcSpellPlan, spontaneousSpellSlots } from "./pc-tables.mjs";
 
 const klass = (name, slug, title, remaster = true) => ({ name, system: { slug, publication: { title, remaster } } });
 assert.deepEqual(pcSpellcastingProfile(klass("Bard", "bard", "Pathfinder Player Core")),
@@ -21,4 +21,9 @@ assert.equal(pcSpellSlots(6, sorcerer)[3], 4);
 assert.equal(pcSpellSlots(19, bard)[10], 1);
 assert.equal(pcSpellSlots(20, sorcerer)[10], 1);
 assert.deepEqual(pcSpellSlots(5, null), spontaneousSpellSlots(5), "unsupported classes retain legacy fallback");
+assert.deepEqual(pcSpellPlan(2, bard).signatureRanks, []);
+assert.ok(pcSpellPlan(3, bard).signatureRanks.includes(2));
+assert.equal(pcSpellPlan(19, bard).slots[10], 1);
+assert.equal(pcSpellPlan(19, bard).picks[10], 2);
+assert.deepEqual(pcSpellPlan(20, pcSpellcastingProfile(klass("Wizard", "wizard", "Pathfinder Player Core"))).signatureRanks, []);
 console.log("pc spellcasting profiles and slots: all assertions passed");

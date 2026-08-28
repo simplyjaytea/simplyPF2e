@@ -26,7 +26,7 @@ try {
   const args = {
     concept: { name: "Wizard", level: 5, traits: [], spellcasting: { tradition: "arcane", spells: [] } },
     candidates: [{ name: "Detect Magic", rank: 0 }, { name: "Force Barrage", rank: 1 }, { name: "Fireball", rank: 3 }],
-    maxRank: 3, plannedSlots: { 0: 5, 1: 3, 2: 3, 3: 2 }, preparationMode: "prepared"
+    maxRank: 3, plannedPicks: { 0: 5, 1: 3, 2: 3, 3: 2 }, preparationMode: "prepared"
   };
   const picks = [
     { name: "Detect Magic", rank: 0 }, { name: "Detect Magic", rank: 0 },
@@ -69,16 +69,68 @@ try {
   replies.push({}, { spells: [{ name: "Fireball", rank: "rank-three" }] });
   assert.equal((await selectSpells(args)).usage.total, 60, "PC operation retains structural retry accounting");
   const before = requests.length;
-  await assert.rejects(selectSpells({ ...args, plannedSlots: { 1: 999 } }), /Invalid character/);
+  await assert.rejects(selectSpells({ ...args, plannedPicks: { 1: 999 } }), /Invalid character/);
   await assert.rejects(selectSpells({ ...args, preparationMode: "invented" }), /Invalid character/);
-  await assert.rejects(selectSpells({ ...args, plannedSlots: [] }), /Invalid character/);
+  await assert.rejects(selectSpells({ ...args, plannedPicks: [] }), /Invalid character/);
   await assert.rejects(selectSpells({ ...args, maxRank: 11 }), /Invalid character/);
   assert.equal(requests.length, before, "invalid module plans cannot spend tokens");
 
   replies.push({ spells: [{ name: "Force Barrage", rank: 0 }] });
-  const legacy = await selectSpells({ ...args, plannedSlots: undefined, preparationMode: undefined });
+  const legacy = await selectSpells({ ...args, plannedPicks: undefined, preparationMode: undefined });
   assert.deepEqual(legacy.spells, [{ name: "Force Barrage", rank: 1 }]);
   assert.equal(requests.at(-1).max_tokens, 1536, "NPC selection keeps its existing profile");
+
+  const signatureArgs = { ...args, preparationMode: "spontaneous", signatureRanks: [1, 2, 3] };
+  replies.push({ spells: [
+    { name: "Detect Magic", rank: "cantrip", signature: "signature" },
+    { name: "Force Barrage", rank: "rank-one", signature: "signature" },
+    { name: "Force Barrage", rank: "rank-two", signature: "regular" },
+    { name: "Fireball", rank: "rank-three", signature: "signature" }
+  ] });
+  const signatures = await selectSpells(signatureArgs);
+  assert.deepEqual(signatures.spells, [
+    { name: "Detect Magic", rank: 0 },
+    { name: "Force Barrage", rank: 1, signature: true },
+    { name: "Force Barrage", rank: 2 },
+    { name: "Fireball", rank: 3, signature: true }
+  ], "only exact signature enums at eligible learned ranks gain a native-ready flag");
+  assert.match(requests.at(-1).messages[0].content, /rank-one, rank-two, rank-three/);
+  assert.equal(requests.at(-1).max_tokens, 3072, "signature selection reuses the existing PC request");
+
+  replies.push({ spells: [
+    { name: "Force Barrage", rank: "rank-three", signature: "signature" },
+    { name: "Fireball", rank: "rank-three", signature: "signature" },
+    { name: "Force Barrage", rank: "rank-one", signature: true },
+    { name: "Force Barrage", rank: "rank-two", signature: "yes" }
+  ] });
+  const conflicts = await selectSpells(signatureArgs);
+  assert.equal(conflicts.spells.length, 4, "invalid markers must not discard valid repertoire spells");
+  assert.ok(conflicts.spells.every((spell) => !spell.signature), "conflicting signatures are all regular, not first-wins");
+
+  replies.push({ spells: [{ name: "Force Barrage", rank: "rank-one", signature: "signature" }] });
+  assert.ok(!(await selectSpells({ ...signatureArgs, signatureRanks: [] })).spells[0].signature,
+    "below-level eligibility supplied by the module cannot be overridden by model output");
+  replies.push({ spells: [{ name: "Force Barrage", rank: "rank-one", signature: "signature" }] });
+  assert.ok(!(await selectSpells(args)).spells[0].signature, "prepared plans never auto-signature");
+  await assert.rejects(selectSpells({ ...args, signatureRanks: [1] }), /Invalid character/);
+  await assert.rejects(selectSpells({ ...signatureArgs, signatureRanks: [0] }), /Invalid character/);
+
+  const rankTenArgs = { ...signatureArgs, maxRank: 10, plannedPicks: { 10: 2 }, signatureRanks: [10],
+    candidates: [
+      { name: "Common Ten A", rank: 10, rarity: "common" }, { name: "Common Ten B", rank: 10, rarity: "common" },
+      { name: "Common Ten C", rank: 10, rarity: "common" }, { name: "Rare Ten", rank: 10, rarity: "rare" },
+      { name: "Unknown Ten", rank: 10 }
+    ] };
+  replies.push({ spells: [
+    { name: "Rare Ten", rank: "rank-ten" }, { name: "Unknown Ten", rank: "rank-ten" },
+    { name: "Common Ten A", rank: "rank-ten", signature: "signature" },
+    { name: "Common Ten B", rank: "rank-ten", signature: "regular" },
+    { name: "Common Ten C", rank: "rank-ten" }
+  ] });
+  assert.deepEqual((await selectSpells(rankTenArgs)).spells, [
+    { name: "Common Ten A", rank: 10, signature: true }, { name: "Common Ten B", rank: 10 }
+  ], "two common repertoire picks survive even though native rank-ten casting has one slot");
+  assert.match(requests.at(-1).messages[0].content, /"rank-ten":2/);
   assert.equal(replies.length, 0);
 } finally { globalThis.fetch = originalFetch; }
 
@@ -88,12 +140,16 @@ const generator = readFileSync(new URL("./generator-app.mjs", import.meta.url), 
 const template = readFileSync(new URL("../templates/generator.hbs", import.meta.url), "utf8");
 const locale = JSON.parse(readFileSync(new URL("../lang/en.json", import.meta.url), "utf8"));
 assert.match(generator, /pcSpellcastingProfile\(resolved\.classDoc\)/);
-assert.match(generator, /plannedSlots: spellcasting\.plannedSlots/);
+assert.match(generator, /plannedPicks: spellcasting\.plannedPicks/);
 assert.match(generator, /preparationMode: spellcasting\.preparationMode/);
-assert.ok(generator.indexOf("if (spellcasting.plannedSlots) return;") < generator.indexOf("if (requireSpells && draft.length)"),
+assert.match(generator, /signatureRanks: spellcasting\.signatureRanks/);
+assert.match(generator, /plannedPicks = plan\.picks/);
+assert.match(template, /role="status">\{\{pcPreview\.signatureSummary\}\}/);
+assert.match(template, /\{\{#if this\.signature\}\}/);
+assert.ok(generator.indexOf("if (spellcasting.plannedPicks) return;") < generator.indexOf("if (requireSpells && draft.length)"),
   "failed grounded plans cannot fall through to the unplanned legacy draft");
 assert.match(template, /role="status">\{\{pcPreview\.spellcastingNotice\}\}/, "escaped, accessible review notice");
-for (const key of ["PCBaseSpellPlan", "PCVariableSpellPlan", "PCApproximateSpellPlan"]) {
+for (const key of ["PCBaseSpellPlan", "PCVariableSpellPlan", "PCApproximateSpellPlan", "Signature", "PCSignaturePlan"]) {
   assert.ok(locale.SIMPLYPF2E.Preview[key]);
 }
 console.log("PC spell planning: production requests and preview wiring passed");

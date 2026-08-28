@@ -7,16 +7,18 @@ import {
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
-import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, spontaneousSpellSlots, pcSpellcastingProfile, pcSpellSlots } from "./pc-tables.mjs";
+import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
- * proficiencies/spell slots computed by the PF2e system itself from real
+ * proficiencies computed by the PF2e system itself from real
  * Ancestry+Background+Class items once those are correctly attached — this
  * module's job is assembling a valid, fully-grounded set of real-item
  * choices, NOT reimplementing that math (unlike tables.mjs, which hardcodes
  * NPC benchmark numbers because NPCs have no such items to derive from).
+ * Spell slots/repertoire plans are supplied separately by verified class
+ * profiles: class items expose spell proficiency, not automatic slot counts.
  */
 
 const ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha"];
@@ -716,7 +718,8 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     const mode = spellProfile?.mode ?? "spontaneous";
     const tradition = spellProfile?.tradition ?? concept.spellcasting.tradition;
     const ability = spellProfile?.ability ?? keyAbility;
-    const counts = spellProfile ? pcSpellSlots(concept.level, spellProfile) : spontaneousSpellSlots(concept.level);
+    const plan = pcSpellPlan(concept.level, spellProfile);
+    const counts = plan.slots;
     const slots = {};
     for (const [rank, max] of Object.entries(counts)) {
       slots[`slot${rank}`] = { value: max, max, prepared: [] };
@@ -726,6 +729,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     const usedCantrips = new Set();
     const spontaneousSeen = new Set();
     const usedRanks = new Map();
+    const signatureCandidates = new Map();
     for (const { spell, entry } of resolved.spells ?? []) {
       const assignedRank = spell?.rank;
       const reject = (reason) => console.warn(`simplypf2e | dropped planned spell "${spell?.name ?? entry?.name ?? "?"}": ${reason}`);
@@ -743,12 +747,15 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
       if (cantrip !== (assignedRank === 0)) { reject("cantrip rank mismatch"); continue; }
       if ((Array.isArray(traits.value) && traits.value.includes("focus")) || source.system?.ritual) { reject("focus spells and rituals use separate casting entries"); continue; }
       if (spellProfile && !traditions.includes(tradition)) { reject("spell tradition does not match caster profile"); continue; }
+      if (spellProfile && mode === "spontaneous" && assignedRank === 10 && traits.rarity !== "common") {
+        reject("ordinary 10th-rank repertoire picks must be common"); continue;
+      }
       const identity = doc.uuid ?? entry?.uuid ?? (entry?.packId && entry?._id ? `${entry.packId}:${entry._id}` : null);
       if (!identity) { reject("grounded spell identity is missing"); continue; }
       if (assignedRank === 0 && usedCantrips.has(identity)) { reject("duplicate cantrip"); continue; }
       const key = `${identity}:${assignedRank}`;
       if (mode === "spontaneous" && spontaneousSeen.has(key)) { reject("duplicate spontaneous repertoire rank"); continue; }
-      if ((usedRanks.get(assignedRank) ?? 0) >= counts[assignedRank]) { reject("assigned rank is already at its slot cap"); continue; }
+      if ((usedRanks.get(assignedRank) ?? 0) >= plan.picks[assignedRank]) { reject("assigned rank is already at its pick cap"); continue; }
       // A spontaneous repertoire can contain the same source at different
       // assigned ranks; each needs its own embedded item/location heightening.
       const sourceKey = mode === "spontaneous" ? key : identity;
@@ -772,7 +779,19 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
         slots[`slot${assignedRank}`].prepared.push({ id: data._id, expended: false });
       }
       usedRanks.set(assignedRank, (usedRanks.get(assignedRank) ?? 0) + 1);
+      if (spell?.signature === true) {
+        if (!plan.signatureRanks.includes(assignedRank)) console.warn(`simplypf2e | ignored signature marker on "${source.name}": rank is not eligible`);
+        else signatureCandidates.set(assignedRank, [...(signatureCandidates.get(assignedRank) ?? []), data]);
+      } else if (spell?.signature != null && spell.signature !== false) {
+        console.warn(`simplypf2e | ignored invalid signature marker on "${source.name}"`);
+      }
       if (assignedRank === 0) usedCantrips.add(identity);
+    }
+    for (const [rank, candidates] of signatureCandidates) {
+      // PF2e spell/data.ts location.signature; collection.ts expands native
+      // virtual casting rows from the spell's original rank, not learned rank.
+      if (candidates.length === 1) candidates[0].system.location.signature = true;
+      else console.warn(`simplypf2e | ignored ${candidates.length} signature markers at rank ${rank}: only one is allowed`);
     }
     items.push({
       _id: entryId,

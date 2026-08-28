@@ -129,3 +129,26 @@ export function pcSpellSlots(level, profile) {
   }
   return slots;
 }
+
+/** Spell-list capacity is distinct from native casting slots for spontaneous
+ * Remaster casters: their 10th-rank repertoire has two common picks at 19–20
+ * while the entry still has one slot. Signature eligibility starts at level 3.
+ * Only the three qualified spontaneous profiles above use this policy.
+ * Sources (master agrees under packs/classfeatures/):
+ * https://raw.githubusercontent.com/foundryvtt/pf2e/pf2e-8.4.1/packs/pf2e/class-features/signature-spells.json
+ * Same directory: magnum-opus.json, oracular-clarity.json, bloodline-paragon.json.
+ * Signature ranks are learned ranks, including ten; base rank controls native
+ * downcasting, not which rank's signature choice is consumed. */
+export function pcSpellPlan(level, profile) {
+  const slots = pcSpellSlots(level, profile);
+  const picks = { ...slots };
+  const lv = Math.min(Math.max(Math.round(Number(level)) || 1, 1), 20);
+  if (profile?.mode === "spontaneous") {
+    if (lv >= 19) picks[10] = 2;
+    const signatureRanks = lv >= 3
+      ? Object.keys(picks).map(Number).filter((rank) => rank > 0 && picks[rank] > 0)
+      : [];
+    return { slots, picks, signatureRanks };
+  }
+  return { slots, picks, signatureRanks: [] };
+}

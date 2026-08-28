@@ -241,6 +241,8 @@
       "Unique": "Unique"
     },
     "Preview": {
+      "Signature": "Signature",
+      "PCSignaturePlan": "Planned signature choices: {selected}/{total}. Choices are rechecked against real spells during creation; missing or rejected choices stay regular and need manual review.",
       "PCBaseSpellPlan": "Base spell plan only: prepared classes prepare each listed pick; spontaneous classes learn it at the listed rank. Review empty slots, signature spells, and restricted subclass or feat bonuses (such as curriculum or divine font) in Foundry.",
       "PCVariableSpellPlan": "Base spell plan only. Verify the tradition against your bloodline or patron; if none was selected, configure spellcasting in Foundry. Review empty slots, signature spells, subclass-granted spells, and feat bonuses after creation.",
       "PCApproximateSpellPlan": "This class has no verified casting profile yet. Spellcasting uses a generic spontaneous approximation; review casting mode, tradition, slots, and spells in Foundry before play.",

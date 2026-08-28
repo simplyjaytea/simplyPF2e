@@ -327,7 +327,7 @@ function withPriority(buckets, priority, limit) {
 }
 
 /** Pure bounded selector used by getSpellCandidates() and its regression test. */
-export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CANDIDATE_LIMIT, plannedSlots = null) {
+export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CANDIDATE_LIMIT, plannedPicks = null) {
   const list = Array.isArray(candidates) ? candidates : [];
   const kw = normalizedKeywords(keywords);
   const exactNames = new Set(kw);
@@ -354,11 +354,19 @@ export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CA
   // A PC needs enough distinct candidates to fill its base plan, especially
   // five cantrips. Exact first-draft names alone can starve other ranks.
   // Reserve relevant choices per rank before those names, within the same cap.
-  const reserved = plannedSlots ? buckets.flatMap((bucket) => bucket.slice(0,
-    Math.min(SPELL_CANDIDATES_PER_RANK, Math.max(0, Number(plannedSlots[bucket[0]?.rank]) || 0)))) : [];
-  const priority = [...new Set([...reserved, ...exact])];
+  const reserved = plannedPicks ? buckets.flatMap((bucket) => bucket.slice(0,
+    Math.min(SPELL_CANDIDATES_PER_RANK, Math.max(0, Number(plannedPicks[bucket[0]?.rank]) || 0)))) : [];
+  // Ordinary rank-ten repertoires require common spells. Keep enough common
+  // ranked options even when rare exact-name matches occupy the top buckets.
+  // Lower-base spells can legally be learned heightened; cantrips cannot.
+  const commonOptions = plannedPicks?.[10] > 0 ? list
+    .filter((candidate) => candidate.rarity === "common" && candidate.rank > 0 && candidate.rank <= 10)
+    .sort((a, b) => relevanceScore(b, kw) - relevanceScore(a, kw)
+      || b.rank - a.rank || a.name.localeCompare(b.name))
+    .slice(0, Math.min(SPELL_CANDIDATES_PER_RANK, plannedPicks[10])) : [];
+  const priority = [...new Set([...commonOptions, ...reserved, ...exact])];
   const target = kw.length
-    ? Math.min(limit, Math.max(SPELL_CANDIDATE_FLOOR, matchedCount, reserved.length))
+    ? Math.min(limit, Math.max(SPELL_CANDIDATE_FLOOR, matchedCount, new Set([...commonOptions, ...reserved]).size))
     : limit;
   return withPriority(buckets, priority, target)
     .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
@@ -457,10 +465,10 @@ export function limitFeatCandidates(
  * balanced across spell ranks; narrow matches are padded with bounded real
  * options instead of falling back to the full tradition catalog.
  * @param {string[]} [keywords]
- * @param {object} [plannedSlots] module-owned PC base plan; reserves rank candidates
+ * @param {object} [plannedPicks] module-owned PC base plan; reserves rank candidates
  * @returns {Promise<{name: string, rank: number, traits: string[]}[]>} sorted by rank then name
  */
-export async function getSpellCandidates(tradition, maxRank, keywords = [], plannedSlots = null) {
+export async function getSpellCandidates(tradition, maxRank, keywords = [], plannedPicks = null) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("spells")) {
@@ -477,11 +485,11 @@ export async function getSpellCandidates(tradition, maxRank, keywords = [], plan
       if (rank > maxRank) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({ name: entry.name, rank, traits });
+      candidates.push({ name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity });
     }
   }
   candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
-  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT, plannedSlots);
+  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT, plannedPicks);
 }
 
 /**

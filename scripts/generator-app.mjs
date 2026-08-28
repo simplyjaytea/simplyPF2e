@@ -18,7 +18,7 @@ import {
 import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp
 } from "./pc-builder.mjs";
-import { pcSpellcastingProfile, pcSpellSlots } from "./pc-tables.mjs";
+import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, updateCustomPreset,
@@ -173,6 +173,9 @@ export class GeneratorApp extends SpfApp {
     const pcClass = { name: resolved.classDoc?.name ?? concept.class, found: Boolean(resolved.classDoc) };
     const feats = GeneratorApp.#mapNamed(resolved.feats);
     const spells = GeneratorApp.#mapSpells(resolved.spells);
+    const signatureRanks = concept.spellcasting?.signatureRanks ?? [];
+    const plannedSignatures = new Set(spells.filter((spell) => spell.found && spell.signature
+      && signatureRanks.includes(spell.rank)).map((spell) => spell.rank));
     const equipment = GeneratorApp.#mapGear(resolved.equipment);
     const loot = GeneratorApp.#mapGear(resolved.loot);
     return {
@@ -182,6 +185,9 @@ export class GeneratorApp extends SpfApp {
       background,
       class: pcClass,
       spellcastingNotice: concept.spellcastingNoticeKey ? game.i18n.localize(concept.spellcastingNoticeKey) : null,
+      signatureSummary: signatureRanks.length ? game.i18n.format("SIMPLYPF2E.Preview.PCSignaturePlan", {
+        selected: plannedSignatures.size, total: signatureRanks.length
+      }) : null,
       feats,
       spells,
       equipment,
@@ -205,6 +211,7 @@ export class GeneratorApp extends SpfApp {
     return (list ?? []).map(({ spell, entry }) => ({
       name: entry?.name ?? spell.name,
       rank: spell.rank,
+      signature: spell.signature === true,
       found: Boolean(entry)
     }));
   }
@@ -754,9 +761,11 @@ export class GeneratorApp extends SpfApp {
           : "SIMPLYPF2E.Preview.PCVariableSpellPlan";
         if (concept.spellcasting) {
           if (castingProfile.tradition) concept.spellcasting.tradition = castingProfile.tradition;
-          concept.spellcasting.plannedSlots = pcSpellSlots(concept.level, castingProfile);
+          const plan = pcSpellPlan(concept.level, castingProfile);
+          concept.spellcasting.plannedPicks = plan.picks;
+          concept.spellcasting.signatureRanks = plan.signatureRanks;
           concept.spellcasting.preparationMode = castingProfile.mode;
-          concept.spellcasting.maxRank = Math.max(...Object.entries(concept.spellcasting.plannedSlots)
+          concept.spellcasting.maxRank = Math.max(...Object.entries(plan.slots)
             .filter(([, count]) => count > 0).map(([rank]) => Number(rank)));
         }
       } else if (concept.spellcasting) {
@@ -923,7 +932,7 @@ export class GeneratorApp extends SpfApp {
         spellcasting.tradition,
         spellcasting.maxRank,
         [...spellcasting.spells.map((spell) => spell.name), ...keywords],
-        spellcasting.plannedSlots
+        spellcasting.plannedPicks
       );
       if (!candidates.length) {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
@@ -933,8 +942,9 @@ export class GeneratorApp extends SpfApp {
           concept,
           candidates,
           maxRank: spellcasting.maxRank,
-          plannedSlots: spellcasting.plannedSlots,
+          plannedPicks: spellcasting.plannedPicks,
           preparationMode: spellcasting.preparationMode,
+          signatureRanks: spellcasting.signatureRanks,
           onProgress
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);
@@ -947,7 +957,7 @@ export class GeneratorApp extends SpfApp {
     if (spellcasting.spells.length) return;
     // A grounded daily plan must not silently become an unplanned draft.
     // Preserve the entry/empty slots for manual completion; preview warns.
-    if (spellcasting.plannedSlots) return;
+    if (spellcasting.plannedPicks) return;
     // Fail-closed is right for a CREATURE — a monster is fine with one fewer
     // ability, and unvetted draft names would become nothing on the sheet
     // anyway. It is the wrong trade for a PLAYER CHARACTER: dropping

@@ -4,7 +4,7 @@ const docs = new Map();
 const entry = (id) => ({ packId: "spells", _id: id, uuid: `Compendium.spells.Item.${id}` });
 const spellDoc = (id, level, traits = []) => ({
   id, uuid: `Compendium.spells.Item.${id}`,
-  toObject: () => ({ _id: id, name: id, type: "spell", system: { level: { value: level }, traits: { value: traits, traditions: ["arcane"] }, location: { value: "stale", heightenedLevel: 9 } } })
+  toObject: () => ({ _id: id, name: id, type: "spell", system: { level: { value: level }, traits: { value: traits, traditions: ["arcane"], rarity: "common" }, location: { value: "stale", heightenedLevel: 9, signature: true } } })
 });
 docs.set("magic-missile", spellDoc("magic-missile", 1));
 docs.set("fireball", spellDoc("fireball", 3));
@@ -55,6 +55,7 @@ assert.ok(embedded.filter((item) => item.type === "spell").every((item) => item.
 
 const wizardClass = resolved.classDoc;
 resolved.classDoc = doc("class", { slug: "sorcerer", publication: { title: "Pathfinder Player Core 2", remaster: true }, keyAbility: { value: ["cha"] }, trainedSkills: { value: [], additional: 0 } }, "Sorcerer");
+const sorcererClass = resolved.classDoc;
 resolved.spells = [
   { spell: { rank: 3 }, entry: entry("fireball") }, { spell: { rank: 4 }, entry: entry("fireball") }
 ];
@@ -77,12 +78,12 @@ resolved.spells = [
   ...Array.from({ length: 5 }, (_, i) => pick(`cantrip-${i + 1}`, 0))
 ];
 await createCharacterActor({ ...common, spellcasting: {
-  tradition: "divine", preparationMode: "spontaneous", plannedSlots: { 0: 99, 1: 99 }
+  tradition: "divine", preparationMode: "spontaneous", plannedPicks: { 0: 99, 1: 99 }
 } }, resolved);
 const prepared = embedded.find((item) => item.type === "spellcastingEntry");
 assert.equal(prepared.system.tradition.value, "arcane", "real fixed tradition overrides a conflicting concept");
 assert.equal(prepared.system.prepared.value, "prepared");
-assert.equal(prepared.system.slots.slot1.max, 3, "builder recomputes real profile, never trusts upstream plannedSlots");
+assert.equal(prepared.system.slots.slot1.max, 3, "builder recomputes real profile, never trusts upstream plannedPicks");
 assert.equal(prepared.system.slots.slot1.prepared.length, 3);
 assert.equal(prepared.system.slots.slot0.prepared.length, 5, "cantrip preparations are distinct and capped");
 assert.equal(prepared.system.slots.slot1.prepared[0].id, prepared.system.slots.slot2.prepared[0].id,
@@ -134,4 +135,54 @@ resolved.spells = [
 await createCharacterActor({ ...common, spellcasting: { tradition: "arcane" } }, resolved);
 const crossPack = embedded.find((item) => item.type === "spellcastingEntry").system.slots.slot1.prepared;
 assert.notEqual(crossPack[0].id, crossPack[1].id, "different real document UUIDs cannot collapse on matching bare IDs");
+
+const marked = (id, rank, signature = true) => ({ ...pick(id, rank), spell: { name: id, rank, signature } });
+const actualSpells = () => embedded.filter((item) => item.type === "spell");
+resolved.classDoc = sorcererClass;
+resolved.spells = [marked("magic-missile", 1)];
+await createCharacterActor({ ...common, level: 2, spellcasting: { tradition: "arcane", signatureRanks: [1] } }, resolved);
+assert.ok(!actualSpells()[0].system.location.signature, "forged upstream eligibility and stale source signature cannot bypass class level");
+
+resolved.spells = [marked("magic-missile", 2), marked("detect-magic", 0)];
+await createCharacterActor({ ...common, level: 3, spellcasting: { tradition: "arcane" } }, resolved);
+const heightenedSignature = actualSpells().find((item) => item.name === "magic-missile");
+assert.equal(heightenedSignature.system.location.signature, true);
+assert.equal(heightenedSignature.system.location.heightenedLevel, 2);
+assert.equal(heightenedSignature.system.level.value, 1, "native virtual rows need the unchanged original spell rank");
+assert.ok(!actualSpells().find((item) => item.name === "detect-magic").system.location.signature);
+
+resolved.spells = [marked("magic-missile", 3), marked("fireball", 3), marked("magic-missile", 1, "signature")];
+await createCharacterActor({ ...common, spellcasting: { tradition: "arcane" } }, resolved);
+assert.equal(actualSpells().length, 3);
+assert.ok(actualSpells().every((item) => !item.system.location.signature), "conflicting or nonboolean markers keep all valid spells regular");
+
+for (const id of ["common-ten-a", "common-ten-b", "common-ten-c"]) docs.set(id, spellDoc(id, 10));
+addAlteredSpell("rare-ten", (data) => { data.system.level.value = 10; data.system.traits.rarity = "rare"; });
+addAlteredSpell("unknown-rarity-ten", (data) => { data.system.level.value = 10; delete data.system.traits.rarity; });
+resolved.spells = [
+  marked("rare-ten", 10), pick("unknown-rarity-ten", 10), marked("common-ten-a", 10),
+  pick("common-ten-b", 10), pick("common-ten-c", 10)
+];
+await createCharacterActor({ ...common, level: 19, spellcasting: { tradition: "arcane", plannedPicks: { 10: 99 } } }, resolved);
+const rankTenEntry = embedded.find((item) => item.type === "spellcastingEntry");
+assert.equal(rankTenEntry.system.slots.slot10.max, 1);
+assert.equal(rankTenEntry.system.slots.slot10.value, 1);
+assert.deepEqual(actualSpells().map((item) => item.name), ["common-ten-a", "common-ten-b"],
+  "actual common rarity is rechecked before counting two repertoire picks, independently of index/provider data");
+assert.equal(actualSpells()[0].system.location.signature, true, "rank-ten learned signatures are eligible");
+assert.ok(!actualSpells()[1].system.location.signature, "regular sources cannot inherit stale signatures");
+
+resolved.spells = [marked("magic-missile", 10), pick("common-ten-a", 10)];
+await createCharacterActor({ ...common, level: 20, spellcasting: { tradition: "arcane" } }, resolved);
+assert.equal(actualSpells().length, 2);
+assert.equal(actualSpells()[0].system.location.heightenedLevel, 10, "common lower-base spells can be learned heightened at ten");
+assert.equal(actualSpells()[0].system.location.signature, true);
+
+resolved.classDoc = wizardClass;
+resolved.spells = [marked("magic-missile", 1)];
+await createCharacterActor({ ...common, spellcasting: { tradition: "arcane" } }, resolved);
+assert.ok(!actualSpells()[0].system.location.signature, "ordinary prepared casting never gains signatures");
+resolved.classDoc = doc("class", { ...sorcererClass.system, publication: { title: "Core Rulebook", remaster: false } }, "Sorcerer");
+await createCharacterActor({ ...common, spellcasting: { tradition: "arcane", signatureRanks: [1] } }, resolved);
+assert.ok(!actualSpells()[0].system.location.signature, "unsupported/legacy profiles do not gain guessed signature features");
 console.log("pc-builder spellcasting: prepared IDs, ranks, source validation, caps and native empty plans passed");

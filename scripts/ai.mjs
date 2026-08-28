@@ -490,37 +490,43 @@ const PC_SPELL_RANKS = ["cantrip", "rank-one", "rank-two", "rank-three", "rank-f
  * @param {object} args.concept       normalized concept (for context)
  * @param {{name: string, rank: number}[]} args.candidates
  * @param {number} args.maxRank
- * @param {object} [args.plannedSlots] module-owned base slot counts by rank
+ * @param {object} [args.plannedPicks] module-owned preparation/repertoire counts by rank
  * @param {string} [args.preparationMode] prepared or spontaneous for PC plans
+ * @param {number[]} [args.signatureRanks] module-owned ordinary signature eligibility
  * @returns {Promise<{spells: {name: string, rank: number}[], usage: object}>}
  */
-export async function selectSpells({ concept, candidates, maxRank, plannedSlots, preparationMode, onProgress }) {
-  const pcPlan = plannedSlots != null;
-  if (pcPlan && (typeof plannedSlots !== "object" || Array.isArray(plannedSlots)
+export async function selectSpells({ concept, candidates, maxRank, plannedPicks, preparationMode, signatureRanks = [], onProgress }) {
+  const pcPlan = plannedPicks != null;
+  if (pcPlan && (typeof plannedPicks !== "object" || Array.isArray(plannedPicks)
     || !Number.isInteger(maxRank) || maxRank < 0 || maxRank > 10
     || !["prepared", "spontaneous"].includes(preparationMode)
-    || !Object.entries(plannedSlots).every(([rank, count]) => /^(?:[0-9]|10)$/.test(rank)
-      && Number.isInteger(count) && count >= 0 && count <= 5))) {
+    || !Object.entries(plannedPicks).every(([rank, count]) => /^(?:[0-9]|10)$/.test(rank)
+      && Number.isInteger(count) && count >= 0 && count <= 5)
+    || !Array.isArray(signatureRanks) || !signatureRanks.every((rank) => preparationMode === "spontaneous"
+      && Number.isInteger(rank) && rank > 0 && rank <= maxRank && plannedPicks[rank] > 0))) {
     throw new TypeError("Invalid character spell slot plan");
   }
   const byRank = new Map();
   for (const c of candidates) {
     if (!byRank.has(c.rank)) byRank.set(c.rank, []);
-    byRank.get(c.rank).push(c.name);
+    byRank.get(c.rank).push(pcPlan && preparationMode === "spontaneous" && maxRank === 10
+      ? `${c.name} [${c.rarity ?? "unknown rarity"}]` : c.name);
   }
   const list = [...byRank.entries()]
     .map(([rank, names]) => `${pcPlan ? PC_SPELL_RANKS[rank] : rank === 0 ? "Cantrips" : `Rank ${rank}`}: ${names.join("; ")}`)
     .join("\n");
 
   const system = `You are selecting spells for a Pathfinder 2e ${pcPlan ? "player character" : "creature"}. Choose ONLY from the provided list, copying each name EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
-{ "spells": [ { "name": string, "rank": ${pcPlan ? "string" : "number"} } ] }
+{ "spells": [ { "name": string, "rank": ${pcPlan ? 'string, "signature": "regular" | "signature"' : "number"} } ] }
 ${pcPlan
     ? `"rank" must be one of these enum slugs, never a number: ${PC_SPELL_RANKS.slice(0, maxRank + 1).join(", ")}. Use cantrip only for cantrips; ranked spells use their listed rank or a higher allowed rank to heighten.`
     : `"rank" is the slot the creature casts it from: 0 for cantrips, otherwise at least the listed rank and at most ${maxRank} (choose higher to heighten a spell only when that clearly helps it).`}
 ${pcPlan
-    ? `Fill this module-supplied BASE spell plan (rank enum: number of picks): ${JSON.stringify(Object.fromEntries(Object.entries(plannedSlots).map(([rank, count]) => [PC_SPELL_RANKS[rank], count])))}. Choose five DISTINCT cantrips using the cantrip rank; cantrips must never use ranked slots. ${preparationMode === "prepared"
+    ? `Fill this module-supplied BASE spell plan (rank enum: number of picks): ${JSON.stringify(Object.fromEntries(Object.entries(plannedPicks).map(([rank, count]) => [PC_SPELL_RANKS[rank], count])))}. Choose five DISTINCT cantrips using the cantrip rank; cantrips must never use ranked slots. ${preparationMode === "prepared"
       ? "Each array entry prepares ONE daily slot. You may deliberately repeat a ranked spell to prepare it in multiple slots, including at different legal ranks."
-      : "Each array entry is a repertoire spell at its assigned rank. Do not repeat the same spell at the same rank; it may appear at different legal ranks."} Do not add subclass, feat, curriculum, or font bonus slots. Fill each rank where suitable candidates exist; leave unfillable slots empty, never invent names. Favor a useful mix of thematic spells.`
+      : "Each array entry is a repertoire spell at its assigned rank, not a spell slot. Do not repeat the same spell at the same rank; it may appear at different legal ranks. At rank-ten choose only common spells. Bracketed rarity annotations are not part of the spell name."} ${signatureRanks.length
+        ? `Choose exactly one selected repertoire spell at each of these learned ranks as a signature: ${signatureRanks.map((rank) => PC_SPELL_RANKS[rank]).join(", ")}. Mark those with "signature": "signature" and all others with "signature": "regular". Favor different spells that benefit from flexible heightening. A signature can be learned heightened and still cast at lower legal ranks.`
+        : 'No signature choices are available; use "signature": "regular" for every spell.'} Do not add subclass, feat, curriculum, or font bonus slots. Fill each rank where suitable candidates exist; leave unfillable slots empty, never invent names. Favor a useful mix of thematic spells.`
     : "Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward the highest ranks. Favor spells that express the creature's theme and tactics."}`;
 
   const user = [
@@ -541,24 +547,38 @@ ${pcPlan
     task: pcPlan ? AI_TASK.PC_SPELL_SELECTION : AI_TASK.SPELL_SELECTION, system, user, onProgress
   });
   if (pcPlan) {
-    const catalog = new Map(candidates.map((candidate) => [candidate.name, candidate.rank]));
+    const catalog = new Map(candidates.map((candidate) => [candidate.name, candidate]));
     const used = new Map();
     const seen = new Set();
     const spells = [];
+    const signatures = new Map();
     for (const pick of parsed.spells) {
-      const baseRank = catalog.get(pick?.name);
+      const candidate = catalog.get(pick?.name);
+      const baseRank = candidate?.rank;
       const rank = PC_SPELL_RANKS.indexOf(pick?.rank);
       const key = JSON.stringify([pick?.name, rank]);
       if (!Number.isInteger(baseRank) || !Number.isInteger(rank) || rank < 0 || rank > maxRank
         || baseRank > rank || (baseRank === 0) !== (rank === 0)
-        || (used.get(rank) ?? 0) >= (plannedSlots[rank] ?? 0)
+        || (used.get(rank) ?? 0) >= (plannedPicks[rank] ?? 0)
+        || (preparationMode === "spontaneous" && rank === 10 && candidate.rarity !== "common")
         || ((rank === 0 || preparationMode === "spontaneous") && seen.has(key))) {
         console.warn("simplypf2e | dropping invalid or excess character spell-plan pick", pick);
         continue;
       }
-      spells.push({ name: pick.name, rank });
+      const spell = { name: pick.name, rank };
+      spells.push(spell);
+      if (pick.signature === "signature" && signatureRanks.includes(rank)) {
+        if (!signatures.has(rank)) signatures.set(rank, []);
+        signatures.get(rank).push(spell);
+      } else if (pick.signature != null && pick.signature !== "regular") {
+        console.warn("simplypf2e | ignoring invalid or ineligible signature designation", pick);
+      }
       used.set(rank, (used.get(rank) ?? 0) + 1);
       seen.add(key);
+    }
+    for (const [rank, selections] of signatures) {
+      if (selections.length === 1) selections[0].signature = true;
+      else console.warn(`simplypf2e | conflicting signature choices at rank ${rank}; keeping those spells regular`);
     }
     return { spells, usage };
   }
