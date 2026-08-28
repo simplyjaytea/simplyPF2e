@@ -327,7 +327,7 @@ function withPriority(buckets, priority, limit) {
 }
 
 /** Pure bounded selector used by getSpellCandidates() and its regression test. */
-export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CANDIDATE_LIMIT) {
+export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CANDIDATE_LIMIT, plannedSlots = null) {
   const list = Array.isArray(candidates) ? candidates : [];
   const kw = normalizedKeywords(keywords);
   const exactNames = new Set(kw);
@@ -351,10 +351,16 @@ export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CA
   const matchedCount = kw.length
     ? list.filter((candidate) => relevanceScore(candidate, kw) > 0).length
     : limit;
+  // A PC needs enough distinct candidates to fill its base plan, especially
+  // five cantrips. Exact first-draft names alone can starve other ranks.
+  // Reserve relevant choices per rank before those names, within the same cap.
+  const reserved = plannedSlots ? buckets.flatMap((bucket) => bucket.slice(0,
+    Math.min(SPELL_CANDIDATES_PER_RANK, Math.max(0, Number(plannedSlots[bucket[0]?.rank]) || 0)))) : [];
+  const priority = [...new Set([...reserved, ...exact])];
   const target = kw.length
-    ? Math.min(limit, Math.max(SPELL_CANDIDATE_FLOOR, matchedCount))
+    ? Math.min(limit, Math.max(SPELL_CANDIDATE_FLOOR, matchedCount, reserved.length))
     : limit;
-  return withPriority(buckets, exact, target)
+  return withPriority(buckets, priority, target)
     .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
 }
 
@@ -451,9 +457,10 @@ export function limitFeatCandidates(
  * balanced across spell ranks; narrow matches are padded with bounded real
  * options instead of falling back to the full tradition catalog.
  * @param {string[]} [keywords]
+ * @param {object} [plannedSlots] module-owned PC base plan; reserves rank candidates
  * @returns {Promise<{name: string, rank: number, traits: string[]}[]>} sorted by rank then name
  */
-export async function getSpellCandidates(tradition, maxRank, keywords = []) {
+export async function getSpellCandidates(tradition, maxRank, keywords = [], plannedSlots = null) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("spells")) {
@@ -474,7 +481,7 @@ export async function getSpellCandidates(tradition, maxRank, keywords = []) {
     }
   }
   candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
-  return limitSpellCandidates(candidates, keywords);
+  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT, plannedSlots);
 }
 
 /**

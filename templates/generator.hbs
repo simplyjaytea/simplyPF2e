@@ -430,6 +430,9 @@
       </ul>
     {{/if}}
 
+    {{#if pcPreview.spellcastingNotice}}
+      <p class="notification warning" role="status">{{pcPreview.spellcastingNotice}}</p>
+    {{/if}}
     {{#if pcPreview.concept.spellcasting}}
       <h3>{{localize "SIMPLYPF2E.Preview.Spells"}} <span class="spf-spell-dc">({{pcPreview.concept.spellcasting.tradition}})</span></h3>
       <ul class="spf-list spf-inline">

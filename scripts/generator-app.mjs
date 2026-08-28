@@ -18,6 +18,7 @@ import {
 import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp
 } from "./pc-builder.mjs";
+import { pcSpellcastingProfile, pcSpellSlots } from "./pc-tables.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
 import {
   BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, updateCustomPreset,
@@ -180,6 +181,7 @@ export class GeneratorApp extends SpfApp {
       heritage,
       background,
       class: pcClass,
+      spellcastingNotice: concept.spellcastingNoticeKey ? game.i18n.localize(concept.spellcastingNoticeKey) : null,
       feats,
       spells,
       equipment,
@@ -739,6 +741,28 @@ export class GeneratorApp extends SpfApp {
       let resolved = await resolvePCConcept(concept);
       concept.traits = [slugify(resolved.ancestryDoc.name), slugify(resolved.classDoc.name)];
 
+      // The real class document owns the casting mode and base slot plan.
+      // Variable traditions still need the selected bloodline/patron checked.
+      const castingProfile = pcSpellcastingProfile(resolved.classDoc);
+      if (!this.#input.allowSpellcasting) concept.spellcasting = null;
+      if (this.#input.allowSpellcasting && castingProfile) {
+        if (!concept.spellcasting && castingProfile.tradition) {
+          concept.spellcasting = { tradition: castingProfile.tradition, spells: [] };
+        }
+        concept.spellcastingNoticeKey = castingProfile.tradition
+          ? "SIMPLYPF2E.Preview.PCBaseSpellPlan"
+          : "SIMPLYPF2E.Preview.PCVariableSpellPlan";
+        if (concept.spellcasting) {
+          if (castingProfile.tradition) concept.spellcasting.tradition = castingProfile.tradition;
+          concept.spellcasting.plannedSlots = pcSpellSlots(concept.level, castingProfile);
+          concept.spellcasting.preparationMode = castingProfile.mode;
+          concept.spellcasting.maxRank = Math.max(...Object.entries(concept.spellcasting.plannedSlots)
+            .filter(([, count]) => count > 0).map(([rank]) => Number(rank)));
+        }
+      } else if (concept.spellcasting) {
+        concept.spellcastingNoticeKey = "SIMPLYPF2E.Preview.PCApproximateSpellPlan";
+      }
+
       await this._setStep("feats");
       if (resolved.featSlots.length) {
         const { picks, usage: featUsage } = await selectFeats({
@@ -755,7 +779,8 @@ export class GeneratorApp extends SpfApp {
       // return a valid tradition.
       if (!this.#input.allowSpellcasting) concept.spellcasting = null;
 
-      // Both refine helpers are the EXISTING NPC ones, reused unchanged — the
+      // Both refine helpers reuse the NPC pipeline; the PC spell pass also
+      // receives a class-qualified plan where supported. The
       // PC concept carries the same fields they read (blurb/description/
       // traits/strikes/equipment/loot/level/name/rarity).
       // Gate on the SAME condition the step list above was built from, same
@@ -897,7 +922,8 @@ export class GeneratorApp extends SpfApp {
       const candidates = await getSpellCandidates(
         spellcasting.tradition,
         spellcasting.maxRank,
-        [...spellcasting.spells.map((spell) => spell.name), ...keywords]
+        [...spellcasting.spells.map((spell) => spell.name), ...keywords],
+        spellcasting.plannedSlots
       );
       if (!candidates.length) {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
@@ -907,6 +933,8 @@ export class GeneratorApp extends SpfApp {
           concept,
           candidates,
           maxRank: spellcasting.maxRank,
+          plannedSlots: spellcasting.plannedSlots,
+          preparationMode: spellcasting.preparationMode,
           onProgress
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);
@@ -917,6 +945,9 @@ export class GeneratorApp extends SpfApp {
       spellcasting.spells = [];
     }
     if (spellcasting.spells.length) return;
+    // A grounded daily plan must not silently become an unplanned draft.
+    // Preserve the entry/empty slots for manual completion; preview warns.
+    if (spellcasting.plannedSlots) return;
     // Fail-closed is right for a CREATURE — a monster is fine with one fewer
     // ability, and unvetted draft names would become nothing on the sheet
     // anyway. It is the wrong trade for a PLAYER CHARACTER: dropping

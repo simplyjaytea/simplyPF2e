@@ -2,12 +2,12 @@ import * as T from "./tables.mjs";
 import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates } from "./compendium.mjs";
 import {
   parseCoins, resolveLoot, resolveEquipment, resolveFocusSpells,
-  buildEquipmentItems, buildLootItems, filterItemTypes
+  buildEquipmentItems, buildLootItems, filterItemTypes, heightenedLevelFor
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
-import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
+import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, spontaneousSpellSlots, pcSpellcastingProfile, pcSpellSlots } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
 
 /**
@@ -707,41 +707,89 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     items.push(data);
   }
 
-  // Spellcasting entry + spells (skipped when no spell resolved to a document).
-  // NOTE: a fixed spontaneous entry is a v1 simplification — prepared-
-  // caster slot management (Wizard-style) is out of scope; add if requested.
-  if (concept.spellcasting && resolved.spells?.some((s) => s.entry)) {
+  // Spellcasting entry + explicit spell plan. Recognized Remaster classes use
+  // their published profile; unsupported classes retain the legacy spontaneous
+  // fallback until a source-qualified profile is added.
+  const spellProfile = concept.spellcasting ? pcSpellcastingProfile(resolved.classDoc) : null;
+  if (concept.spellcasting && (spellProfile || resolved.spells?.some((s) => s.entry))) {
     const entryId = foundry.utils.randomID();
-    // Populate per-rank slots so the caster can actually cast (issue #50 item 5
-    // / #53); shape (slot0..slot10, each {value,max,prepared:[]}) verified
-    // against pf2e spellcasting-entry_data.ts. Spontaneous casters leave
-    // `prepared` empty. `ability.value` keys spell DC/attack off the key ability.
+    const mode = spellProfile?.mode ?? "spontaneous";
+    const tradition = spellProfile?.tradition ?? concept.spellcasting.tradition;
+    const ability = spellProfile?.ability ?? keyAbility;
+    const counts = spellProfile ? pcSpellSlots(concept.level, spellProfile) : spontaneousSpellSlots(concept.level);
     const slots = {};
-    for (const [rank, max] of Object.entries(spontaneousSpellSlots(concept.level))) {
+    for (const [rank, max] of Object.entries(counts)) {
       slots[`slot${rank}`] = { value: max, max, prepared: [] };
+    }
+
+    const spellSources = new Map();
+    const usedCantrips = new Set();
+    const spontaneousSeen = new Set();
+    const usedRanks = new Map();
+    for (const { spell, entry } of resolved.spells ?? []) {
+      const assignedRank = spell?.rank;
+      const reject = (reason) => console.warn(`simplypf2e | dropped planned spell "${spell?.name ?? entry?.name ?? "?"}": ${reason}`);
+      if (typeof assignedRank !== "number" || !Number.isInteger(assignedRank) || assignedRank < 0 || assignedRank > 10 || !counts[assignedRank]) { reject("assigned rank is invalid or has no slot"); continue; }
+      const doc = await getDocument(entry);
+      if (!doc) { reject("could not load grounded spell"); continue; }
+      const source = toItemData(doc);
+      if (source.type !== "spell") { reject("grounded document is not a spell"); continue; }
+      const baseRank = source.system?.level?.value;
+      const traits = source.system?.traits ?? {};
+      const cantrip = Array.isArray(traits.value) && traits.value.includes("cantrip");
+      const traditions = Array.isArray(traits.traditions) ? traits.traditions : [];
+      if (spellProfile && (!Array.isArray(traits.value) || !Array.isArray(traits.traditions))) { reject("missing spell trait data"); continue; }
+      if (!Number.isInteger(baseRank) || baseRank < 0 || (!cantrip && baseRank > assignedRank)) { reject("base rank cannot occupy assigned rank"); continue; }
+      if (cantrip !== (assignedRank === 0)) { reject("cantrip rank mismatch"); continue; }
+      if ((Array.isArray(traits.value) && traits.value.includes("focus")) || source.system?.ritual) { reject("focus spells and rituals use separate casting entries"); continue; }
+      if (spellProfile && !traditions.includes(tradition)) { reject("spell tradition does not match caster profile"); continue; }
+      const identity = doc.uuid ?? entry?.uuid ?? (entry?.packId && entry?._id ? `${entry.packId}:${entry._id}` : null);
+      if (!identity) { reject("grounded spell identity is missing"); continue; }
+      if (assignedRank === 0 && usedCantrips.has(identity)) { reject("duplicate cantrip"); continue; }
+      const key = `${identity}:${assignedRank}`;
+      if (mode === "spontaneous" && spontaneousSeen.has(key)) { reject("duplicate spontaneous repertoire rank"); continue; }
+      if ((usedRanks.get(assignedRank) ?? 0) >= counts[assignedRank]) { reject("assigned rank is already at its slot cap"); continue; }
+      // A spontaneous repertoire can contain the same source at different
+      // assigned ranks; each needs its own embedded item/location heightening.
+      const sourceKey = mode === "spontaneous" ? key : identity;
+      let data = spellSources.get(sourceKey);
+      if (!data) {
+        data = source;
+        data._id = foundry.utils.randomID();
+        spellSources.set(sourceKey, data);
+      }
+      // A cloned source can carry a stale entry or heightened location from a
+      // compendium/previous embedding. Rebuild it rather than merging one.
+      data.system.location = { value: entryId };
+      if (mode === "spontaneous") {
+        const heightenedLevel = heightenedLevelFor(data.system, assignedRank);
+        if (heightenedLevel) data.system.location.heightenedLevel = heightenedLevel;
+        else delete data.system.location.heightenedLevel;
+        spontaneousSeen.add(key);
+      } else {
+        // PF2e entry/data.ts SpellPrepData; the native entry pads unused
+        // positions with null IDs, and its collection casts at the slot rank.
+        slots[`slot${assignedRank}`].prepared.push({ id: data._id, expended: false });
+      }
+      usedRanks.set(assignedRank, (usedRanks.get(assignedRank) ?? 0) + 1);
+      if (assignedRank === 0) usedCantrips.add(identity);
     }
     items.push({
       _id: entryId,
-      name: `${capitalized(concept.spellcasting.tradition)} Spells`,
+      name: `${capitalized(tradition)} Spells`,
       type: "spellcastingEntry",
       img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
       system: {
-        tradition: { value: concept.spellcasting.tradition },
-        prepared: { value: "spontaneous", flexible: false },
-        ability: { value: keyAbility },
+        tradition: { value: tradition },
+        prepared: { value: mode, flexible: false },
+        ability: { value: ability },
         proficiency: { value: 1 },
         slots,
         spelldc: { value: 0, dc: 0, mod: 0 },
         showSlotlessLevels: { value: false }
       }
     });
-    for (const { spell, entry } of resolved.spells) {
-      const doc = await getDocument(entry);
-      if (!doc) continue;
-      const data = toItemData(doc);
-      data.system.location = { ...(data.system.location ?? {}), value: entryId };
-      items.push(data);
-    }
+    items.push(...spellSources.values());
   }
 
   // Focus spells: a separate `prepared.value: "focus"` entry — how the real

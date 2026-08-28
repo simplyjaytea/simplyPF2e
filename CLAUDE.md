@@ -58,7 +58,7 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 | `runes.mjs` | All rune knowledge: parse out of a name, apply as system data, cap tiers to level, price from real rune docs, item-forge candidate lists. Never hardcodes a rune level or price. |
 | `text.mjs` | `slugify`, `capitalized`, `esc`, `toHtml`. Zero deps, node-testable. |
 | `tables.mjs` | GM Core Building Creatures benchmarks + Treasure by Level (NPC-only). |
-| `pc-tables.mjs` | Core Rulebook PC leveling cadence (boost/skill/feat-slot levels). |
+| `pc-tables.mjs` | PC leveling cadence (boost/skill/feat-slot levels), source-qualified Remaster casting profiles, and base spell-slot counts. |
 | `rule-templates.mjs` | Harvests real RE exemplars from installed packs at runtime. Used by the forge and the PC focus-pool rule. |
 | `item-builder.mjs` | Item forge: normalize, empirical pricing, item assembly. |
 | `generator-app.mjs` / `itemforge-app.mjs` / `manage-presets-app.mjs` / `sources-app.mjs` | UI apps over `app-base.mjs` (token tracking + progress). |
@@ -105,11 +105,13 @@ Earlier audit/optimization work extracted shared `text.mjs`/`runes.mjs`, level-g
 
 **Local work pending publication:** `codex/pc-creation-finalization` contains the reviewed new-PC full-HP fix (`6f188d0`) and reviewed grounded choice automation. The latter selects only IDs from supported static choices before any actor is created; native dialogs remain for dynamic, optional, predicated, drop-enabled, ABC-generated, deeper, and unanswered choices. The generator separates AI-choice progress from native feature application and records spent tokens even when choice selection fails. All 37 regression files pass; this does not claim live verification or unattended creation for every ancestry/class.
 
+**Latest local continuation:** `codex/pc-spellcasting` builds on those two commits (choice automation is `be5859d`). Seven source-qualified Remaster classes now receive verified base slots/casting modes, explicit native prepared-slot references, and spontaneous assigned heightening. The existing AI selection stage returns exact names + rank enum slugs; numeric counts/ranks stay module-owned. Candidate sampling reserves sufficient choices per rank without raising its hard cap. Preview exposes base-only/variable-tradition/unsupported-class limitations. All 40 regression files pass; this remains local and needs live casting/expending QA. See HANDOFF.md for scope and next steps.
+
 **Next task:** obtain permission before any authenticated GitHub write, then use branch + PR. After release/deployment, verify new characters start at derived full HP and grounded choices/native grants still work on the VPS test world. Never infer permission to push from this roadmap.
 
 ## Known gaps
 
-- **`pc-tables.spontaneousSpellSlots`** (2/3 slots per rank) is rules-derived, not copied from a verified table — an audit suggested sorcerers should get 4/rank. Needs a human with Player Core.
+- **PC casting coverage:** the local spellcasting branch verifies base slots for Remaster Bard, Cleric, Druid, Oracle, Sorcerer, Witch, Wizard against all 140 rows of the PF2e 8.4.1 class tables. Legacy/complex classes still use a warned generic approximation; subclass-granted spells, restricted font/curriculum slots, signature spells, variable-tradition consistency, and full spellbook/familiar inventories remain manual. Empty/invalid plans never invent preparations. No live QA of this branch yet.
 - **Free Archetype slot placement is approximate** — the archetype feat can collide with a regular class feat on `system.location` at the same even level. The real variant rule uses a separate feat group; this doesn't.
 - **Focus spells, v1 scope:** a focus-only NPC (no casting tradition, so no DC) is unsupported, and the pool-size convention (spell count, capped at 3) is a module default, not GM Core guidance. Both are signed-off decisions.
 - **Rarity cap covers ancestry/background/heritage only** — feats/spells/equipment were explicitly excluded. `getFullCandidates()`'s `maxRarity` + `RARITY_RANK` are already in place if extending is wanted.

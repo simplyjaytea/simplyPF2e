@@ -50,6 +50,17 @@ assert.deepEqual(
   "spell limiting must be deterministic"
 );
 
+/* PC plans reserve sufficient choices per rank inside the same hard cap. */
+const pcSlots = { 0: 5, 1: 4, 2: 4, 3: 4, 4: 4, 5: 4, 6: 4, 7: 4, 8: 4, 9: 4, 10: 1 };
+const pcCandidates = limitSpellCandidates(spells, exactSpellNames, SPELL_CANDIDATE_LIMIT, pcSlots);
+assert.ok(pcCandidates.length <= SPELL_CANDIDATE_LIMIT);
+for (const [rank, count] of Object.entries(pcSlots)) {
+  assert.ok(pcCandidates.filter((candidate) => candidate.rank === Number(rank)).length >= count,
+    `character rank ${rank} needs enough offered choices to fill its base plan`);
+}
+assert.equal(new Set(pcCandidates).size, pcCandidates.length, "reserved/exact priorities never duplicate a candidate");
+assert.ok(pcCandidates.some((candidate) => candidate.name === "Exact Ember"));
+
 /* Equipment/loot: the cap balances every supported type and every broad level
  * band while ranking an exact requested item ahead of filler in its bucket. */
 const equipmentTypes = ["weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit"];

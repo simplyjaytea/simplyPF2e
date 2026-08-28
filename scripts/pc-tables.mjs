@@ -83,31 +83,49 @@ export function buildFeatSlots(level, { freeArchetype = false } = {}) {
 }
 
 /**
- * Spell slots per spell rank for a FULL SPONTANEOUS caster (Sorcerer/Bard/
- * Oracle) at `level`. Returns an object keyed by spell rank 0-10 -> max slots
- * (0 = cantrips, shown with a fixed known count; ranks the character can't yet
- * cast are 0). Derived from the standard PF2e full-caster progression:
- *   - a new top rank unlocks at each odd level with 2 slots, filling to 3 the
- *     following (even) level; all lower ranks sit at 3.
- *   - 10th rank is the single-slot special case (one slot at level 19-20).
- *
- * CAVEAT — RULES-DERIVED, NOT COPIED FROM A VERIFIED TABLE. The real pf2e
- * system computes these via rule elements on each class item, not a static
- * table in its source, so this could not be cross-checked against ground-truth
- * code (only the shape of the consuming `system.slots` field was verified).
- * The "flat 3 per rank" assumption and the single 10th-rank slot should be
- * spot-checked against the Player Core caster table before high-level PCs are
- * trusted in play — same "confidence caveat" spirit as tables.mjs's
- * TREASURE_BY_LEVEL rows 13-20.
+ * Legacy compatibility approximation for unsupported classes. Recognized
+ * Remaster classes use pcSpellcastingProfile()/pcSpellSlots() below, grounded
+ * in published tables; do not extend this fallback by inference.
  */
 export function spontaneousSpellSlots(level) {
+  return pcSpellSlots(level, null);
+}
+
+const REMASTER_SPELLCASTERS = [
+  { slug: "bard", name: "Bard", title: "Pathfinder Player Core", mode: "spontaneous", ability: "cha", tradition: "occult", baseSlots: 2 },
+  { slug: "sorcerer", name: "Sorcerer", title: "Pathfinder Player Core 2", mode: "spontaneous", ability: "cha", tradition: null, baseSlots: 3 },
+  { slug: "oracle", name: "Oracle", title: "Pathfinder Player Core 2", mode: "spontaneous", ability: "cha", tradition: "divine", baseSlots: 3 },
+  { slug: "cleric", name: "Cleric", title: "Pathfinder Player Core", mode: "prepared", ability: "wis", tradition: "divine", baseSlots: 2 },
+  { slug: "druid", name: "Druid", title: "Pathfinder Player Core", mode: "prepared", ability: "wis", tradition: "primal", baseSlots: 2 },
+  { slug: "witch", name: "Witch", title: "Pathfinder Player Core", mode: "prepared", ability: "int", tradition: null, baseSlots: 2 },
+  { slug: "wizard", name: "Wizard", title: "Pathfinder Player Core", mode: "prepared", ability: "int", tradition: "arcane", baseSlots: 2 }
+];
+
+/** Conservative Remaster class profile. Class data itself contains only spell
+ * proficiency (PF2e class/data.ts), so the published source title qualifies
+ * this small verified profile table and prevents legacy lookalikes applying. */
+export function pcSpellcastingProfile(classDoc) {
+  const slug = String(classDoc?.system?.slug ?? "");
+  const name = String(classDoc?.name ?? "");
+  const publication = classDoc?.system?.publication ?? {};
+  const title = String(publication.title ?? "");
+  const profile = publication.remaster === true && REMASTER_SPELLCASTERS.find((p) => p.title === title && (slug === p.slug || (!slug && name === p.name)));
+  return profile ? { mode: profile.mode, ability: profile.ability, tradition: profile.tradition, baseSlots: profile.baseSlots } : null;
+}
+
+/** Base slots only: seven class tables verified at every level against
+ * https://raw.githubusercontent.com/foundryvtt/pf2e/pf2e-8.4.1/packs/pf2e/journals/classes.json
+ * and master packs/journals/classes.json. Font/curriculum/feat bonuses are NOT
+ * unrestricted base slots. Missing profiles retain the old 2/3 approximation. */
+export function pcSpellSlots(level, profile) {
+  const baseSlots = profile?.baseSlots === 3 ? 3 : 2;
   const lv = Math.min(Math.max(Math.round(Number(level)) || 1, 1), 20);
   const maxRank = Math.min(Math.ceil(lv / 2), 10);
-  const slots = { 0: 5 }; // cantrips: 5 known, cast at will
-  for (let r = 1; r <= 10; r++) {
-    if (r === 10) { slots[r] = lv >= 19 ? 1 : 0; continue; }
-    if (r > maxRank) { slots[r] = 0; continue; }
-    slots[r] = (r === maxRank && lv % 2 === 1) ? 2 : 3;
+  const slots = { 0: 5 };
+  for (let rank = 1; rank <= 10; rank++) {
+    if (rank > maxRank) slots[rank] = 0;
+    else if (rank === 10) slots[rank] = lv >= 19 ? 1 : 0;
+    else slots[rank] = rank === maxRank && lv % 2 ? baseSlots : baseSlots + 1;
   }
   return slots;
 }

@@ -478,33 +478,53 @@ Give 3-6 lowercase keywords describing the KINDS of spells that fit this creatur
   return { keywords, usage };
 }
 
+// Model-facing enum slugs; numeric ranks are owned and decoded by the module.
+const PC_SPELL_RANKS = ["cantrip", "rank-one", "rank-two", "rank-three", "rank-four", "rank-five",
+  "rank-six", "rank-seven", "rank-eight", "rank-nine", "rank-ten"];
+
 /**
  * Second pass: given the real spell list from the compendium, have the model
- * pick the creature's spells. Names it returns are guaranteed to exist (and
- * are still fuzzy-matched afterwards as a safety net).
+ * pick spells. A PC slot plan is checked against the exact offered catalog;
+ * the legacy creature path is subsequently compendium-matched.
  * @param {object} args
  * @param {object} args.concept       normalized concept (for context)
  * @param {{name: string, rank: number}[]} args.candidates
  * @param {number} args.maxRank
+ * @param {object} [args.plannedSlots] module-owned base slot counts by rank
+ * @param {string} [args.preparationMode] prepared or spontaneous for PC plans
  * @returns {Promise<{spells: {name: string, rank: number}[], usage: object}>}
  */
-export async function selectSpells({ concept, candidates, maxRank, onProgress }) {
+export async function selectSpells({ concept, candidates, maxRank, plannedSlots, preparationMode, onProgress }) {
+  const pcPlan = plannedSlots != null;
+  if (pcPlan && (typeof plannedSlots !== "object" || Array.isArray(plannedSlots)
+    || !Number.isInteger(maxRank) || maxRank < 0 || maxRank > 10
+    || !["prepared", "spontaneous"].includes(preparationMode)
+    || !Object.entries(plannedSlots).every(([rank, count]) => /^(?:[0-9]|10)$/.test(rank)
+      && Number.isInteger(count) && count >= 0 && count <= 5))) {
+    throw new TypeError("Invalid character spell slot plan");
+  }
   const byRank = new Map();
   for (const c of candidates) {
     if (!byRank.has(c.rank)) byRank.set(c.rank, []);
     byRank.get(c.rank).push(c.name);
   }
   const list = [...byRank.entries()]
-    .map(([rank, names]) => `${rank === 0 ? "Cantrips" : `Rank ${rank}`}: ${names.join("; ")}`)
+    .map(([rank, names]) => `${pcPlan ? PC_SPELL_RANKS[rank] : rank === 0 ? "Cantrips" : `Rank ${rank}`}: ${names.join("; ")}`)
     .join("\n");
 
-  const system = `You are selecting spells for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
-{ "spells": [ { "name": string, "rank": number } ] }
-"rank" is the slot the creature casts it from: 0 for cantrips, otherwise at least the listed rank and at most ${maxRank} (choose higher to heighten a spell only when that clearly helps it).
-Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward the highest ranks. Favor spells that express the creature's theme and tactics.`;
+  const system = `You are selecting spells for a Pathfinder 2e ${pcPlan ? "player character" : "creature"}. Choose ONLY from the provided list, copying each name EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
+{ "spells": [ { "name": string, "rank": ${pcPlan ? "string" : "number"} } ] }
+${pcPlan
+    ? `"rank" must be one of these enum slugs, never a number: ${PC_SPELL_RANKS.slice(0, maxRank + 1).join(", ")}. Use cantrip only for cantrips; ranked spells use their listed rank or a higher allowed rank to heighten.`
+    : `"rank" is the slot the creature casts it from: 0 for cantrips, otherwise at least the listed rank and at most ${maxRank} (choose higher to heighten a spell only when that clearly helps it).`}
+${pcPlan
+    ? `Fill this module-supplied BASE spell plan (rank enum: number of picks): ${JSON.stringify(Object.fromEntries(Object.entries(plannedSlots).map(([rank, count]) => [PC_SPELL_RANKS[rank], count])))}. Choose five DISTINCT cantrips using the cantrip rank; cantrips must never use ranked slots. ${preparationMode === "prepared"
+      ? "Each array entry prepares ONE daily slot. You may deliberately repeat a ranked spell to prepare it in multiple slots, including at different legal ranks."
+      : "Each array entry is a repertoire spell at its assigned rank. Do not repeat the same spell at the same rank; it may appear at different legal ranks."} Do not add subclass, feat, curriculum, or font bonus slots. Fill each rank where suitable candidates exist; leave unfillable slots empty, never invent names. Favor a useful mix of thematic spells.`
+    : "Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward the highest ranks. Favor spells that express the creature's theme and tactics."}`;
 
   const user = [
-    `Creature: ${concept.name} (level ${concept.level})`,
+    `${pcPlan ? "Character" : "Creature"}: ${concept.name} (level ${concept.level})`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.description ? `Description: ${concept.description}` : null,
     `Traits: ${concept.traits.join(", ")}`,
@@ -518,8 +538,30 @@ Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward 
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.SPELL_SELECTION, system, user, onProgress
+    task: pcPlan ? AI_TASK.PC_SPELL_SELECTION : AI_TASK.SPELL_SELECTION, system, user, onProgress
   });
+  if (pcPlan) {
+    const catalog = new Map(candidates.map((candidate) => [candidate.name, candidate.rank]));
+    const used = new Map();
+    const seen = new Set();
+    const spells = [];
+    for (const pick of parsed.spells) {
+      const baseRank = catalog.get(pick?.name);
+      const rank = PC_SPELL_RANKS.indexOf(pick?.rank);
+      const key = JSON.stringify([pick?.name, rank]);
+      if (!Number.isInteger(baseRank) || !Number.isInteger(rank) || rank < 0 || rank > maxRank
+        || baseRank > rank || (baseRank === 0) !== (rank === 0)
+        || (used.get(rank) ?? 0) >= (plannedSlots[rank] ?? 0)
+        || ((rank === 0 || preparationMode === "spontaneous") && seen.has(key))) {
+        console.warn("simplypf2e | dropping invalid or excess character spell-plan pick", pick);
+        continue;
+      }
+      spells.push({ name: pick.name, rank });
+      used.set(rank, (used.get(rank) ?? 0) + 1);
+      seen.add(key);
+    }
+    return { spells, usage };
+  }
   // A ranked spell must never come back as rank 0 (createActor would file it
   // as a cantrip) — clamp the minimum to the candidate's own listed rank.
   const listedRank = new Map(candidates.map((c) => [c.name.toLowerCase(), c.rank]));
