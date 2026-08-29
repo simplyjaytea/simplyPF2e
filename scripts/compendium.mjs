@@ -594,7 +594,7 @@ async function getFullCandidates(category, type, maxRarity) {
       if ((RARITY_RANK[rarity] ?? 0) > maxRank) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({ name: entry.name, traits: entry.system?.traits?.value ?? [] });
+      candidates.push(candidateRecord(entry, { name: entry.name, traits: entry.system?.traits?.value ?? [] }));
     }
   }
   candidates.sort((a, b) => a.name.localeCompare(b.name));
@@ -658,7 +658,7 @@ export async function getFeatCandidates({ level, category, traits = [], preferre
       if (traits.length && !traits.some((t) => entryTraits.includes(t))) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({ name: entry.name, level: entry.system?.level?.value ?? 0, traits: entryTraits });
+      candidates.push(candidateRecord(entry, { name: entry.name, level: entry.system?.level?.value ?? 0, traits: entryTraits }));
     }
   }
   candidates.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));

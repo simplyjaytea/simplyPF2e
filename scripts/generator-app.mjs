@@ -791,9 +791,13 @@ export class GeneratorApp extends SpfApp {
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.ABC"), abc.usage);
       concept.ancestry = abc.ancestry;
+      concept.ancestryCandidate = abc.ancestryCandidate;
       concept.heritage = abc.heritage;
+      concept.heritageCandidate = abc.heritageCandidate;
       concept.background = abc.background;
+      concept.backgroundCandidate = abc.backgroundCandidate;
       concept.class = abc.class;
+      concept.classCandidate = abc.classCandidate;
       concept.keyAbility = abc.keyAbility;
 
       // Resolve ABC + grants + feat-slot candidates now (index lookups are

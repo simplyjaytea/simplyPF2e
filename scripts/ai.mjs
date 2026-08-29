@@ -754,8 +754,8 @@ Recreate the first-draft haul: keep its coin and scroll entries as they are, rep
 export async function selectAncestryBackgroundClass({
   concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates = [], onProgress
 }) {
-  const system = `You are choosing a Pathfinder 2e character's ancestry, heritage, background and class. Choose ONLY from the provided lists, copying each name EXACTLY as written. Respond with a single JSON object and nothing else:
-{ "ancestry": string, "heritage": string|null, "background": string, "class": string, "keyAbility": "str"|"dex"|"con"|"int"|"wis"|"cha" }
+  const system = `You are choosing a Pathfinder 2e character's ancestry, heritage, background and class. Choose ONLY IDs from the provided lists. Respond with a single JSON object and nothing else:
+{ "ancestryId": string, "heritageId": string|null, "backgroundId": string, "classId": string, "keyAbility": "str"|"dex"|"con"|"int"|"wis"|"cha" }
 "heritage" must belong to the chosen ancestry, or null if none fits well. "keyAbility" must be a legal key ability for the chosen class.`;
 
   const user = [
@@ -764,20 +764,28 @@ export async function selectAncestryBackgroundClass({
     concept.backstory ? `Backstory: ${concept.backstory}` : null,
     `First-draft ideas (use as inspiration, but the final picks MUST come from the lists below): ancestry "${concept.ancestry}", heritage "${concept.heritage ?? "none"}", background "${concept.background}", class "${concept.class}", key ability "${concept.keyAbility}"`,
     "",
-    `Available ancestries: ${ancestryCandidates.map((a) => a.name).join("; ")}`,
-    heritageCandidates.length ? `Available heritages: ${heritageCandidates.map((h) => h.name).join("; ")}` : null,
-    `Available backgrounds: ${backgroundCandidates.map((b) => b.name).join("; ")}`,
-    `Available classes: ${classCandidates.map((c) => c.name).join("; ")}`
+    `Available ancestries (ID | name): ${ancestryCandidates.map((a) => `${a.id} | ${a.name}`).join("; ")}`,
+    heritageCandidates.length ? `Available heritages (ID | name): ${heritageCandidates.map((h) => `${h.id} | ${h.name}`).join("; ")}` : null,
+    `Available backgrounds (ID | name): ${backgroundCandidates.map((b) => `${b.id} | ${b.name}`).join("; ")}`,
+    `Available classes (ID | name): ${classCandidates.map((c) => `${c.id} | ${c.name}`).join("; ")}`
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
     task: AI_TASK.ABC_SELECTION, system, user, onProgress
   });
+  const ancestry = candidateForPick(ancestryCandidates, { id: parsed.ancestryId, name: parsed.ancestry });
+  const heritage = candidateForPick(heritageCandidates, { id: parsed.heritageId, name: parsed.heritage });
+  const background = candidateForPick(backgroundCandidates, { id: parsed.backgroundId, name: parsed.background });
+  const pcClass = candidateForPick(classCandidates, { id: parsed.classId, name: parsed.class });
   return {
-    ancestry: String(parsed.ancestry || concept.ancestry),
-    heritage: parsed.heritage ? String(parsed.heritage) : null,
-    background: String(parsed.background || concept.background),
-    class: String(parsed.class || concept.class),
+    ancestry: ancestry?.name ?? concept.ancestry,
+    ancestryCandidate: ancestry?.ref ?? null,
+    heritage: heritage?.name ?? null,
+    heritageCandidate: heritage?.ref ?? null,
+    background: background?.name ?? concept.background,
+    backgroundCandidate: background?.ref ?? null,
+    class: pcClass?.name ?? concept.class,
+    classCandidate: pcClass?.ref ?? null,
     keyAbility: ["str", "dex", "con", "int", "wis", "cha"].includes(parsed.keyAbility)
       ? parsed.keyAbility : concept.keyAbility,
     usage

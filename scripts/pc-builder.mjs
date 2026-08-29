@@ -229,23 +229,31 @@ export async function resolvePCConcept(concept) {
   // ABC lookups scan ALL installed packs of the right type (getAllPacksFor),
   // not just the hardcoded default pack, so a legit AI pick living in a Lost
   // Omens / add-on compendium still resolves instead of aborting the run (#51).
-  const ancestryEntry = await findEntry(await getAllPacksFor("ancestries"), concept.ancestry, (e) => e.type === "ancestry");
+  const ancestryPacks = await getAllPacksFor("ancestries");
+  const ancestryEntry = concept.ancestryCandidate && ancestryPacks.includes(concept.ancestryCandidate.packId)
+    ? concept.ancestryCandidate : await findEntry(ancestryPacks, concept.ancestry, (e) => e.type === "ancestry");
   const ancestryDoc = await getDocument(ancestryEntry);
-  if (!ancestryDoc) throw new Error(`Could not find ancestry "${concept.ancestry}" in the compendium`);
+  if (!ancestryDoc || ancestryDoc.type !== "ancestry") throw new Error(`Could not find ancestry "${concept.ancestry}" in the compendium`);
 
-  const backgroundEntry = await findEntry(await getAllPacksFor("backgrounds"), concept.background, (e) => e.type === "background");
+  const backgroundPacks = await getAllPacksFor("backgrounds");
+  const backgroundEntry = concept.backgroundCandidate && backgroundPacks.includes(concept.backgroundCandidate.packId)
+    ? concept.backgroundCandidate : await findEntry(backgroundPacks, concept.background, (e) => e.type === "background");
   const backgroundDoc = await getDocument(backgroundEntry);
-  if (!backgroundDoc) throw new Error(`Could not find background "${concept.background}" in the compendium`);
+  if (!backgroundDoc || backgroundDoc.type !== "background") throw new Error(`Could not find background "${concept.background}" in the compendium`);
 
-  const classEntry = await findEntry(await getAllPacksFor("classes"), concept.class, (e) => e.type === "class");
+  const classPacks = await getAllPacksFor("classes");
+  const classEntry = concept.classCandidate && classPacks.includes(concept.classCandidate.packId)
+    ? concept.classCandidate : await findEntry(classPacks, concept.class, (e) => e.type === "class");
   const classDoc = await getDocument(classEntry);
-  if (!classDoc) throw new Error(`Could not find class "${concept.class}" in the compendium`);
+  if (!classDoc || classDoc.type !== "class") throw new Error(`Could not find class "${concept.class}" in the compendium`);
 
   let heritageDoc = null;
   if (concept.heritage) {
-    const heritageEntry = await findEntry(await getAllPacksFor("heritages"), concept.heritage, (e) => e.type === "heritage");
+    const heritagePacks = await getAllPacksFor("heritages");
+    const heritageEntry = concept.heritageCandidate && heritagePacks.includes(concept.heritageCandidate.packId)
+      ? concept.heritageCandidate : await findEntry(heritagePacks, concept.heritage, (e) => e.type === "heritage");
     const pickedDoc = await getDocument(heritageEntry);
-    if (!pickedDoc) {
+    if (!pickedDoc || pickedDoc.type !== "heritage") {
       console.warn(`simplypf2e | heritage "${concept.heritage}" not found in the compendium — falling back to an ancestry-matched heritage`);
     } else if (!heritageMatchesAncestry(pickedDoc, ancestryDoc)) {
       console.warn(`simplypf2e | heritage "${concept.heritage}" does not belong to ancestry "${ancestryDoc.name}" — dropping and falling back to an ancestry-matched heritage`);
@@ -333,12 +341,13 @@ export async function resolvePCConcept(concept) {
  * @returns {Promise<{type: string, level: number, name: string, entry: object|null}[]>}
  */
 export async function resolveFeatPicks(featSlots, picks) {
-  const bySlot = new Map(picks.map((p) => [p.slot, p.name]));
+  const bySlot = new Map(picks.map((p) => [p.slot, p]));
   const taken = new Set();
   const resolved = [];
 
   /** Resolve one name for one slot, rejecting anything already taken. */
-  const resolveFor = (slot, name) => findEntry(
+  const resolveFor = (slot, name, candidate = null) => candidate && getPacksFor("feats").includes(candidate.packId)
+    ? Promise.resolve(candidate) : findEntry(
     getPacksFor("feats"),
     name,
     (e) => e.type === "feat"
@@ -349,8 +358,9 @@ export async function resolveFeatPicks(featSlots, picks) {
 
   for (let i = 0; i < featSlots.length; i++) {
     const slot = featSlots[i];
-    let name = bySlot.get(i + 1) ?? null;
-    let entry = name ? await resolveFor(slot, name) : null;
+    const pick = bySlot.get(i + 1) ?? null;
+    let name = pick?.name ?? null;
+    let entry = name ? await resolveFor(slot, name, pick?.candidate) : null;
     if (name && !entry) {
       console.warn(`simplypf2e | feat pick "${name}" for slot ${i + 1} (${slot.type}, level ${slot.level}) did not resolve to an unused feat for this slot`);
     }
