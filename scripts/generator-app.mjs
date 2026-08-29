@@ -30,6 +30,7 @@ import { ManagePresetsApp, promptPresetDialog, confirmDeletePreset } from "./man
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryArt } from "./art.mjs";
+import { assertComplete, completionManifest } from "./completion.mjs";
 import { SpfApp } from "./app-base.mjs";
 
 /**
@@ -603,6 +604,7 @@ export class GeneratorApp extends SpfApp {
         this.#resolved.loot,
         treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)
       );
+      assertComplete(completionManifest({ mode: this.#input.mode, concept: this.#concept, resolved: this.#resolved }));
       const eq = this.#resolved.equipment;
       if (eq.length) {
         const misses = eq.filter((e) => !e.entry).map((e) => e.name);
@@ -703,6 +705,7 @@ export class GeneratorApp extends SpfApp {
           treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / members.length;
         member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
         member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
+        assertComplete(completionManifest({ mode: "monster", concept: member.concept, resolved: member.resolved }));
         member.treasureEach = lootValueGp(member.resolved.loot);
       }
       const allEq = members.flatMap((m) => m.resolved.equipment);
@@ -933,6 +936,7 @@ export class GeneratorApp extends SpfApp {
           console.warn(`${MODULE_ID} | extra PC purchase pass failed, leaving remaining wealth as coin`, err);
         }
       }
+      assertComplete(completionManifest({ mode: "character", concept, resolved }));
 
       this.#pcConcept = concept;
       this.#pcResolved = resolved;

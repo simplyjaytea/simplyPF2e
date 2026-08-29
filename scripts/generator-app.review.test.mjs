@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import vm from "node:vm";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
+import { assertComplete, completionManifest } from "./completion.mjs";
 
 if (!vm.SourceTextModule) {
   const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
@@ -35,6 +36,7 @@ const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fig
   backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [], equipment: [], loot: [] });
 const mocks = {
   SpfApp: App, MODULE_ID: "simplypf2e", reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
+  assertComplete, completionManifest,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
   THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, randomBrief: () => "A dwarf",
