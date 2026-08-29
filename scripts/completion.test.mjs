@@ -3,12 +3,17 @@ import { assertComplete, completionManifest, completionSummary } from "./complet
 
 const entry = { packId: "pf2e.test", _id: "a" };
 const creature = completionManifest({ mode: "monster", concept: {}, resolved: {
-  abilities: [{ ability: { name: "Howl" }, entry: null }], spells: [{ spell: { name: "Fear" }, entry }],
+  abilities: [{ ability: { name: "Howl", narrative: true }, entry: null }], spells: [{ spell: { name: "Fear" }, entry }],
   focusSpells: [], feats: [], equipment: [{ name: "Spear", entry }],
   loot: [{ name: "10 gold coins" }, { name: "Gold Pieces" }, { name: "Scroll of Fear", scroll: { rank: 1 }, entry }]
 } });
 assert.equal(creature.complete, true, "custom narrative abilities and module-built coins/scrolls are valid completion states");
 assert.equal(creature.records.find((r) => r.category === "ability").status, "custom-narrative");
+
+const unresolvedAbility = completionManifest({ mode: "monster", concept: {}, resolved: {
+  abilities: [{ ability: { name: "Unresolved Glossary Ability" }, entry: null }], spells: [], focusSpells: [], feats: [], equipment: [], loot: []
+} });
+assert.equal(unresolvedAbility.complete, false, "only explicitly narrative abilities may bypass a missing compendium action");
 
 const incomplete = completionManifest({ mode: "npc", concept: {}, resolved: {
   equipment: [{ name: "Imaginary Sword", entry: null }], loot: [], spells: [], focusSpells: [], feats: []

@@ -273,6 +273,8 @@ export function normalizeConcept(raw, { level, rarity }) {
       .map((a) => ({
         name: String(a.name),
         glossary: a.glossary ? String(a.glossary) : null,
+        candidate: a.candidate?.packId && a.candidate?._id ? a.candidate : null,
+        narrative: Boolean(a.narrative),
         actionType: ["action", "reaction", "free", "passive"].includes(a.actionType) ? a.actionType : "passive",
         actions: [1, 2, 3].includes(Number(a.actions)) ? Number(a.actions) : null,
         description: String(a.description ?? ""),
@@ -628,8 +630,12 @@ export async function resolveConcept(concept, { exactContent = false } = {}) {
   const abilities = [];
   for (const ability of concept.specialAbilities) {
     let entry = null;
-    if (ability.glossary) entry = await findEntry(getPacksFor("abilities"), ability.glossary, (e) => e.type === "action");
-    if (!entry) entry = await findEntry(getPacksFor("abilities"), ability.name, (e) => e.type === "action");
+    if (ability.candidate && getPacksFor("abilities").includes(ability.candidate.packId)) {
+      entry = ability.candidate;
+    } else if (!exactContent) {
+      if (ability.glossary) entry = await findEntry(getPacksFor("abilities"), ability.glossary, (e) => e.type === "action");
+      if (!entry) entry = await findEntry(getPacksFor("abilities"), ability.name, (e) => e.type === "action");
+    }
     abilities.push({ ability, entry });
   }
 
@@ -1180,26 +1186,27 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
     });
   }
 
-  // Special abilities → glossary clones or custom action items
+  // Special abilities → exact glossary clones or explicitly narrative actions.
   for (const { ability, entry } of resolved.abilities) {
     const doc = await getDocument(entry);
     if (doc) {
       items.push(toItemData(doc));
       continue;
     }
+    if (!ability.narrative) continue;
     const escaped = esc(ability.description);
     items.push({
-      name: ability.name,
+      name: `Narrative: ${ability.name}`,
       type: "action",
-      img: actionIcon(ability.actionType),
+      img: actionIcon("passive"),
       system: {
-        actionType: { value: ability.actionType },
-        actions: { value: ability.actionType === "action" ? (ability.actions ?? 1) : null },
-        category: "offensive",
+        actionType: { value: "passive" },
+        actions: { value: null },
+        category: "interaction",
         description: {
-          value: `<p>${boldKeywords(enrichDescription(escaped, concept.level))}</p>`
+          value: `<p><em>Custom narrative only — no module-authored mechanics.</em></p><p>${escaped}</p>`
         },
-        traits: { value: ability.traits }
+        traits: { value: [] }
       }
     });
   }

@@ -34,6 +34,7 @@ export const DEFAULT_PACKS = {
 export const EQUIPMENT_TYPES = new Set([
   "weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit"
 ]);
+export const ABILITY_CANDIDATE_LIMIT = 96;
 
 /**
  * Convert a PF2e price-value denomination object ({pp, gp, sp, cp}, any
@@ -80,7 +81,7 @@ export function sourceReadiness(mode, { allowSpellcasting = true } = {}) {
   const character = mode === "character";
   const required = character
     ? ["ancestries", "backgrounds", "classes", "feats", "equipment", "spells"]
-    : ["feats", "equipment", "spells"];
+    : ["abilities", "feats", "equipment", "spells"];
   const categories = required.map((category) => ({ category, packs: getPacksFor(category) }));
   const missing = categories.filter(({ packs }) => !packs.length).map(({ category }) => category);
   return { categories, missing, packCount: categories.reduce((count, item) => count + item.packs.length, 0), ready: missing.length === 0 };
@@ -669,6 +670,29 @@ async function getFullCandidates(category, type, maxRarity) {
   }
   candidates.sort((a, b) => a.name.localeCompare(b.name));
   return candidates;
+}
+
+/** Bounded exact bestiary-action candidates for creature ability selection. */
+export async function getAbilityCandidates(keywords = []) {
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("abilities")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "action" || seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push(candidateRecord(entry, {
+        name: entry.name,
+        traits: entry.system?.traits?.value ?? [],
+        actionType: entry.system?.actionType?.value ?? "passive"
+      }));
+    }
+  }
+  const words = normalizedKeywords(keywords);
+  const ranked = candidates.slice().sort((a, b) => relevanceScore(b, words) - relevanceScore(a, words)
+    || a.name.localeCompare(b.name));
+  return ranked.slice(0, ABILITY_CANDIDATE_LIMIT);
 }
 
 /**

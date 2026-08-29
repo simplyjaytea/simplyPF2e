@@ -12,7 +12,7 @@ function resolvedLines(category, entries, { allowNarrative = false } = {}) {
   return (Array.isArray(entries) ? entries : []).map((item) => {
     const name = item?.spell?.name ?? item?.ability?.name ?? item?.name;
     if (item?.entry) return line(category, name, "compendium");
-    if (allowNarrative) return line(category, name, "custom-narrative", false);
+    if (allowNarrative && item?.ability?.narrative) return line(category, name, "custom-narrative", false);
     return line(category, name, "unresolved");
   });
 }

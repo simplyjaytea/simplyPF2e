@@ -4,11 +4,11 @@ import {
 } from "./settings.mjs";
 import {
   generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
-  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCreatureFeats, selectCharacterChoices
+  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCreatureFeats, selectCreatureAbilities, selectCharacterChoices
 } from "./ai.mjs";
 import {
   getSpellCandidates, getEquipmentCandidates, getLootCandidates, getScrollSpellCandidates,
-  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, getFeatCandidates, sourceReadiness
+  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, getFeatCandidates, getAbilityCandidates, sourceReadiness
 } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
@@ -325,6 +325,7 @@ export class GeneratorApp extends SpfApp {
       name: ability.name,
       fromGlossary: Boolean(entry),
       glossaryName: entry?.name ?? null,
+      narrative: Boolean(ability.narrative),
       description: ability.description
     }));
     const spells = GeneratorApp.#mapSpells(this.#resolved?.spells);
@@ -598,6 +599,7 @@ export class GeneratorApp extends SpfApp {
     this._beginProgress([
       ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept")],
       ...(this.#input.allowSpellcasting ? [["spells", game.i18n.localize("SIMPLYPF2E.Progress.Spells")]] : []),
+      ["abilities", game.i18n.localize("SIMPLYPF2E.Progress.Abilities")],
       ["feats", game.i18n.localize("SIMPLYPF2E.Progress.Feats")],
       ["equipment", game.i18n.localize("SIMPLYPF2E.Progress.Equipment")],
       ["loot", game.i18n.localize("SIMPLYPF2E.Progress.Loot")],
@@ -636,6 +638,8 @@ export class GeneratorApp extends SpfApp {
       // non-compliant model returned spellcasting anyway.
       if (this.#input.allowSpellcasting && this.#concept.spellcasting) await this._setStep("spells");
       await this.#refineSpells(this.#concept);
+      if (this.#concept.specialAbilities.length) await this._setStep("abilities");
+      await this.#refineCreatureAbilities(this.#concept);
       if (this.#concept.feats.length) await this._setStep("feats");
       await this.#refineCreatureFeats(this.#concept);
       if (this.#concept.equipment.length) await this._setStep("equipment");
@@ -739,6 +743,7 @@ export class GeneratorApp extends SpfApp {
           concept.focusSpells = [];
         }
         await this.#refineSpells(concept);
+        await this.#refineCreatureAbilities(concept);
         await this.#refineCreatureFeats(concept);
         await this.#refineEquipment(concept);
         await this.#refineLoot(concept);
@@ -1087,6 +1092,30 @@ export class GeneratorApp extends SpfApp {
     // records every missing module-owned pick and blocks actor creation.
     if (spellcasting.plannedPicks) return;
     concept.spellcasting = null;
+  }
+
+  /** Resolve published abilities by opaque ID; unlisted concept flavor stays narrative-only. */
+  async #refineCreatureAbilities(concept) {
+    if (!concept?.specialAbilities?.length) return;
+    const draft = concept.specialAbilities;
+    const narratives = draft.filter((ability) => !ability.glossary).map((ability) => ({ ...ability, narrative: true }));
+    try {
+      const keywords = draft.flatMap((ability) => [ability.glossary, ability.name])
+        .map((name) => String(name ?? "").toLowerCase()).filter(Boolean);
+      const candidates = await getAbilityCandidates(keywords);
+      if (!candidates.length) {
+        concept.specialAbilities = [...draft.filter((ability) => ability.glossary), ...narratives].slice(0, 6);
+        return;
+      }
+      const { abilities, usage } = await selectCreatureAbilities({
+        concept, candidates, onProgress: (p) => this._onAIProgress(p)
+      });
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Abilities"), usage);
+      concept.specialAbilities = [...abilities, ...narratives].slice(0, 6);
+    } catch (err) {
+      console.warn(`${MODULE_ID} | grounded creature ability selection failed; unresolved glossary abilities will block creation`, err);
+      concept.specialAbilities = [...draft.filter((ability) => ability.glossary), ...narratives].slice(0, 6);
+    }
   }
 
   /** Ground a creature's class-like feats against an issued, level-capped list. */

@@ -150,10 +150,7 @@ JSON schema (all keys required unless marked optional):
     {
       "name": string,
       "glossary": string|null, // EXACT standard PF2e bestiary glossary ability name (e.g. "Grab", "Knockdown", "Frightful Presence", "Attack of Opportunity") if this is one, else null
-      "actionType": "action"|"reaction"|"free"|"passive",
-      "actions": 1|2|3|null, // action cost; null unless actionType is "action"
-      "description": string, // full rules text following the DESCRIPTION CONVENTIONS below
-      "traits": string[]
+      "description": string // for glossary abilities, a brief thematic hint only; otherwise a short narrative-only description with NO rules, damage, DCs, actions, traits, conditions, or numeric mechanics
     }
   ],
   "spellcasting": null | {
@@ -172,17 +169,6 @@ JSON schema (all keys required unless marked optional):
 
 SCALE = "extreme"|"high"|"moderate"|"low". SCALE5 also allows "terrible".
 
-DESCRIPTION CONVENTIONS for specialAbilities.description — these exact phrasings become clickable roll links, so follow them precisely:
-- Table-scaled damage (use for an ability's main damage so it scales with level): "high damage", "moderate fire damage", "low persistent bleed damage" (scale word, optional "persistent", optional damage type, then "damage").
-- Fixed dice for small riders: "2d6 fire damage", "1d4 persistent bleed damage".
-- Saving throws: "basic high Reflex save", "moderate Fortitude save", "extreme Will save" (optional "basic", scale word, save name, "save"); "basic" for plain damage effects.
-- Skill checks against the creature: "high DC Athletics check".
-- Healing: "regains 2d8 Hit Points" or "2d8 healing".
-- Flat checks: "DC 5 flat check".
-- Areas: "30-foot cone", "15-foot burst", "60-foot line", "10-foot emanation".
-- Structure activated abilities as "Frequency ...; Trigger ...; Effect ..." and requirements as "Requirements ...; Effect ...".
-- Never invent flat numeric DCs or attack bonuses; always use scale words.
-
 Design guidance (GM Core road maps):
 - At most ONE extreme stat, balanced by a low or terrible stat.
 - Brute: low perception; moderate+ AC; high Fort, low Ref/Will; high HP; high attack & damage.
@@ -192,8 +178,8 @@ Design guidance (GM Core road maps):
 - Spellcaster: casting tradition matching key ability at high or extreme; low-or-moderate AC, HP and attack; DC one scale above attacks.
 - Include spellcasting only when it truly fits the concept and the user allows it.
 - "focusSpells": fit priests/cultists (a domain spell), ki-using martial casters, druid/shaman-like creatures, witch-like hexers — only when the concept has spellcasting AND genuinely fits one of these archetypes; leave [] otherwise. Uncommon, not the default.
-- Use standard glossary abilities (Grab, Push, Knockdown, Trample, Swallow Whole, Frightful Presence, Regeneration, Attack of Opportunity, ...) where they fit, and invent 1-2 signature custom abilities that make the creature memorable.
-- Passives especially should reuse a standard glossary ability instead of an invented equivalent — glossary abilities carry real working automation (Regeneration actually heals, All-Around Vision actually prevents flanking), while a custom passive is just prose the GM must remember to apply by hand. Reserve invented passives for narrative traits needing no mechanical tracking (a scent, a texture, an aura's flavor); if an invented passive DOES have a mechanical effect, phrase it with the DESCRIPTION CONVENTIONS above (an area, a save, a damage tick) so it stays clickable rather than inert prose.
+- Use standard glossary abilities (Grab, Push, Knockdown, Trample, Swallow Whole, Frightful Presence, Regeneration, Attack of Opportunity, ...) wherever they fit. They are selected from the compendium afterward and retain their real working automation.
+- A bespoke signature ability is allowed only as a short, clearly narrative description (a scent, texture, visual aura, or mannerism). Do not give it rules text or mechanical effects; the module will label it narrative-only rather than create custom mechanics.
 - Traits, languages, senses and speeds must follow PF2e conventions.`;
 }
 
@@ -876,7 +862,7 @@ Choose feats that fit the creature's role and tactics. Do not choose a feat more
     catalog
   ].filter((line) => line !== null).join("\n");
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.FEAT_SELECTION, system, user, onProgress
+    task: AI_TASK.ABILITY_SELECTION, system, user, onProgress
   });
   const seen = new Set();
   const feats = (Array.isArray(parsed.featIds) ? parsed.featIds : [])
@@ -891,6 +877,39 @@ Choose feats that fit the creature's role and tactics. Do not choose a feat more
     .slice(0, maximum)
     .map((candidate) => ({ name: candidate.name, ...(candidate.ref ? { candidate: candidate.ref } : {}) }));
   return { feats, usage };
+}
+
+/** Select published bestiary actions only from the issued action catalog. */
+export async function selectCreatureAbilities({ concept, candidates, onProgress }) {
+  const maximum = Math.min(Math.max(concept?.specialAbilities?.length ?? 0, 0), 6);
+  if (!maximum || !candidates.length) return { abilities: [], usage: null };
+  const catalog = candidates.map((candidate) => `${candidate.id} | ${candidate.name}`).join("\n");
+  const system = `You are selecting up to ${maximum} published Pathfinder 2e bestiary actions for a creature. Choose ONLY IDs from the catalog. Return a single JSON object and nothing else:
+{ "abilityIds": string[] }
+Choose the actions that fit the creature's role and tactics. Omit a proposed ability when no published action fits; it will remain labeled narrative-only, with no custom mechanics.`;
+  const user = [
+    `Creature: ${concept.name} (level ${concept.level})`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.description ? `Description: ${concept.description}` : null,
+    `Draft ability ideas: ${concept.specialAbilities.map((ability) => ability.glossary ?? ability.name).join(", ")}`,
+    "",
+    "Bestiary action catalog (ID | exact name):",
+    catalog
+  ].filter((line) => line !== null).join("\n");
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.FEAT_SELECTION, system, user, onProgress
+  });
+  const seen = new Set();
+  const abilities = (Array.isArray(parsed.abilityIds) ? parsed.abilityIds : [])
+    .map((id) => candidateForPick(candidates, { id }))
+    .filter((candidate) => {
+      if (!candidate || seen.has(candidate.id)) return false;
+      seen.add(candidate.id);
+      return true;
+    })
+    .slice(0, maximum)
+    .map((candidate) => ({ name: candidate.name, ...(candidate.ref ? { candidate: candidate.ref } : {}) }));
+  return { abilities, usage };
 }
 
 /** Select only opaque IDs from the builder's bounded, static choice catalog.

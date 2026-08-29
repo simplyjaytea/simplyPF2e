@@ -283,6 +283,9 @@
             <strong>{{this.name}}</strong>
             {{#if this.fromGlossary}}
               <span class="spf-found" title="{{localize 'SIMPLYPF2E.Preview.FromCompendium'}}"><i class="fa-solid fa-book"></i> {{this.glossaryName}}</span>
+            {{else if this.narrative}}
+              <span class="spf-custom">{{localize "SIMPLYPF2E.Preview.NarrativeOnly"}}</span>
+              {{#if this.description}}<div class="spf-ability-desc">{{this.description}}</div>{{/if}}
             {{else}}
               <span class="spf-custom">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>
               {{#if this.description}}<div class="spf-ability-desc">{{this.description}}</div>{{/if}}
