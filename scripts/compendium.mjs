@@ -291,19 +291,28 @@ export function candidateId(entry) {
   return packId && documentId ? `c-${btoa(`${packId}\u0000${documentId}`).replaceAll("=", "")}` : null;
 }
 
+const issuedCandidateRefs = new WeakSet();
+
 function candidateRecord(entry, fields = {}) {
+  const ref = { packId: entry.packId, _id: entry._id };
+  issuedCandidateRefs.add(ref);
   return {
     id: candidateId(entry),
-    ref: { packId: entry.packId, _id: entry._id },
+    ref,
     ...fields
   };
+}
+
+/** True only for the in-memory reference produced by this run's candidate catalog. */
+export function isIssuedCandidate(ref, packIds = null) {
+  if (!ref?.packId || !ref?._id || !issuedCandidateRefs.has(ref)) return false;
+  return !Array.isArray(packIds) || packIds.includes(ref.packId);
 }
 
 /** Resolve only an exact, locally-issued candidate reference. */
 export async function getCandidateDocument(candidate, packIds = null) {
   const ref = candidate?.ref;
-  if (!ref?.packId || !ref?._id) return null;
-  if (Array.isArray(packIds) && !packIds.includes(ref.packId)) return null;
+  if (!isIssuedCandidate(ref, packIds)) return null;
   return getDocument(ref);
 }
 

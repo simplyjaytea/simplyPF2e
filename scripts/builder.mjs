@@ -1,5 +1,5 @@
 import * as T from "./tables.mjs";
-import { getPacksFor, findEntry, getDocument, toItemData, priceToGp } from "./compendium.mjs";
+import { getPacksFor, findEntry, getDocument, toItemData, priceToGp, isIssuedCandidate } from "./compendium.mjs";
 import { slugify, capitalized, esc, toHtml } from "./text.mjs";
 import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
 
@@ -406,7 +406,7 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
     const scroll = parseScroll(name);
     if (scroll) {
       let entry = null;
-      if (scrollCandidate && getPacksFor("spells").includes(scrollCandidate.packId)) {
+      if (isIssuedCandidate(scrollCandidate, getPacksFor("spells"))) {
         const doc = await getDocument(scrollCandidate);
         if (doc?.type === "spell" && !(doc.system?.traits?.value ?? []).includes("cantrip") && !doc.system?.ritual) {
           entry = scrollCandidate;
@@ -431,7 +431,7 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
     // Loot may sit up to 2 levels above the creature, so the runes are capped
     // at that same level rather than the creature's own.
     const maxLevel = Math.max(concept.level + 2, 0);
-    const entry = candidate && getPacksFor("equipment").includes(candidate.packId)
+    const entry = isIssuedCandidate(candidate, getPacksFor("equipment"))
       ? candidate : (exactContent ? null : await findEntry(
         getPacksFor("equipment"),
         parseRunes(name).base,
@@ -630,7 +630,7 @@ export async function resolveConcept(concept, { exactContent = false } = {}) {
   const abilities = [];
   for (const ability of concept.specialAbilities) {
     let entry = null;
-    if (ability.candidate && getPacksFor("abilities").includes(ability.candidate.packId)) {
+    if (isIssuedCandidate(ability.candidate, getPacksFor("abilities"))) {
       entry = ability.candidate;
     } else if (!exactContent) {
       if (ability.glossary) entry = await findEntry(getPacksFor("abilities"), ability.glossary, (e) => e.type === "action");
@@ -643,7 +643,7 @@ export async function resolveConcept(concept, { exactContent = false } = {}) {
   if (concept.spellcasting) {
     for (const spell of concept.spellcasting.spells) {
       const exact = spell.candidate;
-      const entry = exact && getPacksFor("spells").includes(exact.packId)
+      const entry = isIssuedCandidate(exact, getPacksFor("spells"))
         ? exact : (exactContent ? null : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell"));
       // A ranked spell assigned rank 0 (or below its own rank) would be
       // misfiled as a cantrip slot in createActor — clamp to the real rank.
@@ -658,7 +658,7 @@ export async function resolveConcept(concept, { exactContent = false } = {}) {
   for (const feat of concept.feats) {
     const name = typeof feat === "string" ? feat : feat.name;
     const candidate = feat?.candidate;
-    const entry = candidate && getPacksFor("feats").includes(candidate.packId)
+    const entry = isIssuedCandidate(candidate, getPacksFor("feats"))
       ? candidate : (exactContent ? null : await findEntry(
         getPacksFor("feats"),
         name,
@@ -690,7 +690,7 @@ export async function resolveEquipment(concept, { exactContent = false } = {}) {
   for (const { name, quantity, value, candidate } of concept.equipment) {
     // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
     // item matches; the runes are re-applied as system data at creation.
-    const entry = candidate && getPacksFor("equipment").includes(candidate.packId)
+    const entry = isIssuedCandidate(candidate, getPacksFor("equipment"))
       ? candidate : (exactContent ? null : await findEntry(
         getPacksFor("equipment"),
         parseRunes(name).base,
@@ -833,7 +833,7 @@ export async function resolveFocusSpells(names, { exactContent = false } = {}) {
     if (!name) continue;
     const exact = raw?.candidate;
     let entry = null;
-    if (exact && getPacksFor("spells").includes(exact.packId)) {
+    if (isIssuedCandidate(exact, getPacksFor("spells"))) {
       const doc = await getDocument(exact);
       if (doc?.type === "spell" && (doc.system?.traits?.value ?? []).includes("focus")) entry = exact;
     } else if (!exactContent) {

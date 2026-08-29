@@ -6,10 +6,15 @@ import assert from "node:assert/strict";
 
 globalThis.game = {
   settings: { get: () => ({ equipment: ["test.equipment"], spells: ["test.spells"], feats: ["test.feats"] }) },
-  packs: new Map([["test.equipment", {}], ["test.spells", {}]])
+  packs: new Map([
+    ["test.equipment", { async getIndex() { return [{ _id: "longsword", name: "Longsword", type: "weapon", system: { level: { value: 0 }, traits: { value: [] } } }]; } }],
+    ["test.spells", {}],
+    ["test.feats", { async getIndex() { return [{ _id: "power-attack", name: "Power Attack", type: "feat", system: { level: { value: 1 }, category: "class", traits: { value: [] } } }]; } }]
+  ])
 };
 
 const { normalizeConcept, normalizeLoot, resolveConcept, resolveEquipment, resolveLoot, resolveFocusSpells } = await import("./builder.mjs");
+const { getEquipmentCandidates, getFeatCandidates } = await import("./compendium.mjs");
 
 const concept = {
   level: 1,
@@ -23,13 +28,13 @@ assert.equal(strictEquipment[0].entry, null, "strict equipment cannot fuzzy-matc
 assert.equal(strictLoot[0].entry, null, "strict loot cannot fuzzy-match a first-draft name");
 assert.equal(strictFocus[0].entry, null, "strict focus spells cannot fuzzy-match a first-draft name");
 
-const exact = { packId: "test.equipment", _id: "longsword" };
+const exact = (await getEquipmentCandidates(1)).find((candidate) => candidate.name === "Longsword").ref;
 const exactEquipment = await resolveEquipment({ ...concept, equipment: [{ ...concept.equipment[0], candidate: exact }] },
   { exactContent: true });
 assert.equal(exactEquipment[0].entry, exact, "a locally retained source reference remains valid in strict mode");
 
-const featCandidate = { packId: "test.feats", _id: "power-attack" };
-game.packs.set("test.feats", {});
+const featCandidate = (await getFeatCandidates({ level: 1, category: "class" }))
+  .find((candidate) => candidate.name === "Power Attack").ref;
 const strictFeat = await resolveConcept(normalizeConcept({ feats: ["Power Attack"] }, { level: 1, rarity: "common" }),
   { exactContent: true });
 assert.equal(strictFeat.feats[0].entry, null, "strict creature feats cannot fuzzy-match a first-draft name");
