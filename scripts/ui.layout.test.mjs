@@ -161,6 +161,12 @@ assert.match(progress, /\{\{#if busyMessage\}\}[\s\S]*?\{\{busyMessage\}\}[\s\S]
   "native character creation must show an escaped status instead of a model progress percentage");
 assert.doesNotMatch(progress, /\{\{\{busyMessage\}\}\}/, "status text must never be rendered as raw HTML");
 assert.match(generatorApp, /busyMessage: this\.#busyMessage/, "generator must expose its native creation status");
+assert.match(generator, /created\.grounding\.rows/, "completion card must report the validated content grounding");
+assert.match(generator, /\{\{#if tokenReport\}\}[\s\S]*?Tokens\.Heading/, "completion card must retain the generation token report");
+assert.match(generatorApp, /const manifest = completionManifest\([\s\S]*?assertComplete\(manifest\);[\s\S]*?this\.#manifest = manifest;/,
+  "a single generation must retain its validated manifest until creation commits");
+assert.doesNotMatch(generatorApp, /this\.#created = \{ name: actor\.name, actorId: actor\.id, count: 1 \};\s*\}\s*finally/,
+  "generation failure handling must not fabricate a creation result from an unavailable actor");
 assert.match(generatorApp, /selectChoices: async \(groups\) =>[\s\S]*?selectCharacterChoices\([\s\S]*?this\._recordTokens\(label, usage\)/,
   "character creation must use the grounded provider selector and record its usage");
 assert.match(generatorApp, /finally \{\s*this\.#busy = false;\s*this\.#busyMessage = null;\s*this\._progress = null;/,

@@ -94,7 +94,7 @@ Claude-side orchestration (when running as Fable/Opus with subagent tools):
 - Not writing `system.price`/`system.level` on a runed item is **correct** — `physical/document.ts` recomputes both via `computeLevelRarityPrice()` every prep.
 - A character's `resources.focus.max` is zeroed every prep and rebuilt only from ActiveEffectLike rules, so the PC focus pool needs a cloned RE; an NPC's can be plain actor data.
 
-## Current state (2026-08-28)
+## Current state (2026-08-30)
 
 Git/API reconciliation on 2026-08-28: `origin/main` is `004bffc`, latest release **v0.3.5.42**. The audit-fix stack merged in PR #77; shared UI updates, documented live QA, partial ChoiceSet automation, and PC named-loot budget/cross-bucket dedup followed in PRs #79–#82. The old "no fixes / no post-merge QA" state was stale. The release-workflow `lang/en.json` validation gap remains open. See [HANDOFF.md](HANDOFF.md) for the active local branch and [HISTORY.md](HISTORY.md) for the preserved audit/QA record.
 
@@ -116,7 +116,9 @@ Earlier audit/optimization work extracted shared `text.mjs`/`runes.mjs`, level-g
 
 **In-progress one-click roadmap:** `codex/one-click-grounding` begins the next approved feature set. The UI now has Monster, NPC, Encounter, and Player Character intents; the primary Generate action creates after generation, while Preview Plan remains no-write. Monster/NPC share the existing PF2e NPC pipeline but receive distinct intent guidance. New creature drafts clear before sheet presentation, and partial encounter creation is rolled back best-effort. This is only the first slice: exact candidate identity, completion manifests, full source preflight, hardened PC completion, and live QA remain open.
 
-Spells, carried equipment, and non-coin/non-scroll loot now have the first exact-candidate seam: bounded candidates contain an opaque selection ID and a private exact source reference. Model-facing selection prompts request IDs; selected references flow to the resolver without a second fuzzy lookup. Transitional no-ID test/migration catalogs retain deterministic name support, but real ID catalogs reject ambiguous name replies. This has not yet been extended to ABCs, feats, focus spells, or bestiary scaffolds.
+Spells, focus spells, carried equipment, non-coin/non-scroll loot, ABCs, and feats now use the exact-candidate seam: bounded candidates contain an opaque selection ID and a private exact source reference. Model-facing selection prompts request IDs; selected references flow to the resolver without a second fuzzy lookup. Focus picks are included in the existing grounded spell-selection request, then their loaded document is rechecked for the `focus` trait. Transitional no-ID test/migration catalogs retain deterministic name support, but real ID catalogs reject ambiguous name replies.
+
+**Latest one-click iteration:** a transient completion manifest blocks creation for every unresolved required component and remains only in memory. The completion card now reports count-only manifest status totals plus the exact generation token report, and the creation error path no longer tries to manufacture a result from a nonexistent actor. A configured bestiary Actor source provides deterministic art/prototype-token scaffolding only; module-owned actor stats/items remain authoritative. The manifest now declares Foundry 14 / PF2e 8.4.1 as this line's compatibility target. This is not live verification and does not qualify unsupported PC classes or resolve native class/subclass paths.
 
 **Next task:** obtain permission before any authenticated GitHub write, then use branch + PR. After release/deployment, execute HANDOFF's skill-completion and preceding HP/choice/spell/signature acceptance checklist on the VPS test world. Never infer permission to push from this roadmap.
 

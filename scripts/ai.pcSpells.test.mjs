@@ -57,6 +57,19 @@ try {
   assert.match(requests[0].messages[0].content, /"cantrip":5,"rank-one":3,"rank-two":3,"rank-three":2/);
   assert.match(requests[0].messages[0].content, /enum slugs, never a number/);
 
+  const focusCandidates = [
+    { id: "focus-fire", name: "Fire Ray", rank: 1, ref: { packId: "pf2e.spells", _id: "fire" } },
+    { id: "focus-healing", name: "Lay on Hands", rank: 1, ref: { packId: "pf2e.spells", _id: "healing" } }
+  ];
+  replies.push({ spells: [], focusSpellIds: ["focus-healing", "invented", "focus-healing", "focus-fire"] });
+  const focus = await selectSpells({ ...args, focusCandidates });
+  assert.deepEqual(focus.focusSpells, [
+    { name: "Lay on Hands", candidate: { packId: "pf2e.spells", _id: "healing" } },
+    { name: "Fire Ray", candidate: { packId: "pf2e.spells", _id: "fire" } }
+  ], "focus spell selections retain only exact offered candidate references");
+  assert.match(requests.at(-1).messages.map((message) => message.content).join("\n"), /Available focus spells: focus-fire \| Fire Ray/,
+    "the model must receive opaque focus IDs rather than unrestricted focus names");
+
   replies.push({ spells: modelPicks });
   const spontaneous = await selectSpells({ ...args, preparationMode: "spontaneous" });
   assert.deepEqual(spontaneous.spells, [

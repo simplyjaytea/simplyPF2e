@@ -285,13 +285,12 @@ export function normalizeConcept(raw, { level, rarity }) {
     // 3 AFTER filtering (the hard focus-pool ceiling), same as the PC path.
     focusSpells: !spellcasting ? [] : (Array.isArray(c.focusSpells) ? c.focusSpells : [])
       .map((s) => {
-        if (typeof s === "string") return s.trim();
-        if (s?.name) return String(s.name).trim();
-        return "";
+        const name = typeof s === "string" ? s.trim() : String(s?.name ?? "").trim();
+        const candidate = s?.candidate?.packId && s?.candidate?._id ? s.candidate : null;
+        return name ? { name, ...(candidate ? { candidate } : {}) } : null;
       })
       .filter(Boolean)
-      .slice(0, 3)
-      .map((name) => ({ name })),
+      .slice(0, 3),
     feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 4),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
@@ -789,7 +788,7 @@ export function enforceNamedLootBudget(loot, budgetGp) {
 }
 
 /**
- * Resolve focus-spell names against the spell packs. Focus spells carry the
+ * Resolve exact focus-spell candidates against the spell packs. Focus spells carry the
  * "focus" trait and have an EMPTY system.traits.traditions (verified against
  * real pack data, e.g. lay-on-hands.json), so the tradition-filtered
  * getSpellCandidates() can never match one — matched by trait here instead.
@@ -804,11 +803,18 @@ export async function resolveFocusSpells(names) {
   for (const raw of Array.isArray(names) ? names : []) {
     const name = typeof raw === "string" ? raw : raw?.name;
     if (!name) continue;
-    const entry = await findEntry(
-      getPacksFor("spells"),
-      name,
-      (e) => e.type === "spell" && (e.system?.traits?.value ?? []).includes("focus")
-    );
+    const exact = raw?.candidate;
+    let entry = null;
+    if (exact && getPacksFor("spells").includes(exact.packId)) {
+      const doc = await getDocument(exact);
+      if (doc?.type === "spell" && (doc.system?.traits?.value ?? []).includes("focus")) entry = exact;
+    } else {
+      entry = await findEntry(
+        getPacksFor("spells"),
+        name,
+        (e) => e.type === "spell" && (e.system?.traits?.value ?? []).includes("focus")
+      );
+    }
     resolved.push({ name, entry });
   }
   return resolved;

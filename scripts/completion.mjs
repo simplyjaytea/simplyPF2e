@@ -47,3 +47,23 @@ export function assertComplete(manifest) {
   const labels = (manifest?.unresolved ?? []).map((record) => `${record.category}: ${record.name}`).join(", ");
   throw new Error(`Generation is incomplete; resolve required compendium content before creation${labels ? ` (${labels})` : ""}.`);
 }
+
+/**
+ * Combine one or more already-validated manifests for the completion card.
+ * The result intentionally contains counts only: exact pack/document identity
+ * stays in the ephemeral build manifest and is never persisted to an actor.
+ */
+export function completionSummary(manifests) {
+  const summary = { total: 0, compendium: 0, native: 0, moduleBuilt: 0, customNarrative: 0, unresolved: 0 };
+  for (const manifest of Array.isArray(manifests) ? manifests : [manifests]) {
+    for (const record of manifest?.records ?? []) {
+      summary.total++;
+      if (record.status === "compendium") summary.compendium++;
+      else if (record.status === "native") summary.native++;
+      else if (record.status === "module-built") summary.moduleBuilt++;
+      else if (record.status === "custom-narrative") summary.customNarrative++;
+      else if (record.status === "unresolved") summary.unresolved++;
+    }
+  }
+  return summary;
+}

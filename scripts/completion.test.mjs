@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { assertComplete, completionManifest } from "./completion.mjs";
+import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
 
 const entry = { packId: "pf2e.test", _id: "a" };
 const creature = completionManifest({ mode: "monster", concept: {}, resolved: {
@@ -21,4 +21,14 @@ const pc = completionManifest({ mode: "character", concept: { heritage: "Versati
   spells: [], focusSpells: [], feats: [], equipment: [], loot: []
 } });
 assert.equal(pc.unresolved[0].category, "heritage");
+
+const summary = completionSummary([creature, pc]);
+assert.deepEqual(summary, {
+  total: creature.records.length + pc.records.length,
+  compendium: 2,
+  native: 3,
+  moduleBuilt: 2,
+  customNarrative: 1,
+  unresolved: 1
+}, "completion presentation must report every manifest status without exposing mutable documents");
 console.log("completion.test.mjs: manifest statuses and complete-only boundary passed");

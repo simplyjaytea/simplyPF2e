@@ -1,7 +1,7 @@
 # SimplyPF2e
 
 [![Latest release](https://img.shields.io/github/v/release/simplyjaytea/simplyPF2e?label=release)](https://github.com/simplyjaytea/simplyPF2e/releases/latest)
-[![Foundry version](https://img.shields.io/badge/Foundry-v13%2B-informational)](https://foundryvtt.com)
+[![Foundry version](https://img.shields.io/badge/Foundry-v14-informational)](https://foundryvtt.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Turn a one-sentence idea into a fully statted, ready-to-run Pathfinder 2e actor — NPC, monster, whole encounter, or player character — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
@@ -20,7 +20,7 @@ The AI never produces a number and never invents content. The job is split three
 | **Numbers** | The rules | NPCs: every stat comes from the GM Core **Building Creatures** benchmark tables for your chosen level. PCs: the PF2e system's own engine computes AC/HP/saves/proficiencies from the real embedded Ancestry/Background/Class items. |
 | **Content** | Your compendiums | Every named spell, feat, ability, ancestry and item is matched against your installed packs and the **real document** is embedded. |
 
-Anything the AI names that doesn't match a real document is either dropped or created as a clearly-marked custom item — and flagged in the preview either way, with an "X/Y compendium matches" score in the header so you can see how grounded a build is at a glance.
+Every required published spell, feat, ancestry, background, class, item, and loot choice must resolve to the exact offered compendium document before one-click creation proceeds. Coins and scrolls are built from real currency and spell documents. Deliberately custom creature narrative abilities stay visibly labeled and are never presented as published mechanics.
 
 **Generate Monster**, **Generate NPC**, **Generate Encounter**, and **Generate Character** validate and create in one pass. Use **Preview Plan** when you want to inspect the same no-write plan before deciding to create it.
 
@@ -43,7 +43,7 @@ Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
 https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
 ```
 
-The link is permanent — it always resolves to the newest release, so Foundry offers updates automatically. Requires Foundry **v13+** and the **pf2e** system (6.0.0+).
+The link is permanent — it always resolves to the newest release, so Foundry offers updates automatically. This development line targets Foundry **v14** with the **pf2e** system **8.4.1**. Other version pairs need the same acceptance matrix before being claimed as supported.
 
 ## Setup
 

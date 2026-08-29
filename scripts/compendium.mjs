@@ -539,6 +539,32 @@ export async function getSpellCandidates(tradition, maxRank, keywords = [], plan
 }
 
 /**
+ * Bounded exact candidates for focus spells. Focus spells deliberately do not
+ * filter by tradition: published focus spells commonly carry no tradition in
+ * their trait data, and their legal source is established by the class/grant
+ * pipeline rather than the spell's own tradition field.
+ */
+export async function getFocusSpellCandidates(maxRank, keywords = []) {
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("spells")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "spell" || entry.system?.ritual) continue;
+      const traits = entry.system?.traits?.value ?? [];
+      if (!traits.includes("focus")) continue;
+      const rank = traits.includes("cantrip") ? 0 : (entry.system?.level?.value ?? 1);
+      if (rank > maxRank || seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push(candidateRecord(entry, { name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity }));
+    }
+  }
+  candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT);
+}
+
+/**
  * List real equipment items the creature could carry, so the AI can choose
  * from the compendium instead of naming gear from memory — the equipment
  * counterpart of getSpellCandidates().

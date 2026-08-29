@@ -8,7 +8,7 @@ import {
 } from "./ai.mjs";
 import {
   getSpellCandidates, getEquipmentCandidates, getLootCandidates,
-  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, sourceReadiness
+  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, sourceReadiness
 } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
@@ -30,7 +30,7 @@ import { ManagePresetsApp, promptPresetDialog, confirmDeletePreset } from "./man
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryArt, findBestiaryScaffold } from "./art.mjs";
-import { assertComplete, completionManifest } from "./completion.mjs";
+import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
 import { supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
 
@@ -102,6 +102,8 @@ export class GeneratorApp extends SpfApp {
   #characterReview = null;
   /** Successful one-click result; UI-only and never persisted. */
   #created = null;
+  /** Validated plan manifest retained only until it is presented after creation. */
+  #manifest = null;
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
 
@@ -245,6 +247,20 @@ export class GeneratorApp extends SpfApp {
         count: code === "unspent-training" ? report.unspentTraining : report.unspentIncreases
       }))
     };
+  }
+
+  /** Localized, count-only view of a validated completion manifest. */
+  static #completionContext(manifests) {
+    const summary = completionSummary(manifests);
+    const rows = [
+      ["compendium", "SIMPLYPF2E.Generator.CompletionCompendium"],
+      ["native", "SIMPLYPF2E.Generator.CompletionNative"],
+      ["moduleBuilt", "SIMPLYPF2E.Generator.CompletionModuleBuilt"],
+      ["customNarrative", "SIMPLYPF2E.Generator.CompletionCustomNarrative"]
+    ].filter(([key]) => summary[key] > 0).map(([key, label]) => ({
+      text: game.i18n.format(label, { count: summary[key] })
+    }));
+    return { total: summary.total, rows };
   }
 
   /* The three preview shapes below are identical for creatures and characters,
@@ -581,6 +597,8 @@ export class GeneratorApp extends SpfApp {
     }
     this.#busy = true;
     this.#error = null;
+    this.#created = null;
+    this.#manifest = null;
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
@@ -637,7 +655,9 @@ export class GeneratorApp extends SpfApp {
         this.#resolved.loot,
         treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)
       );
-      assertComplete(completionManifest({ mode: this.#input.mode, concept: this.#concept, resolved: this.#resolved }));
+      const manifest = completionManifest({ mode: this.#input.mode, concept: this.#concept, resolved: this.#resolved });
+      assertComplete(manifest);
+      this.#manifest = manifest;
       const eq = this.#resolved.equipment;
       if (eq.length) {
         const misses = eq.filter((e) => !e.entry).map((e) => e.name);
@@ -650,7 +670,7 @@ export class GeneratorApp extends SpfApp {
       this.#error = err.message;
       this.#concept = null;
       this.#resolved = null;
-      this.#created = { name: actor.name, actorId: actor.id, count: 1 };
+      this.#manifest = null;
     } finally {
       this.#busy = false;
       this._progress = null;
@@ -667,6 +687,8 @@ export class GeneratorApp extends SpfApp {
   async #generateEncounter(isRandom = false) {
     this.#busy = true;
     this.#error = null;
+    this.#created = null;
+    this.#manifest = null;
     this.#concept = null;
     this.#resolved = null;
     this.#pcConcept = null;
@@ -739,7 +761,8 @@ export class GeneratorApp extends SpfApp {
           treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / members.length;
         member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
         member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
-        assertComplete(completionManifest({ mode: "monster", concept: member.concept, resolved: member.resolved }));
+        member.manifest = completionManifest({ mode: "monster", concept: member.concept, resolved: member.resolved });
+        assertComplete(member.manifest);
         member.treasureEach = lootValueGp(member.resolved.loot);
       }
       const allEq = members.flatMap((m) => m.resolved.equipment);
@@ -783,6 +806,8 @@ export class GeneratorApp extends SpfApp {
     }
     this.#busy = true;
     this.#error = null;
+    this.#created = null;
+    this.#manifest = null;
     this.#concept = null;
     this.#resolved = null;
     this.#encounter = null;
@@ -972,7 +997,9 @@ export class GeneratorApp extends SpfApp {
           console.warn(`${MODULE_ID} | extra PC purchase pass failed, leaving remaining wealth as coin`, err);
         }
       }
-      assertComplete(completionManifest({ mode: "character", concept, resolved }));
+      const manifest = completionManifest({ mode: "character", concept, resolved });
+      assertComplete(manifest);
+      this.#manifest = manifest;
 
       this.#pcConcept = concept;
       this.#pcResolved = resolved;
@@ -982,6 +1009,7 @@ export class GeneratorApp extends SpfApp {
       this.#error = err.message;
       this.#pcConcept = null;
       this.#pcResolved = null;
+      this.#manifest = null;
     } finally {
       this.#busy = false;
       this._progress = null;
@@ -1032,6 +1060,10 @@ export class GeneratorApp extends SpfApp {
         [...spellcasting.spells.map((spell) => spell.name), ...keywords],
         spellcasting.plannedPicks
       );
+      const focusCandidates = await getFocusSpellCandidates(
+        spellcasting.maxRank,
+        [...concept.focusSpells.map((spell) => spell.name), ...keywords]
+      );
       if (!candidates.length) {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
         spellcasting.spells = [];
@@ -1039,6 +1071,7 @@ export class GeneratorApp extends SpfApp {
         const { spells, usage } = await selectSpells({
           concept,
           candidates,
+          focusCandidates,
           maxRank: spellcasting.maxRank,
           plannedPicks: spellcasting.plannedPicks,
           preparationMode: spellcasting.preparationMode,
@@ -1047,6 +1080,7 @@ export class GeneratorApp extends SpfApp {
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);
         spellcasting.spells = spells;
+        concept.focusSpells = focusSpells;
       }
     } catch (err) {
       console.warn(`${MODULE_ID} | grounded spell selection failed, dropping spellcasting (unconstrained first-draft spells discarded)`, err);
@@ -1184,6 +1218,9 @@ export class GeneratorApp extends SpfApp {
       // work so a sheet-render failure cannot create a duplicate on retry.
       this.#concept = null;
       this.#resolved = null;
+      const grounding = GeneratorApp.#completionContext(this.#manifest);
+      this.#manifest = null;
+      this.#created = { name: actor.name, actorId: actor.id, count: 1, grounding };
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
       try {
         await actor.sheet.render(true);
@@ -1243,7 +1280,9 @@ export class GeneratorApp extends SpfApp {
       this.#pcConcept = null;
       this.#pcResolved = null;
       this.#characterReview = null;
-      this.#created = { name: actor.name, actorId: actor.id, count: 1 };
+      const grounding = GeneratorApp.#completionContext(this.#manifest);
+      this.#manifest = null;
+      this.#created = { name: actor.name, actorId: actor.id, count: 1, grounding };
       try {
         let review;
         try {
@@ -1341,8 +1380,11 @@ export class GeneratorApp extends SpfApp {
       }));
       // Commit before presentation: all writes succeeded, so this plan cannot
       // safely be retried even if the next render fails.
+      const grounding = GeneratorApp.#completionContext(this.#encounter.members.flatMap((member) =>
+        Array.from({ length: member.count }, () => member.manifest)
+      ));
       this.#encounter = null;
-      this.#created = { name: folder.name, actorId: actors[0]?.id ?? null, count: created };
+      this.#created = { name: folder.name, actorId: actors[0]?.id ?? null, count: created, grounding };
     } catch (err) {
       console.error(`${MODULE_ID} | encounter creation failed`, err);
       // An encounter is all-or-nothing. Best-effort cleanup preserves the
@@ -1368,6 +1410,7 @@ export class GeneratorApp extends SpfApp {
     if (this.#busy || !this.#concept) return;
     this.#busy = true;
     this.#error = null;
+    this.#manifest = null;
     this._beginProgress([["loot", game.i18n.localize("SIMPLYPF2E.Progress.LootReroll")]]);
     try {
       await this._setStep("loot");
@@ -1385,6 +1428,9 @@ export class GeneratorApp extends SpfApp {
         await resolveLoot(this.#concept),
         treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)
       );
+      const manifest = completionManifest({ mode: this.#input.mode, concept: this.#concept, resolved: this.#resolved });
+      assertComplete(manifest);
+      this.#manifest = manifest;
     } catch (err) {
       console.error(`${MODULE_ID} | loot reroll failed`, err);
       this.#error = err.message;
@@ -1402,6 +1448,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#manifest = null;
     this.#error = null;
     this._tokenUsage = [];
     await this.render();

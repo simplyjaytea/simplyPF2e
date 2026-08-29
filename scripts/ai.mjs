@@ -521,7 +521,7 @@ function candidateForPick(candidates, pick) {
  * @param {number[]} [args.signatureRanks] module-owned ordinary signature eligibility
  * @returns {Promise<{spells: {name: string, rank: number}[], usage: object}>}
  */
-export async function selectSpells({ concept, candidates, maxRank, plannedPicks, preparationMode, signatureRanks = [], onProgress }) {
+export async function selectSpells({ concept, candidates, focusCandidates = [], maxRank, plannedPicks, preparationMode, signatureRanks = [], onProgress }) {
   const pcPlan = plannedPicks != null;
   if (pcPlan && (typeof plannedPicks !== "object" || Array.isArray(plannedPicks)
     || !Number.isInteger(maxRank) || maxRank < 0 || maxRank > 10
@@ -542,9 +542,10 @@ export async function selectSpells({ concept, candidates, maxRank, plannedPicks,
   const list = [...byRank.entries()]
     .map(([rank, names]) => `${pcPlan ? PC_SPELL_RANKS[rank] : rank === 0 ? "Cantrips" : `Rank ${rank}`}: ${names.join("; ")}`)
     .join("\n");
+  const focusList = focusCandidates.map((candidate) => `${candidate.id} | ${candidate.name} (Rank ${candidate.rank})`).join("; ");
 
   const system = `You are selecting spells for a Pathfinder 2e ${pcPlan ? "player character" : "creature"}. Choose ONLY from the provided list, copying each name EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
-{ "spells": [ { "id": string, "rank": ${pcPlan ? 'string, "signature": "regular" | "signature"' : "number"} } ] }
+{ "spells": [ { "id": string, "rank": ${pcPlan ? 'string, "signature": "regular" | "signature"' : "number"} } ], "focusSpellIds": string[] }
 ${pcPlan
     ? `"rank" must be one of these enum slugs, never a number: ${PC_SPELL_RANKS.slice(0, maxRank + 1).join(", ")}. Use cantrip only for cantrips; ranked spells use their listed rank or a higher allowed rank to heighten.`
     : `"rank" is the slot the creature casts it from: 0 for cantrips, otherwise at least the listed rank and at most ${maxRank} (choose higher to heighten a spell only when that clearly helps it).`}
@@ -554,7 +555,8 @@ ${pcPlan
       : "Each array entry is a repertoire spell at its assigned rank, not a spell slot. Do not repeat the same spell at the same rank; it may appear at different legal ranks. At rank-ten choose only common spells. Bracketed rarity annotations are not part of the spell name."} ${signatureRanks.length
         ? `Choose exactly one selected repertoire spell at each of these learned ranks as a signature: ${signatureRanks.map((rank) => PC_SPELL_RANKS[rank]).join(", ")}. Mark those with "signature": "signature" and all others with "signature": "regular". Favor different spells that benefit from flexible heightening. A signature can be learned heightened and still cast at lower legal ranks.`
         : 'No signature choices are available; use "signature": "regular" for every spell.'} Do not add subclass, feat, curriculum, or font bonus slots. Fill each rank where suitable candidates exist; leave unfillable slots empty, never invent names. Favor a useful mix of thematic spells.`
-    : "Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward the highest ranks. Favor spells that express the creature's theme and tactics."}`;
+    : "Pick 2-3 cantrips and 4-8 ranked spells for a dedicated caster, weighted toward the highest ranks. Favor spells that express the creature's theme and tactics."}
+${focusCandidates.length ? "Choose up to three focusSpellIds only from the provided focus-spell list when they genuinely fit the concept; otherwise return []." : "Return [] for focusSpellIds."}`;
 
   const user = [
     `${pcPlan ? "Character" : "Creature"}: ${concept.name} (level ${concept.level})`,
@@ -567,12 +569,22 @@ ${pcPlan
       : null,
     "",
     "Available spells:",
-    list
+    list,
+    focusCandidates.length ? `Available focus spells: ${focusList}` : null
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
     task: pcPlan ? AI_TASK.PC_SPELL_SELECTION : AI_TASK.SPELL_SELECTION, system, user, onProgress
   });
+  const focusSpells = [];
+  const focusSeen = new Set();
+  for (const id of Array.isArray(parsed.focusSpellIds) ? parsed.focusSpellIds : []) {
+    const candidate = candidateForPick(focusCandidates, { id });
+    const key = candidate?.id ?? candidate?.name;
+    if (!candidate || focusSeen.has(key) || focusSpells.length >= 3) continue;
+    focusSeen.add(key);
+    focusSpells.push({ name: candidate.name, ...(candidate.ref ? { candidate: candidate.ref } : {}) });
+  }
   if (pcPlan) {
     const used = new Map();
     const seen = new Set();
@@ -606,7 +618,7 @@ ${pcPlan
       if (selections.length === 1) selections[0].signature = true;
       else console.warn(`simplypf2e | conflicting signature choices at rank ${rank}; keeping those spells regular`);
     }
-    return { spells, usage };
+    return { spells, focusSpells, usage };
   }
   // A ranked spell must never come back as rank 0 (createActor would file it
   // as a cantrip) — clamp the minimum to the candidate's own listed rank.
@@ -621,7 +633,7 @@ ${pcPlan
         maxRank
       )
     }));
-  return { spells, usage };
+  return { spells, focusSpells, usage };
 }
 
 /**

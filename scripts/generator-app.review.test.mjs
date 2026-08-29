@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import vm from "node:vm";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
-import { assertComplete, completionManifest } from "./completion.mjs";
+import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
 import { supportedClassCandidates } from "./pc-support.mjs";
 
 if (!vm.SourceTextModule) {
@@ -37,7 +37,7 @@ const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fig
   backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [], equipment: [], loot: [] });
 const mocks = {
   SpfApp: App, MODULE_ID: "simplypf2e", reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
-  assertComplete, completionManifest,
+  assertComplete, completionManifest, completionSummary,
   supportedClassCandidates,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",

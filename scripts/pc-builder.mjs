@@ -108,13 +108,12 @@ export function normalizePCConcept(raw, { level }) {
     // ceiling — so the first 3 VALID names are kept, not the first 3 raw ones.
     focusSpells: (Array.isArray(c.focusSpells) ? c.focusSpells : [])
       .map((s) => {
-        if (typeof s === "string") return s.trim();
-        if (s?.name) return String(s.name).trim();
-        return "";
+        const name = typeof s === "string" ? s.trim() : String(s?.name ?? "").trim();
+        const candidate = s?.candidate?.packId && s?.candidate?._id ? s.candidate : null;
+        return name ? { name, ...(candidate ? { candidate } : {}) } : null;
       })
       .filter(Boolean)
-      .slice(0, 3)
-      .map((name) => ({ name })),
+      .slice(0, 3),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
         if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
