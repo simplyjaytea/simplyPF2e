@@ -120,6 +120,7 @@
       "CompleteSummary": "Created {count} actor(s): {name}.",
       "OpenSheet": "Open Sheet",
       "GenerateAnother": "Generate Another",
+      "NoSupportedClasses": "No supported complete-only player-character classes are available in the enabled compendium sources.",
       "ReviewTitle": "Character created — review",
       "ReviewHint": "These features had no recorded choice after creation. Some may be conditional or intentionally disabled; review them in Foundry. This snapshot does not refresh when you edit the character and is not a full character validation.",
       "ReviewIncomplete": "Not every item could be inspected. Review the character manually.",

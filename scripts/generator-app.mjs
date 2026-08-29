@@ -31,6 +31,7 @@ import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryArt } from "./art.mjs";
 import { assertComplete, completionManifest } from "./completion.mjs";
+import { supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
 
 /**
@@ -818,9 +819,11 @@ export class GeneratorApp extends SpfApp {
       // capping at Uncommon means a Rare pick like Fetchling can never be
       // offered — not just discouraged by prompt wording.
       const { rarityCap } = this.#input;
-      const [ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates] = await Promise.all([
+      const [ancestryCandidates, backgroundCandidates, allClassCandidates, heritageCandidates] = await Promise.all([
         getAncestryCandidates(rarityCap), getBackgroundCandidates(rarityCap), getClassCandidates(), getHeritageCandidates(rarityCap)
       ]);
+      const classCandidates = supportedClassCandidates(allClassCandidates);
+      if (!classCandidates.length) throw new Error(game.i18n.localize("SIMPLYPF2E.Generator.NoSupportedClasses"));
       const abc = await selectAncestryBackgroundClass({
         concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates,
         onProgress: (p) => this._onAIProgress(p)
