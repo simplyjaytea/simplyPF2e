@@ -291,7 +291,13 @@ export function normalizeConcept(raw, { level, rarity }) {
       })
       .filter(Boolean)
       .slice(0, 3),
-    feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 4),
+    feats: (Array.isArray(c.feats) ? c.feats : [])
+      .map((feat) => {
+        const name = typeof feat === "string" ? feat.trim() : String(feat?.name ?? "").trim();
+        const candidate = feat?.candidate?.packId && feat?.candidate?._id ? feat.candidate : null;
+        return name ? { name, ...(candidate ? { candidate } : {}) } : null;
+      })
+      .filter(Boolean).slice(0, 3),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
         if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
@@ -643,12 +649,15 @@ export async function resolveConcept(concept, { exactContent = false } = {}) {
   }
 
   const feats = [];
-  for (const name of concept.feats) {
-    const entry = await findEntry(
-      getPacksFor("feats"),
-      name,
-      (e) => e.type === "feat" && (e.system?.level?.value ?? 0) <= Math.max(concept.level, 1)
-    );
+  for (const feat of concept.feats) {
+    const name = typeof feat === "string" ? feat : feat.name;
+    const candidate = feat?.candidate;
+    const entry = candidate && getPacksFor("feats").includes(candidate.packId)
+      ? candidate : (exactContent ? null : await findEntry(
+        getPacksFor("feats"),
+        name,
+        (e) => e.type === "feat" && (e.system?.level?.value ?? 0) <= Math.max(concept.level, 1)
+      ));
     feats.push({ name, entry });
   }
 

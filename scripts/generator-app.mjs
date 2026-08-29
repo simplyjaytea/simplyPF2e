@@ -4,11 +4,11 @@ import {
 } from "./settings.mjs";
 import {
   generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
-  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCharacterChoices
+  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCreatureFeats, selectCharacterChoices
 } from "./ai.mjs";
 import {
   getSpellCandidates, getEquipmentCandidates, getLootCandidates, getScrollSpellCandidates,
-  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, sourceReadiness
+  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, getFeatCandidates, sourceReadiness
 } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
@@ -598,6 +598,7 @@ export class GeneratorApp extends SpfApp {
     this._beginProgress([
       ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept")],
       ...(this.#input.allowSpellcasting ? [["spells", game.i18n.localize("SIMPLYPF2E.Progress.Spells")]] : []),
+      ["feats", game.i18n.localize("SIMPLYPF2E.Progress.Feats")],
       ["equipment", game.i18n.localize("SIMPLYPF2E.Progress.Equipment")],
       ["loot", game.i18n.localize("SIMPLYPF2E.Progress.Loot")],
       ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
@@ -635,6 +636,8 @@ export class GeneratorApp extends SpfApp {
       // non-compliant model returned spellcasting anyway.
       if (this.#input.allowSpellcasting && this.#concept.spellcasting) await this._setStep("spells");
       await this.#refineSpells(this.#concept);
+      if (this.#concept.feats.length) await this._setStep("feats");
+      await this.#refineCreatureFeats(this.#concept);
       if (this.#concept.equipment.length) await this._setStep("equipment");
       await this.#refineEquipment(this.#concept);
       if (this.#concept.loot.length) await this._setStep("loot");
@@ -736,6 +739,7 @@ export class GeneratorApp extends SpfApp {
           concept.focusSpells = [];
         }
         await this.#refineSpells(concept);
+        await this.#refineCreatureFeats(concept);
         await this.#refineEquipment(concept);
         await this.#refineLoot(concept);
         members.push({ ...slot, concept });
@@ -1083,6 +1087,25 @@ export class GeneratorApp extends SpfApp {
     // records every missing module-owned pick and blocks actor creation.
     if (spellcasting.plannedPicks) return;
     concept.spellcasting = null;
+  }
+
+  /** Ground a creature's class-like feats against an issued, level-capped list. */
+  async #refineCreatureFeats(concept) {
+    if (!concept?.feats?.length) return;
+    try {
+      const candidates = await getFeatCandidates({
+        level: Math.max(concept.level, 1), category: "class",
+        preferredNames: concept.feats.map((feat) => typeof feat === "string" ? feat : feat.name)
+      });
+      if (!candidates.length) return;
+      const { feats, usage } = await selectCreatureFeats({
+        concept, candidates, onProgress: (p) => this._onAIProgress(p)
+      });
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), usage);
+      if (feats.length) concept.feats = feats;
+    } catch (err) {
+      console.warn(`${MODULE_ID} | grounded creature feat selection failed; unresolved draft feats will block creation`, err);
+    }
   }
 
   /**

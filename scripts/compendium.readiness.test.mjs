@@ -9,7 +9,7 @@ const { sourceReadiness } = await import("./compendium.mjs");
 
 const creature = sourceReadiness("monster");
 assert.equal(creature.ready, true);
-assert.equal(creature.packCount, 2);
+assert.equal(creature.packCount, 3);
 packs.delete("pf2e.spells-srd");
 assert.deepEqual(sourceReadiness("npc").missing, ["spells"]);
 assert.deepEqual(sourceReadiness("npc", { allowSpellcasting: false }).missing, ["spells"],

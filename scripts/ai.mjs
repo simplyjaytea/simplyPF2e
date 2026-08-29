@@ -858,6 +858,41 @@ Include exactly one entry per slot number (1 to ${slots.length}). Never use an I
   return { picks, usage };
 }
 
+/** Choose a small set of class-like creature feats from an issued catalog. */
+export async function selectCreatureFeats({ concept, candidates, onProgress }) {
+  const maximum = Math.min(Math.max(concept?.feats?.length ?? 0, 0), 3);
+  if (!maximum || !candidates.length) return { feats: [], usage: null };
+  const catalog = candidates.map((candidate) => `${candidate.id} | ${candidate.name}`).join("\n");
+  const system = `You are selecting up to ${maximum} published Pathfinder 2e class feats for a creature. Choose ONLY IDs from the provided catalog. Return a single JSON object and nothing else:
+{ "featIds": string[] }
+Choose feats that fit the creature's role and tactics. Do not choose a feat more than once. It is valid to choose fewer than ${maximum} when none fit.`;
+  const user = [
+    `Creature: ${concept.name} (level ${concept.level})`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.description ? `Description: ${concept.description}` : null,
+    `First-draft feat ideas (inspiration only): ${concept.feats.map((feat) => typeof feat === "string" ? feat : feat.name).join(", ")}`,
+    "",
+    "Feat catalog (ID | exact name):",
+    catalog
+  ].filter((line) => line !== null).join("\n");
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.FEAT_SELECTION, system, user, onProgress
+  });
+  const seen = new Set();
+  const feats = (Array.isArray(parsed.featIds) ? parsed.featIds : [])
+    .map((id) => candidateForPick(candidates, { id }))
+    .filter((candidate) => {
+      if (!candidate) return false;
+      const key = candidate.id ?? `${candidate.ref?.packId ?? ""}\u0000${candidate.ref?._id ?? candidate.name}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, maximum)
+    .map((candidate) => ({ name: candidate.name, ...(candidate.ref ? { candidate: candidate.ref } : {}) }));
+  return { feats, usage };
+}
+
 /** Select only opaque IDs from the builder's bounded, static choice catalog.
  * Real rule values and write destinations stay in the builder, never the AI.
  * Missing, invalid, or ambiguous answers are left for native PF2e dialogs. */

@@ -5,11 +5,11 @@
 import assert from "node:assert/strict";
 
 globalThis.game = {
-  settings: { get: () => ({ equipment: ["test.equipment"], spells: ["test.spells"] }) },
+  settings: { get: () => ({ equipment: ["test.equipment"], spells: ["test.spells"], feats: ["test.feats"] }) },
   packs: new Map([["test.equipment", {}], ["test.spells", {}]])
 };
 
-const { normalizeLoot, resolveEquipment, resolveLoot, resolveFocusSpells } = await import("./builder.mjs");
+const { normalizeConcept, normalizeLoot, resolveConcept, resolveEquipment, resolveLoot, resolveFocusSpells } = await import("./builder.mjs");
 
 const concept = {
   level: 1,
@@ -27,6 +27,15 @@ const exact = { packId: "test.equipment", _id: "longsword" };
 const exactEquipment = await resolveEquipment({ ...concept, equipment: [{ ...concept.equipment[0], candidate: exact }] },
   { exactContent: true });
 assert.equal(exactEquipment[0].entry, exact, "a locally retained source reference remains valid in strict mode");
+
+const featCandidate = { packId: "test.feats", _id: "power-attack" };
+game.packs.set("test.feats", {});
+const strictFeat = await resolveConcept(normalizeConcept({ feats: ["Power Attack"] }, { level: 1, rarity: "common" }),
+  { exactContent: true });
+assert.equal(strictFeat.feats[0].entry, null, "strict creature feats cannot fuzzy-match a first-draft name");
+const exactFeat = await resolveConcept(normalizeConcept({ feats: [{ name: "Power Attack", candidate: featCandidate }] },
+  { level: 1, rarity: "common" }), { exactContent: true });
+assert.equal(exactFeat.feats[0].entry, featCandidate, "a grounded creature feat retains its exact source reference");
 
 const scrollCandidate = { packId: "test.spells", _id: "fireball" };
 assert.deepEqual(
