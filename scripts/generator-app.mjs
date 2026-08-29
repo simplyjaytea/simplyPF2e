@@ -56,6 +56,8 @@ export class GeneratorApp extends SpfApp {
       discard: GeneratorApp.#onDiscard,
       dismissCharacterReview: GeneratorApp.#onDismissCharacterReview,
       openReviewedCharacter: GeneratorApp.#onOpenReviewedCharacter,
+      openCreatedActor: GeneratorApp.#onOpenCreatedActor,
+      generateAnother: GeneratorApp.#onGenerateAnother,
       savePreset: GeneratorApp.#onSavePreset,
       duplicatePreset: GeneratorApp.#onDuplicatePreset,
       deletePreset: GeneratorApp.#onDeletePreset,
@@ -97,6 +99,8 @@ export class GeneratorApp extends SpfApp {
   #pcResolved = null;
   /** Snapshot for the last created PC; UI-only, never written to actor flags. */
   #characterReview = null;
+  /** Successful one-click result; UI-only and never persisted. */
+  #created = null;
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
 
@@ -168,10 +172,11 @@ export class GeneratorApp extends SpfApp {
       encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
       pcPreview: this.#input.mode === "character" ? this.#buildPCPreviewContext() : null,
       characterReview: this.#characterReview,
+      created: this.#created,
       tokenReport: this._buildTokenReport(),
       // Presentation only: show the getting-started panel when the active
       // mode has no result (busy/error states render their own blocks).
-      showEmptyState: !this.#busy && !this.#error && !this.#characterReview
+      showEmptyState: !this.#busy && !this.#error && !this.#characterReview && !this.#created
         && !(["monster", "npc"].includes(this.#input.mode) && this.#concept)
         && !(this.#input.mode === "encounter" && this.#encounter)
         && !(this.#input.mode === "character" && this.#pcConcept)
@@ -644,6 +649,7 @@ export class GeneratorApp extends SpfApp {
       this.#error = err.message;
       this.#concept = null;
       this.#resolved = null;
+      this.#created = { name: actor.name, actorId: actor.id, count: 1 };
     } finally {
       this.#busy = false;
       this._progress = null;
@@ -1233,6 +1239,7 @@ export class GeneratorApp extends SpfApp {
       this.#pcConcept = null;
       this.#pcResolved = null;
       this.#characterReview = null;
+      this.#created = { name: actor.name, actorId: actor.id, count: 1 };
       try {
         let review;
         try {
@@ -1285,6 +1292,21 @@ export class GeneratorApp extends SpfApp {
     await actor.sheet.render(true);
   }
 
+  static async #onOpenCreatedActor() {
+    const actor = game.actors.get(this.#created?.actorId);
+    if (!actor) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ReviewUnavailable"));
+      return;
+    }
+    await actor.sheet.render(true);
+  }
+
+  static async #onGenerateAnother() {
+    this.#created = null;
+    this.#characterReview = null;
+    await this.render();
+  }
+
   /** Create every encounter member, each with closest-match bestiary art. */
   async #createEncounterActors() {
     if (!this.#encounter) return;
@@ -1315,6 +1337,7 @@ export class GeneratorApp extends SpfApp {
       // Commit before presentation: all writes succeeded, so this plan cannot
       // safely be retried even if the next render fails.
       this.#encounter = null;
+      this.#created = { name: folder.name, actorId: actors[0]?.id ?? null, count: created };
     } catch (err) {
       console.error(`${MODULE_ID} | encounter creation failed`, err);
       // An encounter is all-or-nothing. Best-effort cleanup preserves the

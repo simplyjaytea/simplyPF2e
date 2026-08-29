@@ -201,6 +201,17 @@
     <p class="notification error" role="alert">{{error}}</p>
   {{/if}}
 
+  {{#if created}}
+  <section class="spf-preview spf-card" aria-label="{{localize 'SIMPLYPF2E.Generator.CompleteTitle'}}">
+    <h2>{{localize "SIMPLYPF2E.Generator.CompleteTitle"}}</h2>
+    <p>{{localize "SIMPLYPF2E.Generator.CompleteSummary" name=created.name count=created.count}}</p>
+    <footer class="spf-actions">
+      {{#if created.actorId}}<button type="button" class="spf-primary" data-action="openCreatedActor"><i class="fa-solid fa-arrow-up-right-from-square"></i> {{localize "SIMPLYPF2E.Generator.OpenSheet"}}</button>{{/if}}
+      <button type="button" data-action="generateAnother"><i class="fa-solid fa-wand-sparkles"></i> {{localize "SIMPLYPF2E.Generator.GenerateAnother"}}</button>
+    </footer>
+  </section>
+  {{/if}}
+
   {{#if showEmptyState}}
     <p class="spf-empty">{{localize "SIMPLYPF2E.Generator.EmptyHint"}}</p>
   {{/if}}
