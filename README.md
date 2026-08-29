@@ -90,7 +90,7 @@ Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.mod
 
 ### Monster and NPC
 
-Choose **Monster** for a creature-first combatant or **NPC** for a story-focused, combat-ready non-player character. Optionally pick a **preset**, describe it, set level (−1 to 24) and rarity, choose a **Treasure amount** and whether spellcasting is allowed, then click the mode's Generate action to create and open the sheet. Choose **Preview Plan** instead to review the stat block without writing to the world; the preview retains its Create Actor action.
+Choose **Monster** for a creature-first combatant or **NPC** for a story-focused, combat-ready non-player character. Describe it and set level (−1 to 24), then click the mode's Generate action to create and open the sheet. Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Choose **Preview Plan** instead to review the same validated plan without writing to the world.
 
 The **dice button** rolls a surprise instead: it ignores the description and rolls a brief locally (creature type × combat role × home × twist — thousands of combinations), so every click is a genuinely new idea. Good for filling a dungeon room.
 
@@ -104,7 +104,7 @@ The preview shows each member with count, level, role and key stats, plus the XP
 
 ### Player Character mode
 
-Describe a concept ("a grizzled dwarf ranger who hunts undead"), set a level (1–20), and optionally cap the **Max rarity** of the ancestry/background/heritage the AI may pick — capping at Uncommon rules out Rare options like Fetchling, so they're never even offered.
+Describe a concept ("a grizzled dwarf ranger who hunts undead") and set a level (1–20). In **Advanced options**, optionally cap the **Max rarity** of the ancestry/background/heritage the AI may pick — capping at Uncommon rules out Rare options like Fetchling, so they're never even offered.
 
 Nothing here is scale-word math. A PC is assembled from real Ancestry, Background and Class items plus feats at every level slot (ancestry/class/skill/general per the Core Rulebook cadence, including any feat the background itself grants — like Acolyte's *Student of the Canon*), ability boosts, and skill increases past Trained. The PF2e system then computes AC, HP, saves and proficiencies exactly as it would for a character built by hand.
 
@@ -136,9 +136,7 @@ The preset dropdown shapes the *build* while your description drives the *flavor
 
 Eighteen built-ins: the twelve standard classes, plus six themes for concepts that don't map to one (Cultivator, Fire Mage, Assassin, Healer, Tank, Skill-Monkey). A preset can also carry defaults for rarity, spellcasting and Treasure amount.
 
-- **Save** captures your current form as a new custom preset — or updates the selected custom preset in place.
-- **Duplicate** starts a new preset pre-filled from any preset, built-in or custom.
-- **Manage Presets** lists your custom presets with Edit / Duplicate / Export / Delete, plus Export All and Import. Export writes JSON you can hand to another GM; imports always get a fresh id so they never collide.
+- **Manage Presets** is the one place to create, edit, duplicate, export, or delete custom presets. It also offers Export All and Import. Export writes JSON you can hand to another GM; imports always get a fresh id so they never collide.
 
 The description placeholder cycles five example concepts per preset as inspiration.
 

@@ -77,33 +77,7 @@
         <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{promptPlaceholder}}">{{input.prompt}}</textarea>
       {{/if}}
     </div>
-    {{! One stable slot in every mode: presets guide the creature pipeline
-        directly and steer encounter members / character class choice as
-        generation guidance, and their saved generator defaults apply
-        everywhere. }}
-    <div class="form-group spf-preset">
-      <label for="spf-generator-preset">{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
-      <div class="spf-preset-controls">
-        <select id="spf-generator-preset" name="preset">
-          {{#each presets}}
-            <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-          {{/each}}
-        </select>
-        <button type="button" class="spf-icon-btn" data-action="savePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.SaveTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.SaveTooltip'}}">
-          <i class="fa-solid fa-floppy-disk"></i>
-        </button>
-        <button type="button" class="spf-icon-btn" data-action="duplicatePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" {{#unless presetSelected}}disabled{{/unless}}>
-          <i class="fa-solid fa-copy"></i>
-        </button>
-        <button type="button" class="spf-icon-btn" data-action="deletePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" {{#unless selectedPresetIsCustom}}disabled{{/unless}}>
-          <i class="fa-solid fa-trash"></i>
-        </button>
-        <button type="button" class="spf-icon-btn" data-action="managePresets" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ManageTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.ManageTooltip'}}">
-          <i class="fa-solid fa-gear"></i>
-        </button>
-      </div>
-    </div>
-    <div class="spf-row">
+    <div class="spf-level-primary">
       <div class="form-group">
         <label for="spf-generator-level">{{#if encounterMode}}{{localize "SIMPLYPF2E.Generator.PartyLevel"}}{{else}}{{localize "SIMPLYPF2E.Generator.Level"}}{{/if}}</label>
         <div class="spf-level-controls">
@@ -116,10 +90,29 @@
           </button>
         </div>
       </div>
+    </div>
+    <details class="spf-advanced">
+      <summary>{{localize "SIMPLYPF2E.Generator.Advanced"}}</summary>
+      <div class="spf-advanced-content">
+        {{! One stable slot in every mode: presets guide every pipeline. Creation,
+            duplication, export, and deletion live in the dedicated manager. }}
+        <div class="form-group spf-preset">
+          <label for="spf-generator-preset">{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
+          <div class="spf-preset-controls">
+            <select id="spf-generator-preset" name="preset">
+              {{#each presets}}
+                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+              {{/each}}
+            </select>
+            <button type="button" data-action="managePresets">
+              <i class="fa-solid fa-bookmark"></i> {{localize "SIMPLYPF2E.Presets.Manage"}}
+            </button>
+          </div>
+        </div>
+        <div class="spf-row">
       {{! Stable shared column order in every mode: Level → Rarity (a cap in
-          Character mode) → Treasure amount → Allow spellcasting. Encounter's
-          extra controls append AFTER the shared columns so switching modes
-          never moves a shared control. }}
+          Character mode) → Treasure amount → Allow spellcasting. The level
+          remains prominent above; encounter-specific controls append here. }}
       {{#if characterMode}}
         <div class="form-group">
           <label for="spf-generator-rarity-cap" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RarityCapTooltip'}}">{{localize "SIMPLYPF2E.Generator.RarityCap"}}</label>
@@ -175,7 +168,9 @@
           </select>
         </div>
       {{/if}}
-    </div>
+        </div>
+      </div>
+    </details>
     <div class="spf-generate-row">
       <button type="button" class="spf-primary" data-action="generate" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-wand-sparkles"></i>

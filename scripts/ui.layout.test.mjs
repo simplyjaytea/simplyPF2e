@@ -199,17 +199,27 @@ for (const [name, template, createAction] of [
 assert.match(generatorApp, /showEmptyState:/, "generator must expose the empty-state flag");
 assert.match(itemForgeApp, /showEmptyState:/, "item forge must expose the empty-state flag");
 
-// Reading order: mode switch → prompt → presets → advanced options → generate.
+// Reading order: mode switch → prompt → prominent level → advanced → generate.
 {
   const promptAt = generator.indexOf('id="spf-generator-prompt"');
   const presetAt = generator.indexOf('id="spf-generator-preset"');
   const modeAt = generator.indexOf("spf-mode-toggle");
-  const rowAt = generator.indexOf('class="spf-row"');
-  assert.ok(modeAt >= 0 && promptAt >= 0 && presetAt >= 0 && rowAt >= 0, "generator flow anchors must exist");
+  const levelAt = generator.indexOf('id="spf-generator-level"');
+  const advancedAt = generator.indexOf('class="spf-advanced"');
+  assert.ok(modeAt >= 0 && promptAt >= 0 && presetAt >= 0 && levelAt >= 0 && advancedAt >= 0, "generator flow anchors must exist");
   assert.ok(modeAt < promptAt, "the mode switch must precede the prompt");
-  assert.ok(promptAt < presetAt, "the prompt must precede the preset controls");
-  assert.ok(presetAt < rowAt, "presets must precede the advanced options row");
+  assert.ok(promptAt < levelAt, "the prompt must precede the prominent level control");
+  assert.ok(levelAt < advancedAt, "the level must remain outside the advanced disclosure");
+  assert.ok(advancedAt < presetAt, "presets must live in the advanced disclosure");
 }
+
+assert.match(generator, /<details class="spf-advanced">[\s\S]*?<summary>\{\{localize "SIMPLYPF2E\.Generator\.Advanced"\}\}<\/summary>/,
+  "secondary controls must be in a native, keyboard-operable Advanced disclosure");
+assert.match(generator, /data-action="managePresets"[\s\S]*?SIMPLYPF2E\.Presets\.Manage/,
+  "the generator exposes one labeled Manage Presets control instead of edit icons");
+assert.doesNotMatch(generator, /data-action="savePreset"|data-action="duplicatePreset"|data-action="deletePreset"/,
+  "preset editing controls belong in Manage Presets, not the generation flow");
+assert.match(managePresets, /data-action="newPreset"/, "preset management must retain a direct creation path");
 
 assert.match(providerSetup, /class="spf-primary" data-action="saveAndTest"/,
   "provider setup must mark Save & Test as the primary action");

@@ -26,6 +26,9 @@
   {{/if}}
 
   <footer class="spf-actions">
+    <button type="button" class="spf-primary" data-action="newPreset">
+      <i class="fa-solid fa-plus"></i> {{localize "SIMPLYPF2E.Presets.New"}}
+    </button>
     <button type="button" data-action="exportAll" {{#unless presets.length}}disabled{{/unless}}>
       <i class="fa-solid fa-file-export"></i> {{localize "SIMPLYPF2E.Presets.ExportAll"}}
     </button>

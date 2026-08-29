@@ -22,11 +22,8 @@ import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
-import {
-  BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, updateCustomPreset,
-  examplePrompt, randomBrief
-} from "./presets.mjs";
-import { ManagePresetsApp, promptPresetDialog, confirmDeletePreset } from "./manage-presets-app.mjs";
+import { BUILT_IN_PRESETS, getCustomPresets, findPreset, examplePrompt, randomBrief } from "./presets.mjs";
+import { ManagePresetsApp } from "./manage-presets-app.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryArt, findBestiaryScaffold } from "./art.mjs";
@@ -59,9 +56,6 @@ export class GeneratorApp extends SpfApp {
       openReviewedCharacter: GeneratorApp.#onOpenReviewedCharacter,
       openCreatedActor: GeneratorApp.#onOpenCreatedActor,
       generateAnother: GeneratorApp.#onGenerateAnother,
-      savePreset: GeneratorApp.#onSavePreset,
-      duplicatePreset: GeneratorApp.#onDuplicatePreset,
-      deletePreset: GeneratorApp.#onDeletePreset,
       managePresets: GeneratorApp.#onManagePresets,
       levelUp: GeneratorApp.#onLevelUp,
       levelDown: GeneratorApp.#onLevelDown,
@@ -150,8 +144,6 @@ export class GeneratorApp extends SpfApp {
           selected: this.#input.preset === p.id
         }))
       ],
-      selectedPresetIsCustom: Boolean(findPreset(this.#input.preset)?.custom),
-      presetSelected: Boolean(findPreset(this.#input.preset)),
       encounterMode: this.#input.mode === "encounter",
       characterMode: this.#input.mode === "character",
       monsterMode: this.#input.mode === "monster",
@@ -1454,72 +1446,9 @@ export class GeneratorApp extends SpfApp {
     await this.render();
   }
 
-  /**
-   * Save a preset: if a CUSTOM preset is currently selected the dialog edits
-   * it in place (same id); otherwise it creates a new custom preset. The
-   * generator-default fields (rarity, treasure, spellcasting) are pre-filled
-   * from the live form so a preset captures the GM's current setup.
-   */
-  static async #onSavePreset() {
-    this.#readForm();
-    const current = findPreset(this.#input.preset);
-    const editing = current?.custom ? current : null;
-    const result = await promptPresetDialog({
-      title: editing ? "SIMPLYPF2E.Presets.DialogEditTitle" : "SIMPLYPF2E.Presets.DialogTitle",
-      name: editing?.name ?? "",
-      prompt: editing?.prompt ?? "",
-      rarity: this.#input.rarity,
-      allowSpellcasting: this.#input.allowSpellcasting,
-      treasureAmount: this.#input.treasureAmount
-    });
-    if (!result) return;
-    const preset = editing
-      ? await updateCustomPreset(editing.id, result)
-      : await addCustomPreset(result.name, result.prompt, result);
-    if (!preset) return;
-    this.#input.preset = preset.id;
-    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: preset.name }));
-    await this.render();
-  }
-
-  /**
-   * Duplicate the currently selected preset (built-in or custom) into a NEW
-   * custom preset — the dialog opens pre-filled from the source so a GM can
-   * start from e.g. "Fighter" and tweak it. Never touches the source.
-   */
-  static async #onDuplicatePreset() {
-    this.#readForm();
-    const source = findPreset(this.#input.preset);
-    if (!source) return;
-    // Built-in names are i18n keys; custom names are plain text.
-    const sourceName = source.custom ? source.name : game.i18n.localize(source.name);
-    const result = await promptPresetDialog({
-      title: "SIMPLYPF2E.Presets.DialogTitle",
-      name: game.i18n.format("SIMPLYPF2E.Presets.CopyName", { name: sourceName }),
-      prompt: source.prompt,
-      rarity: source.rarity ?? this.#input.rarity,
-      allowSpellcasting: source.allowSpellcasting ?? this.#input.allowSpellcasting,
-      treasureAmount: source.treasureAmount ?? this.#input.treasureAmount
-    });
-    if (!result) return;
-    const preset = await addCustomPreset(result.name, result.prompt, result);
-    this.#input.preset = preset.id;
-    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: preset.name }));
-    await this.render();
-  }
-
-  /** Delete the currently selected custom preset (after confirmation). */
-  static async #onDeletePreset() {
-    this.#readForm();
-    const preset = findPreset(this.#input.preset);
-    if (!preset?.custom) return;
-    if (!(await confirmDeletePreset(preset))) return;
-    this.#input.preset = "";
-    await this.render();
-  }
-
   /** Open the Manage Custom Presets dialog (edit/duplicate/delete/export/import). */
   static #onManagePresets() {
+    this.#readForm();
     this.#managePresets ??= new ManagePresetsApp({ generator: this });
     this.#managePresets.render(true);
   }
