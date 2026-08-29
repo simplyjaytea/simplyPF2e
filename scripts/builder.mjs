@@ -1111,7 +1111,7 @@ function actionIcon(actionType) {
  * @param {string|null} [options.img]  portrait/token image path
  * @returns {Promise<Actor>}
  */
-export async function createActor(concept, resolved, { img = null } = {}) {
+export async function createActor(concept, resolved, { img = null, scaffold = null } = {}) {
   const stats = computeStats(concept);
   const items = [];
 
@@ -1331,6 +1331,7 @@ export async function createActor(concept, resolved, { img = null } = {}) {
       ...(focusPoolSize ? { resources: { focus: { value: focusPoolSize, max: focusPoolSize } } } : {})
     },
     prototypeToken: {
+      ...(scaffold?.prototypeToken ?? {}),
       displayName: CONST.TOKEN_DISPLAY_MODES.OWNER_HOVER,
       displayBars: CONST.TOKEN_DISPLAY_MODES.OWNER_HOVER
     }

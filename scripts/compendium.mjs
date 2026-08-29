@@ -9,7 +9,7 @@ import { SETTINGS, getSetting } from "./settings.mjs";
 import { slugify } from "./text.mjs";
 
 export const CATEGORIES = [
-  "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "heritages"
+  "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "heritages", "bestiaryActors"
 ];
 
 export const DEFAULT_PACKS = {
@@ -27,7 +27,8 @@ export const DEFAULT_PACKS = {
   ancestries: ["pf2e.ancestries"],
   backgrounds: ["pf2e.backgrounds"],
   classes: ["pf2e.classes"],
-  heritages: ["pf2e.heritages"]
+  heritages: ["pf2e.heritages"],
+  bestiaryActors: ["pf2e.pathfinder-monster-core", "pf2e.pathfinder-bestiary"]
 };
 
 export const EQUIPMENT_TYPES = new Set([
@@ -111,9 +112,16 @@ export async function detectAvailablePacks() {
   if (detectedPacks) return detectedPacks;
   const result = {
     abilities: [], spells: [], feats: [], equipment: [],
-    ancestries: [], backgrounds: [], classes: [], heritages: []
+    ancestries: [], backgrounds: [], classes: [], heritages: [], bestiaryActors: []
   };
   for (const pack of game.packs) {
+    if (pack.metadata.type === "Actor") {
+      const entries = await getIndex(pack.collection);
+      if (entries?.some((entry) => entry.type === "npc")) {
+        result.bestiaryActors.push({ id: pack.collection, title: pack.title ?? pack.metadata.label, package: pack.metadata.packageName });
+      }
+      continue;
+    }
     if (pack.metadata.type !== "Item") continue;
     const entries = await getIndex(pack.collection);
     if (!entries?.length) continue;

@@ -29,7 +29,7 @@ import {
 import { ManagePresetsApp, promptPresetDialog, confirmDeletePreset } from "./manage-presets-app.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
-import { findBestiaryArt } from "./art.mjs";
+import { findBestiaryArt, findBestiaryScaffold } from "./art.mjs";
 import { assertComplete, completionManifest } from "./completion.mjs";
 import { supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
@@ -1177,8 +1177,9 @@ export class GeneratorApp extends SpfApp {
     await this.render();
     try {
       // Art: borrowed from the closest-matching bestiary creature.
-      const img = await findBestiaryArt(this.#concept);
-      const actor = await createActor(this.#concept, this.#resolved, { img });
+      const scaffold = await findBestiaryScaffold(this.#concept);
+      const img = scaffold?.img ?? await findBestiaryArt(this.#concept);
+      const actor = await createActor(this.#concept, this.#resolved, { img, scaffold });
       // The actor now exists. Clear the retryable plan before any presentation
       // work so a sheet-render failure cannot create a duplicate on retry.
       this.#concept = null;
@@ -1324,9 +1325,10 @@ export class GeneratorApp extends SpfApp {
       for (const member of this.#encounter.members) {
         if (member.count < 1) continue;
         // Identical minions share one art lookup — same creature, same portrait.
-        const img = await findBestiaryArt(member.concept);
+        const scaffold = await findBestiaryScaffold(member.concept);
+        const img = scaffold?.img ?? await findBestiaryArt(member.concept);
         for (let i = 0; i < member.count; i++) {
-          const actor = await createActor(member.concept, member.resolved, { img });
+          const actor = await createActor(member.concept, member.resolved, { img, scaffold });
           actors.push(actor);
           const update = { folder: folder.id };
           if (member.count > 1) update.name = `${actor.name} ${i + 1}`;

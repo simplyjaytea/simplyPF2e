@@ -13,6 +13,7 @@ Full session-by-session narrative, process notes, and the bug log. Not loaded by
 - Added the shared post-create result card for every generator mode. It retains the committed result only after successful writes, offers Open Sheet where an actor is available and Generate Another, and never recreates an actor through presentation. PC review snapshots coexist with it. All regressions/syntax/JSON/diff checks pass.
 - Added an explicit complete-only PC registry: Fighter, Rogue, Investigator, and Wizard are the only classes offered to one-click character generation. This prevents unsupported classes from silently using generic or incomplete paths. The missing-qualified-class failure occurs before provider spend and has direct regression coverage.
 - Replaced fixed post-key ability ordering with locally validated optional concept preferences. The class key ability stays mandatory; remaining legal ancestry/background and level boosts honor unique model preferences without accepting any numerical allocation. Added pure normalization coverage and re-ran the full local suite.
+- Added bestiary Actor source discovery/configuration and deterministic scaffold selection by exact trait/size/level evidence. Creature creation imports only the source actor's art/prototype-token structure, retaining module-owned stats/items; no source mechanics are copied blindly. Added a focused scaffold test. This requires live Foundry token QA.
 
 ## 2026-08-28 — Character Skill Completion (local branch)
 
