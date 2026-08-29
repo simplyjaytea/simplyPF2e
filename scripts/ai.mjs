@@ -346,8 +346,10 @@ ${lootGuide(amount, "character")} Favor items that reinforce the character's cla
  * Ask the configured model for a creature concept.
  * @returns {Promise<{concept: object, usage: object}>} parsed concept JSON + token usage
  */
-export async function generateConcept({ prompt, level, rarity, allowSpellcasting, preset, amount = "standard", onProgress }) {
+export async function generateConcept({ prompt, level, rarity, allowSpellcasting, preset, amount = "standard", intent = "monster", onProgress }) {
+  const actorIntent = intent === "npc" ? "NPC" : "monster";
   const userPrompt = [
+    `Generate a combat-ready Pathfinder 2e ${actorIntent}.`,
     `Creature level: ${level}`,
     `Rarity: ${rarity}`,
     `Spellcasting allowed: ${allowSpellcasting ? "yes, if it fits the concept" : "NO - do not include spellcasting"}`,

@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-29 — One-click workflow foundation (local branch)
+
+- Started `codex/one-click-grounding` from the completed PC stack. No push, PR, merge, release, deployment, provider request, or VPS action. Baseline verification passed all 46 regression files, all script syntax checks, localization/module JSON parsing, and diff whitespace checks.
+- Replaced the old ambiguous Single intent with Monster and NPC. They remain on the shared PF2e NPC engine, but the existing concept call now receives an explicit combat-ready monster/NPC framing. Primary Generate now runs generation/validation and creates the result; Preview Plan intentionally preserves the former no-write review flow. The random button remains preview-only.
+- Hardened creation boundaries: a newly created creature draft clears before sheet presentation, and a failed encounter rolls back each actor and the newly created folder before leaving the plan retryable. The remaining one-click roadmap is intentionally not claimed complete: exact candidate IDs, completion manifests, required-source preflight, full actor-pipeline closure, uniform result card, and live Foundry acceptance are still in flight.
+
 ## 2026-08-28 — Character Skill Completion (local branch)
 
 - Implemented the approved concept-driven training/progression plan on `codex/character-skills`, based on `edad6a9`. No push, PR, merge, release, deployment, live/provider call, Item Forge work, or modification to user-owned `.claude/`.

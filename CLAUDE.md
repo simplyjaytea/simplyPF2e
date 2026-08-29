@@ -114,6 +114,8 @@ Earlier audit/optimization work extracted shared `text.mjs`/`runes.mjs`, level-g
 
 **Latest verification:** all 46 regression files, every script's syntax check, module/localization JSON parsing, and diff whitespace checks pass. Native Foundry cloning, skill predicates/grants, rendering, and final derived stats still need live acceptance; local tests do not establish those behaviors.
 
+**In-progress one-click roadmap:** `codex/one-click-grounding` begins the next approved feature set. The UI now has Monster, NPC, Encounter, and Player Character intents; the primary Generate action creates after generation, while Preview Plan remains no-write. Monster/NPC share the existing PF2e NPC pipeline but receive distinct intent guidance. New creature drafts clear before sheet presentation, and partial encounter creation is rolled back best-effort. This is only the first slice: exact candidate identity, completion manifests, full source preflight, hardened PC completion, and live QA remain open.
+
 **Next task:** obtain permission before any authenticated GitHub write, then use branch + PR. After release/deployment, execute HANDOFF's skill-completion and preceding HP/choice/spell/signature acceptance checklist on the VPS test world. Never infer permission to push from this roadmap.
 
 ## Known gaps

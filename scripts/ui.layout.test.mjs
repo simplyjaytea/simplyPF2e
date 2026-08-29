@@ -78,7 +78,7 @@ assert.match(
   /spf-mode-toggle" role="radiogroup" aria-label=/,
   "generation modes must expose a named native radio group"
 );
-for (const legendKey of ["ConceptLegend", "EncounterLegend", "CharacterLegend"]) {
+for (const legendKey of ["ConceptLegend", "NpcLegend", "EncounterLegend", "CharacterLegend"]) {
   assert.match(
     generator,
     new RegExp(`SIMPLYPF2E\\.Generator\\.${legendKey}`),
@@ -86,19 +86,22 @@ for (const legendKey of ["ConceptLegend", "EncounterLegend", "CharacterLegend"])
   );
 }
 for (const [mode, preview] of [
-  ["single", "preview"],
+  ["monster", "preview"],
+  ["npc", "preview"],
   ["encounter", "encounterPreview"],
   ["character", "pcPreview"]
 ]) {
   assert.match(
     generatorApp,
-    new RegExp(`${preview}: this\\.#input\\.mode === "${mode}" \\?`),
+    mode === "monster" || mode === "npc"
+      ? new RegExp(`${preview}: \\["monster", "npc"\\]\\.includes\\(this\\.#input\\.mode\\) \\?`)
+      : new RegExp(`${preview}: this\\.#input\\.mode === "${mode}" \\?`),
     `generator must hide other modes' stale previews while ${mode} mode is active`
   );
 }
 assert.match(
   generatorApp,
-  /#modePrompts = \{ single: "", encounter: "", character: "" \}/,
+  /#modePrompts = \{ monster: "", npc: "", encounter: "", character: "" \}/,
   "each generator mode must keep an independent prompt draft"
 );
 assert.match(

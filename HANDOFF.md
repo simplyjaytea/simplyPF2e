@@ -2,7 +2,11 @@
 
 Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved in HISTORY.md.
 
-## Current session — 2026-08-28
+## Current session — 2026-08-29
+
+- Active implementation branch is now `codex/one-click-grounding`, based on the completed local PC stack (`adfb72c`). No GitHub/VPS mutation was performed; `.claude/` remains user-owned and untouched.
+- First one-click UI/transaction slice is local: `single` became distinct `monster` and `npc` intents (shared NPC engine); primary Generate creates after the existing generation/validation pipeline, while Preview Plan stays no-write. NPC intent is passed as generation guidance. Single-actor drafts clear before sheet presentation, and failed encounter writes best-effort delete every newly created actor and its new folder before preserving the retryable plan.
+- This is not yet the complete approved roadmap: exact opaque candidate IDs/completion manifests, source preflight/readiness, bestiary actor scaffolds, PC class support gating/loadouts, and uniform completion cards still need implementation. Do not claim compendium-grounded completeness from this slice.
 
 - Latest user request: implement the approved Character Skill Completion plan (concept-driven automatic training and class-aware progression through level 20). Item Forge remains deferred.
 - Working branch: `codex/character-skills`, based on local `edad6a9` from `codex/pc-spellcasting`; that stack is based on `origin/main` `004bffc` (PR #82 / release v0.3.5.42 at last API check, not refreshed this pass). Check git for authoritative current state.

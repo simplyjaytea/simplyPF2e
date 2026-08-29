@@ -22,7 +22,7 @@ The AI never produces a number and never invents content. The job is split three
 
 Anything the AI names that doesn't match a real document is either dropped or created as a clearly-marked custom item — and flagged in the preview either way, with an "X/Y compendium matches" score in the header so you can see how grounded a build is at a glance.
 
-Nothing touches your world until you click **Create**. Regenerate, edit the prompt, reroll just the loot, or discard, freely.
+**Generate Monster**, **Generate NPC**, **Generate Encounter**, and **Generate Character** validate and create in one pass. Use **Preview Plan** when you want to inspect the same no-write plan before deciding to create it.
 
 ## Status
 
@@ -88,9 +88,9 @@ By default the module draws from the PF2e system packs. Under **Compendium Sourc
 
 Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.modules.get("simplypf2e").api.open()`. Pick a mode at the top of the dialog.
 
-### Single creature
+### Monster and NPC
 
-Optionally pick a **preset**, describe the creature, set level (−1 to 24) and rarity, choose a **Treasure amount** and whether spellcasting is allowed, then **Generate**. Review the stat-block preview and **Create Actor**.
+Choose **Monster** for a creature-first combatant or **NPC** for a story-focused, combat-ready non-player character. Optionally pick a **preset**, describe it, set level (−1 to 24) and rarity, choose a **Treasure amount** and whether spellcasting is allowed, then click the mode's Generate action to create and open the sheet. Choose **Preview Plan** instead to review the stat block without writing to the world; the preview retains its Create Actor action.
 
 The **dice button** rolls a surprise instead: it ignores the description and rolls a brief locally (creature type × combat role × home × twist — thousands of combinations), so every click is a genuinely new idea. Good for filling a dungeon room.
 

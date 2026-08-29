@@ -48,6 +48,7 @@ export class GeneratorApp extends SpfApp {
     position: { width: 720, height: "auto" },
     actions: {
       generate: GeneratorApp.#onGenerate,
+      previewPlan: GeneratorApp.#onPreviewPlan,
       generateRandom: GeneratorApp.#onGenerateRandom,
       generateRandomEncounter: GeneratorApp.#onGenerateRandomEncounter,
       createActor: GeneratorApp.#onCreateActor,
@@ -78,11 +79,11 @@ export class GeneratorApp extends SpfApp {
 
   /** Form values, kept across re-renders. */
   #input = {
-    mode: "single", prompt: "", level: 1, rarity: "common",
+    mode: "monster", prompt: "", level: 1, rarity: "common",
     allowSpellcasting: true, preset: "", partySize: 4, threat: "moderate",
     treasureAmount: "standard", rarityCap: "unique"
   };
-  #modePrompts = { single: "", encounter: "", character: "" };
+  #modePrompts = { monster: "", npc: "", encounter: "", character: "" };
   #busy = false;
   #busyMessage = null;
   #error = null;
@@ -139,9 +140,11 @@ export class GeneratorApp extends SpfApp {
       presetSelected: Boolean(findPreset(this.#input.preset)),
       encounterMode: this.#input.mode === "encounter",
       characterMode: this.#input.mode === "character",
-      singleMode: this.#input.mode === "single",
-      levelMin: this.#input.mode === "single" ? -1 : 1,
-      levelMax: this.#input.mode === "single" ? 24 : 20,
+      monsterMode: this.#input.mode === "monster",
+      npcMode: this.#input.mode === "npc",
+      creatureMode: ["monster", "npc"].includes(this.#input.mode),
+      levelMin: ["monster", "npc"].includes(this.#input.mode) ? -1 : 1,
+      levelMax: ["monster", "npc"].includes(this.#input.mode) ? 24 : 20,
       threats: Object.keys(THREATS).map((key) => ({
         value: key,
         label: `SIMPLYPF2E.Threat.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
@@ -154,7 +157,7 @@ export class GeneratorApp extends SpfApp {
       })),
       // Keep each mode's previous result available when the GM switches back,
       // but never render an incompatible preview under the active form.
-      preview: this.#input.mode === "single" ? this.#buildPreviewContext() : null,
+      preview: ["monster", "npc"].includes(this.#input.mode) ? this.#buildPreviewContext() : null,
       encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
       pcPreview: this.#input.mode === "character" ? this.#buildPCPreviewContext() : null,
       characterReview: this.#characterReview,
@@ -162,7 +165,7 @@ export class GeneratorApp extends SpfApp {
       // Presentation only: show the getting-started panel when the active
       // mode has no result (busy/error states render their own blocks).
       showEmptyState: !this.#busy && !this.#error && !this.#characterReview
-        && !(this.#input.mode === "single" && this.#concept)
+        && !(["monster", "npc"].includes(this.#input.mode) && this.#concept)
         && !(this.#input.mode === "encounter" && this.#encounter)
         && !(this.#input.mode === "character" && this.#pcConcept)
     };
@@ -365,7 +368,7 @@ export class GeneratorApp extends SpfApp {
     // only Single mode's creature level goes -1..24, and a level left over
     // from a previous mode would otherwise be sent verbatim to the AI prompt
     // (the concept is clamped later; the prompt text was not).
-    const [levelMin, levelMax] = mode === "single" ? [-1, 24] : [1, 20];
+    const [levelMin, levelMax] = ["monster", "npc"].includes(mode) ? [-1, 24] : [1, 20];
     const rawLevel = Number(form.querySelector('[name="level"]')?.value ?? 1);
     const level = Math.min(levelMax, Math.max(levelMin, Number.isNaN(rawLevel) ? 1 : rawLevel));
     const rarity = form.querySelector('[name="rarity"]')?.value ?? this.#input.rarity;
@@ -486,7 +489,7 @@ export class GeneratorApp extends SpfApp {
     const current = Number.parseInt(input.value, 10);
     // Party Level (encounter mode) and Character level are both PC levels,
     // 1-20; only Single mode's creature Level goes -1..24.
-    const [min, max] = this.#input.mode === "single" ? [-1, 24] : [1, 20];
+    const [min, max] = ["monster", "npc"].includes(this.#input.mode) ? [-1, 24] : [1, 20];
     input.value = Math.min(max, Math.max(min, (Number.isNaN(current) ? 1 : current) + delta));
   }
 
@@ -506,12 +509,17 @@ export class GeneratorApp extends SpfApp {
   }
 
   static async #onGenerate() {
-    return this.#runGeneration(false);
+    return this.#runGeneration(false, { create: true });
+  }
+
+  /** Generate and validate without writing to the world. */
+  static async #onPreviewPlan() {
+    return this.#runGeneration(false, { create: false });
   }
 
   /** The dice button: same pipeline, module-rolled surprise brief as prompt. */
   static async #onGenerateRandom() {
-    return this.#runGeneration(true);
+    return this.#runGeneration(true, { create: false });
   }
 
   /** The encounter mode dice button: forces a fresh random theme even if the
@@ -521,10 +529,18 @@ export class GeneratorApp extends SpfApp {
     return this.#generateEncounter(true);
   }
 
-  async #runGeneration(isRandom) {
+  async #runGeneration(isRandom, { create = false } = {}) {
     this.#readForm();
-    if (this.#input.mode === "encounter") return this.#generateEncounter(isRandom);
-    if (this.#input.mode === "character") return this.#generatePC(isRandom);
+    if (this.#input.mode === "character") {
+      await this.#generatePC(isRandom);
+      if (create && this.#pcConcept && !this.#error) await this.#createCharacterActor();
+      return;
+    }
+    if (this.#input.mode === "encounter") {
+      await this.#generateEncounter(isRandom);
+      if (create && this.#encounter && !this.#error) await this.#createEncounterActors();
+      return;
+    }
     if (!isRandom && !this.#input.prompt.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
       return;
@@ -553,6 +569,7 @@ export class GeneratorApp extends SpfApp {
         allowSpellcasting: this.#input.allowSpellcasting,
         preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
         amount: this.#input.treasureAmount,
+        intent: this.#input.mode,
         onProgress: (p) => this._onAIProgress(p)
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Concept"), usage);
@@ -603,6 +620,7 @@ export class GeneratorApp extends SpfApp {
       this._progress = null;
       await this.render();
     }
+    if (create && this.#concept && !this.#error) await GeneratorApp.#onCreateActor.call(this);
   }
 
   /**
@@ -655,6 +673,7 @@ export class GeneratorApp extends SpfApp {
           // creature (and, matching the Single dice button, Random ignores it).
           preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
           amount: this.#input.treasureAmount,
+          intent: "monster",
           onProgress: (p) => this._onAIProgress(p)
         });
         this._recordTokens(memberLabel(i), usage);
@@ -1110,15 +1129,23 @@ export class GeneratorApp extends SpfApp {
     if (this.#pcConcept) return this.#createCharacterActor();
     if (!this.#concept) return;
     this.#busy = true;
+    this.#error = null;
     await this.render();
     try {
       // Art: borrowed from the closest-matching bestiary creature.
       const img = await findBestiaryArt(this.#concept);
       const actor = await createActor(this.#concept, this.#resolved, { img });
-      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
-      actor.sheet.render(true);
+      // The actor now exists. Clear the retryable plan before any presentation
+      // work so a sheet-render failure cannot create a duplicate on retry.
       this.#concept = null;
       this.#resolved = null;
+      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
+      try {
+        await actor.sheet.render(true);
+      } catch (err) {
+        console.warn(`${MODULE_ID} | actor created, but its sheet could not be displayed`, err);
+        ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed"));
+      }
     } catch (err) {
       console.error(`${MODULE_ID} | actor creation failed`, err);
       this.#error = err.message;
@@ -1227,9 +1254,12 @@ export class GeneratorApp extends SpfApp {
   async #createEncounterActors() {
     if (!this.#encounter) return;
     this.#busy = true;
+    this.#error = null;
     await this.render();
+    let folder = null;
+    const actors = [];
     try {
-      const folder = await Folder.create({ name: this.#encounter.name, type: "Actor" });
+      folder = await Folder.create({ name: this.#encounter.name, type: "Actor" });
       let created = 0;
       for (const member of this.#encounter.members) {
         if (member.count < 1) continue;
@@ -1237,6 +1267,7 @@ export class GeneratorApp extends SpfApp {
         const img = await findBestiaryArt(member.concept);
         for (let i = 0; i < member.count; i++) {
           const actor = await createActor(member.concept, member.resolved, { img });
+          actors.push(actor);
           const update = { folder: folder.id };
           if (member.count > 1) update.name = `${actor.name} ${i + 1}`;
           await actor.update(update);
@@ -1246,9 +1277,23 @@ export class GeneratorApp extends SpfApp {
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.CreatedAll", {
         count: created, name: this.#encounter.name
       }));
+      // Commit before presentation: all writes succeeded, so this plan cannot
+      // safely be retried even if the next render fails.
       this.#encounter = null;
     } catch (err) {
       console.error(`${MODULE_ID} | encounter creation failed`, err);
+      // An encounter is all-or-nothing. Best-effort cleanup preserves the
+      // original error while ensuring a retry cannot duplicate a partial roster.
+      for (const actor of actors.reverse()) {
+        try { await actor.delete(); } catch (cleanupErr) {
+          console.warn(`${MODULE_ID} | failed to roll back encounter actor "${actor.name}"`, cleanupErr);
+        }
+      }
+      if (folder) {
+        try { await folder.delete(); } catch (cleanupErr) {
+          console.warn(`${MODULE_ID} | failed to roll back encounter folder "${folder.name}"`, cleanupErr);
+        }
+      }
       this.#error = err.message;
     } finally {
       this.#busy = false;

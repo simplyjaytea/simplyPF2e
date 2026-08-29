@@ -33,14 +33,20 @@
         {{localize "SIMPLYPF2E.Generator.EncounterLegend"}}
       {{else if characterMode}}
         {{localize "SIMPLYPF2E.Generator.CharacterLegend"}}
+      {{else if npcMode}}
+        {{localize "SIMPLYPF2E.Generator.NpcLegend"}}
       {{else}}
         {{localize "SIMPLYPF2E.Generator.ConceptLegend"}}
       {{/if}}
     </legend>
     <div class="spf-mode-toggle" role="radiogroup" aria-label="{{localize 'SIMPLYPF2E.Generator.ModeLabel'}}">
-      <label class="{{#if singleMode}}spf-mode-active{{/if}}">
-        <input type="radio" name="mode" value="single" {{#if singleMode}}checked{{/if}}>
-        <i class="fa-solid fa-person"></i> {{localize "SIMPLYPF2E.Mode.Single"}}
+      <label class="{{#if monsterMode}}spf-mode-active{{/if}}">
+        <input type="radio" name="mode" value="monster" {{#if monsterMode}}checked{{/if}}>
+        <i class="fa-solid fa-dragon"></i> {{localize "SIMPLYPF2E.Mode.Monster"}}
+      </label>
+      <label class="{{#if npcMode}}spf-mode-active{{/if}}">
+        <input type="radio" name="mode" value="npc" {{#if npcMode}}checked{{/if}}>
+        <i class="fa-solid fa-user-tie"></i> {{localize "SIMPLYPF2E.Mode.Npc"}}
       </label>
       <label class="{{#if encounterMode}}spf-mode-active{{/if}}">
         <input type="radio" name="mode" value="encounter" {{#if encounterMode}}checked{{/if}}>
@@ -58,6 +64,9 @@
       {{else if characterMode}}
         <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.CharacterPrompt"}}</label>
         <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.Generator.CharacterPromptPlaceholder'}}">{{input.prompt}}</textarea>
+      {{else if npcMode}}
+        <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.NpcPrompt"}}</label>
+        <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.Generator.NpcPromptPlaceholder'}}">{{input.prompt}}</textarea>
       {{else}}
         <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.Prompt"}}</label>
         <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{promptPlaceholder}}">{{input.prompt}}</textarea>
@@ -165,13 +174,14 @@
     <div class="spf-generate-row">
       <button type="button" class="spf-primary" data-action="generate" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-wand-sparkles"></i>
-        {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else if encounterPreview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else if pcPreview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
+        {{#if monsterMode}}{{localize "SIMPLYPF2E.Generator.GenerateMonster"}}{{else if npcMode}}{{localize "SIMPLYPF2E.Generator.GenerateNpc"}}{{else if encounterMode}}{{localize "SIMPLYPF2E.Generator.GenerateEncounter"}}{{else}}{{localize "SIMPLYPF2E.Generator.GenerateCharacter"}}{{/if}}
       </button>
+      <button type="button" class="spf-secondary" data-action="previewPlan" {{#if busy}}disabled{{/if}}>{{localize "SIMPLYPF2E.Generator.PreviewPlan"}}</button>
       {{#if encounterMode}}
         <button type="button" class="spf-random-button" data-action="generateRandomEncounter" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RandomEncounterTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.RandomEncounterTooltip'}}" {{#if busy}}disabled{{/if}}>
           <i class="fa-solid fa-dice-d20"></i>
         </button>
-      {{else if singleMode}}
+      {{else if creatureMode}}
         {{! Character mode gets no dice button: randomBrief() is creature-flavored }}
         <button type="button" class="spf-random-button" data-action="generateRandom" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RandomTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.RandomTooltip'}}" {{#if busy}}disabled{{/if}}>
           <i class="fa-solid fa-dice-d20"></i>
