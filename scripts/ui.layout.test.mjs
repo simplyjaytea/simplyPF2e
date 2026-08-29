@@ -278,18 +278,18 @@ assert.match(
   "character generation must honor the selected preset"
 );
 
-// 3. One compendium-sources gear beside Generate in BOTH apps, wired to the
-//    same shared settings app.
-for (const [name, template] of [
-  ["generator", generator],
-  ["item forge", itemForge]
-]) {
+// 3. Source configuration stays visible: a labeled content readiness row in
+//    the generator and the forge's compact action beside Generate.
+for (const [name, template] of [["item forge", itemForge]]) {
   const rowAt = template.indexOf('class="spf-generate-row"');
   const gearAt = template.indexOf('data-action="configureSources"');
   const fieldsetEnd = template.indexOf("</fieldset>");
   assert.ok(rowAt >= 0 && gearAt >= 0 && fieldsetEnd >= 0, `${name} must have a generate row and a sources gear`);
   assert.ok(rowAt < gearAt && gearAt < fieldsetEnd, `${name} sources gear must sit in the generate row`);
 }
+assert.match(generator, /SIMPLYPF2E\.Generator\.CompendiumContent/);
+assert.match(generator, /SIMPLYPF2E\.Generator\.SourcesReady/);
+assert.match(generator, /data-action="configureSources"/);
 for (const [name, source] of [
   ["generator", generatorApp],
   ["item forge", itemForgeApp]

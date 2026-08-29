@@ -8,7 +8,7 @@ import {
 } from "./ai.mjs";
 import {
   getSpellCandidates, getEquipmentCandidates, getLootCandidates,
-  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates
+  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, sourceReadiness
 } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
@@ -103,6 +103,9 @@ export class GeneratorApp extends SpfApp {
   async _prepareContext() {
     const authState = getProviderRequestConfig();
     const authWarningKey = getProviderAuthWarningKey(authState);
+    const sources = globalThis.game?.packs ? sourceReadiness(this.#input.mode, {
+      allowSpellcasting: this.#input.allowSpellcasting
+    }) : null;
     return {
       input: this.#input,
       busy: this.#busy,
@@ -113,6 +116,9 @@ export class GeneratorApp extends SpfApp {
       providerBaseUrl: authState.baseUrl,
       provider: authState.provider,
       providerReady: !authWarningKey,
+      sourcesReady: sources?.ready ?? true,
+      sourcePackCount: sources?.packCount ?? 0,
+      sourceMissing: sources?.missing ?? [],
       canAuthorizeApiKey: Boolean(
         authState.baseUrl && authState.hasConfiguredApiKey && !authState.apiKeyIsBound
       ),
@@ -527,11 +533,32 @@ export class GeneratorApp extends SpfApp {
    * GM already typed one, matching #onGenerateRandom's Single-mode behavior. */
   static async #onGenerateRandomEncounter() {
     this.#readForm();
+    if (!this.#assertGenerationReady()) return;
     return this.#generateEncounter(true);
+  }
+
+  #assertGenerationReady() {
+    const warning = getProviderAuthWarningKey(getProviderRequestConfig());
+    if (warning) {
+      ui.notifications.warn(game.i18n.localize(warning));
+      return false;
+    }
+    // Isolated production-path tests intentionally do not construct Foundry's
+    // pack collection; a live world always has it and receives this preflight.
+    if (!globalThis.game?.packs) return true;
+    const sources = sourceReadiness(this.#input.mode, { allowSpellcasting: this.#input.allowSpellcasting });
+    if (!sources.ready) {
+      ui.notifications.warn(game.i18n.format("SIMPLYPF2E.Generator.SourcesMissing", {
+        categories: sources.missing.join(", ")
+      }));
+      return false;
+    }
+    return true;
   }
 
   async #runGeneration(isRandom, { create = false } = {}) {
     this.#readForm();
+    if (!this.#assertGenerationReady()) return;
     if (this.#input.mode === "character") {
       await this.#generatePC(isRandom);
       if (create && this.#pcConcept && !this.#error) await this.#createCharacterActor();

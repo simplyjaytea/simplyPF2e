@@ -74,6 +74,18 @@ export function getPacksFor(category) {
   return DEFAULT_PACKS[category].filter((id) => game.packs.get(id));
 }
 
+/** Report the enabled packs required before a generation may spend tokens. */
+export function sourceReadiness(mode, { allowSpellcasting = true } = {}) {
+  const character = mode === "character";
+  const required = character
+    ? ["ancestries", "backgrounds", "classes", "feats", "equipment"]
+    : ["equipment"];
+  if (allowSpellcasting) required.push("spells");
+  const categories = required.map((category) => ({ category, packs: getPacksFor(category) }));
+  const missing = categories.filter(({ packs }) => !packs.length).map(({ category }) => category);
+  return { categories, missing, packCount: categories.reduce((count, item) => count + item.packs.length, 0), ready: missing.length === 0 };
+}
+
 /**
  * Every pack that can serve `category`: the configured/default packs UNION all
  * installed Item packs auto-detected to contain that type. Fixes ABC lookups

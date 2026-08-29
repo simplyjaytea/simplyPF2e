@@ -26,6 +26,11 @@
       {{/if}}
     </p>
   {{/if}}
+  <div class="spf-provider-summary {{#if sourcesReady}}spf-provider-ready{{else}}spf-provider-attention{{/if}}">
+    <span class="spf-provider-name"><i class="fa-solid fa-book-atlas"></i> <strong>{{localize "SIMPLYPF2E.Generator.CompendiumContent"}}</strong></span>
+    <span>{{#if sourcesReady}}{{localize "SIMPLYPF2E.Generator.SourcesReady" packCount=sourcePackCount}}{{else}}{{localize "SIMPLYPF2E.Generator.SourcesMissing" categories=sourceMissing}}{{/if}}</span>
+    <span class="spf-provider-actions"><button type="button" data-action="configureSources" aria-label="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-gear"></i></button></span>
+  </div>
 
   <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
     <legend>
@@ -187,9 +192,6 @@
           <i class="fa-solid fa-dice-d20"></i>
         </button>
       {{/if}}
-      <button type="button" class="spf-random-button" data-action="configureSources" data-tooltip="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" {{#if busy}}disabled{{/if}}>
-        <i class="fa-solid fa-gear"></i>
-      </button>
     </div>
   </fieldset>
 
