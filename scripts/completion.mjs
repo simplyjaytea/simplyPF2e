@@ -17,6 +17,29 @@ function resolvedLines(category, entries, { allowNarrative = false } = {}) {
   });
 }
 
+/** Spell plans own a fixed number of expected picks. Missing picks are a
+ * blocking completion failure rather than an invitation to invent a fallback. */
+function spellLines(concept, resolved, character) {
+  const spells = Array.isArray(resolved?.spells) ? resolved.spells : [];
+  const records = resolvedLines("spell", spells);
+  const planned = character ? concept?.spellcasting?.plannedPicks : null;
+  if (!planned || typeof planned !== "object" || Array.isArray(planned)) return records;
+  const selectedByRank = new Map();
+  for (const spell of spells) {
+    const rank = Number(spell?.spell?.rank);
+    if (Number.isInteger(rank) && rank >= 0) selectedByRank.set(rank, (selectedByRank.get(rank) ?? 0) + 1);
+  }
+  for (const [rawRank, rawCount] of Object.entries(planned)) {
+    const rank = Number(rawRank);
+    const count = Number(rawCount);
+    if (!Number.isInteger(rank) || !Number.isInteger(count) || rank < 0 || count < 1) continue;
+    for (let slot = (selectedByRank.get(rank) ?? 0) + 1; slot <= count; slot++) {
+      records.push(line("spell", `Rank ${rank} pick ${slot}`, "unresolved"));
+    }
+  }
+  return records;
+}
+
 /** Build the exact/completion report for a resolved creature or character. */
 export function completionManifest({ mode, concept, resolved }) {
   const records = [];
@@ -30,7 +53,7 @@ export function completionManifest({ mode, concept, resolved }) {
   } else {
     records.push(...resolvedLines("ability", resolved?.abilities, { allowNarrative: true }));
   }
-  records.push(...resolvedLines("spell", resolved?.spells));
+  records.push(...spellLines(concept, resolved, character));
   records.push(...resolvedLines("focus-spell", resolved?.focusSpells));
   records.push(...resolvedLines("feat", resolved?.feats));
   for (const item of resolved?.equipment ?? []) records.push(line("equipment", item.name, item.entry ? "compendium" : "unresolved"));

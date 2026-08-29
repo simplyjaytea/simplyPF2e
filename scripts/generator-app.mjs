@@ -912,7 +912,7 @@ export class GeneratorApp extends SpfApp {
       // every step "reached: false" and marked them all "done", pushing
       // percent past 100%.
       if (this.#input.allowSpellcasting && concept.spellcasting) await this._setStep("spells");
-      await this.#refineSpells(concept, { requireSpells: true });
+      await this.#refineSpells(concept);
 
       await this._setStep("equipment");
       await this.#refineEquipment(concept);
@@ -1019,10 +1019,9 @@ export class GeneratorApp extends SpfApp {
    * compendium-backed list, spells are dropped rather than left as unvetted
    * draft names, same fail-closed behavior as feats elsewhere in the pipeline.
    */
-  async #refineSpells(concept, { requireSpells = false } = {}) {
+  async #refineSpells(concept) {
     const spellcasting = concept?.spellcasting;
     if (!spellcasting) return;
-    const draft = spellcasting.spells;
     try {
       // Both AI calls below run under the single "Spell selection" step, so
       // keep a running token total across them — otherwise the live counter
@@ -1077,23 +1076,12 @@ export class GeneratorApp extends SpfApp {
     } catch (err) {
       console.warn(`${MODULE_ID} | grounded spell selection failed, dropping spellcasting (unconstrained first-draft spells discarded)`, err);
       spellcasting.spells = [];
+      concept.focusSpells = [];
     }
     if (spellcasting.spells.length) return;
-    // A grounded daily plan must not silently become an unplanned draft.
-    // Preserve the entry/empty slots for manual completion; preview warns.
+    // A known class spell plan stays visible as empty: completionManifest()
+    // records every missing module-owned pick and blocks actor creation.
     if (spellcasting.plannedPicks) return;
-    // Fail-closed is right for a CREATURE — a monster is fine with one fewer
-    // ability, and unvetted draft names would become nothing on the sheet
-    // anyway. It is the wrong trade for a PLAYER CHARACTER: dropping
-    // spellcasting there hands the GM a Wizard with no spells at all, which is
-    // a broken character rather than a slightly simpler one. So a PC keeps the
-    // ungrounded draft and leans on resolvePCConcept's own findEntry pass,
-    // which still discards anything that doesn't match a real spell.
-    if (requireSpells && draft.length) {
-      console.warn(`${MODULE_ID} | grounded spell selection produced nothing for a character — keeping the ungrounded first draft, which is still compendium-matched before anything is embedded`);
-      spellcasting.spells = draft;
-      return;
-    }
     concept.spellcasting = null;
   }
 

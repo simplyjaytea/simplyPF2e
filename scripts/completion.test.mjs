@@ -22,6 +22,15 @@ const pc = completionManifest({ mode: "character", concept: { heritage: "Versati
 } });
 assert.equal(pc.unresolved[0].category, "heritage");
 
+const emptySpellPlan = completionManifest({ mode: "character", concept: {
+  spellcasting: { plannedPicks: { 0: 5, 1: 2 } }
+}, resolved: {
+  ancestryDoc: { name: "Human" }, backgroundDoc: { name: "Scholar" }, classDoc: { name: "Wizard" },
+  spells: [], focusSpells: [], feats: [], equipment: [], loot: []
+} });
+assert.equal(emptySpellPlan.unresolved.filter((record) => record.category === "spell").length, 7,
+  "every missing module-owned spell-plan pick must block complete-only creation");
+
 const summary = completionSummary([creature, pc]);
 assert.deepEqual(summary, {
   total: creature.records.length + pc.records.length,

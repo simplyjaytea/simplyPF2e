@@ -159,8 +159,8 @@ assert.match(generator, /signatureRanks: spellcasting\.signatureRanks/);
 assert.match(generator, /plannedPicks = plan\.picks/);
 assert.match(template, /role="status">\{\{pcPreview\.signatureSummary\}\}/);
 assert.match(template, /\{\{#if this\.signature\}\}/);
-assert.ok(generator.indexOf("if (spellcasting.plannedPicks) return;") < generator.indexOf("if (requireSpells && draft.length)"),
-  "failed grounded plans cannot fall through to the unplanned legacy draft");
+assert.match(generator, /if \(spellcasting\.plannedPicks\) return;[\s\S]*?concept\.spellcasting = null;/,
+  "a failed known spell plan must remain empty for completion validation, never fall back to draft names");
 assert.match(template, /role="status">\{\{pcPreview\.spellcastingNotice\}\}/, "escaped, accessible review notice");
 for (const key of ["PCBaseSpellPlan", "PCVariableSpellPlan", "PCApproximateSpellPlan", "Signature", "PCSignaturePlan"]) {
   assert.ok(locale.SIMPLYPF2E.Preview[key]);
