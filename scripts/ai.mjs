@@ -387,6 +387,7 @@ JSON schema (all keys required unless marked optional):
   "background": string, // EXACT published PF2e background name — first draft, grounded later
   "class": string, // EXACT published PF2e class name — first draft, grounded later
   "keyAbility": "str"|"dex"|"con"|"int"|"wis"|"cha", // the class's primary ability, matching the class you chose
+  "abilityPriorities": ["str"|"dex"|"con"|"int"|"wis"|"cha"], // optional unique ability priorities after the required class key ability; names only, no scores or boost counts
   "blurb": string, // one-line tagline
   "backstory": string, // 1-2 paragraphs of backstory, plain text
   "appearance": string, // 1-2 sentences describing the character's physical appearance, plain text

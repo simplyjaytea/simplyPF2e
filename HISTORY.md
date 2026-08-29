@@ -12,6 +12,7 @@ Full session-by-session narrative, process notes, and the bug log. Not loaded by
 - Added source readiness/preflight. The generator checks AI provider readiness and enabled required compendium categories before requests, shows a separate labeled Compendium Content row with effective pack count/actionable configuration, and removes the duplicate unlabeled source gear. The category preflight has direct tests. No live Foundry request occurred.
 - Added the shared post-create result card for every generator mode. It retains the committed result only after successful writes, offers Open Sheet where an actor is available and Generate Another, and never recreates an actor through presentation. PC review snapshots coexist with it. All regressions/syntax/JSON/diff checks pass.
 - Added an explicit complete-only PC registry: Fighter, Rogue, Investigator, and Wizard are the only classes offered to one-click character generation. This prevents unsupported classes from silently using generic or incomplete paths. The missing-qualified-class failure occurs before provider spend and has direct regression coverage.
+- Replaced fixed post-key ability ordering with locally validated optional concept preferences. The class key ability stays mandatory; remaining legal ancestry/background and level boosts honor unique model preferences without accepting any numerical allocation. Added pure normalization coverage and re-ran the full local suite.
 
 ## 2026-08-28 — Character Skill Completion (local branch)
 

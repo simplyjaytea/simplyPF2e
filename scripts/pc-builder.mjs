@@ -24,6 +24,15 @@ import { CORE_SKILLS, normalizeSkillPriorities, initialSkillTraining, allocateCh
 
 const ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha"];
 
+function normalizeAbilityPriorities(value) {
+  const seen = new Set();
+  return (Array.isArray(value) ? value : []).filter((ability) => {
+    if (!ABILITY_KEYS.includes(ability) || seen.has(ability)) return false;
+    seen.add(ability);
+    return true;
+  });
+}
+
 /**
  * Coerce the AI's raw PC concept JSON into a well-formed object. Guarantees
  * every field downstream code touches exists and has a legal value — the PC
@@ -42,6 +51,7 @@ export function normalizePCConcept(raw, { level }) {
   const clampedLevel = Math.min(Math.max(Math.round(Number(level) || 1), 1), 20);
   const maxSpellRank = Math.max(1, Math.ceil(clampedLevel / 2));
   const skillPriorities = normalizeSkillPriorities(c.skillPriorities);
+  const abilityPriorities = normalizeAbilityPriorities(c.abilityPriorities);
   if (c.skillPriorities !== undefined && (!Array.isArray(c.skillPriorities)
     || c.skillPriorities.some((slug) => !skillPriorities.includes(slug)))) {
     console.warn("simplypf2e | dropped invalid character skill priorities");
@@ -66,6 +76,7 @@ export function normalizePCConcept(raw, { level }) {
     background: String(c.background || "Follower").slice(0, 80),
     class: String(c.class || "Fighter").slice(0, 80),
     keyAbility: ABILITY_KEYS.includes(c.keyAbility) ? c.keyAbility : "str",
+    abilityPriorities,
     skillPriorities,
     level: clampedLevel,
     // Inert PC defaults so the reused NPC refine helpers have legal input:
@@ -393,13 +404,14 @@ export async function resolveFeatPicks(featSlots, picks) {
  * out of scope per the plan (no pre-create edit screen in v1); a GM should
  * sanity-check/adjust it before play, same review step as any other preview.
  */
-function boostPriority(keyAbility) {
+function boostPriority(keyAbility, preferences = []) {
   const key = ABILITY_KEYS.includes(keyAbility) ? keyAbility : "str";
-  return [key, "con", ...ABILITY_KEYS.filter((a) => a !== key && a !== "con")];
+  const preferred = normalizeAbilityPriorities(preferences).filter((ability) => ability !== key);
+  return [key, ...preferred, ...ABILITY_KEYS.filter((ability) => ability !== key && !preferred.includes(ability))];
 }
 
-function assignAbilityBoosts(keyAbility) {
-  const priority = boostPriority(keyAbility).slice(0, 4);
+function assignAbilityBoosts(keyAbility, preferences) {
+  const priority = boostPriority(keyAbility, preferences).slice(0, 4);
   const boosts = {};
   for (const level of ABILITY_BOOST_LEVELS) boosts[level] = [...priority];
   return boosts;
@@ -420,10 +432,10 @@ function assignAbilityBoosts(keyAbility) {
  * Free boosts within one item are kept distinct (remaster "two different
  * abilities"), preferring the character's key ability then Constitution.
  */
-function assignItemBoosts(system, keyAbility) {
+function assignItemBoosts(system, keyAbility, preferences) {
   const boosts = system?.boosts;
   if (!boosts || typeof boosts !== "object") return;
-  const priority = boostPriority(keyAbility);
+  const priority = boostPriority(keyAbility, preferences);
   const taken = new Set();
   for (const slot of Object.values(boosts)) {
     if (Array.isArray(slot?.value) && slot.value.length === 1) {
@@ -604,7 +616,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // applies none of them (issue #50 item 1) — set them on the cloned data.
   const ancestryData = toItemData(resolved.ancestryDoc);
   ancestryData._id = ancestryId;
-  assignItemBoosts(ancestryData.system, keyAbility);
+  assignItemBoosts(ancestryData.system, keyAbility, concept.abilityPriorities);
   items.push(ancestryData);
 
   if (resolved.heritageDoc) {
@@ -615,7 +627,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
 
   const backgroundData = toItemData(resolved.backgroundDoc);
   backgroundData._id = backgroundId;
-  assignItemBoosts(backgroundData.system, keyAbility);
+  assignItemBoosts(backgroundData.system, keyAbility, concept.abilityPriorities);
   items.push(backgroundData);
 
   const classData = toItemData(resolved.classDoc);
@@ -886,7 +898,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
           // Not manual entry — we want the boosts below (and the ABC-item
           // boosts) applied by the system to derive ability scores.
           manual: false,
-          boosts: assignAbilityBoosts(keyAbility)
+          boosts: assignAbilityBoosts(keyAbility, concept.abilityPriorities)
         }
       },
       skills: {}
