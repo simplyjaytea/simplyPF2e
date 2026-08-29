@@ -356,11 +356,15 @@ export function normalizeLoot(raw) {
       const quantity = Math.max(Math.round(Number(e?.quantity) || 1), 1);
       const value = Math.max(Number(e?.value) || 0, 0);
       const candidate = e?.candidate?.packId && e?.candidate?._id ? e.candidate : null;
+      const scrollCandidate = e?.scrollCandidate?.packId && e?.scrollCandidate?._id ? e.scrollCandidate : null;
       const coins = parseCoins(name);
       if (coins) {
         return { name: coins.name, quantity: Math.min(coins.count ? coins.count * quantity : quantity, 100000), value };
       }
-      return { name: String(name), quantity: Math.min(quantity, 10), value, ...(candidate ? { candidate } : {}) };
+      return {
+        name: String(name), quantity: Math.min(quantity, 10), value,
+        ...(candidate ? { candidate } : {}), ...(scrollCandidate ? { scrollCandidate } : {})
+      };
     })
     .filter(Boolean)
     .slice(0, 24); // fits LOOT_GUIDE's hoard guidance (~12-20 items) with headroom, still bounds runaway output
@@ -390,12 +394,20 @@ export function parseScroll(name) {
  */
 export async function resolveLoot(concept, { exactContent = false } = {}) {
   const loot = [];
-  for (const { name, quantity, value, candidate } of concept.loot) {
+  for (const { name, quantity, value, candidate, scrollCandidate } of concept.loot) {
     const scroll = parseScroll(name);
     if (scroll) {
-      const entry = exactContent ? null : await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
-        e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !e.system?.ritual
-      );
+      let entry = null;
+      if (scrollCandidate && getPacksFor("spells").includes(scrollCandidate.packId)) {
+        const doc = await getDocument(scrollCandidate);
+        if (doc?.type === "spell" && !(doc.system?.traits?.value ?? []).includes("cantrip") && !doc.system?.ritual) {
+          entry = scrollCandidate;
+        }
+      } else if (!exactContent) {
+        entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
+          e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !e.system?.ritual
+        );
+      }
       const baseRank = entry?.system?.level?.value ?? 1;
       const rank = Math.min(Math.max(scroll.rank ?? baseRank, baseRank), 10);
       // A scroll's real price lives on the rank template it will be built

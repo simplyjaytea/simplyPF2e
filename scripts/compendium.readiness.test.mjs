@@ -12,6 +12,8 @@ assert.equal(creature.ready, true);
 assert.equal(creature.packCount, 2);
 packs.delete("pf2e.spells-srd");
 assert.deepEqual(sourceReadiness("npc").missing, ["spells"]);
+assert.deepEqual(sourceReadiness("npc", { allowSpellcasting: false }).missing, ["spells"],
+  "scroll grounding requires spell sources even for a non-caster");
 packs.set("pf2e.spells-srd", {});
 assert.equal(sourceReadiness("character").ready, true);
 packs.delete("pf2e.classes");

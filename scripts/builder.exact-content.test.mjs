@@ -9,7 +9,7 @@ globalThis.game = {
   packs: new Map([["test.equipment", {}], ["test.spells", {}]])
 };
 
-const { resolveEquipment, resolveLoot, resolveFocusSpells } = await import("./builder.mjs");
+const { normalizeLoot, resolveEquipment, resolveLoot, resolveFocusSpells } = await import("./builder.mjs");
 
 const concept = {
   level: 1,
@@ -27,5 +27,12 @@ const exact = { packId: "test.equipment", _id: "longsword" };
 const exactEquipment = await resolveEquipment({ ...concept, equipment: [{ ...concept.equipment[0], candidate: exact }] },
   { exactContent: true });
 assert.equal(exactEquipment[0].entry, exact, "a locally retained source reference remains valid in strict mode");
+
+const scrollCandidate = { packId: "test.spells", _id: "fireball" };
+assert.deepEqual(
+  normalizeLoot([{ name: "Scroll of Fireball (Rank 3)", scrollCandidate }]),
+  [{ name: "Scroll of Fireball (Rank 3)", quantity: 1, value: 0, scrollCandidate }],
+  "a selected scroll retains its exact spell source through loot normalization"
+);
 
 console.log("builder exact-content boundary: name fallbacks blocked, opaque references retained");

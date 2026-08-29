@@ -79,9 +79,8 @@ export function getPacksFor(category) {
 export function sourceReadiness(mode, { allowSpellcasting = true } = {}) {
   const character = mode === "character";
   const required = character
-    ? ["ancestries", "backgrounds", "classes", "feats", "equipment"]
-    : ["equipment"];
-  if (allowSpellcasting) required.push("spells");
+    ? ["ancestries", "backgrounds", "classes", "feats", "equipment", "spells"]
+    : ["equipment", "spells"];
   const categories = required.map((category) => ({ category, packs: getPacksFor(category) }));
   const missing = categories.filter(({ packs }) => !packs.length).map(({ category }) => category);
   return { categories, missing, packCount: categories.reduce((count, item) => count + item.packs.length, 0), ready: missing.length === 0 };
@@ -536,6 +535,31 @@ export async function getSpellCandidates(tradition, maxRank, keywords = [], plan
   }
   candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
   return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT, plannedPicks);
+}
+
+/**
+ * Bounded exact candidates for spell scrolls. Scroll legality is independent
+ * of a creature's casting tradition, but it still excludes cantrips/rituals
+ * and carries the published base rank for local validation.
+ */
+export async function getScrollSpellCandidates(maxRank = 10, keywords = []) {
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("spells")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "spell" || entry.system?.ritual) continue;
+      const traits = entry.system?.traits?.value ?? [];
+      if (traits.includes("cantrip")) continue;
+      const rank = entry.system?.level?.value ?? 1;
+      if (rank > maxRank || seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push(candidateRecord(entry, { name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity }));
+    }
+  }
+  candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT);
 }
 
 /**

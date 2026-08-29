@@ -7,7 +7,7 @@ import {
   generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCharacterChoices
 } from "./ai.mjs";
 import {
-  getSpellCandidates, getEquipmentCandidates, getLootCandidates,
+  getSpellCandidates, getEquipmentCandidates, getLootCandidates, getScrollSpellCandidates,
   getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, sourceReadiness
 } from "./compendium.mjs";
 import {
@@ -1122,31 +1122,39 @@ export class GeneratorApp extends SpfApp {
    * counterpart of #refineEquipment(). Without it, a pre-Remaster name the
    * model recalls ("Bag of Holding") never fuzzy-matches its Remaster item
    * ("Spacious Pouch") and silently becomes a wrong-named custom treasure
-   * item. Coins and scrolls pass through free-form (parseCoins/parseScroll
-   * build them specially); a haul of ONLY coins/scrolls skips the AI call.
-   * Falls back to the first-draft names (still fuzzy-matched) if anything
-   * fails. The final creation resolver accepts only retained candidate
-   * references (except module-built coin entries); an ungrounded scroll is
-   * explicitly unresolved until scroll candidate selection is implemented.
+   * item. Coins stay module-built, while scrolls now select from a bounded
+   * exact spell slice in the same AI request. A haul of only coins skips the
+   * request. The final creation resolver accepts only retained candidate
+   * references for all non-coin loot.
    */
   async #refineLoot(concept) {
     if (!concept?.loot?.length) return;
-    if (concept.loot.every((l) => parseCoins(l.name) || parseScroll(l.name))) return;
+    if (concept.loot.every((l) => parseCoins(l.name))) return;
     try {
       const draftNames = concept.loot.map((loot) => String(loot.name).toLowerCase()).filter(Boolean);
       const keywords = [...new Set([
         ...draftNames,
         ...draftNames.flatMap((name) => name.split(/[^a-z0-9]+/)).filter((token) => token.length > 2)
       ])];
-      const candidates = await getLootCandidates(concept.level, keywords);
-      if (!candidates.length) return;
+      const scrollKeywords = concept.loot
+        .map((loot) => parseScroll(loot.name)?.spellName)
+        .filter(Boolean);
+      const [candidates, scrollCandidates] = await Promise.all([
+        getLootCandidates(concept.level, keywords),
+        scrollKeywords.length ? getScrollSpellCandidates(10, scrollKeywords) : []
+      ]);
+      if (!candidates.length && !scrollCandidates.length) return;
       const { loot, usage } = await selectLoot({
         concept,
         candidates,
+        scrollCandidates,
         onProgress: (p) => this._onAIProgress(p)
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
-      if (loot.length) concept.loot = normalizeLoot(loot);
+      if (loot.length) {
+        const coins = concept.loot.filter((item) => parseCoins(item.name));
+        concept.loot = normalizeLoot([...coins, ...loot]);
+      }
     } catch (err) {
       console.warn(`${MODULE_ID} | grounded loot selection failed; unresolved draft loot will block creation`, err);
     }

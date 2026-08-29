@@ -708,7 +708,7 @@ Pick the logical items the creature would carry: the weapons it wields (match it
  * @param {{name: string, type: string, level: number}[]} args.candidates
  * @returns {Promise<{loot: {name: string, quantity: number, value: number}[], usage: object}>}
  */
-export async function selectLoot({ concept, candidates, onProgress }) {
+export async function selectLoot({ concept, candidates, scrollCandidates = [], onProgress }) {
   const byType = new Map();
   for (const c of candidates) {
     if (!byType.has(c.type)) byType.set(c.type, []);
@@ -718,10 +718,10 @@ export async function selectLoot({ concept, candidates, onProgress }) {
     .map(([type, names]) => `${type}: ${names.join("; ")}`)
     .join("\n");
 
-  const system = `You are selecting dropped loot for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written — with two exceptions kept free-form because they are built specially: coin entries ("Gold Coins"/"Silver Coins" etc., quantity = the number of coins) and spell scrolls ("Scroll of {exact PF2e spell name} (Rank {n})"). Respond with a single JSON object and nothing else:
-{ "loot": [ { "id": string, "quantity": number } ] }
+  const system = `You are selecting dropped loot for a Pathfinder 2e creature. Choose ONLY IDs from the provided lists. Coins are module-built and retain their first-draft quantities automatically. A scroll must use an offered spell ID and a rank no lower than that spell's base rank. Respond with a single JSON object and nothing else:
+{ "loot": [ { "id": string, "quantity": number }, { "scrollSpellId": string, "rank": number, "quantity": number } ] }
 ${RUNE_PREFIX_NOTE}
-Recreate the first-draft haul: keep its coin and scroll entries as they are, replace every other entry with its closest match from the list (the same item if it appears, otherwise the nearest equivalent in kind and value), and drop an entry only when nothing on the list comes close. Keep the draft's quantities.`;
+Recreate the first-draft haul: replace each non-coin entry with the closest valid item or scroll spell. Keep the draft's quantities. Drop an entry only when nothing available comes close.`;
 
   const user = [
     `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
@@ -729,14 +729,15 @@ Recreate the first-draft haul: keep its coin and scroll entries as they are, rep
     `Traits: ${concept.traits.join(", ")}`,
     `First-draft loot (recreate this haul from the list): ${concept.loot.map((l) => `${l.name} x${l.quantity}`).join(", ")}`,
     "",
-    "Available items:",
-    list
+    "Available items:", list,
+    scrollCandidates.length ? `Available scroll spells (ID | name | base rank): ${scrollCandidates.map((s) => `${s.id} | ${s.name} | ${s.rank}`).join("; ")}` : null
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
     task: AI_TASK.LOOT_SELECTION, system, user, onProgress
   });
-  const loot = (Array.isArray(parsed.loot) ? parsed.loot : [])
+  const picks = Array.isArray(parsed.loot) ? parsed.loot : [];
+  const loot = picks
     .map((pick) => ({ pick, candidate: candidateForPick(candidates, pick) }))
     .filter(({ candidate }) => Boolean(candidate))
     .map(({ pick, candidate }) => ({
@@ -747,6 +748,17 @@ Recreate the first-draft haul: keep its coin and scroll entries as they are, rep
       // Picks come from the compendium, so no estimated fallback price is needed.
       value: 0
     }));
+  for (const pick of picks) {
+    const spell = candidateForPick(scrollCandidates, { id: pick?.scrollSpellId });
+    if (!spell) continue;
+    const rank = Math.min(Math.max(Math.round(Number(pick.rank) || spell.rank), spell.rank), 10);
+    loot.push({
+      name: `Scroll of ${spell.name} (Rank ${rank})`,
+      ...(spell.ref ? { scrollCandidate: spell.ref } : {}),
+      quantity: Math.max(Math.round(Number(pick.quantity) || 1), 1),
+      value: 0
+    });
+  }
   return { loot, usage };
 }
 
