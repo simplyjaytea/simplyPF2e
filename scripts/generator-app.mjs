@@ -640,7 +640,7 @@ export class GeneratorApp extends SpfApp {
       if (this.#concept.loot.length) await this._setStep("loot");
       await this.#refineLoot(this.#concept);
       await this._setStep("match");
-      this.#resolved = await resolveConcept(this.#concept);
+      this.#resolved = await resolveConcept(this.#concept, { exactContent: true });
       // Treasure budget: the module owns the numbers (level + rarity from the
       // tables, scaled by the Treasure amount control); only coins flex.
       this.#resolved.loot = await applyTreasureBudget(
@@ -743,7 +743,7 @@ export class GeneratorApp extends SpfApp {
 
       await this._setStep("match");
       for (const member of members) {
-        member.resolved = await resolveConcept(member.concept);
+        member.resolved = await resolveConcept(member.concept, { exactContent: true });
         // Treasure is calibrated to the PARTY level and the WHOLE encounter:
         // treasureBudget() returns one encounter's total, split evenly across
         // groups. A group keeps its constant share (treasureGroupBudget)
@@ -926,7 +926,7 @@ export class GeneratorApp extends SpfApp {
       // re-resolve those parts (the ABC/grants/feat-slot lookups above are
       // cheap and index-cached, so redoing them here is harmless; keep the
       // feat picks already made).
-      const final = await resolvePCConcept(concept);
+      const final = await resolvePCConcept(concept, { exactContent: true });
       resolved = { ...final, feats: resolved.feats };
       // Cross-bucket dedup BEFORE any budget math sees the loot list: the AI
       // sometimes lists the same named item as both starting equipment and
@@ -980,7 +980,7 @@ export class GeneratorApp extends SpfApp {
           // Keep the already-grounded items, add the new draft, re-ground and re-budget.
           concept.loot = [...concept.loot.filter((l) => !parseCoins(l.name)), ...normalizeLoot(draft)];
           await this.#refineLoot(concept);
-          const topUp = await resolvePCConcept(concept);
+          const topUp = await resolvePCConcept(concept, { exactContent: true });
           resolved = { ...topUp, feats: resolved.feats };
           resolved.loot = dedupeLootAgainstEquipment(resolved.loot, resolved.equipment);
           resolved.loot = enforceNamedLootBudget(resolved.loot, lootBudget);
@@ -1089,8 +1089,8 @@ export class GeneratorApp extends SpfApp {
    * Grounded equipment selection: fetch real, level-capped items from the
    * equipment compendium (narrowed by keywords drawn from the first-draft
    * gear names and strikes — no separate AI focus pass needed, unlike spells)
-   * and let the AI pick the creature's carried gear from that list. Falls
-   * back to the first-draft names (still fuzzy-matched) if anything fails.
+   * and let the AI pick the creature's carried gear from that list. The
+   * final creation resolver accepts only retained candidate references.
    * Creatures designed to carry nothing (beasts, mindless) are skipped.
    */
   async #refineEquipment(concept) {
@@ -1112,7 +1112,7 @@ export class GeneratorApp extends SpfApp {
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Equipment"), usage);
       if (equipment.length) concept.equipment = equipment;
     } catch (err) {
-      console.warn(`${MODULE_ID} | grounded equipment selection failed, using first-draft equipment`, err);
+      console.warn(`${MODULE_ID} | grounded equipment selection failed; unresolved draft equipment will block creation`, err);
     }
   }
 
@@ -1125,7 +1125,9 @@ export class GeneratorApp extends SpfApp {
    * item. Coins and scrolls pass through free-form (parseCoins/parseScroll
    * build them specially); a haul of ONLY coins/scrolls skips the AI call.
    * Falls back to the first-draft names (still fuzzy-matched) if anything
-   * fails.
+   * fails. The final creation resolver accepts only retained candidate
+   * references (except module-built coin entries); an ungrounded scroll is
+   * explicitly unresolved until scroll candidate selection is implemented.
    */
   async #refineLoot(concept) {
     if (!concept?.loot?.length) return;
@@ -1146,7 +1148,7 @@ export class GeneratorApp extends SpfApp {
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
       if (loot.length) concept.loot = normalizeLoot(loot);
     } catch (err) {
-      console.warn(`${MODULE_ID} | grounded loot selection failed, using first-draft loot`, err);
+      console.warn(`${MODULE_ID} | grounded loot selection failed; unresolved draft loot will block creation`, err);
     }
   }
 

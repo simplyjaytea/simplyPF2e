@@ -5,7 +5,7 @@ const entry = { packId: "pf2e.test", _id: "a" };
 const creature = completionManifest({ mode: "monster", concept: {}, resolved: {
   abilities: [{ ability: { name: "Howl" }, entry: null }], spells: [{ spell: { name: "Fear" }, entry }],
   focusSpells: [], feats: [], equipment: [{ name: "Spear", entry }],
-  loot: [{ name: "10 gold coins" }, { name: "Scroll of Fear", scroll: { rank: 1 }, entry }]
+  loot: [{ name: "10 gold coins" }, { name: "Gold Pieces" }, { name: "Scroll of Fear", scroll: { rank: 1 }, entry }]
 } });
 assert.equal(creature.complete, true, "custom narrative abilities and module-built coins/scrolls are valid completion states");
 assert.equal(creature.records.find((r) => r.category === "ability").status, "custom-narrative");
@@ -36,7 +36,7 @@ assert.deepEqual(summary, {
   total: creature.records.length + pc.records.length,
   compendium: 2,
   native: 3,
-  moduleBuilt: 2,
+  moduleBuilt: 3,
   customNarrative: 1,
   unresolved: 1
 }, "completion presentation must report every manifest status without exposing mutable documents");

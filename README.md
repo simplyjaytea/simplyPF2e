@@ -20,7 +20,7 @@ The AI never produces a number and never invents content. The job is split three
 | **Numbers** | The rules | NPCs: every stat comes from the GM Core **Building Creatures** benchmark tables for your chosen level. PCs: the PF2e system's own engine computes AC/HP/saves/proficiencies from the real embedded Ancestry/Background/Class items. |
 | **Content** | Your compendiums | Every named spell, feat, ability, ancestry and item is matched against your installed packs and the **real document** is embedded. |
 
-Every required published spell, feat, ancestry, background, class, item, and loot choice must resolve to the exact offered compendium document before one-click creation proceeds. A planned PC spell slot with no exact document blocks creation; it never falls back to an unvetted spell name. Coins and scrolls are built from real currency and spell documents. Deliberately custom creature narrative abilities stay visibly labeled and are never presented as published mechanics.
+Every required published spell, feat, ancestry, background, class, item, and loot choice must resolve to the exact offered compendium document before one-click creation proceeds. A planned PC spell slot or a selected item with no exact document blocks creation; neither falls back to an unvetted name. Coins are built from real currency. Scrolls require an exact spell candidate before they can use the module-built path. Deliberately custom creature narrative abilities stay visibly labeled and are never presented as published mechanics.
 
 **Generate Monster**, **Generate NPC**, **Generate Encounter**, and **Generate Character** validate and create in one pass. Use **Preview Plan** when you want to inspect the same no-write plan before deciding to create it.
 

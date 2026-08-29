@@ -235,25 +235,25 @@ async function fallbackHeritageFor(ancestryDoc) {
  * happens in generator-app via ai.mjs's selectFeats(), mirroring how AI calls
  * live in the app while resolution lives here for the NPC pipeline too.
  */
-export async function resolvePCConcept(concept) {
+export async function resolvePCConcept(concept, { exactContent = false } = {}) {
   // ABC lookups scan ALL installed packs of the right type (getAllPacksFor),
   // not just the hardcoded default pack, so a legit AI pick living in a Lost
   // Omens / add-on compendium still resolves instead of aborting the run (#51).
   const ancestryPacks = await getAllPacksFor("ancestries");
   const ancestryEntry = concept.ancestryCandidate && ancestryPacks.includes(concept.ancestryCandidate.packId)
-    ? concept.ancestryCandidate : await findEntry(ancestryPacks, concept.ancestry, (e) => e.type === "ancestry");
+    ? concept.ancestryCandidate : (exactContent ? null : await findEntry(ancestryPacks, concept.ancestry, (e) => e.type === "ancestry"));
   const ancestryDoc = await getDocument(ancestryEntry);
   if (!ancestryDoc || ancestryDoc.type !== "ancestry") throw new Error(`Could not find ancestry "${concept.ancestry}" in the compendium`);
 
   const backgroundPacks = await getAllPacksFor("backgrounds");
   const backgroundEntry = concept.backgroundCandidate && backgroundPacks.includes(concept.backgroundCandidate.packId)
-    ? concept.backgroundCandidate : await findEntry(backgroundPacks, concept.background, (e) => e.type === "background");
+    ? concept.backgroundCandidate : (exactContent ? null : await findEntry(backgroundPacks, concept.background, (e) => e.type === "background"));
   const backgroundDoc = await getDocument(backgroundEntry);
   if (!backgroundDoc || backgroundDoc.type !== "background") throw new Error(`Could not find background "${concept.background}" in the compendium`);
 
   const classPacks = await getAllPacksFor("classes");
   const classEntry = concept.classCandidate && classPacks.includes(concept.classCandidate.packId)
-    ? concept.classCandidate : await findEntry(classPacks, concept.class, (e) => e.type === "class");
+    ? concept.classCandidate : (exactContent ? null : await findEntry(classPacks, concept.class, (e) => e.type === "class"));
   const classDoc = await getDocument(classEntry);
   if (!classDoc || classDoc.type !== "class") throw new Error(`Could not find class "${concept.class}" in the compendium`);
 
@@ -261,7 +261,7 @@ export async function resolvePCConcept(concept) {
   if (concept.heritage) {
     const heritagePacks = await getAllPacksFor("heritages");
     const heritageEntry = concept.heritageCandidate && heritagePacks.includes(concept.heritageCandidate.packId)
-      ? concept.heritageCandidate : await findEntry(heritagePacks, concept.heritage, (e) => e.type === "heritage");
+      ? concept.heritageCandidate : (exactContent ? null : await findEntry(heritagePacks, concept.heritage, (e) => e.type === "heritage"));
     const pickedDoc = await getDocument(heritageEntry);
     if (!pickedDoc || pickedDoc.type !== "heritage") {
       console.warn(`simplypf2e | heritage "${concept.heritage}" not found in the compendium — falling back to an ancestry-matched heritage`);
@@ -309,18 +309,18 @@ export async function resolvePCConcept(concept) {
   if (concept.spellcasting) {
     for (const spell of concept.spellcasting.spells) {
       const entry = spell.candidate && getPacksFor("spells").includes(spell.candidate.packId)
-        ? spell.candidate : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
+        ? spell.candidate : (exactContent ? null : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell"));
       spells.push({ spell, entry });
     }
   }
 
-  const focusSpells = await resolveFocusSpells(concept.focusSpells ?? []);
+  const focusSpells = await resolveFocusSpells(concept.focusSpells ?? [], { exactContent });
 
-  const equipment = await resolveEquipment(concept);
+  const equipment = await resolveEquipment(concept, { exactContent });
   // concept.loot starts empty (see normalizePCConcept) — resolveLoot() is a
   // no-op on it here; applyTreasureBudget() (called by generator-app with
   // pcStartingWealthGp()) is what actually fills it with coins.
-  const loot = await resolveLoot(concept);
+  const loot = await resolveLoot(concept, { exactContent });
 
   return { ancestryDoc, heritageDoc, backgroundDoc, classDoc, featSlots, spells, focusSpells, equipment, loot };
 }

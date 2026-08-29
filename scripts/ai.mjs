@@ -639,8 +639,8 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
 /**
  * Grounded equipment pass: given real, level-capped equipment items from the
  * compendium, have the model pick the creature's carried gear. Names it
- * returns are guaranteed to exist (and are still fuzzy-matched afterwards as
- * a safety net). One call — no separate focus pass like spells, since the
+ * returns retain the exact offered source reference for final resolution.
+ * One call — no separate focus pass like spells, since the
  * concept already carries the theme and the first-draft gear.
  * @param {object} args
  * @param {object} args.concept       normalized concept (for context)
@@ -699,8 +699,8 @@ Pick the logical items the creature would carry: the weapons it wields (match it
  * capped like resolveLoot's filter), have the model re-pick the first-draft
  * haul from names guaranteed to exist — the loot counterpart of
  * selectEquipment(). Without this, a pre-Remaster name the model recalls
- * ("Bag of Holding") never fuzzy-matches its Remaster item ("Spacious Pouch")
- * and silently becomes a wrong-named custom treasure item. Coins and spell
+ * ("Bag of Holding") cannot be substituted for its Remaster item ("Spacious Pouch")
+ * after the selection catalog is issued. Coins and spell
  * scrolls stay free-form: they are not plain compendium items
  * (parseCoins/parseScroll in builder.mjs build them specially).
  * @param {object} args
@@ -753,9 +753,8 @@ Recreate the first-draft haul: keep its coin and scroll entries as they are, rep
 /**
  * Ground a PC's first-draft ancestry/heritage/background/class against the
  * real compendium lists in ONE call — the ABC counterpart of selectSpells/
- * selectEquipment/selectLoot: choose ONLY from the provided lists, copying
- * each name EXACTLY as written. Names returned are still fuzzy-matched via
- * findEntry() afterward as a safety net.
+ * selectEquipment/selectLoot: choose ONLY from the provided lists, retaining
+ * their exact private source references for final resolver validation.
  * @param {object} args
  * @param {object} args.concept  normalized PC concept (for context)
  * @param {{name: string, traits: string[]}[]} args.ancestryCandidates

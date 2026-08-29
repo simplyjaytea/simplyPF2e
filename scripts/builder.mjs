@@ -388,12 +388,12 @@ export function parseScroll(name) {
  * otherwise a "+1 striking longsword" budgets as a 1 gp longsword while the
  * sheet renders a ~1,000 gp item, and the coin padding overshoots wildly.
  */
-export async function resolveLoot(concept) {
+export async function resolveLoot(concept, { exactContent = false } = {}) {
   const loot = [];
   for (const { name, quantity, value, candidate } of concept.loot) {
     const scroll = parseScroll(name);
     if (scroll) {
-      const entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
+      const entry = exactContent ? null : await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
         e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !e.system?.ritual
       );
       const baseRank = entry?.system?.level?.value ?? 1;
@@ -412,11 +412,11 @@ export async function resolveLoot(concept) {
     // at that same level rather than the creature's own.
     const maxLevel = Math.max(concept.level + 2, 0);
     const entry = candidate && getPacksFor("equipment").includes(candidate.packId)
-      ? candidate : await findEntry(
+      ? candidate : (exactContent ? null : await findEntry(
         getPacksFor("equipment"),
         parseRunes(name).base,
         (e) => (e.system?.level?.value ?? 0) <= maxLevel
-      );
+      ));
     const runes = await capRunes(parseRunes(name), entry?.type, maxLevel);
     let resolvedValue = value;
     if (entry) {
@@ -606,7 +606,7 @@ export function customEquipmentItem(name, quantity, value) {
  * Resolve every compendium reference in a concept. Returns lookup results so
  * the preview can show what was found and what will become a custom ability.
  */
-export async function resolveConcept(concept) {
+export async function resolveConcept(concept, { exactContent = false } = {}) {
   const abilities = [];
   for (const ability of concept.specialAbilities) {
     let entry = null;
@@ -620,7 +620,7 @@ export async function resolveConcept(concept) {
     for (const spell of concept.spellcasting.spells) {
       const exact = spell.candidate;
       const entry = exact && getPacksFor("spells").includes(exact.packId)
-        ? exact : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
+        ? exact : (exactContent ? null : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell"));
       // A ranked spell assigned rank 0 (or below its own rank) would be
       // misfiled as a cantrip slot in createActor — clamp to the real rank.
       if (entry && !(entry.system?.traits?.value ?? []).includes("cantrip")) {
@@ -643,10 +643,11 @@ export async function resolveConcept(concept) {
   // Gated on spellcasting (not just normalize-time): #refineSpells can null
   // out concept.spellcasting after normalizeConcept ran, and focus spells
   // have no DC of their own without it (v1 scope).
-  const focusSpells = concept.spellcasting ? await resolveFocusSpells(concept.focusSpells ?? []) : [];
+  const focusSpells = concept.spellcasting
+    ? await resolveFocusSpells(concept.focusSpells ?? [], { exactContent }) : [];
 
-  const equipment = await resolveEquipment(concept);
-  const loot = await resolveLoot(concept);
+  const equipment = await resolveEquipment(concept, { exactContent });
+  const loot = await resolveLoot(concept, { exactContent });
 
   return { abilities, spells, feats, focusSpells, equipment, loot };
 }
@@ -656,18 +657,18 @@ export async function resolveConcept(concept) {
  * by NPC resolveConcept() and the PC pipeline (pc-builder.mjs), which both
  * carry the same {name, quantity, value} equipment shape and level cap.
  */
-export async function resolveEquipment(concept) {
+export async function resolveEquipment(concept, { exactContent = false } = {}) {
   const equipment = [];
   const maxLevel = Math.max(concept.level, 0);
   for (const { name, quantity, value, candidate } of concept.equipment) {
     // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
     // item matches; the runes are re-applied as system data at creation.
     const entry = candidate && getPacksFor("equipment").includes(candidate.packId)
-      ? candidate : await findEntry(
+      ? candidate : (exactContent ? null : await findEntry(
         getPacksFor("equipment"),
         parseRunes(name).base,
         (e) => (e.system?.level?.value ?? 0) <= maxLevel
-      );
+      ));
     // The item-level cap above only gates the BASE item — without this the AI's
     // chosen rune tier is ungated, so a level-1 character asked for "+1
     // striking" could be handed "+3 major striking" (a level-19 item).
@@ -798,7 +799,7 @@ export function enforceNamedLootBudget(loot, budgetGp) {
  * @param {({name: string}|string)[]} names
  * @returns {Promise<{name: string, entry: object|null}[]>}
  */
-export async function resolveFocusSpells(names) {
+export async function resolveFocusSpells(names, { exactContent = false } = {}) {
   const resolved = [];
   for (const raw of Array.isArray(names) ? names : []) {
     const name = typeof raw === "string" ? raw : raw?.name;
@@ -808,7 +809,7 @@ export async function resolveFocusSpells(names) {
     if (exact && getPacksFor("spells").includes(exact.packId)) {
       const doc = await getDocument(exact);
       if (doc?.type === "spell" && (doc.system?.traits?.value ?? []).includes("focus")) entry = exact;
-    } else {
+    } else if (!exactContent) {
       entry = await findEntry(
         getPacksFor("spells"),
         name,
