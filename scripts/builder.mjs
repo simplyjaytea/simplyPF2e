@@ -356,11 +356,12 @@ export function normalizeLoot(raw) {
       if (!name) return null;
       const quantity = Math.max(Math.round(Number(e?.quantity) || 1), 1);
       const value = Math.max(Number(e?.value) || 0, 0);
+      const candidate = e?.candidate?.packId && e?.candidate?._id ? e.candidate : null;
       const coins = parseCoins(name);
       if (coins) {
         return { name: coins.name, quantity: Math.min(coins.count ? coins.count * quantity : quantity, 100000), value };
       }
-      return { name: String(name), quantity: Math.min(quantity, 10), value };
+      return { name: String(name), quantity: Math.min(quantity, 10), value, ...(candidate ? { candidate } : {}) };
     })
     .filter(Boolean)
     .slice(0, 24); // fits LOOT_GUIDE's hoard guidance (~12-20 items) with headroom, still bounds runaway output
@@ -390,7 +391,7 @@ export function parseScroll(name) {
  */
 export async function resolveLoot(concept) {
   const loot = [];
-  for (const { name, quantity, value } of concept.loot) {
+  for (const { name, quantity, value, candidate } of concept.loot) {
     const scroll = parseScroll(name);
     if (scroll) {
       const entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
@@ -411,11 +412,12 @@ export async function resolveLoot(concept) {
     // Loot may sit up to 2 levels above the creature, so the runes are capped
     // at that same level rather than the creature's own.
     const maxLevel = Math.max(concept.level + 2, 0);
-    const entry = await findEntry(
-      getPacksFor("equipment"),
-      parseRunes(name).base,
-      (e) => (e.system?.level?.value ?? 0) <= maxLevel
-    );
+    const entry = candidate && getPacksFor("equipment").includes(candidate.packId)
+      ? candidate : await findEntry(
+        getPacksFor("equipment"),
+        parseRunes(name).base,
+        (e) => (e.system?.level?.value ?? 0) <= maxLevel
+      );
     const runes = await capRunes(parseRunes(name), entry?.type, maxLevel);
     let resolvedValue = value;
     if (entry) {
@@ -617,7 +619,9 @@ export async function resolveConcept(concept) {
   const spells = [];
   if (concept.spellcasting) {
     for (const spell of concept.spellcasting.spells) {
-      const entry = await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
+      const exact = spell.candidate;
+      const entry = exact && getPacksFor("spells").includes(exact.packId)
+        ? exact : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
       // A ranked spell assigned rank 0 (or below its own rank) would be
       // misfiled as a cantrip slot in createActor — clamp to the real rank.
       if (entry && !(entry.system?.traits?.value ?? []).includes("cantrip")) {
@@ -656,14 +660,15 @@ export async function resolveConcept(concept) {
 export async function resolveEquipment(concept) {
   const equipment = [];
   const maxLevel = Math.max(concept.level, 0);
-  for (const { name, quantity, value } of concept.equipment) {
+  for (const { name, quantity, value, candidate } of concept.equipment) {
     // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
     // item matches; the runes are re-applied as system data at creation.
-    const entry = await findEntry(
-      getPacksFor("equipment"),
-      parseRunes(name).base,
-      (e) => (e.system?.level?.value ?? 0) <= maxLevel
-    );
+    const entry = candidate && getPacksFor("equipment").includes(candidate.packId)
+      ? candidate : await findEntry(
+        getPacksFor("equipment"),
+        parseRunes(name).base,
+        (e) => (e.system?.level?.value ?? 0) <= maxLevel
+      );
     // The item-level cap above only gates the BASE item — without this the AI's
     // chosen rune tier is ungated, so a level-1 character asked for "+1
     // striking" could be handed "+3 major striking" (a level-19 item).

@@ -116,6 +116,8 @@ Earlier audit/optimization work extracted shared `text.mjs`/`runes.mjs`, level-g
 
 **In-progress one-click roadmap:** `codex/one-click-grounding` begins the next approved feature set. The UI now has Monster, NPC, Encounter, and Player Character intents; the primary Generate action creates after generation, while Preview Plan remains no-write. Monster/NPC share the existing PF2e NPC pipeline but receive distinct intent guidance. New creature drafts clear before sheet presentation, and partial encounter creation is rolled back best-effort. This is only the first slice: exact candidate identity, completion manifests, full source preflight, hardened PC completion, and live QA remain open.
 
+Spells, carried equipment, and non-coin/non-scroll loot now have the first exact-candidate seam: bounded candidates contain an opaque selection ID and a private exact source reference. Model-facing selection prompts request IDs; selected references flow to the resolver without a second fuzzy lookup. Transitional no-ID test/migration catalogs retain deterministic name support, but real ID catalogs reject ambiguous name replies. This has not yet been extended to ABCs, feats, focus spells, or bestiary scaffolds.
+
 **Next task:** obtain permission before any authenticated GitHub write, then use branch + PR. After release/deployment, execute HANDOFF's skill-completion and preceding HP/choice/spell/signature acceptance checklist on the VPS test world. Never infer permission to push from this roadmap.
 
 ## Known gaps

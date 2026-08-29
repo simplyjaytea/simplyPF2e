@@ -486,6 +486,27 @@ Give 3-6 lowercase keywords describing the KINDS of spells that fit this creatur
 const PC_SPELL_RANKS = ["cantrip", "rank-one", "rank-two", "rank-three", "rank-four", "rank-five",
   "rank-six", "rank-seven", "rank-eight", "rank-nine", "rank-ten"];
 
+/** Compatibility for stale local models: a legacy name is accepted only when
+ * it identifies exactly one offered candidate. New prompts use opaque IDs. */
+function candidateForPick(candidates, pick) {
+  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const byName = new Map();
+  for (const candidate of candidates) {
+    const key = String(candidate.name ?? "").toLocaleLowerCase();
+    byName.set(key, byName.has(key) ? null : candidate);
+  }
+  const id = String(pick?.id ?? "").trim();
+  if (id) return byId.get(id) ?? null;
+  const name = String(pick?.name ?? "").toLocaleLowerCase();
+  // Test/migration callers without candidate IDs predate the exact-catalog
+  // contract. Preserve their deterministic first entry only when the whole
+  // supplied catalog has no IDs; a production catalog never takes this path.
+  if (!candidates.some((candidate) => candidate?.id)) {
+    return candidates.find((candidate) => String(candidate?.name ?? "").toLocaleLowerCase() === name) ?? null;
+  }
+  return byName.get(name) ?? null;
+}
+
 /**
  * Second pass: given the real spell list from the compendium, have the model
  * pick spells. A PC slot plan is checked against the exact offered catalog;
@@ -513,15 +534,16 @@ export async function selectSpells({ concept, candidates, maxRank, plannedPicks,
   const byRank = new Map();
   for (const c of candidates) {
     if (!byRank.has(c.rank)) byRank.set(c.rank, []);
+    const label = `${c.id} | ${c.name}`;
     byRank.get(c.rank).push(pcPlan && preparationMode === "spontaneous" && maxRank === 10
-      ? `${c.name} [${c.rarity ?? "unknown rarity"}]` : c.name);
+      ? `${label} [${c.rarity ?? "unknown rarity"}]` : label);
   }
   const list = [...byRank.entries()]
     .map(([rank, names]) => `${pcPlan ? PC_SPELL_RANKS[rank] : rank === 0 ? "Cantrips" : `Rank ${rank}`}: ${names.join("; ")}`)
     .join("\n");
 
   const system = `You are selecting spells for a Pathfinder 2e ${pcPlan ? "player character" : "creature"}. Choose ONLY from the provided list, copying each name EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
-{ "spells": [ { "name": string, "rank": ${pcPlan ? 'string, "signature": "regular" | "signature"' : "number"} } ] }
+{ "spells": [ { "id": string, "rank": ${pcPlan ? 'string, "signature": "regular" | "signature"' : "number"} } ] }
 ${pcPlan
     ? `"rank" must be one of these enum slugs, never a number: ${PC_SPELL_RANKS.slice(0, maxRank + 1).join(", ")}. Use cantrip only for cantrips; ranked spells use their listed rank or a higher allowed rank to heighten.`
     : `"rank" is the slot the creature casts it from: 0 for cantrips, otherwise at least the listed rank and at most ${maxRank} (choose higher to heighten a spell only when that clearly helps it).`}
@@ -551,16 +573,15 @@ ${pcPlan
     task: pcPlan ? AI_TASK.PC_SPELL_SELECTION : AI_TASK.SPELL_SELECTION, system, user, onProgress
   });
   if (pcPlan) {
-    const catalog = new Map(candidates.map((candidate) => [candidate.name, candidate]));
     const used = new Map();
     const seen = new Set();
     const spells = [];
     const signatures = new Map();
     for (const pick of parsed.spells) {
-      const candidate = catalog.get(pick?.name);
+      const candidate = candidateForPick(candidates, pick);
       const baseRank = candidate?.rank;
       const rank = PC_SPELL_RANKS.indexOf(pick?.rank);
-      const key = JSON.stringify([pick?.name, rank]);
+      const key = JSON.stringify([candidate?.id ?? candidate?.name, rank]);
       if (!Number.isInteger(baseRank) || !Number.isInteger(rank) || rank < 0 || rank > maxRank
         || baseRank > rank || (baseRank === 0) !== (rank === 0)
         || (used.get(rank) ?? 0) >= (plannedPicks[rank] ?? 0)
@@ -569,7 +590,7 @@ ${pcPlan
         console.warn("simplypf2e | dropping invalid or excess character spell-plan pick", pick);
         continue;
       }
-      const spell = { name: pick.name, rank };
+      const spell = { name: candidate.name, ...(candidate.ref ? { candidate: candidate.ref } : {}), rank };
       spells.push(spell);
       if (pick.signature === "signature" && signatureRanks.includes(rank)) {
         if (!signatures.has(rank)) signatures.set(rank, []);
@@ -588,13 +609,14 @@ ${pcPlan
   }
   // A ranked spell must never come back as rank 0 (createActor would file it
   // as a cantrip) — clamp the minimum to the candidate's own listed rank.
-  const listedRank = new Map(candidates.map((c) => [c.name.toLowerCase(), c.rank]));
   const spells = (Array.isArray(parsed.spells) ? parsed.spells : [])
-    .filter((s) => s?.name)
-    .map((s) => ({
-      name: String(s.name),
+    .map((s) => ({ pick: s, candidate: candidateForPick(candidates, s) }))
+    .filter(({ candidate }) => Boolean(candidate))
+    .map(({ pick, candidate }) => ({
+      name: candidate.name,
+      ...(candidate.ref ? { candidate: candidate.ref } : {}),
       rank: Math.min(
-        Math.max(Math.round(Number(s.rank) || 0), listedRank.get(String(s.name).toLowerCase()) ?? 0),
+        Math.max(Math.round(Number(pick.rank) || 0), candidate.rank),
         maxRank
       )
     }));
@@ -616,14 +638,14 @@ export async function selectEquipment({ concept, candidates, onProgress }) {
   const byType = new Map();
   for (const c of candidates) {
     if (!byType.has(c.type)) byType.set(c.type, []);
-    byType.get(c.type).push(c.level > 0 ? `${c.name} (L${c.level})` : c.name);
+    byType.get(c.type).push(`${c.id} | ${c.name}${c.level > 0 ? ` (L${c.level})` : ""}`);
   }
   const list = [...byType.entries()]
     .map(([type, names]) => `${type}: ${names.join("; ")}`)
     .join("\n");
 
   const system = `You are selecting carried equipment for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written. Respond with a single JSON object and nothing else:
-{ "equipment": [ { "name": string, "quantity": number } ] }
+{ "equipment": [ { "id": string, "quantity": number } ] }
 ${RUNE_PREFIX_NOTE}
 Pick the logical items the creature would carry: the weapons it wields (match its strikes), sensible consumables (healing potions, elixirs, bombs, talismans, poisons it applies), and everyday adventuring gear it would plausibly use (rope, torches, rations, tools). Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its role and level. Pick each DISTINCT item at most once — a smaller focused set is fine; never repeat an item or add filler to reach a count. NO coins or currency. "quantity" is usually 1; use 2-5 only for ammunition and stackable consumables.`;
 
@@ -647,10 +669,12 @@ Pick the logical items the creature would carry: the weapons it wields (match it
     task: AI_TASK.EQUIPMENT_SELECTION, system, user, onProgress
   });
   const equipment = (Array.isArray(parsed.equipment) ? parsed.equipment : [])
-    .filter((e) => e?.name)
-    .map((e) => ({
-      name: String(e.name),
-      quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10),
+    .map((pick) => ({ pick, candidate: candidateForPick(candidates, pick) }))
+    .filter(({ candidate }) => Boolean(candidate))
+    .map(({ pick, candidate }) => ({
+      name: candidate.name,
+      ...(candidate.ref ? { candidate: candidate.ref } : {}),
+      quantity: Math.min(Math.max(Math.round(Number(pick.quantity) || 1), 1), 10),
       // Picks come from the compendium, so no estimated fallback price is needed.
       value: 0
     }));
@@ -675,14 +699,14 @@ export async function selectLoot({ concept, candidates, onProgress }) {
   const byType = new Map();
   for (const c of candidates) {
     if (!byType.has(c.type)) byType.set(c.type, []);
-    byType.get(c.type).push(c.level > 0 ? `${c.name} (L${c.level})` : c.name);
+    byType.get(c.type).push(`${c.id} | ${c.name}${c.level > 0 ? ` (L${c.level})` : ""}`);
   }
   const list = [...byType.entries()]
     .map(([type, names]) => `${type}: ${names.join("; ")}`)
     .join("\n");
 
   const system = `You are selecting dropped loot for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written — with two exceptions kept free-form because they are built specially: coin entries ("Gold Coins"/"Silver Coins" etc., quantity = the number of coins) and spell scrolls ("Scroll of {exact PF2e spell name} (Rank {n})"). Respond with a single JSON object and nothing else:
-{ "loot": [ { "name": string, "quantity": number } ] }
+{ "loot": [ { "id": string, "quantity": number } ] }
 ${RUNE_PREFIX_NOTE}
 Recreate the first-draft haul: keep its coin and scroll entries as they are, replace every other entry with its closest match from the list (the same item if it appears, otherwise the nearest equivalent in kind and value), and drop an entry only when nothing on the list comes close. Keep the draft's quantities.`;
 
@@ -700,11 +724,13 @@ Recreate the first-draft haul: keep its coin and scroll entries as they are, rep
     task: AI_TASK.LOOT_SELECTION, system, user, onProgress
   });
   const loot = (Array.isArray(parsed.loot) ? parsed.loot : [])
-    .filter((l) => l?.name)
-    .map((l) => ({
-      name: String(l.name),
+    .map((pick) => ({ pick, candidate: candidateForPick(candidates, pick) }))
+    .filter(({ candidate }) => Boolean(candidate))
+    .map(({ pick, candidate }) => ({
+      name: candidate.name,
+      ...(candidate.ref ? { candidate: candidate.ref } : {}),
       // No upper cap here: coin quantities run large. normalizeLoot() clamps.
-      quantity: Math.max(Math.round(Number(l.quantity) || 1), 1),
+      quantity: Math.max(Math.round(Number(pick.quantity) || 1), 1),
       // Picks come from the compendium, so no estimated fallback price is needed.
       value: 0
     }));

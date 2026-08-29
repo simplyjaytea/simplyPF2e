@@ -290,7 +290,8 @@ export async function resolvePCConcept(concept) {
   const spells = [];
   if (concept.spellcasting) {
     for (const spell of concept.spellcasting.spells) {
-      const entry = await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
+      const entry = spell.candidate && getPacksFor("spells").includes(spell.candidate.packId)
+        ? spell.candidate : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
       spells.push({ spell, entry });
     }
   }

@@ -261,6 +261,32 @@ export async function getDocument(entry) {
   return pack.getDocument(entry._id);
 }
 
+/**
+ * Stable, opaque identifier for a candidate offered to the model. The model
+ * never needs a pack name or document id; those stay in this local reference.
+ */
+export function candidateId(entry) {
+  const packId = String(entry?.packId ?? "");
+  const documentId = String(entry?._id ?? "");
+  return packId && documentId ? `c-${btoa(`${packId}\u0000${documentId}`).replaceAll("=", "")}` : null;
+}
+
+function candidateRecord(entry, fields = {}) {
+  return {
+    id: candidateId(entry),
+    ref: { packId: entry.packId, _id: entry._id },
+    ...fields
+  };
+}
+
+/** Resolve only an exact, locally-issued candidate reference. */
+export async function getCandidateDocument(candidate, packIds = null) {
+  const ref = candidate?.ref;
+  if (!ref?.packId || !ref?._id) return null;
+  if (Array.isArray(packIds) && !packIds.includes(ref.packId)) return null;
+  return getDocument(ref);
+}
+
 /* Hard ceilings for the name catalogs serialized into AI prompts. These stay
  * deliberately conservative: broad enough to offer real choices, but small
  * enough that installing another content pack cannot silently consume the
@@ -485,7 +511,7 @@ export async function getSpellCandidates(tradition, maxRank, keywords = [], plan
       if (rank > maxRank) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({ name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity });
+      candidates.push(candidateRecord(entry, { name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity }));
     }
   }
   candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
@@ -524,16 +550,16 @@ export async function getEquipmentCandidates(
       if (itemLevel > maxLevel) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({
+      candidates.push(candidateRecord(entry, {
         name: entry.name,
         type: entry.type,
         level: itemLevel,
         traits: entry.system?.traits?.value ?? []
-      });
+      }));
     }
   }
   candidates.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-  const strip = ({ name, type, level: lv }) => ({ name, type, level: lv });
+  const strip = ({ id, ref, name, type, level: lv }) => ({ id, ref, name, type, level: lv });
   return limitEquipmentCandidates(candidates, keywords, limit).map(strip);
 }
 
