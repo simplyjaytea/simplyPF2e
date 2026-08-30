@@ -14,6 +14,7 @@ globalThis.game = {
 };
 
 const { normalizeConcept, normalizeLoot, resolveConcept, resolveEquipment, resolveLoot, resolveFocusSpells } = await import("./builder.mjs");
+const { resolveFeatPicks } = await import("./pc-builder.mjs");
 const { getEquipmentCandidates, getFeatCandidates } = await import("./compendium.mjs");
 
 const concept = {
@@ -41,6 +42,31 @@ assert.equal(strictFeat.feats[0].entry, null, "strict creature feats cannot fuzz
 const exactFeat = await resolveConcept(normalizeConcept({ feats: [{ name: "Power Attack", candidate: featCandidate }] },
   { level: 1, rarity: "common" }), { exactContent: true });
 assert.equal(exactFeat.feats[0].entry, featCandidate, "a grounded creature feat retains its exact source reference");
+
+const [pcFeatCandidate] = await getFeatCandidates({ level: 1, category: "class" });
+const forgedFeatRef = { packId: pcFeatCandidate.ref.packId, _id: pcFeatCandidate.ref._id };
+const strictPCFeat = await resolveFeatPicks([
+  { type: "class", level: 1, candidates: [pcFeatCandidate] }
+], [{ slot: 1, name: pcFeatCandidate.name, candidate: forgedFeatRef }], { exactContent: true });
+assert.equal(
+  strictPCFeat[0].entry,
+  pcFeatCandidate.ref,
+  "strict PC feat fallback must use the issued per-slot candidate, not a lookalike source reference"
+);
+const duplicatePCFeat = await resolveFeatPicks([
+  { type: "class", level: 1, candidates: [pcFeatCandidate] },
+  { type: "class", level: 1, candidates: [pcFeatCandidate] }
+], [
+  { slot: 1, name: "made up label", candidate: pcFeatCandidate.ref },
+  { slot: 2, name: "another made up label", candidate: pcFeatCandidate.ref }
+], { exactContent: true });
+assert.equal(duplicatePCFeat[0].entry, pcFeatCandidate.ref, "the issued candidate remains usable despite an untrusted label");
+assert.equal(duplicatePCFeat[1].entry, null, "deduplication must use the issued candidate label, not an untrusted pick label");
+const legacyFeatRef = { packId: "test.feats", _id: "legacy-power-attack" };
+const legacyPCFeat = await resolveFeatPicks([
+  { type: "class", level: 1, candidates: [] }
+], [{ slot: 1, name: "Legacy Power Attack", candidate: legacyFeatRef }]);
+assert.equal(legacyPCFeat[0].entry, legacyFeatRef, "non-strict callers retain their direct allowed-pack reference path");
 
 const scrollCandidate = { packId: "test.spells", _id: "fireball" };
 assert.deepEqual(

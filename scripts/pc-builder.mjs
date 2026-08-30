@@ -346,25 +346,46 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
  * by level then name) is IDENTICAL for every slot of a category. A level-20
  * character whose batched selectFeats() call came back empty used to get ten
  * copies of the same class feat.
- * @param {{type: string, level: number, candidates: {name: string}[]}[]} featSlots
- * @param {{slot: number, name: string}[]} picks
+ * In the complete one-click flow `exactContent` keeps this final step inside
+ * the per-slot, locally issued catalog: an AI selection cannot become a
+ * different same-named feat through a post-selection lookup. The entitlement
+ * fallback remains, but it too uses that slot's exact candidate reference.
+ * Legacy/pre-selection callers retain the former name-lookup behavior.
+ * @param {{type: string, level: number, candidates: {name: string, ref?: object}[]}[]} featSlots
+ * @param {{slot: number, name: string, candidate?: object}[]} picks
+ * @param {{exactContent?: boolean}} [options]
  * @returns {Promise<{type: string, level: number, name: string, entry: object|null}[]>}
  */
-export async function resolveFeatPicks(featSlots, picks) {
+export async function resolveFeatPicks(featSlots, picks, { exactContent = false } = {}) {
   const bySlot = new Map(picks.map((p) => [p.slot, p]));
   const taken = new Set();
   const resolved = [];
 
-  /** Resolve one name for one slot, rejecting anything already taken. */
-  const resolveFor = (slot, name, candidate = null) => candidate && getPacksFor("feats").includes(candidate.packId)
-    ? Promise.resolve(candidate) : findEntry(
-    getPacksFor("feats"),
-    name,
-    (e) => e.type === "feat"
-      && e.system?.category === slot.type
-      && (e.system?.level?.value ?? 0) <= slot.level
-      && !taken.has(slugify(e.name))
-  );
+  /** Resolve one candidate for one slot, rejecting cross-slot/raw references. */
+  const resolveFor = (slot, name, candidate = null) => {
+    const allowedPacks = getPacksFor("feats");
+    const offeredCandidate = (slot.candidates ?? []).find((item) => item?.ref === candidate) ?? null;
+    const offered = offeredCandidate?.ref ?? null;
+    if (offered && isIssuedCandidate(offered, allowedPacks)) {
+      return Promise.resolve(taken.has(slugify(offeredCandidate.name)) ? null : offered);
+    }
+    if (exactContent) return Promise.resolve(null);
+    // Preserve the pre-existing permissive seam for callers that explicitly
+    // opt out of complete-only creation. The one-click path above never
+    // reaches this branch: it requires the exact reference offered to this
+    // slot, not merely an allowed pack.
+    if (candidate?.packId && allowedPacks.includes(candidate.packId)) {
+      return Promise.resolve(taken.has(slugify(name)) ? null : candidate);
+    }
+    return findEntry(
+      allowedPacks,
+      name,
+      (e) => e.type === "feat"
+        && e.system?.category === slot.type
+        && (e.system?.level?.value ?? 0) <= slot.level
+        && !taken.has(slugify(e.name))
+    );
+  };
 
   for (let i = 0; i < featSlots.length; i++) {
     const slot = featSlots[i];
@@ -378,15 +399,22 @@ export async function resolveFeatPicks(featSlots, picks) {
       // Fallback: walk this slot's own candidate list (real, already
       // level/category/trait-filtered) for the first one not already taken.
       for (const candidate of slot.candidates ?? []) {
-        entry = await resolveFor(slot, candidate.name);
+        entry = await resolveFor(slot, candidate.name, candidate.ref);
         if (entry) {
-          name = entry.name;
+          name = candidate.name;
           console.warn(`simplypf2e | slot ${i + 1} (${slot.type}, level ${slot.level}) had no usable AI pick — defaulted to "${name}"`);
           break;
         }
       }
     }
-    if (entry) taken.add(slugify(entry.name));
+    if (entry) {
+      // Exact candidate references intentionally carry only opaque source
+      // identity. Recover their verified catalog label before deduplicating
+      // or presenting the result; a document lookup is neither needed nor
+      // desirable on the strict path.
+      name = (slot.candidates ?? []).find((candidate) => candidate?.ref === entry)?.name ?? entry.name ?? name;
+      taken.add(slugify(name));
+    }
     // entry can still be null when every candidate for this slot is already
     // taken (a sparse category at low levels); the name is kept so the preview
     // can still show intent, and the slot is simply left empty on the sheet.
