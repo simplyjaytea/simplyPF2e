@@ -94,7 +94,7 @@ Claude-side orchestration (when running as Fable/Opus with subagent tools):
 - Not writing `system.price`/`system.level` on a runed item is **correct** — `physical/document.ts` recomputes both via `computeLevelRarityPrice()` every prep.
 - A character's `resources.focus.max` is zeroed every prep and rebuilt only from ActiveEffectLike rules, so the PC focus pool needs a cloned RE; an NPC's can be plain actor data.
 
-## Current state (2026-08-30)
+## Current state (2026-08-31)
 
 Git/API reconciliation on 2026-08-28: `origin/main` is `004bffc`, latest release **v0.3.5.42**. The audit-fix stack merged in PR #77; shared UI updates, documented live QA, partial ChoiceSet automation, and PC named-loot budget/cross-bucket dedup followed in PRs #79–#82. The old "no fixes / no post-merge QA" state was stale. The release-workflow `lang/en.json` validation gap remains open. See [HANDOFF.md](HANDOFF.md) for the active local branch and [HISTORY.md](HISTORY.md) for the preserved audit/QA record.
 
