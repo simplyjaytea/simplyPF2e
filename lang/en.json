@@ -242,6 +242,14 @@
       "Rank3": "Master",
       "Rank4": "Legendary"
     },
+    "Loadout": {
+      "Result": "Equipment readiness",
+      "NativeData": "The finished character's equipment data could not be inspected. Review worn and held items manually.",
+      "UntrainedArmor": "An untrained armor item was left stowed.",
+      "ArmorConflict": "Only one selected armor item can be worn; another was left stowed.",
+      "UntrainedWeapon": "An untrained weapon was left stowed.",
+      "HandConflict": "A held item exceeded the two-hand limit and was left stowed."
+    },
     "Progress": {
       "Label": "Generation progress",
       "Concept": "Creature concept",

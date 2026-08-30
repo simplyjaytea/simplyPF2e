@@ -555,6 +555,10 @@
         {{#each characterReview.skills.rows}}<li>{{this.name}} — {{this.rank}}</li>{{/each}}
       </ul>
       {{#each characterReview.skills.warnings}}<p class="notification warning" role="status">{{this}}</p>{{/each}}
+      {{#if characterReview.skills.loadoutWarnings}}
+        <h3>{{localize "SIMPLYPF2E.Loadout.Result"}}</h3>
+        {{#each characterReview.skills.loadoutWarnings}}<p class="notification warning" role="status">{{this}}</p>{{/each}}
+      {{/if}}
     {{/if}}
     {{#if characterReview.choices.length}}
       <p class="notification warning" role="status">{{localize "SIMPLYPF2E.Generator.ReviewHint"}}</p>

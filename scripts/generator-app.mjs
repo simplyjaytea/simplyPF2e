@@ -249,7 +249,13 @@ export class GeneratorApp extends SpfApp {
         }) : null,
       warnings: report.warnings.map((code) => game.i18n.format(`SIMPLYPF2E.Skills.${warningKeys[code] ?? "NativeData"}`, {
         count: code === "unspent-training" ? report.unspentTraining : report.unspentIncreases
-      }))
+      })),
+      loadoutWarnings: (report.loadoutWarnings ?? []).map((code) =>
+        game.i18n.localize(`SIMPLYPF2E.Loadout.${{
+          "loadout-native-data": "NativeData", "loadout-untrained-armor": "UntrainedArmor",
+          "loadout-armor-conflict": "ArmorConflict", "loadout-untrained-weapon": "UntrainedWeapon",
+          "loadout-hand-conflict": "HandConflict"
+        }[code] ?? "NativeData"}`))
     };
   }
 
@@ -1371,7 +1377,7 @@ export class GeneratorApp extends SpfApp {
           this.#characterReview = { ...review, actorId: actor.id, actorName: actor.name,
             skills: GeneratorApp.#skillReportContext(skillReport) };
         }
-        if (review.choices.length || review.incomplete || skillReport?.warnings.length) {
+        if (review.choices.length || review.incomplete || skillReport?.warnings.length || skillReport?.loadoutWarnings?.length) {
           ui.notifications.warn(game.i18n.format("SIMPLYPF2E.Generator.ReviewCreated", { name: actor.name }));
         } else {
           ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));

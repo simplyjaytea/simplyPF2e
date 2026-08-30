@@ -10,6 +10,7 @@ import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
 import { CORE_SKILLS, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
+import { applyCharacterLoadout } from "./pc-loadout.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
@@ -843,7 +844,13 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // as the NPC pipeline — shared helpers, no PC-specific copy. Equipment is
   // deduped by name (issue #64 item 3) because the AI pads a thin list by
   // repeating items; loot dedups for the same reason.
-  items.push(...await buildEquipmentItems(resolved.equipment, { dedup: true }));
+  const equipmentItems = await buildEquipmentItems(resolved.equipment, { dedup: true });
+  // A compendium UUID proves the exact published document, but it is not an
+  // actor-item instance identity: native grants may clone the same source.
+  // Keep a transaction-local embedded id so post-native loadout updates can
+  // affect only the equipment this generation supplied.
+  for (const item of equipmentItems) item._id = foundry.utils.randomID();
+  items.push(...equipmentItems);
   items.push(...await buildLootItems(resolved.loot));
 
   const safeItems = filterItemTypes(items, CHARACTER_ITEM_TYPES, "character");
@@ -946,6 +953,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   let initialIntelligence = null;
   let seededSourceRanks = {};
   const skillWarnings = [];
+  let loadoutWarnings = [];
   const loreIds = backgroundLore.map((item) => item._id);
   const planSkills = (snapshot, previous = null) => allocateCharacterSkills({
     ...snapshot, level: concept.level, initialRanks, initialIntelligence,
@@ -1011,6 +1019,12 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     // The explicit ABC ids above are referenced by feat slots. `keepId`
     // preserves them while PF2e expands and links all native granted items.
     await actor.createEmbeddedDocuments("Item", safeItems, { keepId: true });
+
+    // Once native ABC items have supplied the real character proficiencies,
+    // ready only this generation's exact equipment. This must precede commit
+    // so an unexpected Foundry write failure remains inside the actor rollback.
+    const loadout = await applyCharacterLoadout(actor, equipmentItems);
+    loadoutWarnings = loadout.warnings;
 
     // Refund overlaps only when the native floor supplies the old rank.
     // Confirm the real projected result is monotonic before applying it.
@@ -1102,7 +1116,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   } catch { skillWarnings.push("native-data"); }
   const warnings = [...new Set([...skillWarnings, ...(skillPlan?.warnings ?? [])])];
   for (const warning of warnings) console.warn(`simplypf2e | character skill review: ${warning}`);
-  return { actor, expectedItems: safeItems, skillReport: { rows, warnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
+  return { actor, expectedItems: safeItems, skillReport: { rows, warnings, loadoutWarnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
     trainingBudget: skillPlan?.trainingBudget ?? null, unspentTraining: skillPlan?.unspentTraining ?? null,
     unspentIncreases: skillPlan?.unspentIncreases ?? null } };
 }

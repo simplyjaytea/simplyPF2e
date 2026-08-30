@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-30 — Proficiency-aware PC equipment readiness (local branch)
+
+- Added a post-native PC loadout step on `codex/one-click-grounding`, with no GitHub/VPS/provider action. It handles only the exact equipment sources created in the active transaction, never existing actors or similarly named/native items.
+- Source was checked against PF2e 8.4.1 `actor/character/helpers.ts`, `physical/usage.ts`, and item documents. The planner mirrors prepared weapon category/group/base/equivalent/synthetic ranks and armor category/synthetic ranks; it readies one proficient armor and up to two held hands, keeping untrained or conflicting equipment stowed. A review card exposes those unsupported cases instead of quietly wielding invalid gear.
+- The equipment write occurs after native grants and before HP/final commit, so failure rolls back the new actor. It does not invent ammunition loading, investment, container placement, or item activation state. Added pure planning/application regressions; all 56 regression files, every script syntax check, JSON parsing, and whitespace validation pass. Live Foundry equipment/derived-strike behavior still needs QA.
+
 ## 2026-08-30 — Exact post-create transaction boundary (local branch)
 
 - Continued on `codex/one-click-grounding`; no push, PR, merge, release, provider request, VPS action, or change to user-owned `.claude/`.
