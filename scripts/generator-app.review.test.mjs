@@ -7,7 +7,7 @@ import vm from "node:vm";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
-import { supportedClassCandidates } from "./pc-support.mjs";
+import { freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates } from "./pc-support.mjs";
 
 if (!vm.SourceTextModule) {
   const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
@@ -15,10 +15,12 @@ if (!vm.SourceTextModule) {
 }
 
 let actor, createFailure, verifyFailure, deleteFailure, skillReport, creates = 0, deleted = 0, sheetCalls = 0;
+let conceptCalls = 0, generatorLevel = 1, freeArchetype = false;
 const notices = [];
 class App {
   element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
-    : selector.includes('name="allowSpellcasting"') ? { checked: false } : null };
+    : selector.includes('name="level"') ? { value: String(generatorLevel) }
+      : selector.includes('name="allowSpellcasting"') ? { checked: false } : null };
   async render() { this.context = await this._prepareContext(); }
   _beginProgress() {}
   async _setStep() {}
@@ -29,21 +31,22 @@ const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
   game: {
     i18n: { localize: (key) => key, format: (key) => key },
-    actors: { get: (id) => id === actor?.id ? actor : null }
+    actors: { get: (id) => id === actor?.id ? actor : null },
+    settings: { get: () => freeArchetype }
   },
   ui: { notifications: Object.fromEntries(["info", "warn"].map((kind) => [kind, (text) => notices.push([kind, text])])) }
 });
 const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fighter" },
   backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [], equipment: [], loot: [] });
 const mocks = {
-  SpfApp: App, MODULE_ID: "simplypf2e", reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
+  SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   assertComplete, completionManifest, completionSummary,
   verifyCreatedActor: () => { if (verifyFailure) throw verifyFailure; },
-  supportedClassCandidates,
+  freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
   THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, randomBrief: () => "A dwarf",
-  generatePCConcept: async () => ({ concept: { name: "Test", level: 1, equipment: [], loot: [] } }),
+  generatePCConcept: async () => { conceptCalls++; return { concept: { name: "Test", level: 1, equipment: [], loot: [] } }; },
   normalizePCConcept: (raw) => raw,
   getAncestryCandidates: () => [], getBackgroundCandidates: () => [], getClassCandidates: () => [{ name: "Fighter" }], getHeritageCandidates: () => [],
   selectAncestryBackgroundClass: async () => ({ ancestry: "Dwarf", background: "Warrior", class: "Fighter" }),
@@ -72,6 +75,19 @@ async function generate() {
   assert.ok(app.context.pcPreview, "real generation flow must seed the private PC draft");
   return app;
 }
+
+// Free Archetype begins adding feats at level 2. Until its published text
+// prerequisites can be checked on a staged actor, the production preflight
+// must stop before the first concept/provider request.
+freeArchetype = true;
+generatorLevel = 2;
+const beforeBlocked = conceptCalls;
+await actions.generateRandom.call(new GeneratorApp());
+assert.equal(conceptCalls, beforeBlocked, "unsupported Free Archetype stops before the provider concept call");
+assert.ok(notices.some(([, text]) => text === "SIMPLYPF2E.Generator.FreeArchetypeUnsupported"));
+freeArchetype = false;
+generatorLevel = 1;
+
 function setActor({ items = [], failSheet = false } = {}) {
   actor = { id: "created", name: "<img src=x>", items: { contents: items }, async delete() {
     deleted++;

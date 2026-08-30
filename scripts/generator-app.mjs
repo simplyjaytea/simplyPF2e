@@ -1,5 +1,5 @@
 import {
-  MODULE_ID, getProviderAuthWarningKey, getProviderRequestConfig,
+  MODULE_ID, SETTINGS, getProviderAuthWarningKey, getProviderRequestConfig,
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
 import {
@@ -29,7 +29,7 @@ import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryScaffold } from "./art.mjs";
 import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
 import { verifyCreatedActor } from "./post-create.mjs";
-import { supportedClassCandidates } from "./pc-support.mjs";
+import { freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
 
 async function rollbackActor(actor, label) {
@@ -575,6 +575,15 @@ export class GeneratorApp extends SpfApp {
     const warning = getProviderAuthWarningKey(getProviderRequestConfig());
     if (warning) {
       ui.notifications.warn(game.i18n.localize(warning));
+      return false;
+    }
+    // This runs before the first concept request: a Free Archetype slot starts
+    // at level 2, but PF2e's published feat prerequisites are display text,
+    // not a generic staged-actor eligibility API. Do not bill for a plan we
+    // cannot validate as a complete unattended character.
+    const freeArchetype = globalThis.game?.settings?.get?.(MODULE_ID, SETTINGS.freeArchetype) === true;
+    if (this.#input.mode === "character" && freeArchetypeNeedsPrerequisiteValidation(this.#input.level, freeArchetype)) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.FreeArchetypeUnsupported"));
       return false;
     }
     // Isolated production-path tests intentionally do not construct Foundry's

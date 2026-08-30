@@ -135,9 +135,10 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
     default: 90
   });
 
-  // Free Archetype variant rule: a GM campaign-rule choice, so world-scoped
-  // and restricted. When on, generated PCs get an extra archetype class-feat
-  // slot at every even level (issue #64 item 4b).
+  // Free Archetype is a GM campaign-rule choice, so it is world-scoped and
+  // restricted. The complete-only builder currently refuses level-2+ requests
+  // while its feat prerequisite graph remains unvalidated; level 1 has no
+  // variant slot and remains available.
   game.settings.register(MODULE_ID, SETTINGS.freeArchetype, {
     name: "SIMPLYPF2E.Settings.FreeArchetype.Name",
     hint: "SIMPLYPF2E.Settings.FreeArchetype.Hint",

@@ -27,7 +27,7 @@
       },
       "FreeArchetype": {
         "Name": "Free Archetype variant rule",
-        "Hint": "When enabled, generated player characters gain an extra archetype class-feat slot at every even level, matching the Free Archetype campaign variant rule."
+        "Hint": "Free Archetype is not yet available for complete one-click characters at level 2 or higher: its feat prerequisites need staged validation."
       }
     },
     "ProviderSetup": {
@@ -127,6 +127,7 @@
       "OpenSheet": "Open Sheet",
       "GenerateAnother": "Generate Another",
       "NoSupportedClasses": "No supported complete-only player-character classes are available in the enabled compendium sources.",
+      "FreeArchetypeUnsupported": "Free Archetype at level 2 or higher needs staged feat-prerequisite validation, so complete one-click character generation is unavailable while that variant is enabled.",
       "ReviewTitle": "Character created — review",
       "ReviewHint": "These features had no recorded choice after creation. Some may be conditional or intentionally disabled; review them in Foundry. This snapshot does not refresh when you edit the character and is not a full character validation.",
       "ReviewIncomplete": "Not every item could be inspected. Review the character manually.",

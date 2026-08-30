@@ -37,7 +37,7 @@ Creature strikes are constrained to PF2e's configured damage types, NPC attack t
 | **Player Character mode** | Released and hardened over several live-testing rounds, but younger than NPC mode. Sanity-check a generated character's numbers on its sheet before play. |
 | **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons are hidden for that reason; open it from the console (see [Item forge](#item-forge)). |
 
-Recent additions — focus spells, Free Archetype, Intelligence languages, runes on PC gear — are on `main` but have not been through a live-play pass yet. See [Limitations](#limitations).
+Recent additions — focus spells, Intelligence languages, runes on PC gear, and the local complete-only work — have not all been through a live-play pass yet. See [Limitations](#limitations).
 
 ## Install
 
@@ -68,7 +68,7 @@ Advanced module settings:
 | Creativity | Sampling temperature (0–2) for creative generation. Grounding/selectors always use temperature 0. |
 | Max response tokens | Global ceiling. Each operation applies a smaller production-safe cap where possible. |
 | Request timeout | Aborts only if the provider sends *no data* for this long (default 90 s). |
-| Free Archetype | Optional variant rule, off by default. Adds an extra archetype feat slot at every even level in Character mode. |
+| Free Archetype | Optional variant rule, off by default. Complete one-click character generation stops at level 2+ until its feat prerequisites have staged validation. |
 
 **Providers**
 
@@ -183,7 +183,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 **Rules coverage**
 
 - Complete one-click Player Character selection currently offers Fighter only. Rogue, Investigator, and Wizard each have mandatory native class-path choices (racket, methodology, school, or thesis) that are not yet staged and resolved by the module, so they stay unavailable rather than creating an approximate or dialog-dependent build. NPCs retain spontaneous-style spellcasting entries.
-- When PF2e's Free Archetype variant is enabled, its extra class-category feats use the system's distinct `archetype-<level>` slots rather than consuming ordinary class-feat slots. Comprehensive feat-prerequisite validation is still not automatic.
+- At level 2 or higher, enabling the module's Free Archetype variant stops complete one-click character generation before any AI request. PF2e stores feat prerequisites as display text rather than a general eligibility API, so the module will not produce an unvalidated build. Its eventual extra class-category feats are wired to the system's distinct `archetype-<level>` slots rather than ordinary class-feat slots.
 - PC loadout readiness currently covers published equipment proficiency, one armor slot, the two-hand limit, and compatible selected ammunition for non-repeating reload-0 weapons. Reloadable/repeating ammunition, item investment, container placement, and broader item-specific activation requirements still use the native sheet controls.
 - Matched feats become NPC action items — the PF2e system doesn't allow feat items on NPCs — keeping the feat's cost, rules text and automation.
 - Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget.
@@ -193,7 +193,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 **Not yet live-tested** (built, reviewed, and verified against the real pf2e system source, but not yet run in an actual game)
 
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
-- **Free Archetype.** The archetype feat can land in the same slot location as a regular class feat at that level, so it embeds on the character but may not appear in a distinct Free Archetype slot on the sheet.
+- **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend because PF2e feat prerequisites are not machine-readable. Its eventual slots are now wired to PF2e's distinct `archetype-<level>` group.
 - **Spontaneous spell-slot counts** for high-level PC casters are derived from the standard progression rather than copied from a verified table. Check a high-level caster's slots against Player Core before trusting them.
 - **The item forge**, all three phases. If an item looks right in the preview but misbehaves on a sheet, that's the first thing to check. Its rune path has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
 - **Activated-item macros** lean on PF2e system APIs that can change between versions. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.
