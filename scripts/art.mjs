@@ -11,7 +11,7 @@ export async function findBestiaryScaffold(concept) {
   try {
     const conceptTraits = new Set(concept.traits);
     let best = null;
-    let bestScore = 0;
+    let bestScore = -Infinity;
     for (const packId of getPacksFor("bestiaryActors")) {
       const pack = game.packs.get(packId);
       if (!pack) continue;
@@ -22,11 +22,18 @@ export async function findBestiaryScaffold(concept) {
         if (entry.type !== "npc") continue;
         const traits = entry.system?.traits?.value ?? [];
         const shared = traits.filter((trait) => conceptTraits.has(trait)).length;
-        if (!shared) continue;
         const levelGap = Math.abs((entry.system?.details?.level?.value ?? 0) - concept.level);
         const sizeBonus = entry.system?.traits?.size?.value === concept.size ? 1 : 0;
-        const score = shared * 3 + sizeBonus + Math.max(0, 2 - levelGap / 4);
-        if (score > bestScore) { bestScore = score; best = { pack, entry }; }
+        // A real creature scaffold is mandatory for complete-only creature
+        // creation. Prefer trait/size/level similarity, but retain the
+        // closest level-and-size actor as an exact fallback for an unusual
+        // yet valid trait combination instead of silently dropping scaffolds.
+        const score = shared * 100 + sizeBonus * 10 - levelGap;
+        const tie = best && `${packId}:${entry._id}`.localeCompare(`${best.packId}:${best.entry._id}`);
+        if (score > bestScore || (score === bestScore && tie < 0)) {
+          bestScore = score;
+          best = { pack, packId, entry };
+        }
       }
     }
     const actor = best ? await best.pack.getDocument(best.entry._id) : null;

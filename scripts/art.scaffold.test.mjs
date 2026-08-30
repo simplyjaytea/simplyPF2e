@@ -10,4 +10,6 @@ const { findBestiaryScaffold } = await import("./art.mjs");
 const scaffold = await findBestiaryScaffold({ traits: ["undead", "skeleton"], size: "med", level: 5 });
 assert.equal(scaffold.img, "best.webp");
 assert.equal(scaffold.prototypeToken.disposition, -1);
+const fallback = await findBestiaryScaffold({ traits: ["construct"], size: "lg", level: 5 });
+assert.equal(fallback.img, "wrong.webp", "an unmatched but valid creature still receives the closest exact level/size scaffold");
 console.log("art.scaffold.test.mjs: exact bestiary actor scaffold selection passed");

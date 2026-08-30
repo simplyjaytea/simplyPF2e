@@ -408,6 +408,7 @@
       "Timeout": "The AI provider sent no data for {seconds} seconds and the request was aborted. Check the model name and provider status. For a local model, make sure it is loaded and the server is not busy; then retry or raise the timeout in module settings.",
       "BadJson": "The AI response was not valid JSON. Try generating again.",
       "BadStructure": "The AI response was incomplete ({detail}). Try a stronger structured-output model or generate again.",
+      "NoBestiaryScaffold": "No usable NPC actor was available in the enabled Bestiary Actor sources. Check Compendium Sources and try again.",
       "WrongSystem": "SimplyPF2e requires the Pathfinder Second Edition (pf2e) game system."
     }
   }

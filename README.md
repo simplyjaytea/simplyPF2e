@@ -86,7 +86,7 @@ The provider and model currently in use are always shown at the top of the gener
 
 ### Compendium sources
 
-By default the module draws from the PF2e system packs. Under **Compendium Sources** it scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you pick which each category may use — so homebrew and content-module packs become available to the AI. The AI literally sees and picks from your homebrew spell list. An empty category falls back to the system defaults.
+By default the module draws from the PF2e system packs. Under **Compendium Sources** it scans Item packs for abilities, spells, feats, and equipment plus Actor packs for bestiary NPC scaffolds, then lets you pick which each category may use — so homebrew and content-module packs become available to the AI. The AI literally sees and picks from your homebrew spell list. Creature and encounter generation also require an enabled bestiary Actor pack before they spend provider tokens; the closest real NPC provides a deterministic trait/size/level token scaffold. An empty category falls back to the system defaults.
 
 ## Usage
 

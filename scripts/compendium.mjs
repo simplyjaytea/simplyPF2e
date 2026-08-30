@@ -81,7 +81,7 @@ export function sourceReadiness(mode, { allowSpellcasting = true } = {}) {
   const character = mode === "character";
   const required = character
     ? ["ancestries", "backgrounds", "classes", "feats", "equipment", "spells"]
-    : ["abilities", "feats", "equipment", "spells"];
+    : ["abilities", "feats", "equipment", "spells", "bestiaryActors"];
   const categories = required.map((category) => ({ category, packs: getPacksFor(category) }));
   const missing = categories.filter(({ packs }) => !packs.length).map(({ category }) => category);
   return { categories, missing, packCount: categories.reduce((count, item) => count + item.packs.length, 0), ready: missing.length === 0 };
