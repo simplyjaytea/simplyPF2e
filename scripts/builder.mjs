@@ -1095,14 +1095,27 @@ export async function buildEquipmentItems(equipment, { dedup = false } = {}) {
     const data = toItemData(doc);
     setQuantity(data, quantity);
     applyRunes(data, runes);
-    if (data.type === "weapon") {
-      data.system.equipped = { ...data.system.equipped, carryType: "held", handsHeld: 1 };
-    } else if (data.type === "armor") {
-      data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
-    }
+    applySourceEquipState(data);
     items.push(data);
   }
   return items;
+}
+
+/**
+ * Set an equipped state only when the published item's own usage proves it.
+ * PF2e parses held/worn usage (including two-handed weapons) from
+ * `system.usage.value`; guessing one hand made a two-handed loadout invalid.
+ */
+export function applySourceEquipState(data) {
+  const usage = data?.system?.usage?.value;
+  if (typeof usage !== "string") return data;
+  if (usage.startsWith("held-in-")) {
+    const handsHeld = usage === "held-in-two-hands" ? 2 : 1;
+    data.system.equipped = { ...data.system.equipped, carryType: "held", handsHeld };
+  } else if (usage === "worn" || usage.startsWith("worn")) {
+    data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
+  }
+  return data;
 }
 
 /**
