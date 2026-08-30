@@ -39,6 +39,8 @@ Creature strikes are constrained to PF2e's configured damage types, NPC attack t
 
 Recent additions — focus spells, Intelligence languages, runes on PC gear, and the local complete-only work — have not all been through a live-play pass yet. See [Limitations](#limitations).
 
+The current development line is intentionally paused on the unpublished branch `codex/one-click-grounding` at local commit `1d9d755`. It adds exact native class-path staging and a conservative PC feat prerequisite gate on top of the one-click workflow, but it has not been pushed, merged, released, or installed on the VPS. The complete-only PC registry remains Fighter-only until ordinary prerequisites can be evaluated against the staged actor. See [HANDOFF.md](HANDOFF.md) for the exact pickup point and next slice.
+
 ## Install
 
 Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
@@ -86,7 +88,7 @@ The provider and model currently in use are always shown at the top of the gener
 
 ### Compendium sources
 
-By default the module draws from the PF2e system packs. Under **Compendium Sources** it scans Item packs for abilities, spells, feats, and equipment plus Actor packs for bestiary NPC scaffolds, then lets you pick which each category may use — so homebrew and content-module packs become available to the AI. The AI literally sees and picks from your homebrew spell list. Creature and encounter generation also require an enabled bestiary Actor pack before they spend provider tokens; the closest real NPC provides a deterministic trait/size/level token scaffold. An empty category falls back to the system defaults.
+By default the module draws from the PF2e system packs. Under **Compendium Sources** it scans Item packs for abilities, spells, feats, equipment, and class features plus Actor packs for bestiary NPC scaffolds, then lets you pick which each category may use — so homebrew and content-module packs become available to the AI. The AI literally sees and picks from your homebrew spell list. Creature and encounter generation also require an enabled bestiary Actor pack before they spend provider tokens; the closest real NPC provides a deterministic trait/size/level token scaffold. An empty category falls back to the system defaults.
 
 ## Usage
 
