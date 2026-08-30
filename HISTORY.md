@@ -8,6 +8,11 @@ Full session-by-session narrative, process notes, and the bug log. Not loaded by
 - The bridge's dynamic tag query is replaced before creation with opaque, exact enabled Compendium candidates. Only closed paths are accepted: static non-predicated ChoiceSets with no downstream ChoiceSets beyond PF2e GrantItem's real one-level `preselectChoices` seam. Omitted, dynamic, predicated, unsupported, or unanswered paths block before `Actor.create`; no Rule Elements were authored.
 - Added the additive **Class Features** source category (default `pf2e.classfeatures`), source UI label, and exact staging regressions. Independent review correctly kept the complete-only registry Fighter-only: ordinary PC feat prerequisites are not yet validated against a staged actor, so the new bridge is not a safe basis for qualifying Rogue/Investigator. Wizard additionally needs class-owned spellbook/curriculum support. Local verification passes 58 regression files, all script syntax checks, module/localization JSON parsing, and whitespace validation. Live Foundry grant-chain QA and publication remain open.
 
+## 2026-08-31 — Fail-closed PC prerequisite catalog (local branch)
+
+- PC feat candidate selection now accepts only an explicit empty `system.prerequisites.value` list when resolving one-click character slots. Dependent, malformed, or unreadable prerequisite data is excluded before the model sees it; NPC/legacy candidate callers retain their prior behavior. This is a conservative source gate, not a staged-actor prerequisite evaluator, and the Fighter-only complete registry remains unchanged.
+- Added a focused regression for empty/dependent/missing prerequisite data. The local suite now passes 59 regression files, all script syntax checks, module/localization JSON parsing, and whitespace validation. No provider, GitHub, VPS, or live Foundry action occurred.
+
 ## 2026-08-30 — Proficiency-aware PC equipment readiness (local branch)
 
 - Added a post-native PC loadout step on `codex/one-click-grounding`, with no GitHub/VPS/provider action. It handles only the exact equipment sources created in the active transaction, never existing actors or similarly named/native items.
