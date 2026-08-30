@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-31 — PR #83 merged and v0.3.5.43 published
+
+- With explicit user authorization, pushed `codex/one-click-grounding`, opened PR [#83](https://github.com/simplyjaytea/simplyPF2e/pull/83), waited for GitHub's `verify` check, and merged it into `main` as `07a369fc8589c263e537fe65024b704161dba0d7`.
+- The repository's Auto Release workflow #48 completed successfully and published [v0.3.5.43](https://github.com/simplyjaytea/simplyPF2e/releases/tag/v0.3.5.43), including `module.json` and `module.zip`. The downloaded manifest reports module version `0.3.5.43` and Foundry compatibility minimum/verified `14`.
+- The merged source contains the uniform one-click intents, exact compendium identity gates, completion manifest and source preflight, transactional creation, PC HP/spell/signature/skill completion, proficiency-aware loadout, Free Archetype fail-closed handling, exact native class-path staging, and the conservative empty-prerequisite PC feat gate. Complete-only PC support remains Fighter-only; no live Foundry/VPS deployment was performed.
+- Documentation was refreshed after publication so README, CLAUDE, and HANDOFF now point to `origin/main` `07a369fc`, release v0.3.5.43, the recoverable topic branch, and the next prerequisite-evaluator slice. The follow-up documentation branch must use the normal PR path if published.
+
 ## 2026-08-31 — Paused at a clean one-click milestone (local branch)
 
 - Stopped implementation on `codex/one-click-grounding` at `1d9d755` (`docs: record PC prerequisite gate`), based on `origin/main` `004bffc` plus the completed local PC stack. No push, PR, merge, release, provider request, VPS mutation, or Item Forge work occurred. The user-owned untracked `.claude/` directory remains untouched.

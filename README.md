@@ -39,7 +39,7 @@ Creature strikes are constrained to PF2e's configured damage types, NPC attack t
 
 Recent additions — focus spells, Intelligence languages, runes on PC gear, and the local complete-only work — have not all been through a live-play pass yet. See [Limitations](#limitations).
 
-The current development line is intentionally paused on the unpublished branch `codex/one-click-grounding` at local commit `1d9d755`. It adds exact native class-path staging and a conservative PC feat prerequisite gate on top of the one-click workflow, but it has not been pushed, merged, released, or installed on the VPS. The complete-only PC registry remains Fighter-only until ordinary prerequisites can be evaluated against the staged actor. See [HANDOFF.md](HANDOFF.md) for the exact pickup point and next slice.
+The one-click milestone is published in **v0.3.5.43** (PR [#83](https://github.com/simplyjaytea/simplyPF2e/pull/83), merge `07a369fc`). The source branch `codex/one-click-grounding` remains on GitHub as a recoverable implementation record. It adds exact native class-path staging and a conservative PC feat prerequisite gate, but the complete-only PC registry remains Fighter-only until ordinary prerequisites can be evaluated against the staged actor. The milestone still requires the documented VPS live-acceptance matrix. See [HANDOFF.md](HANDOFF.md) for the exact pickup point and next slice.
 
 ## Install
 
