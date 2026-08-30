@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 const packs = new Map([
   ["pf2e.bestiary-ability-glossary-srd", {}], ["pf2e.equipment-srd", {}], ["pf2e.spells-srd", {}], ["pf2e.ancestries", {}],
-  ["pf2e.backgrounds", {}], ["pf2e.classes", {}], ["pf2e.feats-srd", {}], ["pf2e.pathfinder-monster-core", {}]
+  ["pf2e.backgrounds", {}], ["pf2e.classes", {}], ["pf2e.classfeatures", {}], ["pf2e.feats-srd", {}], ["pf2e.pathfinder-monster-core", {}]
 ]);
 globalThis.game = { packs: { get: (id) => packs.get(id) }, settings: { get: () => ({}) } };
 const { sourceReadiness } = await import("./compendium.mjs");

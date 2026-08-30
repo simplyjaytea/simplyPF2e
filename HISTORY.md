@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-31 — Exact Rogue/Investigator class-path staging (local branch)
+
+- Added a narrow native bridge for mandatory level-one Rogue and Investigator choices. The builder clones only the real enabled-source Racket/Methodology feature, links it to the new class, removes only its matching `class.system.items` entry, and leaves every other class grant on PF2e's native pipeline.
+- The bridge's dynamic tag query is replaced before creation with opaque, exact enabled Compendium candidates. Only closed paths are accepted: static non-predicated ChoiceSets with no downstream ChoiceSets beyond PF2e GrantItem's real one-level `preselectChoices` seam. Omitted, dynamic, predicated, unsupported, or unanswered paths block before `Actor.create`; no Rule Elements were authored.
+- Added the additive **Class Features** source category (default `pf2e.classfeatures`), source UI label, and exact staging regressions. Independent review correctly kept the complete-only registry Fighter-only: ordinary PC feat prerequisites are not yet validated against a staged actor, so the new bridge is not a safe basis for qualifying Rogue/Investigator. Wizard additionally needs class-owned spellbook/curriculum support. Local verification passes 58 regression files, all script syntax checks, module/localization JSON parsing, and whitespace validation. Live Foundry grant-chain QA and publication remain open.
+
 ## 2026-08-30 — Proficiency-aware PC equipment readiness (local branch)
 
 - Added a post-native PC loadout step on `codex/one-click-grounding`, with no GitHub/VPS/provider action. It handles only the exact equipment sources created in the active transaction, never existing actors or similarly named/native items.

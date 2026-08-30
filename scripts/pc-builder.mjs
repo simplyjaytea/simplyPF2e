@@ -11,6 +11,7 @@ import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocat
 import { SETTINGS, getSetting } from "./settings.mjs";
 import { CORE_SKILLS, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
+import { stageClassPaths } from "./class-paths.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
@@ -664,7 +665,15 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   const classData = toItemData(resolved.classDoc);
   classData._id = classId;
   classData.system.keyAbility = { ...(classData.system.keyAbility ?? {}), selected: keyAbility };
+  // Mandatory native class paths are normally re-fetched from
+  // Class.system.items, where the ordinary source preselector cannot reach
+  // them. Stage only a proven exact bridge before Actor.create; all remaining
+  // class grants still flow through PF2e's normal class item.
+  const stagedClassPaths = await stageClassPaths(classData, classId, {
+    context: { keyAbility, names: conceptChoiceNames(concept, resolved) }, selectChoices
+  });
   items.push(classData);
+  items.push(...stagedClassPaths.items);
 
   // Background Lore: a real embedded lore item (not a system.skills entry).
   const loreNames = resolved.backgroundDoc.system?.trainedSkills?.lore;
@@ -1120,7 +1129,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   } catch { skillWarnings.push("native-data"); }
   const warnings = [...new Set([...skillWarnings, ...(skillPlan?.warnings ?? [])])];
   for (const warning of warnings) console.warn(`simplypf2e | character skill review: ${warning}`);
-  return { actor, expectedItems: safeItems, skillReport: { rows, warnings, loadoutWarnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
+  return { actor, expectedItems: [...safeItems, ...stagedClassPaths.expectedPaths], skillReport: { rows, warnings, loadoutWarnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
     trainingBudget: skillPlan?.trainingBudget ?? null, unspentTraining: skillPlan?.unspentTraining ?? null,
     unspentIncreases: skillPlan?.unspentIncreases ?? null } };
 }

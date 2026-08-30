@@ -9,7 +9,7 @@ import { SETTINGS, getSetting } from "./settings.mjs";
 import { slugify } from "./text.mjs";
 
 export const CATEGORIES = [
-  "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "heritages", "bestiaryActors"
+  "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "classFeatures", "heritages", "bestiaryActors"
 ];
 
 export const DEFAULT_PACKS = {
@@ -27,6 +27,10 @@ export const DEFAULT_PACKS = {
   ancestries: ["pf2e.ancestries"],
   backgrounds: ["pf2e.backgrounds"],
   classes: ["pf2e.classes"],
+  // Class-path features (rackets, methodologies, schools, theses) are
+  // selected from this explicitly enabled source. They are not ordinary PC
+  // feat candidates: the native class grant graph owns their creation.
+  classFeatures: ["pf2e.classfeatures"],
   heritages: ["pf2e.heritages"],
   bestiaryActors: ["pf2e.pathfinder-monster-core", "pf2e.pathfinder-bestiary"]
 };
@@ -112,7 +116,7 @@ export async function detectAvailablePacks() {
   if (detectedPacks) return detectedPacks;
   const result = {
     abilities: [], spells: [], feats: [], equipment: [],
-    ancestries: [], backgrounds: [], classes: [], heritages: [], bestiaryActors: []
+    ancestries: [], backgrounds: [], classes: [], classFeatures: [], heritages: [], bestiaryActors: []
   };
   for (const pack of game.packs) {
     if (pack.metadata.type === "Actor") {
@@ -134,6 +138,7 @@ export async function detectAvailablePacks() {
     if (types.has("ancestry")) result.ancestries.push(info);
     if (types.has("background")) result.backgrounds.push(info);
     if (types.has("class")) result.classes.push(info);
+    if (types.has("feat")) result.classFeatures.push(info);
     if (types.has("heritage")) result.heritages.push(info);
   }
   for (const list of Object.values(result)) list.sort((a, b) => a.title.localeCompare(b.title));
@@ -164,7 +169,7 @@ async function getIndex(packId) {
     fields: [
       "name", "type", "system.slug", "system.level.value",
       "system.traits.value", "system.traits.traditions", "system.ritual",
-      "system.category", "system.traits.rarity"
+      "system.category", "system.traits.rarity", "system.traits.otherTags"
     ]
   });
   const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
@@ -723,6 +728,37 @@ export function getBackgroundCandidates(maxRarity) {
 /** @returns {Promise<{name: string, traits: string[]}[]>} every class */
 export function getClassCandidates() {
   return getFullCandidates("classes", "class");
+}
+
+/**
+ * Exact, enabled-source class-feature candidates carrying one native path
+ * tag (for example `rogue-racket`). These are deliberately separate from
+ * ordinary feats: the class's own grant graph creates them.
+ */
+export async function getClassFeatureCandidates(tag) {
+  if (typeof tag !== "string" || !tag) return [];
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("classFeatures")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "feat" || entry.system?.category !== "classfeature") continue;
+      const tags = entry.system?.traits?.otherTags;
+      if (!Array.isArray(tags) || !tags.includes(tag)) continue;
+      const identity = `${entry.packId}\u0000${entry._id}`;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      candidates.push(candidateRecord(entry, {
+        name: entry.name,
+        type: entry.type,
+        level: entry.system?.level?.value ?? 0,
+        traits: entry.system?.traits?.value ?? [],
+        uuid: `Compendium.${entry.packId}.Item.${entry._id}`
+      }));
+    }
+  }
+  return candidates.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
