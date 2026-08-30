@@ -248,7 +248,9 @@
       "UntrainedArmor": "An untrained armor item was left stowed.",
       "ArmorConflict": "Only one selected armor item can be worn; another was left stowed.",
       "UntrainedWeapon": "An untrained weapon was left stowed.",
-      "HandConflict": "A held item exceeded the two-hand limit and was left stowed."
+      "HandConflict": "A held item exceeded the two-hand limit and was left stowed.",
+      "ManualAmmo": "A reloadable weapon needs its ammunition loaded with the native PF2e sheet control.",
+      "MissingAmmo": "A ready ranged weapon has no compatible generated ammunition selected."
     },
     "Progress": {
       "Label": "Generation progress",

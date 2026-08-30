@@ -254,7 +254,8 @@ export class GeneratorApp extends SpfApp {
         game.i18n.localize(`SIMPLYPF2E.Loadout.${{
           "loadout-native-data": "NativeData", "loadout-untrained-armor": "UntrainedArmor",
           "loadout-armor-conflict": "ArmorConflict", "loadout-untrained-weapon": "UntrainedWeapon",
-          "loadout-hand-conflict": "HandConflict"
+          "loadout-hand-conflict": "HandConflict", "loadout-manual-ammo": "ManualAmmo",
+          "loadout-missing-ammo": "MissingAmmo"
         }[code] ?? "NativeData"}`))
     };
   }

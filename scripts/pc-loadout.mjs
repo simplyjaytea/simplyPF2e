@@ -119,6 +119,32 @@ function equipmentPatch(item, state) {
   return Object.keys(patch).length > 1 ? patch : null;
 }
 
+function ammoPatch(weapon, ammunition) {
+  const id = itemId(weapon);
+  const ammunitionId = itemId(ammunition);
+  if (!id || !ammunitionId || system(weapon).selectedAmmoId === ammunitionId) return null;
+  return { _id: id, "system.selectedAmmoId": ammunitionId };
+}
+
+function canUseAmmo(ammunition, weapon) {
+  try {
+    return typeof ammunition?.isAmmoFor === "function" && ammunition.isAmmoFor(weapon) === true;
+  } catch (error) {
+    console.warn("simplypf2e | could not inspect ammunition compatibility for loadout", error);
+    return false;
+  }
+}
+
+function reloadValue(weapon) {
+  return weapon?.reload ?? system(weapon).reload?.value ?? null;
+}
+
+/** Mirrors PF2e 8.4.1 WeaponPF2e#get ammo's subitem decision. */
+function requiresNativeAmmoLoading(weapon) {
+  return String(reloadValue(weapon)) !== "0"
+    || (system(weapon).traits?.value ?? []).includes("repeating");
+}
+
 function expectedEquipment(actualItems, expectedItems) {
   const available = new Map(actualItems.map((item) => [itemId(item), item]));
   const matched = [];
@@ -144,12 +170,16 @@ export function planCharacterLoadout(actor, expectedItems) {
   const allItems = actorItems(actor);
   if (!allItems) return { updates: [], warnings: ["loadout-native-data"], equipped: 0 };
   const items = expectedEquipment(allItems, expectedItems);
-  const updates = [];
+  const updateById = new Map();
+  const addPatch = (patch) => {
+    if (!patch?._id) return;
+    updateById.set(patch._id, { ...(updateById.get(patch._id) ?? {}), ...patch });
+  };
   const warnings = [];
   let equipped = 0;
   const stow = (item, warning = null) => {
     const patch = equipmentPatch(item, "stowed");
-    if (patch) updates.push(patch);
+    addPatch(patch);
     if (warning) warnings.push(warning);
   };
 
@@ -169,7 +199,7 @@ export function planCharacterLoadout(actor, expectedItems) {
     armorWorn = true;
     equipped++;
     const patch = equipmentPatch(item, "worn");
-    if (patch) updates.push(patch);
+    addPatch(patch);
   }
 
   // Favor a proficient weapon, then a shield, then other held equipment.
@@ -180,6 +210,7 @@ export function planCharacterLoadout(actor, expectedItems) {
     ...held.filter((item) => type(item) === "shield"),
     ...held.filter((item) => !["weapon", "shield"].includes(type(item)))];
   let hands = 0;
+  const readyWeapons = [];
   for (const item of ordered) {
     const ready = usage(item);
     if (type(item) === "weapon" && weaponProficiencyRank(actor, item) < 1) {
@@ -192,11 +223,33 @@ export function planCharacterLoadout(actor, expectedItems) {
     }
     hands += ready.hands;
     equipped++;
+    if (type(item) === "weapon") readyWeapons.push(item);
     const patch = equipmentPatch(item, ready);
-    if (patch) updates.push(patch);
+    addPatch(patch);
   }
 
-  return { updates, warnings: [...new Set(warnings)], equipped };
+  // PF2e uses `selectedAmmoId` only for weapons that do not need Reload
+  // (weapon/document.ts#get ammo). Reloadable weapons instead hold ammo as a
+  // native subitem; constructing that relationship by raw fields would skip
+  // its attachment lifecycle, so leave it to the sheet with a clear warning.
+  const ammunition = items.filter((item) => type(item) === "ammo");
+  for (const weapon of readyWeapons) {
+    const weaponAmmo = system(weapon).ammo;
+    if (!weaponAmmo || weaponAmmo.builtIn) continue;
+    if (requiresNativeAmmoLoading(weapon)) {
+      warnings.push("loadout-manual-ammo");
+      continue;
+    }
+    const compatible = ammunition.find((item) => canUseAmmo(item, weapon));
+    if (!compatible) {
+      warnings.push("loadout-missing-ammo");
+      continue;
+    }
+    const patch = ammoPatch(weapon, compatible);
+    addPatch(patch);
+  }
+
+  return { updates: [...updateById.values()], warnings: [...new Set(warnings)], equipped };
 }
 
 /** Apply a computed plan only to the newly-created character's equipment. */

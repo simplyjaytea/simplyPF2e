@@ -114,7 +114,7 @@ Nothing here is scale-word math. A PC is assembled from real Ancestry, Backgroun
 
 Starting wealth buys real gear rather than turning into raw coin, and fundamental runes on weapons and armor are capped to what the character's level actually allows. Single-class builds only — no multiclass archetypes, and no pre-create screen for swapping individual picks (regenerate instead).
 
-After native features establish the character's actual proficiencies, the new sheet readies only its exact generated equipment: one proficient worn armor and no more than two hands of proficient weapons, shields, or tools. Incompatible or conflicting selections stay stowed and appear as a review warning. The module does not fabricate ammunition loading or investment state; use the normal PF2e sheet controls for those operations.
+After native features establish the character's actual proficiencies, the new sheet readies only its exact generated equipment: one proficient worn armor and no more than two hands of proficient weapons, shields, or tools. Incompatible or conflicting selections stay stowed and appear as a review warning. Compatible generated ammunition is selected for non-repeating reload-0 weapons; reloadable/repeating weapons, investment, and containers stay with the normal PF2e sheet controls.
 
 **Skill completion:** the existing concept request supplies ordered core-skill preferences; no extra AI call or setup screen is needed. Preview shows those preferences followed by key-ability defaults. The module supplies the numbers: real class training plus native Intelligence, replacements for directly overlapping class/background training, and the class document's own skill-increase schedule. Increases are allocated in level order with the Expert/Master/Legendary gates, preserving native proficiencies and existing background Lore.
 
@@ -183,7 +183,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 **Rules coverage**
 
 - Complete one-click Player Character selection currently offers Fighter only. Rogue, Investigator, and Wizard each have mandatory native class-path choices (racket, methodology, school, or thesis) that are not yet staged and resolved by the module, so they stay unavailable rather than creating an approximate or dialog-dependent build. NPCs retain spontaneous-style spellcasting entries.
-- PC loadout readiness currently covers published equipment proficiency, one armor slot, and the two-hand limit. Ammunition loading, item investment, container placement, and broader item-specific activation requirements still use the native sheet controls.
+- PC loadout readiness currently covers published equipment proficiency, one armor slot, the two-hand limit, and compatible selected ammunition for non-repeating reload-0 weapons. Reloadable/repeating ammunition, item investment, container placement, and broader item-specific activation requirements still use the native sheet controls.
 - Matched feats become NPC action items — the PF2e system doesn't allow feat items on NPCs — keeping the feat's cost, rules text and automation.
 - Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget.
 - The benchmark tables were transcribed by hand from GM Core. If a value disagrees with the book, please open an issue.
