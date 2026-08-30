@@ -7,7 +7,7 @@
 // function.
 
 import assert from "node:assert/strict";
-import { buildFeatSlots, CLASS_FEAT_LEVELS } from "./pc-tables.mjs";
+import { buildFeatSlots, CLASS_FEAT_LEVELS, featSlotLocation } from "./pc-tables.mjs";
 
 // Off by default: no archetype slots, no extra slots vs. the bare call.
 const base = buildFeatSlots(20);
@@ -21,8 +21,12 @@ assert.equal(archetypeSlots.length, CLASS_FEAT_LEVELS.length, "one archetype slo
 assert.equal(fa.length, base.length + CLASS_FEAT_LEVELS.length, "free archetype adds exactly that many slots");
 for (const s of archetypeSlots) {
   assert.equal(s.type, "class", "archetype slots are class-category (archetype feats live under system.category 'class')");
+  assert.equal(featSlotLocation(s), `archetype-${s.level}`, "Free Archetype uses PF2e's distinct archetype feat-group slot");
   assert.ok(CLASS_FEAT_LEVELS.includes(s.level), "archetype slots land on even levels only");
 }
+assert.equal(featSlotLocation({ type: "class", level: 2 }), "class-2", "ordinary class feats retain their class group");
+assert.equal(featSlotLocation({ type: "class", archetype: true, level: 2 }), "archetype-2", "the variant group does not collide with class-2");
+assert.equal(featSlotLocation({ type: "class", level: 0 }), null, "malformed slot data cannot manufacture a feat location");
 
 // Level-gated like every other slot: a level-3 character gets one (level-2 only).
 const low = buildFeatSlots(3, { freeArchetype: true }).filter((s) => s.archetype);

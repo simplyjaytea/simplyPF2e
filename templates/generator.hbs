@@ -26,6 +26,11 @@
       {{/if}}
     </p>
   {{/if}}
+  <div class="spf-provider-summary {{#if sourcesReady}}spf-provider-ready{{else}}spf-provider-attention{{/if}}">
+    <span class="spf-provider-name"><i class="fa-solid fa-book-atlas"></i> <strong>{{localize "SIMPLYPF2E.Generator.CompendiumContent"}}</strong></span>
+    <span>{{#if sourcesReady}}{{localize "SIMPLYPF2E.Generator.SourcesReady" packCount=sourcePackCount}}{{else}}{{localize "SIMPLYPF2E.Generator.SourcesMissing" categories=sourceMissing}}{{/if}}</span>
+    <span class="spf-provider-actions"><button type="button" data-action="configureSources" aria-label="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-gear"></i></button></span>
+  </div>
 
   <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
     <legend>
@@ -33,14 +38,20 @@
         {{localize "SIMPLYPF2E.Generator.EncounterLegend"}}
       {{else if characterMode}}
         {{localize "SIMPLYPF2E.Generator.CharacterLegend"}}
+      {{else if npcMode}}
+        {{localize "SIMPLYPF2E.Generator.NpcLegend"}}
       {{else}}
         {{localize "SIMPLYPF2E.Generator.ConceptLegend"}}
       {{/if}}
     </legend>
     <div class="spf-mode-toggle" role="radiogroup" aria-label="{{localize 'SIMPLYPF2E.Generator.ModeLabel'}}">
-      <label class="{{#if singleMode}}spf-mode-active{{/if}}">
-        <input type="radio" name="mode" value="single" {{#if singleMode}}checked{{/if}}>
-        <i class="fa-solid fa-person"></i> {{localize "SIMPLYPF2E.Mode.Single"}}
+      <label class="{{#if monsterMode}}spf-mode-active{{/if}}">
+        <input type="radio" name="mode" value="monster" {{#if monsterMode}}checked{{/if}}>
+        <i class="fa-solid fa-dragon"></i> {{localize "SIMPLYPF2E.Mode.Monster"}}
+      </label>
+      <label class="{{#if npcMode}}spf-mode-active{{/if}}">
+        <input type="radio" name="mode" value="npc" {{#if npcMode}}checked{{/if}}>
+        <i class="fa-solid fa-user-tie"></i> {{localize "SIMPLYPF2E.Mode.Npc"}}
       </label>
       <label class="{{#if encounterMode}}spf-mode-active{{/if}}">
         <input type="radio" name="mode" value="encounter" {{#if encounterMode}}checked{{/if}}>
@@ -58,38 +69,15 @@
       {{else if characterMode}}
         <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.CharacterPrompt"}}</label>
         <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.Generator.CharacterPromptPlaceholder'}}">{{input.prompt}}</textarea>
+      {{else if npcMode}}
+        <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.NpcPrompt"}}</label>
+        <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.Generator.NpcPromptPlaceholder'}}">{{input.prompt}}</textarea>
       {{else}}
         <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.Prompt"}}</label>
         <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{promptPlaceholder}}">{{input.prompt}}</textarea>
       {{/if}}
     </div>
-    {{! One stable slot in every mode: presets guide the creature pipeline
-        directly and steer encounter members / character class choice as
-        generation guidance, and their saved generator defaults apply
-        everywhere. }}
-    <div class="form-group spf-preset">
-      <label for="spf-generator-preset">{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
-      <div class="spf-preset-controls">
-        <select id="spf-generator-preset" name="preset">
-          {{#each presets}}
-            <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-          {{/each}}
-        </select>
-        <button type="button" class="spf-icon-btn" data-action="savePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.SaveTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.SaveTooltip'}}">
-          <i class="fa-solid fa-floppy-disk"></i>
-        </button>
-        <button type="button" class="spf-icon-btn" data-action="duplicatePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" {{#unless presetSelected}}disabled{{/unless}}>
-          <i class="fa-solid fa-copy"></i>
-        </button>
-        <button type="button" class="spf-icon-btn" data-action="deletePreset" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" {{#unless selectedPresetIsCustom}}disabled{{/unless}}>
-          <i class="fa-solid fa-trash"></i>
-        </button>
-        <button type="button" class="spf-icon-btn" data-action="managePresets" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ManageTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.ManageTooltip'}}">
-          <i class="fa-solid fa-gear"></i>
-        </button>
-      </div>
-    </div>
-    <div class="spf-row">
+    <div class="spf-level-primary">
       <div class="form-group">
         <label for="spf-generator-level">{{#if encounterMode}}{{localize "SIMPLYPF2E.Generator.PartyLevel"}}{{else}}{{localize "SIMPLYPF2E.Generator.Level"}}{{/if}}</label>
         <div class="spf-level-controls">
@@ -102,10 +90,29 @@
           </button>
         </div>
       </div>
+    </div>
+    <details class="spf-advanced">
+      <summary>{{localize "SIMPLYPF2E.Generator.Advanced"}}</summary>
+      <div class="spf-advanced-content">
+        {{! One stable slot in every mode: presets guide every pipeline. Creation,
+            duplication, export, and deletion live in the dedicated manager. }}
+        <div class="form-group spf-preset">
+          <label for="spf-generator-preset">{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
+          <div class="spf-preset-controls">
+            <select id="spf-generator-preset" name="preset">
+              {{#each presets}}
+                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+              {{/each}}
+            </select>
+            <button type="button" data-action="managePresets">
+              <i class="fa-solid fa-bookmark"></i> {{localize "SIMPLYPF2E.Presets.Manage"}}
+            </button>
+          </div>
+        </div>
+        <div class="spf-row">
       {{! Stable shared column order in every mode: Level → Rarity (a cap in
-          Character mode) → Treasure amount → Allow spellcasting. Encounter's
-          extra controls append AFTER the shared columns so switching modes
-          never moves a shared control. }}
+          Character mode) → Treasure amount → Allow spellcasting. The level
+          remains prominent above; encounter-specific controls append here. }}
       {{#if characterMode}}
         <div class="form-group">
           <label for="spf-generator-rarity-cap" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RarityCapTooltip'}}">{{localize "SIMPLYPF2E.Generator.RarityCap"}}</label>
@@ -161,25 +168,25 @@
           </select>
         </div>
       {{/if}}
-    </div>
+        </div>
+      </div>
+    </details>
     <div class="spf-generate-row">
       <button type="button" class="spf-primary" data-action="generate" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-wand-sparkles"></i>
-        {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else if encounterPreview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else if pcPreview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
+        {{#if monsterMode}}{{localize "SIMPLYPF2E.Generator.GenerateMonster"}}{{else if npcMode}}{{localize "SIMPLYPF2E.Generator.GenerateNpc"}}{{else if encounterMode}}{{localize "SIMPLYPF2E.Generator.GenerateEncounter"}}{{else}}{{localize "SIMPLYPF2E.Generator.GenerateCharacter"}}{{/if}}
       </button>
+      <button type="button" class="spf-secondary" data-action="previewPlan" {{#if busy}}disabled{{/if}}>{{localize "SIMPLYPF2E.Generator.PreviewPlan"}}</button>
       {{#if encounterMode}}
         <button type="button" class="spf-random-button" data-action="generateRandomEncounter" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RandomEncounterTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.RandomEncounterTooltip'}}" {{#if busy}}disabled{{/if}}>
           <i class="fa-solid fa-dice-d20"></i>
         </button>
-      {{else if singleMode}}
+      {{else if creatureMode}}
         {{! Character mode gets no dice button: randomBrief() is creature-flavored }}
         <button type="button" class="spf-random-button" data-action="generateRandom" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RandomTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.RandomTooltip'}}" {{#if busy}}disabled{{/if}}>
           <i class="fa-solid fa-dice-d20"></i>
         </button>
       {{/if}}
-      <button type="button" class="spf-random-button" data-action="configureSources" data-tooltip="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" {{#if busy}}disabled{{/if}}>
-        <i class="fa-solid fa-gear"></i>
-      </button>
     </div>
   </fieldset>
 
@@ -187,6 +194,32 @@
 
   {{#if error}}
     <p class="notification error" role="alert">{{error}}</p>
+  {{/if}}
+
+  {{#if created}}
+  <section class="spf-preview spf-card" aria-label="{{localize 'SIMPLYPF2E.Generator.CompleteTitle'}}">
+    <h2>{{localize "SIMPLYPF2E.Generator.CompleteTitle"}}</h2>
+    <p>{{localize "SIMPLYPF2E.Generator.CompleteSummary" name=created.name count=created.count}}</p>
+    {{#if created.grounding.total}}
+      <h3>{{localize "SIMPLYPF2E.Generator.CompletionGrounding"}}</h3>
+      <ul class="spf-list">
+        {{#each created.grounding.rows}}<li>{{this.text}}</li>{{/each}}
+      </ul>
+    {{/if}}
+    {{#if tokenReport}}
+      <div class="spf-token-report">
+        <h3>{{localize "SIMPLYPF2E.Tokens.Heading"}}</h3>
+        <ul>
+          {{#each tokenReport.steps}}<li><strong>{{this.label}}</strong> — {{this.text}}</li>{{/each}}
+        </ul>
+        <p class="spf-token-total">{{tokenReport.totalText}}</p>
+      </div>
+    {{/if}}
+    <footer class="spf-actions">
+      {{#if created.actorId}}<button type="button" class="spf-primary" data-action="openCreatedActor"><i class="fa-solid fa-arrow-up-right-from-square"></i> {{localize "SIMPLYPF2E.Generator.OpenSheet"}}</button>{{/if}}
+      <button type="button" data-action="generateAnother"><i class="fa-solid fa-wand-sparkles"></i> {{localize "SIMPLYPF2E.Generator.GenerateAnother"}}</button>
+    </footer>
+  </section>
   {{/if}}
 
   {{#if showEmptyState}}
@@ -250,6 +283,9 @@
             <strong>{{this.name}}</strong>
             {{#if this.fromGlossary}}
               <span class="spf-found" title="{{localize 'SIMPLYPF2E.Preview.FromCompendium'}}"><i class="fa-solid fa-book"></i> {{this.glossaryName}}</span>
+            {{else if this.narrative}}
+              <span class="spf-custom">{{localize "SIMPLYPF2E.Preview.NarrativeOnly"}}</span>
+              {{#if this.description}}<div class="spf-ability-desc">{{this.description}}</div>{{/if}}
             {{else}}
               <span class="spf-custom">{{localize "SIMPLYPF2E.Preview.Custom"}}</span>
               {{#if this.description}}<div class="spf-ability-desc">{{this.description}}</div>{{/if}}
@@ -418,6 +454,12 @@
       </span>
     </div>
 
+    <h3>{{localize "SIMPLYPF2E.Skills.Priorities"}}</h3>
+    <p>{{#if pcPreview.automaticSkills}}{{localize "SIMPLYPF2E.Skills.Automatic"}}{{else}}{{localize "SIMPLYPF2E.Skills.PreferenceHint"}}{{/if}}</p>
+    <ul class="spf-list spf-inline">
+      {{#each pcPreview.skillPriorities}}<li>{{this.name}}</li>{{/each}}
+    </ul>
+
     {{#if pcPreview.feats.length}}
       <h3>{{localize "SIMPLYPF2E.Preview.Feats"}}</h3>
       <ul class="spf-list spf-inline">
@@ -430,12 +472,19 @@
       </ul>
     {{/if}}
 
+    {{#if pcPreview.spellcastingNotice}}
+      <p class="notification warning" role="status">{{pcPreview.spellcastingNotice}}</p>
+    {{/if}}
+    {{#if pcPreview.signatureSummary}}
+      <p role="status">{{pcPreview.signatureSummary}}</p>
+    {{/if}}
     {{#if pcPreview.concept.spellcasting}}
       <h3>{{localize "SIMPLYPF2E.Preview.Spells"}} <span class="spf-spell-dc">({{pcPreview.concept.spellcasting.tradition}})</span></h3>
       <ul class="spf-list spf-inline">
         {{#each pcPreview.spells}}
           <li class="{{#unless this.found}}spf-dropped{{/unless}}">
             {{this.name}} <span class="spf-rank">({{#if this.rank}}{{localize "SIMPLYPF2E.Preview.Rank"}} {{this.rank}}{{else}}{{localize "SIMPLYPF2E.Preview.Cantrip"}}{{/if}})</span>
+            {{#if this.signature}}<span class="spf-rank">({{localize "SIMPLYPF2E.Preview.Signature"}})</span>{{/if}}
             {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
           </li>
         {{/each}}
@@ -490,6 +539,41 @@
       <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-trash"></i> {{localize "SIMPLYPF2E.Generator.Discard"}}
       </button>
+    </footer>
+  </section>
+  {{/if}}
+  {{#if characterReview}}
+  <section class="spf-preview spf-card" aria-label="{{localize 'SIMPLYPF2E.Generator.ReviewTitle'}}">
+    <h2>{{localize "SIMPLYPF2E.Generator.ReviewTitle"}}</h2>
+    <h3>{{characterReview.actorName}}</h3>
+    <p>{{localize "SIMPLYPF2E.Skills.Snapshot"}}</p>
+    {{#if characterReview.skills}}
+      <h3>{{localize "SIMPLYPF2E.Skills.Result"}}</h3>
+      {{#if characterReview.skills.automatic}}<p>{{localize "SIMPLYPF2E.Skills.Automatic"}}</p>{{/if}}
+      {{#if characterReview.skills.budget}}<p>{{characterReview.skills.budget}}</p>{{/if}}
+      <ul class="spf-list spf-inline">
+        {{#each characterReview.skills.rows}}<li>{{this.name}} — {{this.rank}}</li>{{/each}}
+      </ul>
+      {{#each characterReview.skills.warnings}}<p class="notification warning" role="status">{{this}}</p>{{/each}}
+      {{#if characterReview.skills.loadoutWarnings}}
+        <h3>{{localize "SIMPLYPF2E.Loadout.Result"}}</h3>
+        {{#each characterReview.skills.loadoutWarnings}}<p class="notification warning" role="status">{{this}}</p>{{/each}}
+      {{/if}}
+    {{/if}}
+    {{#if characterReview.choices.length}}
+      <p class="notification warning" role="status">{{localize "SIMPLYPF2E.Generator.ReviewHint"}}</p>
+    {{/if}}
+    {{#if characterReview.incomplete}}
+      <p class="notification warning" role="status">{{localize "SIMPLYPF2E.Generator.ReviewIncomplete"}}</p>
+    {{/if}}
+    <ul class="spf-list">
+      {{#each characterReview.choices}}
+        <li><strong>{{this.itemName}}</strong> — {{localize this.prompt}}</li>
+      {{/each}}
+    </ul>
+    <footer class="spf-actions">
+      <button type="button" data-action="openReviewedCharacter">{{localize "SIMPLYPF2E.Generator.OpenCharacter"}}</button>
+      <button type="button" data-action="dismissCharacterReview">{{localize "SIMPLYPF2E.Generator.DismissReview"}}</button>
     </footer>
   </section>
   {{/if}}

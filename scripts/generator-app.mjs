@@ -1,14 +1,14 @@
 import {
-  MODULE_ID, getProviderAuthWarningKey, getProviderRequestConfig,
+  MODULE_ID, SETTINGS, getProviderAuthWarningKey, getProviderRequestConfig,
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
 import {
   generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
-  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats
+  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCreatureFeats, selectCreatureAbilities, selectCharacterChoices
 } from "./ai.mjs";
 import {
-  getSpellCandidates, getEquipmentCandidates, getLootCandidates,
-  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates
+  getSpellCandidates, getEquipmentCandidates, getLootCandidates, getScrollSpellCandidates,
+  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, getFeatCandidates, getAbilityCandidates, sourceReadiness
 } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
@@ -18,16 +18,30 @@ import {
 import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp
 } from "./pc-builder.mjs";
+import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
+import { reviewUnresolvedChoices } from "./choice-set.mjs";
+import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
-import {
-  BUILT_IN_PRESETS, getCustomPresets, findPreset, addCustomPreset, updateCustomPreset,
-  examplePrompt, randomBrief
-} from "./presets.mjs";
-import { ManagePresetsApp, promptPresetDialog, confirmDeletePreset } from "./manage-presets-app.mjs";
+import { BUILT_IN_PRESETS, getCustomPresets, findPreset, examplePrompt, randomBrief } from "./presets.mjs";
+import { ManagePresetsApp } from "./manage-presets-app.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
-import { findBestiaryArt } from "./art.mjs";
+import { findBestiaryScaffold } from "./art.mjs";
+import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
+import { verifyCreatedActor } from "./post-create.mjs";
+import { freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
+
+async function rollbackActor(actor, label) {
+  if (!actor) return null;
+  try {
+    await actor.delete();
+    return null;
+  } catch (cleanupErr) {
+    console.warn(`${MODULE_ID} | failed to roll back ${label} "${actor.name}"`, cleanupErr);
+    return `${label} "${actor.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+  }
+}
 
 /**
  * The prompt → preview → create dialog.
@@ -45,13 +59,15 @@ export class GeneratorApp extends SpfApp {
     position: { width: 720, height: "auto" },
     actions: {
       generate: GeneratorApp.#onGenerate,
+      previewPlan: GeneratorApp.#onPreviewPlan,
       generateRandom: GeneratorApp.#onGenerateRandom,
       generateRandomEncounter: GeneratorApp.#onGenerateRandomEncounter,
       createActor: GeneratorApp.#onCreateActor,
       discard: GeneratorApp.#onDiscard,
-      savePreset: GeneratorApp.#onSavePreset,
-      duplicatePreset: GeneratorApp.#onDuplicatePreset,
-      deletePreset: GeneratorApp.#onDeletePreset,
+      dismissCharacterReview: GeneratorApp.#onDismissCharacterReview,
+      openReviewedCharacter: GeneratorApp.#onOpenReviewedCharacter,
+      openCreatedActor: GeneratorApp.#onOpenCreatedActor,
+      generateAnother: GeneratorApp.#onGenerateAnother,
       managePresets: GeneratorApp.#onManagePresets,
       levelUp: GeneratorApp.#onLevelUp,
       levelDown: GeneratorApp.#onLevelDown,
@@ -73,12 +89,13 @@ export class GeneratorApp extends SpfApp {
 
   /** Form values, kept across re-renders. */
   #input = {
-    mode: "single", prompt: "", level: 1, rarity: "common",
+    mode: "monster", prompt: "", level: 1, rarity: "common",
     allowSpellcasting: true, preset: "", partySize: 4, threat: "moderate",
     treasureAmount: "standard", rarityCap: "unique"
   };
-  #modePrompts = { single: "", encounter: "", character: "" };
+  #modePrompts = { monster: "", npc: "", encounter: "", character: "" };
   #busy = false;
+  #busyMessage = null;
   #error = null;
   #concept = null;
   #resolved = null;
@@ -87,21 +104,34 @@ export class GeneratorApp extends SpfApp {
   /** Character mode result: normalized PC concept + resolved documents. */
   #pcConcept = null;
   #pcResolved = null;
+  /** Snapshot for the last created PC; UI-only, never written to actor flags. */
+  #characterReview = null;
+  /** Successful one-click result; UI-only and never persisted. */
+  #created = null;
+  /** Validated plan manifest retained only until it is presented after creation. */
+  #manifest = null;
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
 
   async _prepareContext() {
     const authState = getProviderRequestConfig();
     const authWarningKey = getProviderAuthWarningKey(authState);
+    const sources = globalThis.game?.packs ? sourceReadiness(this.#input.mode, {
+      allowSpellcasting: this.#input.allowSpellcasting
+    }) : null;
     return {
       input: this.#input,
       busy: this.#busy,
+      busyMessage: this.#busyMessage,
       error: this.#error,
       progress: this._progress,
       apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
       providerBaseUrl: authState.baseUrl,
       provider: authState.provider,
       providerReady: !authWarningKey,
+      sourcesReady: sources?.ready ?? true,
+      sourcePackCount: sources?.packCount ?? 0,
+      sourceMissing: sources?.missing ?? [],
       canAuthorizeApiKey: Boolean(
         authState.baseUrl && authState.hasConfiguredApiKey && !authState.apiKeyIsBound
       ),
@@ -126,13 +156,13 @@ export class GeneratorApp extends SpfApp {
           selected: this.#input.preset === p.id
         }))
       ],
-      selectedPresetIsCustom: Boolean(findPreset(this.#input.preset)?.custom),
-      presetSelected: Boolean(findPreset(this.#input.preset)),
       encounterMode: this.#input.mode === "encounter",
       characterMode: this.#input.mode === "character",
-      singleMode: this.#input.mode === "single",
-      levelMin: this.#input.mode === "single" ? -1 : 1,
-      levelMax: this.#input.mode === "single" ? 24 : 20,
+      monsterMode: this.#input.mode === "monster",
+      npcMode: this.#input.mode === "npc",
+      creatureMode: ["monster", "npc"].includes(this.#input.mode),
+      levelMin: ["monster", "npc"].includes(this.#input.mode) ? -1 : 1,
+      levelMax: ["monster", "npc"].includes(this.#input.mode) ? 24 : 20,
       threats: Object.keys(THREATS).map((key) => ({
         value: key,
         label: `SIMPLYPF2E.Threat.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
@@ -145,14 +175,16 @@ export class GeneratorApp extends SpfApp {
       })),
       // Keep each mode's previous result available when the GM switches back,
       // but never render an incompatible preview under the active form.
-      preview: this.#input.mode === "single" ? this.#buildPreviewContext() : null,
+      preview: ["monster", "npc"].includes(this.#input.mode) ? this.#buildPreviewContext() : null,
       encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
       pcPreview: this.#input.mode === "character" ? this.#buildPCPreviewContext() : null,
+      characterReview: this.#characterReview,
+      created: this.#created,
       tokenReport: this._buildTokenReport(),
       // Presentation only: show the getting-started panel when the active
       // mode has no result (busy/error states render their own blocks).
-      showEmptyState: !this.#busy && !this.#error
-        && !(this.#input.mode === "single" && this.#concept)
+      showEmptyState: !this.#busy && !this.#error && !this.#characterReview && !this.#created
+        && !(["monster", "npc"].includes(this.#input.mode) && this.#concept)
         && !(this.#input.mode === "encounter" && this.#encounter)
         && !(this.#input.mode === "character" && this.#pcConcept)
     };
@@ -170,6 +202,9 @@ export class GeneratorApp extends SpfApp {
     const pcClass = { name: resolved.classDoc?.name ?? concept.class, found: Boolean(resolved.classDoc) };
     const feats = GeneratorApp.#mapNamed(resolved.feats);
     const spells = GeneratorApp.#mapSpells(resolved.spells);
+    const signatureRanks = concept.spellcasting?.signatureRanks ?? [];
+    const plannedSignatures = new Set(spells.filter((spell) => spell.found && spell.signature
+      && signatureRanks.includes(spell.rank)).map((spell) => spell.rank));
     const equipment = GeneratorApp.#mapGear(resolved.equipment);
     const loot = GeneratorApp.#mapGear(resolved.loot);
     return {
@@ -178,12 +213,65 @@ export class GeneratorApp extends SpfApp {
       heritage,
       background,
       class: pcClass,
+      skillPriorities: skillPriorityOrder(concept.skillPriorities, concept.keyAbility).order.map((slug) => ({ name: GeneratorApp.#skillName(slug) })),
+      automaticSkills: normalizeSkillPriorities(concept.skillPriorities).length === 0,
+      spellcastingNotice: concept.spellcastingNoticeKey ? game.i18n.localize(concept.spellcastingNoticeKey) : null,
+      signatureSummary: signatureRanks.length ? game.i18n.format("SIMPLYPF2E.Preview.PCSignaturePlan", {
+        selected: plannedSignatures.size, total: signatureRanks.length
+      }) : null,
       feats,
       spells,
       equipment,
       loot,
       matchSummary: this.#matchSummary([ancestry], heritage ? [heritage] : [], [background], [pcClass], feats, spells, equipment, loot)
     };
+  }
+
+  static #skillName(slug) {
+    return game.i18n.localize(globalThis.CONFIG?.PF2E?.skills?.[slug]?.label ?? slug);
+  }
+
+  static #skillReportContext(report) {
+    if (!report) return null;
+    const warningKeys = {
+      "native-data": "NativeData", "training-data": "TrainingData", "schedule": "Schedule",
+      "grant-timing": "GrantTiming", "native-rank-rule": "NativeRule",
+      "intelligence-timing": "IntelligenceTiming",
+      "unspent-training": "UnspentTraining", "unspent-increases": "UnspentIncreases"
+    };
+    return {
+      rows: report.rows.map((row) => ({ name: row.name ?? this.#skillName(row.slug),
+        rank: game.i18n.localize(`SIMPLYPF2E.Skills.Rank${row.rank}`) })),
+      automatic: report.automatic,
+      budget: report.trainingBudget !== null && report.unspentTraining !== null
+        ? game.i18n.format("SIMPLYPF2E.Skills.Budget", {
+          spent: report.trainingBudget - report.unspentTraining, total: report.trainingBudget
+        }) : null,
+      warnings: report.warnings.map((code) => game.i18n.format(`SIMPLYPF2E.Skills.${warningKeys[code] ?? "NativeData"}`, {
+        count: code === "unspent-training" ? report.unspentTraining : report.unspentIncreases
+      })),
+      loadoutWarnings: (report.loadoutWarnings ?? []).map((code) =>
+        game.i18n.localize(`SIMPLYPF2E.Loadout.${{
+          "loadout-native-data": "NativeData", "loadout-untrained-armor": "UntrainedArmor",
+          "loadout-armor-conflict": "ArmorConflict", "loadout-untrained-weapon": "UntrainedWeapon",
+          "loadout-hand-conflict": "HandConflict", "loadout-manual-ammo": "ManualAmmo",
+          "loadout-missing-ammo": "MissingAmmo"
+        }[code] ?? "NativeData"}`))
+    };
+  }
+
+  /** Localized, count-only view of a validated completion manifest. */
+  static #completionContext(manifests) {
+    const summary = completionSummary(manifests);
+    const rows = [
+      ["compendium", "SIMPLYPF2E.Generator.CompletionCompendium"],
+      ["native", "SIMPLYPF2E.Generator.CompletionNative"],
+      ["moduleBuilt", "SIMPLYPF2E.Generator.CompletionModuleBuilt"],
+      ["customNarrative", "SIMPLYPF2E.Generator.CompletionCustomNarrative"]
+    ].filter(([key]) => summary[key] > 0).map(([key, label]) => ({
+      text: game.i18n.format(label, { count: summary[key] })
+    }));
+    return { total: summary.total, rows };
   }
 
   /* The three preview shapes below are identical for creatures and characters,
@@ -201,6 +289,7 @@ export class GeneratorApp extends SpfApp {
     return (list ?? []).map(({ spell, entry }) => ({
       name: entry?.name ?? spell.name,
       rank: spell.rank,
+      signature: spell.signature === true,
       found: Boolean(entry)
     }));
   }
@@ -255,6 +344,7 @@ export class GeneratorApp extends SpfApp {
       name: ability.name,
       fromGlossary: Boolean(entry),
       glossaryName: entry?.name ?? null,
+      narrative: Boolean(ability.narrative),
       description: ability.description
     }));
     const spells = GeneratorApp.#mapSpells(this.#resolved?.spells);
@@ -319,7 +409,7 @@ export class GeneratorApp extends SpfApp {
     // only Single mode's creature level goes -1..24, and a level left over
     // from a previous mode would otherwise be sent verbatim to the AI prompt
     // (the concept is clamped later; the prompt text was not).
-    const [levelMin, levelMax] = mode === "single" ? [-1, 24] : [1, 20];
+    const [levelMin, levelMax] = ["monster", "npc"].includes(mode) ? [-1, 24] : [1, 20];
     const rawLevel = Number(form.querySelector('[name="level"]')?.value ?? 1);
     const level = Math.min(levelMax, Math.max(levelMin, Number.isNaN(rawLevel) ? 1 : rawLevel));
     const rarity = form.querySelector('[name="rarity"]')?.value ?? this.#input.rarity;
@@ -440,7 +530,7 @@ export class GeneratorApp extends SpfApp {
     const current = Number.parseInt(input.value, 10);
     // Party Level (encounter mode) and Character level are both PC levels,
     // 1-20; only Single mode's creature Level goes -1..24.
-    const [min, max] = this.#input.mode === "single" ? [-1, 24] : [1, 20];
+    const [min, max] = ["monster", "npc"].includes(this.#input.mode) ? [-1, 24] : [1, 20];
     input.value = Math.min(max, Math.max(min, (Number.isNaN(current) ? 1 : current) + delta));
   }
 
@@ -460,31 +550,76 @@ export class GeneratorApp extends SpfApp {
   }
 
   static async #onGenerate() {
-    return this.#runGeneration(false);
+    return this.#runGeneration(false, { create: true });
+  }
+
+  /** Generate and validate without writing to the world. */
+  static async #onPreviewPlan() {
+    return this.#runGeneration(false, { create: false });
   }
 
   /** The dice button: same pipeline, module-rolled surprise brief as prompt. */
   static async #onGenerateRandom() {
-    return this.#runGeneration(true);
+    return this.#runGeneration(true, { create: false });
   }
 
   /** The encounter mode dice button: forces a fresh random theme even if the
    * GM already typed one, matching #onGenerateRandom's Single-mode behavior. */
   static async #onGenerateRandomEncounter() {
     this.#readForm();
+    if (!this.#assertGenerationReady()) return;
     return this.#generateEncounter(true);
   }
 
-  async #runGeneration(isRandom) {
+  #assertGenerationReady() {
+    const warning = getProviderAuthWarningKey(getProviderRequestConfig());
+    if (warning) {
+      ui.notifications.warn(game.i18n.localize(warning));
+      return false;
+    }
+    // This runs before the first concept request: a Free Archetype slot starts
+    // at level 2, but PF2e's published feat prerequisites are display text,
+    // not a generic staged-actor eligibility API. Do not bill for a plan we
+    // cannot validate as a complete unattended character.
+    const freeArchetype = globalThis.game?.settings?.get?.(MODULE_ID, SETTINGS.freeArchetype) === true;
+    if (this.#input.mode === "character" && freeArchetypeNeedsPrerequisiteValidation(this.#input.level, freeArchetype)) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.FreeArchetypeUnsupported"));
+      return false;
+    }
+    // Isolated production-path tests intentionally do not construct Foundry's
+    // pack collection; a live world always has it and receives this preflight.
+    if (!globalThis.game?.packs) return true;
+    const sources = sourceReadiness(this.#input.mode, { allowSpellcasting: this.#input.allowSpellcasting });
+    if (!sources.ready) {
+      ui.notifications.warn(game.i18n.format("SIMPLYPF2E.Generator.SourcesMissing", {
+        categories: sources.missing.join(", ")
+      }));
+      return false;
+    }
+    return true;
+  }
+
+  async #runGeneration(isRandom, { create = false } = {}) {
     this.#readForm();
-    if (this.#input.mode === "encounter") return this.#generateEncounter(isRandom);
-    if (this.#input.mode === "character") return this.#generatePC(isRandom);
+    if (!this.#assertGenerationReady()) return;
+    if (this.#input.mode === "character") {
+      await this.#generatePC(isRandom);
+      if (create && this.#pcConcept && !this.#error) await this.#createCharacterActor();
+      return;
+    }
+    if (this.#input.mode === "encounter") {
+      await this.#generateEncounter(isRandom);
+      if (create && this.#encounter && !this.#error) await this.#createEncounterActors();
+      return;
+    }
     if (!isRandom && !this.#input.prompt.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
       return;
     }
     this.#busy = true;
     this.#error = null;
+    this.#created = null;
+    this.#manifest = null;
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
@@ -492,6 +627,8 @@ export class GeneratorApp extends SpfApp {
     this._beginProgress([
       ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept")],
       ...(this.#input.allowSpellcasting ? [["spells", game.i18n.localize("SIMPLYPF2E.Progress.Spells")]] : []),
+      ["abilities", game.i18n.localize("SIMPLYPF2E.Progress.Abilities")],
+      ["feats", game.i18n.localize("SIMPLYPF2E.Progress.Feats")],
       ["equipment", game.i18n.localize("SIMPLYPF2E.Progress.Equipment")],
       ["loot", game.i18n.localize("SIMPLYPF2E.Progress.Loot")],
       ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
@@ -507,6 +644,7 @@ export class GeneratorApp extends SpfApp {
         allowSpellcasting: this.#input.allowSpellcasting,
         preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
         amount: this.#input.treasureAmount,
+        intent: this.#input.mode,
         onProgress: (p) => this._onAIProgress(p)
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Concept"), usage);
@@ -528,18 +666,25 @@ export class GeneratorApp extends SpfApp {
       // non-compliant model returned spellcasting anyway.
       if (this.#input.allowSpellcasting && this.#concept.spellcasting) await this._setStep("spells");
       await this.#refineSpells(this.#concept);
+      if (this.#concept.specialAbilities.length) await this._setStep("abilities");
+      await this.#refineCreatureAbilities(this.#concept);
+      if (this.#concept.feats.length) await this._setStep("feats");
+      await this.#refineCreatureFeats(this.#concept);
       if (this.#concept.equipment.length) await this._setStep("equipment");
       await this.#refineEquipment(this.#concept);
       if (this.#concept.loot.length) await this._setStep("loot");
       await this.#refineLoot(this.#concept);
       await this._setStep("match");
-      this.#resolved = await resolveConcept(this.#concept);
+      this.#resolved = await resolveConcept(this.#concept, { exactContent: true });
       // Treasure budget: the module owns the numbers (level + rarity from the
       // tables, scaled by the Treasure amount control); only coins flex.
       this.#resolved.loot = await applyTreasureBudget(
         this.#resolved.loot,
         treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)
       );
+      const manifest = completionManifest({ mode: this.#input.mode, concept: this.#concept, resolved: this.#resolved });
+      assertComplete(manifest);
+      this.#manifest = manifest;
       const eq = this.#resolved.equipment;
       if (eq.length) {
         const misses = eq.filter((e) => !e.entry).map((e) => e.name);
@@ -552,11 +697,13 @@ export class GeneratorApp extends SpfApp {
       this.#error = err.message;
       this.#concept = null;
       this.#resolved = null;
+      this.#manifest = null;
     } finally {
       this.#busy = false;
       this._progress = null;
       await this.render();
     }
+    if (create && this.#concept && !this.#error) await GeneratorApp.#onCreateActor.call(this);
   }
 
   /**
@@ -567,6 +714,8 @@ export class GeneratorApp extends SpfApp {
   async #generateEncounter(isRandom = false) {
     this.#busy = true;
     this.#error = null;
+    this.#created = null;
+    this.#manifest = null;
     this.#concept = null;
     this.#resolved = null;
     this.#pcConcept = null;
@@ -609,6 +758,7 @@ export class GeneratorApp extends SpfApp {
           // creature (and, matching the Single dice button, Random ignores it).
           preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
           amount: this.#input.treasureAmount,
+          intent: "monster",
           onProgress: (p) => this._onAIProgress(p)
         });
         this._recordTokens(memberLabel(i), usage);
@@ -621,6 +771,8 @@ export class GeneratorApp extends SpfApp {
           concept.focusSpells = [];
         }
         await this.#refineSpells(concept);
+        await this.#refineCreatureAbilities(concept);
+        await this.#refineCreatureFeats(concept);
         await this.#refineEquipment(concept);
         await this.#refineLoot(concept);
         members.push({ ...slot, concept });
@@ -628,7 +780,7 @@ export class GeneratorApp extends SpfApp {
 
       await this._setStep("match");
       for (const member of members) {
-        member.resolved = await resolveConcept(member.concept);
+        member.resolved = await resolveConcept(member.concept, { exactContent: true });
         // Treasure is calibrated to the PARTY level and the WHOLE encounter:
         // treasureBudget() returns one encounter's total, split evenly across
         // groups. A group keeps its constant share (treasureGroupBudget)
@@ -638,6 +790,8 @@ export class GeneratorApp extends SpfApp {
           treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / members.length;
         member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
         member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
+        member.manifest = completionManifest({ mode: "monster", concept: member.concept, resolved: member.resolved });
+        assertComplete(member.manifest);
         member.treasureEach = lootValueGp(member.resolved.loot);
       }
       const allEq = members.flatMap((m) => m.resolved.equipment);
@@ -681,6 +835,8 @@ export class GeneratorApp extends SpfApp {
     }
     this.#busy = true;
     this.#error = null;
+    this.#created = null;
+    this.#manifest = null;
     this.#concept = null;
     this.#resolved = null;
     this.#encounter = null;
@@ -717,18 +873,24 @@ export class GeneratorApp extends SpfApp {
       // capping at Uncommon means a Rare pick like Fetchling can never be
       // offered — not just discouraged by prompt wording.
       const { rarityCap } = this.#input;
-      const [ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates] = await Promise.all([
+      const [ancestryCandidates, backgroundCandidates, allClassCandidates, heritageCandidates] = await Promise.all([
         getAncestryCandidates(rarityCap), getBackgroundCandidates(rarityCap), getClassCandidates(), getHeritageCandidates(rarityCap)
       ]);
+      const classCandidates = supportedClassCandidates(allClassCandidates);
+      if (!classCandidates.length) throw new Error(game.i18n.localize("SIMPLYPF2E.Generator.NoSupportedClasses"));
       const abc = await selectAncestryBackgroundClass({
         concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates,
         onProgress: (p) => this._onAIProgress(p)
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.ABC"), abc.usage);
       concept.ancestry = abc.ancestry;
+      concept.ancestryCandidate = abc.ancestryCandidate;
       concept.heritage = abc.heritage;
+      concept.heritageCandidate = abc.heritageCandidate;
       concept.background = abc.background;
+      concept.backgroundCandidate = abc.backgroundCandidate;
       concept.class = abc.class;
+      concept.classCandidate = abc.classCandidate;
       concept.keyAbility = abc.keyAbility;
 
       // Resolve ABC + grants + feat-slot candidates now (index lookups are
@@ -737,13 +899,37 @@ export class GeneratorApp extends SpfApp {
       let resolved = await resolvePCConcept(concept);
       concept.traits = [slugify(resolved.ancestryDoc.name), slugify(resolved.classDoc.name)];
 
+      // The real class document owns the casting mode and base slot plan.
+      // Variable traditions still need the selected bloodline/patron checked.
+      const castingProfile = pcSpellcastingProfile(resolved.classDoc);
+      if (!this.#input.allowSpellcasting) concept.spellcasting = null;
+      if (this.#input.allowSpellcasting && castingProfile) {
+        if (!concept.spellcasting && castingProfile.tradition) {
+          concept.spellcasting = { tradition: castingProfile.tradition, spells: [] };
+        }
+        concept.spellcastingNoticeKey = castingProfile.tradition
+          ? "SIMPLYPF2E.Preview.PCBaseSpellPlan"
+          : "SIMPLYPF2E.Preview.PCVariableSpellPlan";
+        if (concept.spellcasting) {
+          if (castingProfile.tradition) concept.spellcasting.tradition = castingProfile.tradition;
+          const plan = pcSpellPlan(concept.level, castingProfile);
+          concept.spellcasting.plannedPicks = plan.picks;
+          concept.spellcasting.signatureRanks = plan.signatureRanks;
+          concept.spellcasting.preparationMode = castingProfile.mode;
+          concept.spellcasting.maxRank = Math.max(...Object.entries(plan.slots)
+            .filter(([, count]) => count > 0).map(([rank]) => Number(rank)));
+        }
+      } else if (concept.spellcasting) {
+        concept.spellcastingNoticeKey = "SIMPLYPF2E.Preview.PCApproximateSpellPlan";
+      }
+
       await this._setStep("feats");
       if (resolved.featSlots.length) {
         const { picks, usage: featUsage } = await selectFeats({
           concept, slots: resolved.featSlots, onProgress: (p) => this._onAIProgress(p)
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), featUsage);
-        resolved.feats = await resolveFeatPicks(resolved.featSlots, picks);
+        resolved.feats = await resolveFeatPicks(resolved.featSlots, picks, { exactContent: true });
       } else {
         resolved.feats = [];
       }
@@ -753,7 +939,8 @@ export class GeneratorApp extends SpfApp {
       // return a valid tradition.
       if (!this.#input.allowSpellcasting) concept.spellcasting = null;
 
-      // Both refine helpers are the EXISTING NPC ones, reused unchanged — the
+      // Both refine helpers reuse the NPC pipeline; the PC spell pass also
+      // receives a class-qualified plan where supported. The
       // PC concept carries the same fields they read (blurb/description/
       // traits/strikes/equipment/loot/level/name/rarity).
       // Gate on the SAME condition the step list above was built from, same
@@ -762,7 +949,7 @@ export class GeneratorApp extends SpfApp {
       // every step "reached: false" and marked them all "done", pushing
       // percent past 100%.
       if (this.#input.allowSpellcasting && concept.spellcasting) await this._setStep("spells");
-      await this.#refineSpells(concept, { requireSpells: true });
+      await this.#refineSpells(concept);
 
       await this._setStep("equipment");
       await this.#refineEquipment(concept);
@@ -776,7 +963,7 @@ export class GeneratorApp extends SpfApp {
       // re-resolve those parts (the ABC/grants/feat-slot lookups above are
       // cheap and index-cached, so redoing them here is harmless; keep the
       // feat picks already made).
-      const final = await resolvePCConcept(concept);
+      const final = await resolvePCConcept(concept, { exactContent: true });
       resolved = { ...final, feats: resolved.feats };
       // Cross-bucket dedup BEFORE any budget math sees the loot list: the AI
       // sometimes lists the same named item as both starting equipment and
@@ -830,7 +1017,7 @@ export class GeneratorApp extends SpfApp {
           // Keep the already-grounded items, add the new draft, re-ground and re-budget.
           concept.loot = [...concept.loot.filter((l) => !parseCoins(l.name)), ...normalizeLoot(draft)];
           await this.#refineLoot(concept);
-          const topUp = await resolvePCConcept(concept);
+          const topUp = await resolvePCConcept(concept, { exactContent: true });
           resolved = { ...topUp, feats: resolved.feats };
           resolved.loot = dedupeLootAgainstEquipment(resolved.loot, resolved.equipment);
           resolved.loot = enforceNamedLootBudget(resolved.loot, lootBudget);
@@ -839,6 +1026,9 @@ export class GeneratorApp extends SpfApp {
           console.warn(`${MODULE_ID} | extra PC purchase pass failed, leaving remaining wealth as coin`, err);
         }
       }
+      const manifest = completionManifest({ mode: "character", concept, resolved });
+      assertComplete(manifest);
+      this.#manifest = manifest;
 
       this.#pcConcept = concept;
       this.#pcResolved = resolved;
@@ -848,6 +1038,7 @@ export class GeneratorApp extends SpfApp {
       this.#error = err.message;
       this.#pcConcept = null;
       this.#pcResolved = null;
+      this.#manifest = null;
     } finally {
       this.#busy = false;
       this._progress = null;
@@ -865,10 +1056,9 @@ export class GeneratorApp extends SpfApp {
    * compendium-backed list, spells are dropped rather than left as unvetted
    * draft names, same fail-closed behavior as feats elsewhere in the pipeline.
    */
-  async #refineSpells(concept, { requireSpells = false } = {}) {
+  async #refineSpells(concept) {
     const spellcasting = concept?.spellcasting;
     if (!spellcasting) return;
-    const draft = spellcasting.spells;
     try {
       // Both AI calls below run under the single "Spell selection" step, so
       // keep a running token total across them — otherwise the live counter
@@ -895,7 +1085,12 @@ export class GeneratorApp extends SpfApp {
       const candidates = await getSpellCandidates(
         spellcasting.tradition,
         spellcasting.maxRank,
-        [...spellcasting.spells.map((spell) => spell.name), ...keywords]
+        [...spellcasting.spells.map((spell) => spell.name), ...keywords],
+        spellcasting.plannedPicks
+      );
+      const focusCandidates = await getFocusSpellCandidates(
+        spellcasting.maxRank,
+        [...concept.focusSpells.map((spell) => spell.name), ...keywords]
       );
       if (!candidates.length) {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
@@ -904,38 +1099,78 @@ export class GeneratorApp extends SpfApp {
         const { spells, usage } = await selectSpells({
           concept,
           candidates,
+          focusCandidates,
           maxRank: spellcasting.maxRank,
+          plannedPicks: spellcasting.plannedPicks,
+          preparationMode: spellcasting.preparationMode,
+          signatureRanks: spellcasting.signatureRanks,
           onProgress
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);
         spellcasting.spells = spells;
+        concept.focusSpells = focusSpells;
       }
     } catch (err) {
       console.warn(`${MODULE_ID} | grounded spell selection failed, dropping spellcasting (unconstrained first-draft spells discarded)`, err);
       spellcasting.spells = [];
+      concept.focusSpells = [];
     }
     if (spellcasting.spells.length) return;
-    // Fail-closed is right for a CREATURE — a monster is fine with one fewer
-    // ability, and unvetted draft names would become nothing on the sheet
-    // anyway. It is the wrong trade for a PLAYER CHARACTER: dropping
-    // spellcasting there hands the GM a Wizard with no spells at all, which is
-    // a broken character rather than a slightly simpler one. So a PC keeps the
-    // ungrounded draft and leans on resolvePCConcept's own findEntry pass,
-    // which still discards anything that doesn't match a real spell.
-    if (requireSpells && draft.length) {
-      console.warn(`${MODULE_ID} | grounded spell selection produced nothing for a character — keeping the ungrounded first draft, which is still compendium-matched before anything is embedded`);
-      spellcasting.spells = draft;
-      return;
-    }
+    // A known class spell plan stays visible as empty: completionManifest()
+    // records every missing module-owned pick and blocks actor creation.
+    if (spellcasting.plannedPicks) return;
     concept.spellcasting = null;
+  }
+
+  /** Resolve published abilities by opaque ID; unlisted concept flavor stays narrative-only. */
+  async #refineCreatureAbilities(concept) {
+    if (!concept?.specialAbilities?.length) return;
+    const draft = concept.specialAbilities;
+    const narratives = draft.filter((ability) => !ability.glossary).map((ability) => ({ ...ability, narrative: true }));
+    try {
+      const keywords = draft.flatMap((ability) => [ability.glossary, ability.name])
+        .map((name) => String(name ?? "").toLowerCase()).filter(Boolean);
+      const candidates = await getAbilityCandidates(keywords);
+      if (!candidates.length) {
+        concept.specialAbilities = [...draft.filter((ability) => ability.glossary), ...narratives].slice(0, 6);
+        return;
+      }
+      const { abilities, usage } = await selectCreatureAbilities({
+        concept, candidates, onProgress: (p) => this._onAIProgress(p)
+      });
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Abilities"), usage);
+      concept.specialAbilities = [...abilities, ...narratives].slice(0, 6);
+    } catch (err) {
+      console.warn(`${MODULE_ID} | grounded creature ability selection failed; unresolved glossary abilities will block creation`, err);
+      concept.specialAbilities = [...draft.filter((ability) => ability.glossary), ...narratives].slice(0, 6);
+    }
+  }
+
+  /** Ground a creature's class-like feats against an issued, level-capped list. */
+  async #refineCreatureFeats(concept) {
+    if (!concept?.feats?.length) return;
+    try {
+      const candidates = await getFeatCandidates({
+        level: Math.max(concept.level, 1), category: "class",
+        preferredNames: concept.feats.map((feat) => typeof feat === "string" ? feat : feat.name)
+      });
+      if (!candidates.length) return;
+      const { feats, usage } = await selectCreatureFeats({
+        concept, candidates, onProgress: (p) => this._onAIProgress(p)
+      });
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), usage);
+      if (feats.length) concept.feats = feats;
+    } catch (err) {
+      console.warn(`${MODULE_ID} | grounded creature feat selection failed; unresolved draft feats will block creation`, err);
+    }
   }
 
   /**
    * Grounded equipment selection: fetch real, level-capped items from the
    * equipment compendium (narrowed by keywords drawn from the first-draft
    * gear names and strikes — no separate AI focus pass needed, unlike spells)
-   * and let the AI pick the creature's carried gear from that list. Falls
-   * back to the first-draft names (still fuzzy-matched) if anything fails.
+   * and let the AI pick the creature's carried gear from that list. The
+   * final creation resolver accepts only retained candidate references.
    * Creatures designed to carry nothing (beasts, mindless) are skipped.
    */
   async #refineEquipment(concept) {
@@ -957,7 +1192,7 @@ export class GeneratorApp extends SpfApp {
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Equipment"), usage);
       if (equipment.length) concept.equipment = equipment;
     } catch (err) {
-      console.warn(`${MODULE_ID} | grounded equipment selection failed, using first-draft equipment`, err);
+      console.warn(`${MODULE_ID} | grounded equipment selection failed; unresolved draft equipment will block creation`, err);
     }
   }
 
@@ -967,31 +1202,41 @@ export class GeneratorApp extends SpfApp {
    * counterpart of #refineEquipment(). Without it, a pre-Remaster name the
    * model recalls ("Bag of Holding") never fuzzy-matches its Remaster item
    * ("Spacious Pouch") and silently becomes a wrong-named custom treasure
-   * item. Coins and scrolls pass through free-form (parseCoins/parseScroll
-   * build them specially); a haul of ONLY coins/scrolls skips the AI call.
-   * Falls back to the first-draft names (still fuzzy-matched) if anything
-   * fails.
+   * item. Coins stay module-built, while scrolls now select from a bounded
+   * exact spell slice in the same AI request. A haul of only coins skips the
+   * request. The final creation resolver accepts only retained candidate
+   * references for all non-coin loot.
    */
   async #refineLoot(concept) {
     if (!concept?.loot?.length) return;
-    if (concept.loot.every((l) => parseCoins(l.name) || parseScroll(l.name))) return;
+    if (concept.loot.every((l) => parseCoins(l.name))) return;
     try {
       const draftNames = concept.loot.map((loot) => String(loot.name).toLowerCase()).filter(Boolean);
       const keywords = [...new Set([
         ...draftNames,
         ...draftNames.flatMap((name) => name.split(/[^a-z0-9]+/)).filter((token) => token.length > 2)
       ])];
-      const candidates = await getLootCandidates(concept.level, keywords);
-      if (!candidates.length) return;
+      const scrollKeywords = concept.loot
+        .map((loot) => parseScroll(loot.name)?.spellName)
+        .filter(Boolean);
+      const [candidates, scrollCandidates] = await Promise.all([
+        getLootCandidates(concept.level, keywords),
+        scrollKeywords.length ? getScrollSpellCandidates(10, scrollKeywords) : []
+      ]);
+      if (!candidates.length && !scrollCandidates.length) return;
       const { loot, usage } = await selectLoot({
         concept,
         candidates,
+        scrollCandidates,
         onProgress: (p) => this._onAIProgress(p)
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
-      if (loot.length) concept.loot = normalizeLoot(loot);
+      if (loot.length) {
+        const coins = concept.loot.filter((item) => parseCoins(item.name));
+        concept.loot = normalizeLoot([...coins, ...loot]);
+      }
     } catch (err) {
-      console.warn(`${MODULE_ID} | grounded loot selection failed, using first-draft loot`, err);
+      console.warn(`${MODULE_ID} | grounded loot selection failed; unresolved draft loot will block creation`, err);
     }
   }
 
@@ -1032,18 +1277,47 @@ export class GeneratorApp extends SpfApp {
     if (this.#pcConcept) return this.#createCharacterActor();
     if (!this.#concept) return;
     this.#busy = true;
+    this.#error = null;
     await this.render();
+    let actor = null;
+    let committed = false;
     try {
       // Art: borrowed from the closest-matching bestiary creature.
-      const img = await findBestiaryArt(this.#concept);
-      const actor = await createActor(this.#concept, this.#resolved, { img });
-      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
-      actor.sheet.render(true);
+      const scaffold = await findBestiaryScaffold(this.#concept);
+      if (!scaffold) throw new Error(game.i18n.localize("SIMPLYPF2E.Errors.NoBestiaryScaffold"));
+      const img = scaffold.img ?? null;
+      const created = await createActor(this.#concept, this.#resolved, { img, scaffold });
+      actor = created.actor;
+      verifyCreatedActor(actor, this.#manifest, created.expectedItems);
+      // The actor now exists. Clear the retryable plan before any presentation
+      // work so a sheet-render failure cannot create a duplicate on retry.
+      const grounding = GeneratorApp.#completionContext(this.#manifest);
       this.#concept = null;
       this.#resolved = null;
+      this.#manifest = null;
+      this.#created = { name: actor.name, actorId: actor.id, count: 1, grounding };
+      committed = true;
+      try {
+        ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
+        await actor.sheet.render(true);
+      } catch (err) {
+        console.warn(`${MODULE_ID} | actor created, but its sheet could not be displayed`, err);
+        try { ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed")); }
+        catch (notificationErr) { console.warn(`${MODULE_ID} | could not show creation presentation warning`, notificationErr); }
+      }
     } catch (err) {
-      console.error(`${MODULE_ID} | actor creation failed`, err);
-      this.#error = err.message;
+      if (!committed) {
+        const survivor = await rollbackActor(actor, "unverified actor");
+        if (survivor) {
+          this.#concept = null;
+          this.#resolved = null;
+          this.#manifest = null;
+        }
+        console.error(`${MODULE_ID} | actor creation failed`, err);
+        this.#error = survivor ? `${err.message} ${survivor}` : err.message;
+      } else {
+        console.warn(`${MODULE_ID} | actor committed, but completion presentation failed`, err);
+      }
     } finally {
       this.#busy = false;
       await this.render();
@@ -1055,49 +1329,204 @@ export class GeneratorApp extends SpfApp {
   async #createCharacterActor() {
     if (!this.#pcConcept) return;
     this.#busy = true;
-    await this.render();
+    this.#error = null;
+    const applyingMessage = game.i18n.localize("SIMPLYPF2E.Progress.ApplyingCharacter");
+    this.#busyMessage = applyingMessage;
+    let created = false;
+    let committed = false;
+    let actor = null;
     try {
-      const actor = await createCharacterActor(this.#pcConcept, this.#pcResolved, {});
-      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
-      actor.sheet.render(true);
+      await this.render();
+      const result = await createCharacterActor(this.#pcConcept, this.#pcResolved, {
+        selectChoices: async (groups) => {
+          const label = game.i18n.localize("SIMPLYPF2E.Progress.CharacterChoices");
+          this.#busyMessage = null;
+          this._beginProgress([["choices", label]]);
+          try {
+            await this._setStep("choices");
+            const { picks, usage } = await selectCharacterChoices({
+              concept: this.#pcConcept, groups, onProgress: (p) => this._onAIProgress(p)
+            });
+            this._recordTokens(label, usage);
+            if (picks.length < groups.length) {
+              ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ChoicesNeedInput"));
+            }
+            return picks;
+          } catch (err) {
+            this._recordTokens(label, err.usage);
+            ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ChoicesNeedInput"));
+            throw err; // The builder leaves unanswered choices to PF2e.
+          } finally {
+            this._progress = null;
+            this.#busyMessage = applyingMessage;
+            await this.render();
+          }
+        }
+      });
+      actor = result.actor;
+      const { skillReport } = result;
+      verifyCreatedActor(actor, this.#manifest, result.expectedItems);
+      // Commit all creation state before any presentation. Rendering and
+      // notifications are intentionally unable to roll back valid work.
+      const grounding = GeneratorApp.#completionContext(this.#manifest);
       this.#pcConcept = null;
       this.#pcResolved = null;
+      this.#characterReview = null;
+      this.#manifest = null;
+      this.#created = { name: actor.name, actorId: actor.id, count: 1, grounding };
+      created = true;
+      committed = true;
+      try {
+        let review;
+        try {
+          review = reviewUnresolvedChoices(actor.items.contents);
+        } catch {
+          review = { choices: [], incomplete: true };
+        }
+        if (skillReport || review.choices.length || review.incomplete) {
+          this.#characterReview = { ...review, actorId: actor.id, actorName: actor.name,
+            skills: GeneratorApp.#skillReportContext(skillReport) };
+        }
+        if (review.choices.length || review.incomplete || skillReport?.warnings.length || skillReport?.loadoutWarnings?.length) {
+          ui.notifications.warn(game.i18n.format("SIMPLYPF2E.Generator.ReviewCreated", { name: actor.name }));
+        } else {
+          ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
+        }
+        await actor.sheet.render(true);
+      } catch (err) {
+        console.warn(`${MODULE_ID} | character created, but presentation failed`, err);
+        ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed"));
+      }
     } catch (err) {
-      console.error(`${MODULE_ID} | character actor creation failed`, err);
-      this.#error = err.message;
+      let survivor = null;
+      if (actor && !committed) {
+        survivor = await rollbackActor(actor, "unverified character");
+      } else if (err?.simplyPF2eRollbackActor) {
+        const stranded = err.simplyPF2eRollbackActor;
+        survivor = `incomplete character "${stranded.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+      }
+      if (survivor) {
+        this.#pcConcept = null;
+        this.#pcResolved = null;
+        this.#characterReview = null;
+        this.#manifest = null;
+      }
+      if (!committed) {
+        console.error(`${MODULE_ID} | character actor creation failed`, err);
+        this.#error = survivor ? `${err.message} ${survivor}` : err.message;
+      } else console.warn(`${MODULE_ID} | character committed, but completion presentation failed`, err);
     } finally {
       this.#busy = false;
-      await this.render();
+      this.#busyMessage = null;
+      this._progress = null;
+      try {
+        await this.render();
+      } catch (err) {
+        if (!created) throw err;
+        console.warn(`${MODULE_ID} | character created, but review rendering failed`, err);
+        ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed"));
+      }
     }
+  }
+
+  static async #onDismissCharacterReview() {
+    this.#characterReview = null;
+    await this.render();
+  }
+
+  static async #onOpenReviewedCharacter() {
+    const actor = game.actors.get(this.#characterReview?.actorId);
+    if (!actor) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ReviewUnavailable"));
+      return;
+    }
+    await actor.sheet.render(true);
+  }
+
+  static async #onOpenCreatedActor() {
+    const actor = game.actors.get(this.#created?.actorId);
+    if (!actor) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ReviewUnavailable"));
+      return;
+    }
+    await actor.sheet.render(true);
+  }
+
+  static async #onGenerateAnother() {
+    this.#created = null;
+    this.#characterReview = null;
+    await this.render();
   }
 
   /** Create every encounter member, each with closest-match bestiary art. */
   async #createEncounterActors() {
     if (!this.#encounter) return;
     this.#busy = true;
+    this.#error = null;
     await this.render();
+    let folder = null;
+    const actors = [];
+    let committed = false;
     try {
-      const folder = await Folder.create({ name: this.#encounter.name, type: "Actor" });
+      folder = await Folder.create({ name: this.#encounter.name, type: "Actor" });
       let created = 0;
       for (const member of this.#encounter.members) {
         if (member.count < 1) continue;
         // Identical minions share one art lookup — same creature, same portrait.
-        const img = await findBestiaryArt(member.concept);
+        const scaffold = await findBestiaryScaffold(member.concept);
+        if (!scaffold) throw new Error(game.i18n.localize("SIMPLYPF2E.Errors.NoBestiaryScaffold"));
+        const img = scaffold.img ?? null;
         for (let i = 0; i < member.count; i++) {
-          const actor = await createActor(member.concept, member.resolved, { img });
+          const createdActor = await createActor(member.concept, member.resolved, { img, scaffold });
+          const actor = createdActor.actor;
+          actors.push(actor);
           const update = { folder: folder.id };
           if (member.count > 1) update.name = `${actor.name} ${i + 1}`;
           await actor.update(update);
+          verifyCreatedActor(actor, member.manifest, createdActor.expectedItems);
           created++;
         }
       }
-      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.CreatedAll", {
-        count: created, name: this.#encounter.name
-      }));
+      // Commit before presentation: all writes succeeded, so this plan cannot
+      // safely be retried even if the next render fails.
+      const grounding = GeneratorApp.#completionContext(this.#encounter.members.flatMap((member) =>
+        Array.from({ length: member.count }, () => member.manifest)
+      ));
       this.#encounter = null;
+      this.#created = { name: folder.name, actorId: actors[0]?.id ?? null, count: created, grounding };
+      committed = true;
+      try {
+        ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.CreatedAll", {
+          count: created, name: folder.name
+        }));
+      } catch (err) {
+        console.warn(`${MODULE_ID} | encounter created, but completion presentation failed`, err);
+        try { ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed")); }
+        catch (notificationErr) { console.warn(`${MODULE_ID} | could not show creation presentation warning`, notificationErr); }
+      }
     } catch (err) {
+      if (committed) {
+        console.warn(`${MODULE_ID} | encounter committed, but completion presentation failed`, err);
+        return;
+      }
       console.error(`${MODULE_ID} | encounter creation failed`, err);
-      this.#error = err.message;
+      // An encounter is all-or-nothing. Best-effort cleanup preserves the
+      // original error while ensuring a retry cannot duplicate a partial roster.
+      const survivors = [];
+      for (const actor of actors.reverse()) {
+        const survivor = await rollbackActor(actor, "encounter actor");
+        if (survivor) survivors.push(survivor);
+      }
+      if (folder) {
+        try { await folder.delete(); } catch (cleanupErr) {
+          console.warn(`${MODULE_ID} | failed to roll back encounter folder "${folder.name}"`, cleanupErr);
+          survivors.push(`encounter folder "${folder.name}" still exists`);
+        }
+      }
+      if (survivors.length) {
+        this.#encounter = null;
+        this.#error = `${err.message} ${survivors.join(" ")} The plan was discarded to prevent a duplicate.`;
+      } else this.#error = err.message;
     } finally {
       this.#busy = false;
       await this.render();
@@ -1108,6 +1537,7 @@ export class GeneratorApp extends SpfApp {
     if (this.#busy || !this.#concept) return;
     this.#busy = true;
     this.#error = null;
+    this.#manifest = null;
     this._beginProgress([["loot", game.i18n.localize("SIMPLYPF2E.Progress.LootReroll")]]);
     try {
       await this._setStep("loot");
@@ -1125,6 +1555,9 @@ export class GeneratorApp extends SpfApp {
         await resolveLoot(this.#concept),
         treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)
       );
+      const manifest = completionManifest({ mode: this.#input.mode, concept: this.#concept, resolved: this.#resolved });
+      assertComplete(manifest);
+      this.#manifest = manifest;
     } catch (err) {
       console.error(`${MODULE_ID} | loot reroll failed`, err);
       this.#error = err.message;
@@ -1142,77 +1575,15 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#manifest = null;
     this.#error = null;
     this._tokenUsage = [];
     await this.render();
   }
 
-  /**
-   * Save a preset: if a CUSTOM preset is currently selected the dialog edits
-   * it in place (same id); otherwise it creates a new custom preset. The
-   * generator-default fields (rarity, treasure, spellcasting) are pre-filled
-   * from the live form so a preset captures the GM's current setup.
-   */
-  static async #onSavePreset() {
-    this.#readForm();
-    const current = findPreset(this.#input.preset);
-    const editing = current?.custom ? current : null;
-    const result = await promptPresetDialog({
-      title: editing ? "SIMPLYPF2E.Presets.DialogEditTitle" : "SIMPLYPF2E.Presets.DialogTitle",
-      name: editing?.name ?? "",
-      prompt: editing?.prompt ?? "",
-      rarity: this.#input.rarity,
-      allowSpellcasting: this.#input.allowSpellcasting,
-      treasureAmount: this.#input.treasureAmount
-    });
-    if (!result) return;
-    const preset = editing
-      ? await updateCustomPreset(editing.id, result)
-      : await addCustomPreset(result.name, result.prompt, result);
-    if (!preset) return;
-    this.#input.preset = preset.id;
-    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: preset.name }));
-    await this.render();
-  }
-
-  /**
-   * Duplicate the currently selected preset (built-in or custom) into a NEW
-   * custom preset — the dialog opens pre-filled from the source so a GM can
-   * start from e.g. "Fighter" and tweak it. Never touches the source.
-   */
-  static async #onDuplicatePreset() {
-    this.#readForm();
-    const source = findPreset(this.#input.preset);
-    if (!source) return;
-    // Built-in names are i18n keys; custom names are plain text.
-    const sourceName = source.custom ? source.name : game.i18n.localize(source.name);
-    const result = await promptPresetDialog({
-      title: "SIMPLYPF2E.Presets.DialogTitle",
-      name: game.i18n.format("SIMPLYPF2E.Presets.CopyName", { name: sourceName }),
-      prompt: source.prompt,
-      rarity: source.rarity ?? this.#input.rarity,
-      allowSpellcasting: source.allowSpellcasting ?? this.#input.allowSpellcasting,
-      treasureAmount: source.treasureAmount ?? this.#input.treasureAmount
-    });
-    if (!result) return;
-    const preset = await addCustomPreset(result.name, result.prompt, result);
-    this.#input.preset = preset.id;
-    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: preset.name }));
-    await this.render();
-  }
-
-  /** Delete the currently selected custom preset (after confirmation). */
-  static async #onDeletePreset() {
-    this.#readForm();
-    const preset = findPreset(this.#input.preset);
-    if (!preset?.custom) return;
-    if (!(await confirmDeletePreset(preset))) return;
-    this.#input.preset = "";
-    await this.render();
-  }
-
   /** Open the Manage Custom Presets dialog (edit/duplicate/delete/export/import). */
   static #onManagePresets() {
+    this.#readForm();
     this.#managePresets ??= new ManagePresetsApp({ generator: this });
     this.#managePresets.render(true);
   }

@@ -1,5 +1,5 @@
 import * as T from "./tables.mjs";
-import { getPacksFor, findEntry, getDocument, toItemData, priceToGp } from "./compendium.mjs";
+import { getPacksFor, findEntry, getDocument, toItemData, priceToGp, isIssuedCandidate } from "./compendium.mjs";
 import { slugify, capitalized, esc, toHtml } from "./text.mjs";
 import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
 
@@ -20,6 +20,56 @@ const STANDARD_SKILLS = new Set([
   "intimidation", "medicine", "nature", "occultism", "performance", "religion",
   "society", "stealth", "survival", "thievery"
 ]);
+
+/*
+ * NPC strike values are written directly into a MeleePF2e document. Keep the
+ * boundary at normalization: a model may describe the fiction of a weapon,
+ * but it may not invent PF2e damage types, attack traits, or attack effects.
+ *
+ * Source (PF2e 8.4.1, checked 2026-08-30):
+ * - src/module/item/melee/data.ts: damageType choices are
+ *   CONFIG.PF2E.damageTypes; traits are CONFIG.PF2E.npcAttackTraits; range
+ *   increments are integer multiples of 5 from 5 through 500.
+ * - src/scripts/config/damage.ts: the complete fallback damage type list
+ *   below for non-Foundry unit imports; a live world always uses its runtime
+ *   CONFIG.PF2E.damageTypes catalog.
+ * - src/scripts/config/index.ts: the complete attack-effect list below.
+ *
+ * NPC attack traits deliberately have no partial local copy. Foundry always
+ * provides CONFIG.PF2E.npcAttackTraits before this module can create a
+ * document; outside that runtime we fail closed rather than let a test or a
+ * future integration silently accept made-up traits.
+ */
+const STRIKE_DAMAGE_TYPES = new Set([
+  "acid", "bleed", "bludgeoning", "cold", "electricity", "fire", "force",
+  "mental", "piercing", "poison", "slashing", "sonic", "spirit", "untyped",
+  "vitality", "void"
+]);
+const ATTACK_EFFECTS = new Set([
+  "grab", "improved-grab", "constrict", "greater-constrict", "knockdown",
+  "improved-knockdown", "push", "improved-push", "trip"
+]);
+
+function pf2eChoiceSet(key) {
+  const choices = typeof CONFIG !== "undefined" ? CONFIG.PF2E?.[key] : null;
+  return choices && typeof choices === "object" ? new Set(Object.keys(choices)) : null;
+}
+
+function filterStrikeValues(values, configKey, fallback, label) {
+  const allowed = pf2eChoiceSet(configKey) ?? fallback;
+  return filterAllowed(values, allowed, label);
+}
+
+function normalizeStrikeRange(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.min(500, Math.max(5, Math.round(numeric / 5) * 5));
+}
+
+function thrownRangeFromTraits(traits) {
+  const thrownTrait = traits.find((trait) => /^thrown-\d+$/.test(trait));
+  return thrownTrait ? normalizeStrikeRange(Number(thrownTrait.slice("thrown-".length))) : null;
+}
 
 /*
  * IWR (immunity/weakness/resistance) type slugs, senses, and languages are
@@ -176,16 +226,36 @@ export function normalizeConcept(raw, { level, rarity }) {
   const strikes = (Array.isArray(c.strikes) ? c.strikes : [])
     .filter((s) => s?.name)
     .slice(0, 4)
-    .map((s) => ({
-      name: String(s.name),
-      type: s.type === "ranged" ? "ranged" : "melee",
-      attackScale: scale4(s.attackScale, "high"),
-      damageScale: scale4(s.damageScale, "high"),
-      damageType: slugify(s.damageType) || "bludgeoning",
-      traits: (Array.isArray(s.traits) ? s.traits : []).map(slugify).filter(Boolean),
-      range: Number(s.range) > 0 ? Math.round(Number(s.range) / 5) * 5 : null,
-      attackEffects: (Array.isArray(s.attackEffects) ? s.attackEffects : []).map(slugify).filter(Boolean)
-    }));
+    .map((s) => {
+      const traits = filterStrikeValues(
+        (Array.isArray(s.traits) ? s.traits : []).map(slugify).filter(Boolean),
+        "npcAttackTraits", new Set(), "NPC attack traits"
+      );
+      // PF2e itself gives thrown attacks their range from the trait during
+      // preparation. Use that same source here so preview/manifest data and
+      // the created document cannot disagree about a valid thrown increment.
+      const thrownRange = thrownRangeFromTraits(traits);
+      const type = s.type === "ranged" || thrownRange != null ? "ranged" : "melee";
+      const damageType = slugify(s.damageType);
+      const validDamageType = (pf2eChoiceSet("damageTypes") ?? STRIKE_DAMAGE_TYPES).has(damageType)
+        ? damageType : "bludgeoning";
+      if (damageType && damageType !== validDamageType) {
+        console.warn(`simplypf2e | dropped invalid strike damage type: ${damageType}`);
+      }
+      return {
+        name: String(s.name),
+        type,
+        attackScale: scale4(s.attackScale, "high"),
+        damageScale: scale4(s.damageScale, "high"),
+        damageType: validDamageType,
+        traits,
+        range: type === "ranged" ? thrownRange ?? normalizeStrikeRange(s.range) : null,
+        attackEffects: filterStrikeValues(
+          (Array.isArray(s.attackEffects) ? s.attackEffects : []).map(slugify).filter(Boolean),
+          "attackEffects", ATTACK_EFFECTS, "NPC attack effects"
+        )
+      };
+    });
   if (!strikes.length) {
     strikes.push({
       name: "fist", type: "melee", attackScale: "high", damageScale: "high",
@@ -273,6 +343,8 @@ export function normalizeConcept(raw, { level, rarity }) {
       .map((a) => ({
         name: String(a.name),
         glossary: a.glossary ? String(a.glossary) : null,
+        candidate: a.candidate?.packId && a.candidate?._id ? a.candidate : null,
+        narrative: Boolean(a.narrative),
         actionType: ["action", "reaction", "free", "passive"].includes(a.actionType) ? a.actionType : "passive",
         actions: [1, 2, 3].includes(Number(a.actions)) ? Number(a.actions) : null,
         description: String(a.description ?? ""),
@@ -285,14 +357,19 @@ export function normalizeConcept(raw, { level, rarity }) {
     // 3 AFTER filtering (the hard focus-pool ceiling), same as the PC path.
     focusSpells: !spellcasting ? [] : (Array.isArray(c.focusSpells) ? c.focusSpells : [])
       .map((s) => {
-        if (typeof s === "string") return s.trim();
-        if (s?.name) return String(s.name).trim();
-        return "";
+        const name = typeof s === "string" ? s.trim() : String(s?.name ?? "").trim();
+        const candidate = s?.candidate?.packId && s?.candidate?._id ? s.candidate : null;
+        return name ? { name, ...(candidate ? { candidate } : {}) } : null;
       })
       .filter(Boolean)
-      .slice(0, 3)
-      .map((name) => ({ name })),
-    feats: (Array.isArray(c.feats) ? c.feats : []).map((f) => String(f)).filter(Boolean).slice(0, 4),
+      .slice(0, 3),
+    feats: (Array.isArray(c.feats) ? c.feats : [])
+      .map((feat) => {
+        const name = typeof feat === "string" ? feat.trim() : String(feat?.name ?? "").trim();
+        const candidate = feat?.candidate?.packId && feat?.candidate?._id ? feat.candidate : null;
+        return name ? { name, ...(candidate ? { candidate } : {}) } : null;
+      })
+      .filter(Boolean).slice(0, 3),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
         if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
@@ -356,11 +433,16 @@ export function normalizeLoot(raw) {
       if (!name) return null;
       const quantity = Math.max(Math.round(Number(e?.quantity) || 1), 1);
       const value = Math.max(Number(e?.value) || 0, 0);
+      const candidate = e?.candidate?.packId && e?.candidate?._id ? e.candidate : null;
+      const scrollCandidate = e?.scrollCandidate?.packId && e?.scrollCandidate?._id ? e.scrollCandidate : null;
       const coins = parseCoins(name);
       if (coins) {
         return { name: coins.name, quantity: Math.min(coins.count ? coins.count * quantity : quantity, 100000), value };
       }
-      return { name: String(name), quantity: Math.min(quantity, 10), value };
+      return {
+        name: String(name), quantity: Math.min(quantity, 10), value,
+        ...(candidate ? { candidate } : {}), ...(scrollCandidate ? { scrollCandidate } : {})
+      };
     })
     .filter(Boolean)
     .slice(0, 24); // fits LOOT_GUIDE's hoard guidance (~12-20 items) with headroom, still bounds runaway output
@@ -388,14 +470,22 @@ export function parseScroll(name) {
  * otherwise a "+1 striking longsword" budgets as a 1 gp longsword while the
  * sheet renders a ~1,000 gp item, and the coin padding overshoots wildly.
  */
-export async function resolveLoot(concept) {
+export async function resolveLoot(concept, { exactContent = false } = {}) {
   const loot = [];
-  for (const { name, quantity, value } of concept.loot) {
+  for (const { name, quantity, value, candidate, scrollCandidate } of concept.loot) {
     const scroll = parseScroll(name);
     if (scroll) {
-      const entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
-        e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !e.system?.ritual
-      );
+      let entry = null;
+      if (isIssuedCandidate(scrollCandidate, getPacksFor("spells"))) {
+        const doc = await getDocument(scrollCandidate);
+        if (doc?.type === "spell" && !(doc.system?.traits?.value ?? []).includes("cantrip") && !doc.system?.ritual) {
+          entry = scrollCandidate;
+        }
+      } else if (!exactContent) {
+        entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
+          e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !e.system?.ritual
+        );
+      }
       const baseRank = entry?.system?.level?.value ?? 1;
       const rank = Math.min(Math.max(scroll.rank ?? baseRank, baseRank), 10);
       // A scroll's real price lives on the rank template it will be built
@@ -411,11 +501,12 @@ export async function resolveLoot(concept) {
     // Loot may sit up to 2 levels above the creature, so the runes are capped
     // at that same level rather than the creature's own.
     const maxLevel = Math.max(concept.level + 2, 0);
-    const entry = await findEntry(
-      getPacksFor("equipment"),
-      parseRunes(name).base,
-      (e) => (e.system?.level?.value ?? 0) <= maxLevel
-    );
+    const entry = isIssuedCandidate(candidate, getPacksFor("equipment"))
+      ? candidate : (exactContent ? null : await findEntry(
+        getPacksFor("equipment"),
+        parseRunes(name).base,
+        (e) => (e.system?.level?.value ?? 0) <= maxLevel
+      ));
     const runes = await capRunes(parseRunes(name), entry?.type, maxLevel);
     let resolvedValue = value;
     if (entry) {
@@ -605,19 +696,25 @@ export function customEquipmentItem(name, quantity, value) {
  * Resolve every compendium reference in a concept. Returns lookup results so
  * the preview can show what was found and what will become a custom ability.
  */
-export async function resolveConcept(concept) {
+export async function resolveConcept(concept, { exactContent = false } = {}) {
   const abilities = [];
   for (const ability of concept.specialAbilities) {
     let entry = null;
-    if (ability.glossary) entry = await findEntry(getPacksFor("abilities"), ability.glossary, (e) => e.type === "action");
-    if (!entry) entry = await findEntry(getPacksFor("abilities"), ability.name, (e) => e.type === "action");
+    if (isIssuedCandidate(ability.candidate, getPacksFor("abilities"))) {
+      entry = ability.candidate;
+    } else if (!exactContent) {
+      if (ability.glossary) entry = await findEntry(getPacksFor("abilities"), ability.glossary, (e) => e.type === "action");
+      if (!entry) entry = await findEntry(getPacksFor("abilities"), ability.name, (e) => e.type === "action");
+    }
     abilities.push({ ability, entry });
   }
 
   const spells = [];
   if (concept.spellcasting) {
     for (const spell of concept.spellcasting.spells) {
-      const entry = await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
+      const exact = spell.candidate;
+      const entry = isIssuedCandidate(exact, getPacksFor("spells"))
+        ? exact : (exactContent ? null : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell"));
       // A ranked spell assigned rank 0 (or below its own rank) would be
       // misfiled as a cantrip slot in createActor — clamp to the real rank.
       if (entry && !(entry.system?.traits?.value ?? []).includes("cantrip")) {
@@ -628,22 +725,26 @@ export async function resolveConcept(concept) {
   }
 
   const feats = [];
-  for (const name of concept.feats) {
-    const entry = await findEntry(
-      getPacksFor("feats"),
-      name,
-      (e) => e.type === "feat" && (e.system?.level?.value ?? 0) <= Math.max(concept.level, 1)
-    );
+  for (const feat of concept.feats) {
+    const name = typeof feat === "string" ? feat : feat.name;
+    const candidate = feat?.candidate;
+    const entry = isIssuedCandidate(candidate, getPacksFor("feats"))
+      ? candidate : (exactContent ? null : await findEntry(
+        getPacksFor("feats"),
+        name,
+        (e) => e.type === "feat" && (e.system?.level?.value ?? 0) <= Math.max(concept.level, 1)
+      ));
     feats.push({ name, entry });
   }
 
   // Gated on spellcasting (not just normalize-time): #refineSpells can null
   // out concept.spellcasting after normalizeConcept ran, and focus spells
   // have no DC of their own without it (v1 scope).
-  const focusSpells = concept.spellcasting ? await resolveFocusSpells(concept.focusSpells ?? []) : [];
+  const focusSpells = concept.spellcasting
+    ? await resolveFocusSpells(concept.focusSpells ?? [], { exactContent }) : [];
 
-  const equipment = await resolveEquipment(concept);
-  const loot = await resolveLoot(concept);
+  const equipment = await resolveEquipment(concept, { exactContent });
+  const loot = await resolveLoot(concept, { exactContent });
 
   return { abilities, spells, feats, focusSpells, equipment, loot };
 }
@@ -653,17 +754,18 @@ export async function resolveConcept(concept) {
  * by NPC resolveConcept() and the PC pipeline (pc-builder.mjs), which both
  * carry the same {name, quantity, value} equipment shape and level cap.
  */
-export async function resolveEquipment(concept) {
+export async function resolveEquipment(concept, { exactContent = false } = {}) {
   const equipment = [];
   const maxLevel = Math.max(concept.level, 0);
-  for (const { name, quantity, value } of concept.equipment) {
+  for (const { name, quantity, value, candidate } of concept.equipment) {
     // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
     // item matches; the runes are re-applied as system data at creation.
-    const entry = await findEntry(
-      getPacksFor("equipment"),
-      parseRunes(name).base,
-      (e) => (e.system?.level?.value ?? 0) <= maxLevel
-    );
+    const entry = isIssuedCandidate(candidate, getPacksFor("equipment"))
+      ? candidate : (exactContent ? null : await findEntry(
+        getPacksFor("equipment"),
+        parseRunes(name).base,
+        (e) => (e.system?.level?.value ?? 0) <= maxLevel
+      ));
     // The item-level cap above only gates the BASE item — without this the AI's
     // chosen rune tier is ungated, so a level-1 character asked for "+1
     // striking" could be handed "+3 major striking" (a level-19 item).
@@ -784,7 +886,7 @@ export function enforceNamedLootBudget(loot, budgetGp) {
 }
 
 /**
- * Resolve focus-spell names against the spell packs. Focus spells carry the
+ * Resolve exact focus-spell candidates against the spell packs. Focus spells carry the
  * "focus" trait and have an EMPTY system.traits.traditions (verified against
  * real pack data, e.g. lay-on-hands.json), so the tradition-filtered
  * getSpellCandidates() can never match one — matched by trait here instead.
@@ -794,16 +896,23 @@ export function enforceNamedLootBudget(loot, budgetGp) {
  * @param {({name: string}|string)[]} names
  * @returns {Promise<{name: string, entry: object|null}[]>}
  */
-export async function resolveFocusSpells(names) {
+export async function resolveFocusSpells(names, { exactContent = false } = {}) {
   const resolved = [];
   for (const raw of Array.isArray(names) ? names : []) {
     const name = typeof raw === "string" ? raw : raw?.name;
     if (!name) continue;
-    const entry = await findEntry(
-      getPacksFor("spells"),
-      name,
-      (e) => e.type === "spell" && (e.system?.traits?.value ?? []).includes("focus")
-    );
+    const exact = raw?.candidate;
+    let entry = null;
+    if (isIssuedCandidate(exact, getPacksFor("spells"))) {
+      const doc = await getDocument(exact);
+      if (doc?.type === "spell" && (doc.system?.traits?.value ?? []).includes("focus")) entry = exact;
+    } else if (!exactContent) {
+      entry = await findEntry(
+        getPacksFor("spells"),
+        name,
+        (e) => e.type === "spell" && (e.system?.traits?.value ?? []).includes("focus")
+      );
+    }
     resolved.push({ name, entry });
   }
   return resolved;
@@ -986,14 +1095,27 @@ export async function buildEquipmentItems(equipment, { dedup = false } = {}) {
     const data = toItemData(doc);
     setQuantity(data, quantity);
     applyRunes(data, runes);
-    if (data.type === "weapon") {
-      data.system.equipped = { ...data.system.equipped, carryType: "held", handsHeld: 1 };
-    } else if (data.type === "armor") {
-      data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
-    }
+    applySourceEquipState(data);
     items.push(data);
   }
   return items;
+}
+
+/**
+ * Set an equipped state only when the published item's own usage proves it.
+ * PF2e parses held/worn usage (including two-handed weapons) from
+ * `system.usage.value`; guessing one hand made a two-handed loadout invalid.
+ */
+export function applySourceEquipState(data) {
+  const usage = data?.system?.usage?.value;
+  if (typeof usage !== "string") return data;
+  if (usage.startsWith("held-in-")) {
+    const handsHeld = usage === "held-in-two-hands" ? 2 : 1;
+    data.system.equipped = { ...data.system.equipped, carryType: "held", handsHeld };
+  } else if (usage === "worn" || usage.startsWith("worn")) {
+    data.system.equipped = { ...data.system.equipped, carryType: "worn", inSlot: true };
+  }
+  return data;
 }
 
 /**
@@ -1072,9 +1194,9 @@ const NPC_ITEM_TYPES = new Set([
  * feat's cost, rules text and automation — the same way bestiary statblocks
  * present feat-based abilities like Goblin Scuttle or Attack of Opportunity.
  */
-export function featToAction(feat) {
+export function featToAction(feat, compendiumSource = null) {
   const actionType = feat.system?.actionType?.value ?? "passive";
-  return {
+  const data = {
     name: feat.name,
     type: "action",
     img: feat.img ?? actionIcon(actionType),
@@ -1089,6 +1211,10 @@ export function featToAction(feat) {
       selfEffect: feat.system?.selfEffect ?? null
     }
   };
+  // NPC feats must be action items, but this remains a faithful conversion of
+  // an exact compendium document. Preserve that source for transaction checks.
+  if (compendiumSource) data._stats = { compendiumSource };
+  return data;
 }
 
 function actionIcon(actionType) {
@@ -1104,9 +1230,9 @@ function actionIcon(actionType) {
  * Build the full actor + embedded item data and create the NPC actor.
  * @param {object} [options]
  * @param {string|null} [options.img]  portrait/token image path
- * @returns {Promise<Actor>}
+ * @returns {Promise<{actor: Actor, expectedItems: object[]}>}
  */
-export async function createActor(concept, resolved, { img = null } = {}) {
+export async function createActor(concept, resolved, { img = null, scaffold = null } = {}) {
   const stats = computeStats(concept);
   const items = [];
 
@@ -1123,11 +1249,6 @@ export async function createActor(concept, resolved, { img = null } = {}) {
 
   // Strikes → melee items
   for (const strike of stats.strikes) {
-    const traits = [...strike.traits];
-    if (strike.type === "ranged") {
-      const hasRange = traits.some((t) => t.startsWith("range"));
-      if (!hasRange) traits.push(`range-increment-${strike.range ?? 30}-feet`);
-    }
     items.push({
       name: capitalized(strike.name),
       type: "melee",
@@ -1141,32 +1262,37 @@ export async function createActor(concept, resolved, { img = null } = {}) {
             category: null
           }
         },
-        traits: { value: traits },
-        attackEffects: { value: strike.attackEffects }
+        traits: { value: strike.traits },
+        attackEffects: { value: strike.attackEffects },
+        // PF2e 8.4.1 stores NPC range as structured system data. The old
+        // range-increment-* trait encoding is migration input, not a valid
+        // new-document trait (see item/melee/data.ts).
+        range: strike.type === "ranged" ? { increment: strike.range ?? 30, max: null } : null
       }
     });
   }
 
-  // Special abilities → glossary clones or custom action items
+  // Special abilities → exact glossary clones or explicitly narrative actions.
   for (const { ability, entry } of resolved.abilities) {
     const doc = await getDocument(entry);
     if (doc) {
       items.push(toItemData(doc));
       continue;
     }
+    if (!ability.narrative) continue;
     const escaped = esc(ability.description);
     items.push({
-      name: ability.name,
+      name: `Narrative: ${ability.name}`,
       type: "action",
-      img: actionIcon(ability.actionType),
+      img: actionIcon("passive"),
       system: {
-        actionType: { value: ability.actionType },
-        actions: { value: ability.actionType === "action" ? (ability.actions ?? 1) : null },
-        category: "offensive",
+        actionType: { value: "passive" },
+        actions: { value: null },
+        category: "interaction",
         description: {
-          value: `<p>${boldKeywords(enrichDescription(escaped, concept.level))}</p>`
+          value: `<p><em>Custom narrative only — no module-authored mechanics.</em></p><p>${escaped}</p>`
         },
-        traits: { value: ability.traits }
+        traits: { value: [] }
       }
     });
   }
@@ -1175,7 +1301,7 @@ export async function createActor(concept, resolved, { img = null } = {}) {
   for (const { entry } of resolved.feats) {
     const doc = await getDocument(entry);
     if (!doc) continue;
-    items.push(featToAction(doc.toObject()));
+    items.push(featToAction(doc.toObject(), doc.uuid));
   }
 
   // Spellcasting entry + spells (skipped when no spell resolved to a document)
@@ -1326,6 +1452,7 @@ export async function createActor(concept, resolved, { img = null } = {}) {
       ...(focusPoolSize ? { resources: { focus: { value: focusPoolSize, max: focusPoolSize } } } : {})
     },
     prototypeToken: {
+      ...(scaffold?.prototypeToken ?? {}),
       displayName: CONST.TOKEN_DISPLAY_MODES.OWNER_HOVER,
       displayBars: CONST.TOKEN_DISPLAY_MODES.OWNER_HOVER
     }
@@ -1335,5 +1462,8 @@ export async function createActor(concept, resolved, { img = null } = {}) {
     actorData.prototypeToken.texture = { src: img };
   }
 
-  return Actor.create(actorData);
+  const actor = await Actor.create(actorData);
+  // Transient creation data gives post-create verification exact source
+  // identity without persisting module metadata onto the actor.
+  return { actor, expectedItems: safeItems };
 }

@@ -43,4 +43,10 @@ assert.deepEqual(
   "{name} records must be accepted and trimmed"
 );
 
+assert.deepEqual(
+  norm([{ name: "Lay on Hands", candidate: { packId: "pf2e.spells", _id: "hands" } }]),
+  [{ name: "Lay on Hands", candidate: { packId: "pf2e.spells", _id: "hands" } }],
+  "a grounded focus candidate reference must survive PC normalization"
+);
+
 console.log("pc-builder focus-spell clamp regression check: all assertions passed");

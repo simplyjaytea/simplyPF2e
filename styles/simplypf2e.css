@@ -318,15 +318,38 @@
   flex: 1;
 }
 
-/* Advanced options: visually quieter than the prompt above them. */
+.simplypf2e .spf-level-primary {
+  display: flex;
+  margin-top: var(--spf-space-sm);
+}
+
+.simplypf2e .spf-level-primary .form-group {
+  flex: 0 1 12rem;
+}
+
+.simplypf2e .spf-advanced {
+  margin-top: var(--spf-space-md);
+  border-top: 1px dotted var(--spf-border);
+}
+
+.simplypf2e .spf-advanced summary {
+  cursor: pointer;
+  padding: var(--spf-space-sm) 0;
+  font-size: var(--spf-text-sm);
+  font-weight: 600;
+}
+
+.simplypf2e .spf-advanced-content {
+  padding-bottom: var(--spf-space-sm);
+}
+
+/* Controls inside Advanced still wrap as a compact grid. */
 .simplypf2e .spf-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spf-space-md);
   align-items: flex-end;
   margin: var(--spf-space-md) 0;
-  padding-top: var(--spf-space-sm);
-  border-top: 1px dotted var(--spf-border);
 }
 
 .simplypf2e .spf-row .form-group {

@@ -1,4 +1,9 @@
-{{#if progress}}
+{{#if busyMessage}}
+  <div class="spf-busy" role="status" aria-live="polite">
+    <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+    {{busyMessage}}
+  </div>
+{{else if progress}}
   <div class="spf-progress spf-card">
     <ol class="spf-progress-steps">
       {{#each progress.steps}}

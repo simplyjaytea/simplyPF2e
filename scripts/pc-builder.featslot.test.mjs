@@ -33,7 +33,10 @@ async function buildSlots(slots, ancestryTrait, classTrait) {
       candidates = await getFeatCandidates({ level: slot.level, category: slot.type });
     }
     if (candidates.length) featSlots.push({ ...slot, candidates });
-    else console.warn(`simplypf2e | no feat candidates for a ${slot.type}${slot.archetype ? " (archetype)" : ""} slot at level ${slot.level} — slot left empty`);
+    else {
+      console.warn(`simplypf2e | no feat candidates for a ${slot.type}${slot.archetype ? " (archetype)" : ""} slot at level ${slot.level} — slot remains unresolved`);
+      featSlots.push({ ...slot, candidates: [] });
+    }
   }
   return featSlots;
 }
@@ -48,10 +51,12 @@ const slots = [
 const built = await buildSlots(slots, "elf", "fighter");
 console.warn = origWarn;
 
-// The ancestry, class, and skill slots are all filled by the retry / direct hit.
-assert.equal(built.length, 3, "ancestry+class+skill slots fill via retry/direct; archetype stays empty");
-assert.deepEqual(built.map((s) => s.type), ["ancestry", "class", "skill"], "filled slots keep their types");
-for (const s of built) assert.ok(s.candidates.length, `${s.type} slot ended up with candidates`);
+// The ancestry, class, and skill slots fill by retry/direct. The archetype
+// entitlement is retained as an unresolved empty slot for the manifest.
+assert.equal(built.length, 4, "all entitlements survive; archetype remains unresolved");
+assert.deepEqual(built.map((s) => s.type), ["ancestry", "class", "skill", "class"], "all slots keep their types");
+for (const s of built.slice(0, 3)) assert.ok(s.candidates.length, `${s.type} slot ended up with candidates`);
+assert.deepEqual(built[3].candidates, [], "unsupported archetype retains an empty candidate list");
 
 // The archetype slot never loosens, so it warns instead of grabbing plain class feats.
 assert.ok(

@@ -1,25 +1,39 @@
 import * as T from "./tables.mjs";
-import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates } from "./compendium.mjs";
+import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates, isIssuedCandidate } from "./compendium.mjs";
 import {
   parseCoins, resolveLoot, resolveEquipment, resolveFocusSpells,
-  buildEquipmentItems, buildLootItems, filterItemTypes
+  buildEquipmentItems, buildLootItems, filterItemTypes, heightenedLevelFor
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
-import { applyChoiceSelections, applyGrantPreselections } from "./choice-set.mjs";
-import { ABILITY_BOOST_LEVELS, SKILL_INCREASE_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, spontaneousSpellSlots } from "./pc-tables.mjs";
+import { preselectChoiceSets } from "./choice-set.mjs";
+import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
+import { CORE_SKILLS, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
+import { applyCharacterLoadout } from "./pc-loadout.mjs";
+import { stageClassPaths } from "./class-paths.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
- * proficiencies/spell slots computed by the PF2e system itself from real
+ * proficiencies computed by the PF2e system itself from real
  * Ancestry+Background+Class items once those are correctly attached — this
  * module's job is assembling a valid, fully-grounded set of real-item
  * choices, NOT reimplementing that math (unlike tables.mjs, which hardcodes
  * NPC benchmark numbers because NPCs have no such items to derive from).
+ * Spell slots/repertoire plans are supplied separately by verified class
+ * profiles: class items expose spell proficiency, not automatic slot counts.
  */
 
 const ABILITY_KEYS = ["str", "dex", "con", "int", "wis", "cha"];
+
+function normalizeAbilityPriorities(value) {
+  const seen = new Set();
+  return (Array.isArray(value) ? value : []).filter((ability) => {
+    if (!ABILITY_KEYS.includes(ability) || seen.has(ability)) return false;
+    seen.add(ability);
+    return true;
+  });
+}
 
 /**
  * Coerce the AI's raw PC concept JSON into a well-formed object. Guarantees
@@ -38,6 +52,12 @@ export function normalizePCConcept(raw, { level }) {
   const c = typeof raw === "object" && raw !== null ? raw : {};
   const clampedLevel = Math.min(Math.max(Math.round(Number(level) || 1), 1), 20);
   const maxSpellRank = Math.max(1, Math.ceil(clampedLevel / 2));
+  const skillPriorities = normalizeSkillPriorities(c.skillPriorities);
+  const abilityPriorities = normalizeAbilityPriorities(c.abilityPriorities);
+  if (c.skillPriorities !== undefined && (!Array.isArray(c.skillPriorities)
+    || c.skillPriorities.some((slug) => !skillPriorities.includes(slug)))) {
+    console.warn("simplypf2e | dropped invalid character skill priorities");
+  }
 
   let spellcasting = null;
   if (c.spellcasting && typeof c.spellcasting === "object"
@@ -58,6 +78,8 @@ export function normalizePCConcept(raw, { level }) {
     background: String(c.background || "Follower").slice(0, 80),
     class: String(c.class || "Fighter").slice(0, 80),
     keyAbility: ABILITY_KEYS.includes(c.keyAbility) ? c.keyAbility : "str",
+    abilityPriorities,
+    skillPriorities,
     level: clampedLevel,
     // Inert PC defaults so the reused NPC refine helpers have legal input:
     rarity: "common",
@@ -88,13 +110,12 @@ export function normalizePCConcept(raw, { level }) {
     // ceiling — so the first 3 VALID names are kept, not the first 3 raw ones.
     focusSpells: (Array.isArray(c.focusSpells) ? c.focusSpells : [])
       .map((s) => {
-        if (typeof s === "string") return s.trim();
-        if (s?.name) return String(s.name).trim();
-        return "";
+        const name = typeof s === "string" ? s.trim() : String(s?.name ?? "").trim();
+        const candidate = s?.candidate?.packId && s?.candidate?._id ? s.candidate : null;
+        return name ? { name, ...(candidate ? { candidate } : {}) } : null;
       })
       .filter(Boolean)
-      .slice(0, 3)
-      .map((name) => ({ name })),
+      .slice(0, 3),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
         if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
@@ -216,27 +237,35 @@ async function fallbackHeritageFor(ancestryDoc) {
  * happens in generator-app via ai.mjs's selectFeats(), mirroring how AI calls
  * live in the app while resolution lives here for the NPC pipeline too.
  */
-export async function resolvePCConcept(concept) {
+export async function resolvePCConcept(concept, { exactContent = false } = {}) {
   // ABC lookups scan ALL installed packs of the right type (getAllPacksFor),
   // not just the hardcoded default pack, so a legit AI pick living in a Lost
   // Omens / add-on compendium still resolves instead of aborting the run (#51).
-  const ancestryEntry = await findEntry(await getAllPacksFor("ancestries"), concept.ancestry, (e) => e.type === "ancestry");
+  const ancestryPacks = await getAllPacksFor("ancestries");
+  const ancestryEntry = isIssuedCandidate(concept.ancestryCandidate, ancestryPacks)
+    ? concept.ancestryCandidate : (exactContent ? null : await findEntry(ancestryPacks, concept.ancestry, (e) => e.type === "ancestry"));
   const ancestryDoc = await getDocument(ancestryEntry);
-  if (!ancestryDoc) throw new Error(`Could not find ancestry "${concept.ancestry}" in the compendium`);
+  if (!ancestryDoc || ancestryDoc.type !== "ancestry") throw new Error(`Could not find ancestry "${concept.ancestry}" in the compendium`);
 
-  const backgroundEntry = await findEntry(await getAllPacksFor("backgrounds"), concept.background, (e) => e.type === "background");
+  const backgroundPacks = await getAllPacksFor("backgrounds");
+  const backgroundEntry = isIssuedCandidate(concept.backgroundCandidate, backgroundPacks)
+    ? concept.backgroundCandidate : (exactContent ? null : await findEntry(backgroundPacks, concept.background, (e) => e.type === "background"));
   const backgroundDoc = await getDocument(backgroundEntry);
-  if (!backgroundDoc) throw new Error(`Could not find background "${concept.background}" in the compendium`);
+  if (!backgroundDoc || backgroundDoc.type !== "background") throw new Error(`Could not find background "${concept.background}" in the compendium`);
 
-  const classEntry = await findEntry(await getAllPacksFor("classes"), concept.class, (e) => e.type === "class");
+  const classPacks = await getAllPacksFor("classes");
+  const classEntry = isIssuedCandidate(concept.classCandidate, classPacks)
+    ? concept.classCandidate : (exactContent ? null : await findEntry(classPacks, concept.class, (e) => e.type === "class"));
   const classDoc = await getDocument(classEntry);
-  if (!classDoc) throw new Error(`Could not find class "${concept.class}" in the compendium`);
+  if (!classDoc || classDoc.type !== "class") throw new Error(`Could not find class "${concept.class}" in the compendium`);
 
   let heritageDoc = null;
   if (concept.heritage) {
-    const heritageEntry = await findEntry(await getAllPacksFor("heritages"), concept.heritage, (e) => e.type === "heritage");
+    const heritagePacks = await getAllPacksFor("heritages");
+    const heritageEntry = isIssuedCandidate(concept.heritageCandidate, heritagePacks)
+      ? concept.heritageCandidate : (exactContent ? null : await findEntry(heritagePacks, concept.heritage, (e) => e.type === "heritage"));
     const pickedDoc = await getDocument(heritageEntry);
-    if (!pickedDoc) {
+    if (!pickedDoc || pickedDoc.type !== "heritage") {
       console.warn(`simplypf2e | heritage "${concept.heritage}" not found in the compendium — falling back to an ancestry-matched heritage`);
     } else if (!heritageMatchesAncestry(pickedDoc, ancestryDoc)) {
       console.warn(`simplypf2e | heritage "${concept.heritage}" does not belong to ancestry "${ancestryDoc.name}" — dropping and falling back to an ancestry-matched heritage`);
@@ -262,7 +291,8 @@ export async function resolvePCConcept(concept) {
       : slot.type === "ancestry" ? [ancestryTrait]
       : slot.type === "class" ? [classTrait] : [];
     let candidates = await getFeatCandidates({
-      level: slot.level, category: slot.type, traits, preferredNames: concept.feats
+      level: slot.level, category: slot.type, traits, preferredNames: concept.feats,
+      requireNoPrerequisites: true
     });
     // Retry once without the trait filter before giving up: a valid slot
     // whose ancestry/class trait matched nothing at this level (odd content
@@ -271,28 +301,36 @@ export async function resolvePCConcept(concept) {
     // give plain class feats, defeating the slot). Issue #64 item 4a.
     if (!candidates.length && traits.length && !slot.archetype) {
       candidates = await getFeatCandidates({
-        level: slot.level, category: slot.type, preferredNames: concept.feats
+        level: slot.level, category: slot.type, preferredNames: concept.feats,
+        requireNoPrerequisites: true
       });
     }
     if (candidates.length) featSlots.push({ ...slot, candidates });
-    else console.warn(`simplypf2e | no feat candidates for a ${slot.type}${slot.archetype ? " (archetype)" : ""} slot at level ${slot.level} — slot left empty`);
+    else {
+      // Preserve the earned entitlement through selection and the completion
+      // manifest. Dropping an unsupported slot would let a character commit
+      // while appearing complete merely because no unresolved record existed.
+      console.warn(`simplypf2e | no feat candidates for a ${slot.type}${slot.archetype ? " (archetype)" : ""} slot at level ${slot.level} — slot remains unresolved`);
+      featSlots.push({ ...slot, candidates: [] });
+    }
   }
 
   const spells = [];
   if (concept.spellcasting) {
     for (const spell of concept.spellcasting.spells) {
-      const entry = await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell");
+      const entry = isIssuedCandidate(spell.candidate, getPacksFor("spells"))
+        ? spell.candidate : (exactContent ? null : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell"));
       spells.push({ spell, entry });
     }
   }
 
-  const focusSpells = await resolveFocusSpells(concept.focusSpells ?? []);
+  const focusSpells = await resolveFocusSpells(concept.focusSpells ?? [], { exactContent });
 
-  const equipment = await resolveEquipment(concept);
+  const equipment = await resolveEquipment(concept, { exactContent });
   // concept.loot starts empty (see normalizePCConcept) — resolveLoot() is a
   // no-op on it here; applyTreasureBudget() (called by generator-app with
   // pcStartingWealthGp()) is what actually fills it with coins.
-  const loot = await resolveLoot(concept);
+  const loot = await resolveLoot(concept, { exactContent });
 
   return { ancestryDoc, heritageDoc, backgroundDoc, classDoc, featSlots, spells, focusSpells, equipment, loot };
 }
@@ -318,29 +356,52 @@ export async function resolvePCConcept(concept) {
  * by level then name) is IDENTICAL for every slot of a category. A level-20
  * character whose batched selectFeats() call came back empty used to get ten
  * copies of the same class feat.
- * @param {{type: string, level: number, candidates: {name: string}[]}[]} featSlots
- * @param {{slot: number, name: string}[]} picks
- * @returns {Promise<{type: string, level: number, name: string, entry: object|null}[]>}
+ * In the complete one-click flow `exactContent` keeps this final step inside
+ * the per-slot, locally issued catalog: an AI selection cannot become a
+ * different same-named feat through a post-selection lookup. The entitlement
+ * fallback remains, but it too uses that slot's exact candidate reference.
+ * Legacy/pre-selection callers retain the former name-lookup behavior.
+ * @param {{type: string, level: number, candidates: {name: string, ref?: object}[]}[]} featSlots
+ * @param {{slot: number, name: string, candidate?: object}[]} picks
+ * @param {{exactContent?: boolean}} [options]
+ * @returns {Promise<{type: string, level: number, archetype: boolean, name: string, entry: object|null}[]>}
  */
-export async function resolveFeatPicks(featSlots, picks) {
-  const bySlot = new Map(picks.map((p) => [p.slot, p.name]));
+export async function resolveFeatPicks(featSlots, picks, { exactContent = false } = {}) {
+  const bySlot = new Map(picks.map((p) => [p.slot, p]));
   const taken = new Set();
   const resolved = [];
 
-  /** Resolve one name for one slot, rejecting anything already taken. */
-  const resolveFor = (slot, name) => findEntry(
-    getPacksFor("feats"),
-    name,
-    (e) => e.type === "feat"
-      && e.system?.category === slot.type
-      && (e.system?.level?.value ?? 0) <= slot.level
-      && !taken.has(slugify(e.name))
-  );
+  /** Resolve one candidate for one slot, rejecting cross-slot/raw references. */
+  const resolveFor = (slot, name, candidate = null) => {
+    const allowedPacks = getPacksFor("feats");
+    const offeredCandidate = (slot.candidates ?? []).find((item) => item?.ref === candidate) ?? null;
+    const offered = offeredCandidate?.ref ?? null;
+    if (offered && isIssuedCandidate(offered, allowedPacks)) {
+      return Promise.resolve(taken.has(slugify(offeredCandidate.name)) ? null : offered);
+    }
+    if (exactContent) return Promise.resolve(null);
+    // Preserve the pre-existing permissive seam for callers that explicitly
+    // opt out of complete-only creation. The one-click path above never
+    // reaches this branch: it requires the exact reference offered to this
+    // slot, not merely an allowed pack.
+    if (candidate?.packId && allowedPacks.includes(candidate.packId)) {
+      return Promise.resolve(taken.has(slugify(name)) ? null : candidate);
+    }
+    return findEntry(
+      allowedPacks,
+      name,
+      (e) => e.type === "feat"
+        && e.system?.category === slot.type
+        && (e.system?.level?.value ?? 0) <= slot.level
+        && !taken.has(slugify(e.name))
+    );
+  };
 
   for (let i = 0; i < featSlots.length; i++) {
     const slot = featSlots[i];
-    let name = bySlot.get(i + 1) ?? null;
-    let entry = name ? await resolveFor(slot, name) : null;
+    const pick = bySlot.get(i + 1) ?? null;
+    let name = pick?.name ?? null;
+    let entry = name ? await resolveFor(slot, name, pick?.candidate) : null;
     if (name && !entry) {
       console.warn(`simplypf2e | feat pick "${name}" for slot ${i + 1} (${slot.type}, level ${slot.level}) did not resolve to an unused feat for this slot`);
     }
@@ -348,19 +409,29 @@ export async function resolveFeatPicks(featSlots, picks) {
       // Fallback: walk this slot's own candidate list (real, already
       // level/category/trait-filtered) for the first one not already taken.
       for (const candidate of slot.candidates ?? []) {
-        entry = await resolveFor(slot, candidate.name);
+        entry = await resolveFor(slot, candidate.name, candidate.ref);
         if (entry) {
-          name = entry.name;
+          name = candidate.name;
           console.warn(`simplypf2e | slot ${i + 1} (${slot.type}, level ${slot.level}) had no usable AI pick — defaulted to "${name}"`);
           break;
         }
       }
     }
-    if (entry) taken.add(slugify(entry.name));
+    if (entry) {
+      // Exact candidate references intentionally carry only opaque source
+      // identity. Recover their verified catalog label before deduplicating
+      // or presenting the result; a document lookup is neither needed nor
+      // desirable on the strict path.
+      name = (slot.candidates ?? []).find((candidate) => candidate?.ref === entry)?.name ?? entry.name ?? name;
+      taken.add(slugify(name));
+    }
     // entry can still be null when every candidate for this slot is already
     // taken (a sparse category at low levels); the name is kept so the preview
     // can still show intent, and the slot is simply left empty on the sheet.
-    resolved.push({ type: slot.type, level: slot.level, name: name ?? `${slot.type} feat`, entry });
+    resolved.push({
+      type: slot.type, level: slot.level, archetype: slot.archetype === true,
+      name: name ?? `${slot.type} feat`, entry
+    });
   }
   return resolved;
 }
@@ -373,13 +444,14 @@ export async function resolveFeatPicks(featSlots, picks) {
  * out of scope per the plan (no pre-create edit screen in v1); a GM should
  * sanity-check/adjust it before play, same review step as any other preview.
  */
-function boostPriority(keyAbility) {
+function boostPriority(keyAbility, preferences = []) {
   const key = ABILITY_KEYS.includes(keyAbility) ? keyAbility : "str";
-  return [key, "con", ...ABILITY_KEYS.filter((a) => a !== key && a !== "con")];
+  const preferred = normalizeAbilityPriorities(preferences).filter((ability) => ability !== key);
+  return [key, ...preferred, ...ABILITY_KEYS.filter((ability) => ability !== key && !preferred.includes(ability))];
 }
 
-function assignAbilityBoosts(keyAbility) {
-  const priority = boostPriority(keyAbility).slice(0, 4);
+function assignAbilityBoosts(keyAbility, preferences) {
+  const priority = boostPriority(keyAbility, preferences).slice(0, 4);
   const boosts = {};
   for (const level of ABILITY_BOOST_LEVELS) boosts[level] = [...priority];
   return boosts;
@@ -400,10 +472,10 @@ function assignAbilityBoosts(keyAbility) {
  * Free boosts within one item are kept distinct (remaster "two different
  * abilities"), preferring the character's key ability then Constitution.
  */
-function assignItemBoosts(system, keyAbility) {
+function assignItemBoosts(system, keyAbility, preferences) {
   const boosts = system?.boosts;
   if (!boosts || typeof boosts !== "object") return;
-  const priority = boostPriority(keyAbility);
+  const priority = boostPriority(keyAbility, preferences);
   const taken = new Set();
   for (const slot of Object.values(boosts)) {
     if (Array.isArray(slot?.value) && slot.value.length === 1) {
@@ -432,16 +504,6 @@ function resolveKeyAbility(classSystem, requested) {
   if (options.includes(requested)) return requested;
   return options[0] ?? (ABILITY_KEYS.includes(requested) ? requested : "str");
 }
-
-/** Core skill -> governing attribute, for deterministic auto-pick of a class's
- * `trainedSkills.additional` free trained skills (slugs verified against pf2e
- * CORE_SKILL_SLUGS — full words, not abbreviations). */
-const SKILL_ATTRIBUTE = {
-  acrobatics: "dex", arcana: "int", athletics: "str", crafting: "int",
-  deception: "cha", diplomacy: "cha", intimidation: "cha", medicine: "wis",
-  nature: "wis", occultism: "int", performance: "cha", religion: "wis",
-  society: "int", stealth: "dex", survival: "wis", thievery: "dex"
-};
 
 /**
  * Resolve the AI's freeform language names against the world's real language
@@ -501,49 +563,6 @@ function loreItem(name, rank = 1) {
 }
 
 /**
- * Deterministic v1 skill-increase allocation (issue #56 item 5): a trained
- * skill's `rank` never advances past Trained (1) on its own — the system has
- * no build-tracking layer for skill increases the way it does for attribute
- * boosts (verified: CharacterBuildData only carries `attributes`/`languages`,
- * no `skills` — see the SCHEMA NOTE in createCharacterActor), so a skill increase, like an
- * ability boost, has to be applied directly as a plain source value.
- *
- * Round-robins one +1 rank per SKILL_INCREASE_LEVELS entry <= the character's
- * level across the already-trained skill/lore list (key-ability skills
- * first, same priority spirit as assignAbilityBoosts), capped by the CRB's
- * level gates (Expert any level once trained, Master requires level 7+,
- * Legendary requires level 15+). Not a tailored build — a reasonable default
- * a GM reviews, same spirit as assignAbilityBoosts/the trainedSkills.additional
- * auto-pick above.
- * @param {string[]} slugs skills/lore names already trained (rank 1)
- * @param {string} keyAbility
- * @param {number} level
- * @returns {Map<string, number>} slug -> final rank (2-4 only; rank-1 entries omitted)
- */
-function assignSkillRanks(slugs, keyAbility, level) {
-  const increases = SKILL_INCREASE_LEVELS.filter((lv) => lv <= level).length;
-  const maxRank = level >= 15 ? 4 : level >= 7 ? 3 : 2;
-  const order = [...slugs].sort((a, b) =>
-    ((SKILL_ATTRIBUTE[a] === keyAbility ? 0 : 1) - (SKILL_ATTRIBUTE[b] === keyAbility ? 0 : 1))
-    || a.localeCompare(b));
-  const ranks = new Map(order.map((s) => [s, 1]));
-  let remaining = increases;
-  while (remaining > 0) {
-    let advanced = false;
-    for (const slug of order) {
-      if (remaining <= 0) break;
-      if (ranks.get(slug) < maxRank) {
-        ranks.set(slug, ranks.get(slug) + 1);
-        remaining--;
-        advanced = true;
-      }
-    }
-    if (!advanced) break; // every skill already at this level's cap
-  }
-  return ranks;
-}
-
-/**
  * Item types the PF2e system allows on character actors. Mirrors builder.mjs's
  * NPC_ITEM_TYPES safety net — anything else embedded on a character actor
  * breaks the sheet.
@@ -577,13 +596,13 @@ function conceptChoiceNames(concept, resolved) {
 /**
  * Walk every item source about to be embedded and pre-answer its ChoiceSet
  * rules (and, one level down, the ChoiceSets of items its GrantItem rules
- * grant) so no blocking prompt opens during createEmbeddedDocuments().
+ * grant) to reduce prompts during createEmbeddedDocuments(). Native prompts
+ * can still open for unresolved choices and choices on deeper ABC grant paths.
  *
- * Fail-open by design — see choice-set.mjs's header. Anything auto-picked
- * purely because it was first in the list is warned about by item + choice +
- * pick, so the GM knows what to review on the sheet.
+ * Fail-open by design — see choice-set.mjs's header. Ambiguous, dynamic, and
+ * unanswered choices remain native rather than being guessed.
  */
-async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility) {
+async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility, selectChoices) {
   const context = { keyAbility, names: conceptChoiceNames(concept, resolved) };
   const config = CONFIG?.PF2E ?? {};
   const cache = new Map();
@@ -598,18 +617,7 @@ async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility) 
     return source;
   };
 
-  for (const itemData of itemSources) {
-    const applied = [
-      ...applyChoiceSelections(itemData, context, config),
-      ...await applyGrantPreselections(itemData, loadItemSource, context, config)
-    ];
-    for (const pick of applied) {
-      if (pick.reason !== "first") continue;
-      console.warn(
-        `simplypf2e | auto-picked "${pick.label}" (${pick.value}) for the "${pick.flag ?? "unnamed"}" choice on "${pick.item}" — nothing in the concept matched, so the first valid option was taken; change it on the sheet if you want another`
-      );
-    }
-  }
+  await preselectChoiceSets(itemSources, context, config, loadItemSource, selectChoices);
 }
 
 /**
@@ -617,12 +625,14 @@ async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility) 
  * actor. Unlike builder.mjs's createActor() (NPC), no stats are computed here
  * — embedding real ancestry/background/class/feat/spell items with correct
  * system.build data is enough for the PF2e system's own derived-data
- * preparation to compute AC/HP/saves/proficiencies/spell slots.
+ * preparation to compute AC/HP/saves/proficiencies. Skill choices and verified
+ * class spell plans are allocated separately; no derived-stat math is copied.
  * @param {object} [options]
  * @param {string|null} [options.img]
- * @returns {Promise<Actor>}
+ * @param {(groups: object[]) => Promise<unknown>} [options.selectChoices]
+ * @returns {Promise<{actor: Actor, skillReport: object}>}
  */
-export async function createCharacterActor(concept, resolved, { img = null } = {}) {
+export async function createCharacterActor(concept, resolved, { img = null, selectChoices = null } = {}) {
   const items = [];
 
   // Key ability: validate the AI's pick against the class's legal options once,
@@ -630,40 +640,8 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // item's own keyAbility.selected, the actor-level boosts, and details.keyability.
   const keyAbility = resolveKeyAbility(resolved.classDoc.system, concept.keyAbility);
 
-  // Trained skills: the background and class fixed skills are auto-applied by
-  // their own items, but the class's `additional` count of FREE trained skills
-  // is not (the system can't know which) — auto-pick deterministically: skills
-  // governed by the key ability first, then alphabetical (a sensible default a
-  // GM reviews, same spirit as assignAbilityBoosts). Fixes classes like Fighter
-  // (trainedSkills.value == [], all skills come from `additional`) showing zero
-  // trained skills (issue #50 item 3). NOTE: Int-mod bonus skills omitted;
-  // a GM can train more by hand.
-  const trained = new Set([
-    ...(resolved.backgroundDoc.system?.trainedSkills?.value ?? []),
-    ...(resolved.classDoc.system?.trainedSkills?.value ?? [])
-  ]);
-  const additional = Math.max(0, Math.round(Number(resolved.classDoc.system?.trainedSkills?.additional) || 0));
-  const untrained = Object.keys(SKILL_ATTRIBUTE)
-    .filter((s) => !trained.has(s))
-    .sort((a, b) =>
-      ((SKILL_ATTRIBUTE[a] === keyAbility ? 0 : 1) - (SKILL_ATTRIBUTE[b] === keyAbility ? 0 : 1))
-      || a.localeCompare(b));
-  for (const s of untrained.slice(0, additional)) trained.add(s);
-
-  // Background Lore's slug: joins the same skill-increase rotation as core
-  // skills below (issue #56 item 5) even though it lives on its own embedded
-  // item rather than in system.skills.
-  const loreName = resolved.backgroundDoc.system?.trainedSkills?.lore?.[0];
-  const loreSlug = loreName ? slugify(loreName) : null;
-
-  // Skill increases (issue #56 item 5): ranks never advanced past Trained
-  // before — see assignSkillRanks's doc comment for why this has to be a
-  // direct source write, same as ability boosts.
-  const skillRanks = assignSkillRanks(
-    [...trained, ...(loreSlug ? [loreSlug] : [])], keyAbility, concept.level
-  );
-  const skills = {};
-  for (const slug of trained) skills[slug] = { rank: skillRanks.get(slug) ?? 1 };
+  const { ranks: initialRanks, replacements } = initialSkillTraining(resolved.classDoc.system, resolved.backgroundDoc.system);
+  const backgroundLore = [];
 
   // Assign ABC ids before embedding and preserve them with `keepId` below.
   // Generated feat slots already reference these ids, and PF2e's native
@@ -678,7 +656,7 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // applies none of them (issue #50 item 1) — set them on the cloned data.
   const ancestryData = toItemData(resolved.ancestryDoc);
   ancestryData._id = ancestryId;
-  assignItemBoosts(ancestryData.system, keyAbility);
+  assignItemBoosts(ancestryData.system, keyAbility, concept.abilityPriorities);
   items.push(ancestryData);
 
   if (resolved.heritageDoc) {
@@ -689,16 +667,31 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
 
   const backgroundData = toItemData(resolved.backgroundDoc);
   backgroundData._id = backgroundId;
-  assignItemBoosts(backgroundData.system, keyAbility);
+  assignItemBoosts(backgroundData.system, keyAbility, concept.abilityPriorities);
   items.push(backgroundData);
 
   const classData = toItemData(resolved.classDoc);
   classData._id = classId;
   classData.system.keyAbility = { ...(classData.system.keyAbility ?? {}), selected: keyAbility };
+  // Mandatory native class paths are normally re-fetched from
+  // Class.system.items, where the ordinary source preselector cannot reach
+  // them. Stage only a proven exact bridge before Actor.create; all remaining
+  // class grants still flow through PF2e's normal class item.
+  const stagedClassPaths = await stageClassPaths(classData, classId, {
+    context: { keyAbility, names: conceptChoiceNames(concept, resolved) }, selectChoices
+  });
   items.push(classData);
+  items.push(...stagedClassPaths.items);
 
   // Background Lore: a real embedded lore item (not a system.skills entry).
-  if (loreName) items.push(loreItem(loreName, skillRanks.get(loreSlug) ?? 1));
+  const loreNames = resolved.backgroundDoc.system?.trainedSkills?.lore;
+  for (const name of Array.isArray(loreNames) ? loreNames : []) {
+    if (typeof name !== "string" || !name.trim() || backgroundLore.some((entry) => slugify(entry.name) === slugify(name))) continue;
+    const data = { ...loreItem(name), _id: foundry.utils.randomID() };
+    backgroundLore.push(data);
+    initialRanks[`lore:${data._id}`] = 1;
+    items.push(data);
+  }
 
   // Feats: PCs allow the real "feat" item type directly — skip builder.mjs's
   // featToAction() NPC-only conversion entirely for this path. Each feat's
@@ -706,52 +699,118 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // and system.level.taken the slot level, or the system's feat-slotting
   // (verified in feats/group.ts assignFeat) can't place it and dumps it into
   // Bonus feats (issue #50 item 4).
-  for (const { entry, type, level } of resolved.feats ?? []) {
+  for (const { entry, type, level, archetype = false } of resolved.feats ?? []) {
     const doc = await getDocument(entry);
     if (!doc) continue;
     const data = toItemData(doc);
-    if (type && level) {
-      data.system.location = `${type}-${level}`;
+    const location = featSlotLocation({ type, level, archetype });
+    if (location) {
+      data.system.location = location;
       data.system.level = { ...(data.system.level ?? {}), taken: level };
     }
     items.push(data);
   }
 
-  // Spellcasting entry + spells (skipped when no spell resolved to a document).
-  // NOTE: a fixed spontaneous entry is a v1 simplification — prepared-
-  // caster slot management (Wizard-style) is out of scope; add if requested.
-  if (concept.spellcasting && resolved.spells?.some((s) => s.entry)) {
+  // Spellcasting entry + explicit spell plan. Recognized Remaster classes use
+  // their published profile; unsupported classes retain the legacy spontaneous
+  // fallback until a source-qualified profile is added.
+  const spellProfile = concept.spellcasting ? pcSpellcastingProfile(resolved.classDoc) : null;
+  if (concept.spellcasting && (spellProfile || resolved.spells?.some((s) => s.entry))) {
     const entryId = foundry.utils.randomID();
-    // Populate per-rank slots so the caster can actually cast (issue #50 item 5
-    // / #53); shape (slot0..slot10, each {value,max,prepared:[]}) verified
-    // against pf2e spellcasting-entry_data.ts. Spontaneous casters leave
-    // `prepared` empty. `ability.value` keys spell DC/attack off the key ability.
+    const mode = spellProfile?.mode ?? "spontaneous";
+    const tradition = spellProfile?.tradition ?? concept.spellcasting.tradition;
+    const ability = spellProfile?.ability ?? keyAbility;
+    const plan = pcSpellPlan(concept.level, spellProfile);
+    const counts = plan.slots;
     const slots = {};
-    for (const [rank, max] of Object.entries(spontaneousSpellSlots(concept.level))) {
+    for (const [rank, max] of Object.entries(counts)) {
       slots[`slot${rank}`] = { value: max, max, prepared: [] };
+    }
+
+    const spellSources = new Map();
+    const usedCantrips = new Set();
+    const spontaneousSeen = new Set();
+    const usedRanks = new Map();
+    const signatureCandidates = new Map();
+    for (const { spell, entry } of resolved.spells ?? []) {
+      const assignedRank = spell?.rank;
+      const reject = (reason) => console.warn(`simplypf2e | dropped planned spell "${spell?.name ?? entry?.name ?? "?"}": ${reason}`);
+      if (typeof assignedRank !== "number" || !Number.isInteger(assignedRank) || assignedRank < 0 || assignedRank > 10 || !counts[assignedRank]) { reject("assigned rank is invalid or has no slot"); continue; }
+      const doc = await getDocument(entry);
+      if (!doc) { reject("could not load grounded spell"); continue; }
+      const source = toItemData(doc);
+      if (source.type !== "spell") { reject("grounded document is not a spell"); continue; }
+      const baseRank = source.system?.level?.value;
+      const traits = source.system?.traits ?? {};
+      const cantrip = Array.isArray(traits.value) && traits.value.includes("cantrip");
+      const traditions = Array.isArray(traits.traditions) ? traits.traditions : [];
+      if (spellProfile && (!Array.isArray(traits.value) || !Array.isArray(traits.traditions))) { reject("missing spell trait data"); continue; }
+      if (!Number.isInteger(baseRank) || baseRank < 0 || (!cantrip && baseRank > assignedRank)) { reject("base rank cannot occupy assigned rank"); continue; }
+      if (cantrip !== (assignedRank === 0)) { reject("cantrip rank mismatch"); continue; }
+      if ((Array.isArray(traits.value) && traits.value.includes("focus")) || source.system?.ritual) { reject("focus spells and rituals use separate casting entries"); continue; }
+      if (spellProfile && !traditions.includes(tradition)) { reject("spell tradition does not match caster profile"); continue; }
+      if (spellProfile && mode === "spontaneous" && assignedRank === 10 && traits.rarity !== "common") {
+        reject("ordinary 10th-rank repertoire picks must be common"); continue;
+      }
+      const identity = doc.uuid ?? entry?.uuid ?? (entry?.packId && entry?._id ? `${entry.packId}:${entry._id}` : null);
+      if (!identity) { reject("grounded spell identity is missing"); continue; }
+      if (assignedRank === 0 && usedCantrips.has(identity)) { reject("duplicate cantrip"); continue; }
+      const key = `${identity}:${assignedRank}`;
+      if (mode === "spontaneous" && spontaneousSeen.has(key)) { reject("duplicate spontaneous repertoire rank"); continue; }
+      if ((usedRanks.get(assignedRank) ?? 0) >= plan.picks[assignedRank]) { reject("assigned rank is already at its pick cap"); continue; }
+      // A spontaneous repertoire can contain the same source at different
+      // assigned ranks; each needs its own embedded item/location heightening.
+      const sourceKey = mode === "spontaneous" ? key : identity;
+      let data = spellSources.get(sourceKey);
+      if (!data) {
+        data = source;
+        data._id = foundry.utils.randomID();
+        spellSources.set(sourceKey, data);
+      }
+      // A cloned source can carry a stale entry or heightened location from a
+      // compendium/previous embedding. Rebuild it rather than merging one.
+      data.system.location = { value: entryId };
+      if (mode === "spontaneous") {
+        const heightenedLevel = heightenedLevelFor(data.system, assignedRank);
+        if (heightenedLevel) data.system.location.heightenedLevel = heightenedLevel;
+        else delete data.system.location.heightenedLevel;
+        spontaneousSeen.add(key);
+      } else {
+        // PF2e entry/data.ts SpellPrepData; the native entry pads unused
+        // positions with null IDs, and its collection casts at the slot rank.
+        slots[`slot${assignedRank}`].prepared.push({ id: data._id, expended: false });
+      }
+      usedRanks.set(assignedRank, (usedRanks.get(assignedRank) ?? 0) + 1);
+      if (spell?.signature === true) {
+        if (!plan.signatureRanks.includes(assignedRank)) console.warn(`simplypf2e | ignored signature marker on "${source.name}": rank is not eligible`);
+        else signatureCandidates.set(assignedRank, [...(signatureCandidates.get(assignedRank) ?? []), data]);
+      } else if (spell?.signature != null && spell.signature !== false) {
+        console.warn(`simplypf2e | ignored invalid signature marker on "${source.name}"`);
+      }
+      if (assignedRank === 0) usedCantrips.add(identity);
+    }
+    for (const [rank, candidates] of signatureCandidates) {
+      // PF2e spell/data.ts location.signature; collection.ts expands native
+      // virtual casting rows from the spell's original rank, not learned rank.
+      if (candidates.length === 1) candidates[0].system.location.signature = true;
+      else console.warn(`simplypf2e | ignored ${candidates.length} signature markers at rank ${rank}: only one is allowed`);
     }
     items.push({
       _id: entryId,
-      name: `${capitalized(concept.spellcasting.tradition)} Spells`,
+      name: `${capitalized(tradition)} Spells`,
       type: "spellcastingEntry",
       img: "systems/pf2e/icons/default-icons/spellcastingEntry.svg",
       system: {
-        tradition: { value: concept.spellcasting.tradition },
-        prepared: { value: "spontaneous", flexible: false },
-        ability: { value: keyAbility },
+        tradition: { value: tradition },
+        prepared: { value: mode, flexible: false },
+        ability: { value: ability },
         proficiency: { value: 1 },
         slots,
         spelldc: { value: 0, dc: 0, mod: 0 },
         showSlotlessLevels: { value: false }
       }
     });
-    for (const { spell, entry } of resolved.spells) {
-      const doc = await getDocument(entry);
-      if (!doc) continue;
-      const data = toItemData(doc);
-      data.system.location = { ...(data.system.location ?? {}), value: entryId };
-      items.push(data);
-    }
+    items.push(...spellSources.values());
   }
 
   // Focus spells: a separate `prepared.value: "focus"` entry — how the real
@@ -806,18 +865,22 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // as the NPC pipeline — shared helpers, no PC-specific copy. Equipment is
   // deduped by name (issue #64 item 3) because the AI pads a thin list by
   // repeating items; loot dedups for the same reason.
-  items.push(...await buildEquipmentItems(resolved.equipment, { dedup: true }));
+  const equipmentItems = await buildEquipmentItems(resolved.equipment, { dedup: true });
+  // A compendium UUID proves the exact published document, but it is not an
+  // actor-item instance identity: native grants may clone the same source.
+  // Keep a transaction-local embedded id so post-native loadout updates can
+  // affect only the equipment this generation supplied.
+  for (const item of equipmentItems) item._id = foundry.utils.randomID();
+  items.push(...equipmentItems);
   items.push(...await buildLootItems(resolved.loot));
 
   const safeItems = filterItemTypes(items, CHARACTER_ITEM_TYPES, "character");
 
-  // Pre-answer ChoiceSet rule elements so createEmbeddedDocuments() below never
-  // blocks on a PickAThingPrompt the GM has to click through (a Dwarf Fighter
-  // stopped on four of them in live QA). See choice-set.mjs for the verified
-  // pf2e mechanism, the selection policy, and — importantly — its DELIBERATE
-  // inversion of invariant #5: an unresolvable ChoiceSet is left alone so the
-  // prompt still appears, because a dialog beats a silently invalid item.
-  await preresolveChoiceSets(safeItems, concept, resolved, keyAbility);
+  // Pre-answer resolvable ChoiceSet rule elements to reduce native
+  // PickAThingPrompt dialogs. Unresolved choices and deeper ABC grant paths
+  // still prompt, because a dialog beats a silently invalid item. See
+  // choice-set.mjs for the fail-open selection policy.
+  await preresolveChoiceSets(safeItems, concept, resolved, keyAbility, selectChoices);
 
   // -----------------------------------------------------------------------
   // SCHEMA NOTE — the actor `system.*` field names below were VERIFIED against
@@ -827,12 +890,10 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   // details.{age,gender,height,weight,ethnicity,nationality}.value,
   // details.languages.{value,details}, build.attributes.boosts.{1,5,10,15,20},
   // skills.<slug>.rank,
-  // attributes.hp.{value,temp}. Remaining best-effort (see comments where
-  // used): the spontaneous spell-slot COUNTS (rules-derived, not from source —
-  // pc-tables.spontaneousSpellSlots). Starting WEALTH is now transcribed from
-  // GM Core Table 10-10 (pc-tables.PC_WEALTH_BY_LEVEL), so it no longer needs
-  // a human cross-check — but that table's permanent-item ladder is still not
-  // modeled (HANDOFF.md finding #15).
+  // attributes.hp.{value,temp}. Base spell plans are source-qualified in
+  // pc-tables; unsupported profiles remain explicitly approximate. Skill
+  // schedules come from class.skillIncreaseLevels, with native grant/Int data
+  // inspected on detached clones. Wealth uses GM Core Table 10-10's lump sum.
   // -----------------------------------------------------------------------
 
   // Bonus languages: capped to the ancestry's own slot count and allowed-list
@@ -882,10 +943,7 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
           organizations: toHtml(concept.organizations)
         }
       },
-      // Full HP: a high sentinel the system clamps to the derived max on every
-      // data-prep pass (character/document.ts: stat.value = min(value, max)),
-      // so this resolves to full HP without us computing it (issue #50 item 6).
-      attributes: { hp: { value: 9999, temp: 0 } },
+      attributes: { hp: { temp: 0 } },
       // Focus pool starts full. Source `value` survives data prep (verified in
       // character/document.ts prepareBaseData — it keeps value, zeroes max);
       // `max` comes from the cloned rule on the focus spellcasting entry.
@@ -895,10 +953,10 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
           // Not manual entry — we want the boosts below (and the ABC-item
           // boosts) applied by the system to derive ability scores.
           manual: false,
-          boosts: assignAbilityBoosts(keyAbility)
+          boosts: assignAbilityBoosts(keyAbility, concept.abilityPriorities)
         }
       },
-      skills
+      skills: {}
     },
     prototypeToken: {
       actorLink: true,
@@ -912,30 +970,174 @@ export async function createCharacterActor(concept, resolved, { img = null } = {
   }
 
   const actor = await Actor.create(actorData);
+  let skillPlan = null;
+  let initialIntelligence = null;
+  let seededSourceRanks = {};
+  const skillWarnings = [];
+  let loadoutWarnings = [];
+  const loreIds = backgroundLore.map((item) => item._id);
+  const planSkills = (snapshot, previous = null) => allocateCharacterSkills({
+    ...snapshot, level: concept.level, initialRanks, initialIntelligence,
+    additional: classData.system.trainedSkills?.additional, replacements,
+    increaseLevels: classData.system.skillIncreaseLevels?.value,
+    priorities: concept.skillPriorities, keyAbility, previous
+  });
+  // These clones only prepare native data: no document writes, preCreate,
+  // grant expansion, or rule-source edits. Clear only sources we still own.
+  const skillCloneData = (plan, previous) => {
+    const patch = {};
+    for (const slug of CORE_SKILLS) {
+      const current = actor._source.system.skills?.[slug]?.rank ?? 0;
+      const owned = current === (seededSourceRanks[slug] ?? 0);
+      patch[`system.skills.${slug}.rank`] = Math.max(owned ? 0 : current, plan?.sourceRanks[slug] ?? 0);
+    }
+    const clonedItems = actor.toObject().items;
+    for (const item of clonedItems) {
+      if (!loreIds.includes(item._id)) continue;
+      const key = `lore:${item._id}`;
+      const current = item.system.proficient.value;
+      const owned = current === (previous?.sourceRanks[key] ?? 1);
+      item.system.proficient.value = Math.max(owned ? 1 : current, plan?.sourceRanks[key] ?? 1);
+    }
+    return { ...patch, items: clonedItems };
+  };
   try {
+    // Seed legal preferences before PF2e evaluates skill-dependent ChoiceSets.
+    let previewSnapshot;
+    try {
+      const firstLevel = actor.clone({
+        items: safeItems.filter((item) => ["ancestry", "background", "class", "heritage"].includes(item.type)),
+        "system.details.level.value": 1
+      }, { keepId: true });
+      initialIntelligence = firstLevel.system.abilities.int.base;
+      const preview = actor.clone({ items: safeItems }, { keepId: true });
+      previewSnapshot = characterSkillSnapshot(preview, loreIds);
+      skillPlan = planSkills(previewSnapshot);
+    } catch (err) {
+      console.warn("simplypf2e | could not inspect provisional native skills", err);
+      skillWarnings.push("native-data");
+    }
+    if (skillPlan) {
+      // Fixed ABC training also needs source ranks now: PF2e's preCreate
+      // item preparation does not refresh numeric skill roll options.
+      seededSourceRanks = Object.fromEntries(CORE_SKILLS.filter((slug) => !previewSnapshot.blocked.includes(slug))
+        .map((slug) => [slug, Math.max(previewSnapshot.nativeRanks[slug] ?? 0, skillPlan.sourceRanks[slug] ?? 0)]));
+      const coreUpdates = Object.fromEntries(Object.entries(seededSourceRanks).filter(([, rank]) => rank > 0)
+        .map(([slug, rank]) => [`system.skills.${slug}.rank`, rank]));
+      const projected = actor.clone({ items: safeItems, ...coreUpdates }, { keepId: true });
+      const projection = characterSkillSnapshot(projected, loreIds);
+      if (CORE_SKILLS.some((slug) => projection.nativeRanks[slug] !== Math.max(
+        previewSnapshot.nativeRanks[slug], seededSourceRanks[slug] ?? 0))) {
+        skillWarnings.push("native-rank-rule");
+        skillPlan = null;
+        seededSourceRanks = {};
+      }
+      if (skillPlan) {
+        if (Object.keys(coreUpdates).length) await actor.update(coreUpdates);
+        for (const item of backgroundLore) item.system.proficient.value = skillPlan.sourceRanks[`lore:${item._id}`] ?? 1;
+      }
+    }
     // The explicit ABC ids above are referenced by feat slots. `keepId`
     // preserves them while PF2e expands and links all native granted items.
     await actor.createEmbeddedDocuments("Item", safeItems, { keepId: true });
+
+    // Once native ABC items have supplied the real character proficiencies,
+    // ready only this generation's exact equipment. This must precede commit
+    // so an unexpected Foundry write failure remains inside the actor rollback.
+    const loadout = await applyCharacterLoadout(actor, equipmentItems);
+    loadoutWarnings = loadout.warnings;
+
+    // Refund overlaps only when the native floor supplies the old rank.
+    // Confirm the real projected result is monotonic before applying it.
+    let finalSkillData = null;
+    if (skillPlan) {
+      let snapshot;
+      try {
+        const native = actor.clone(skillCloneData(null, skillPlan), { keepId: true });
+        snapshot = characterSkillSnapshot(native, loreIds);
+      } catch (err) {
+        console.warn("simplypf2e | could not inspect final native skills", err);
+        skillWarnings.push("native-data");
+      }
+      if (snapshot) {
+        const finalPlan = planSkills(snapshot, skillPlan);
+        const data = skillCloneData(finalPlan, skillPlan);
+        const projected = actor.clone(data, { keepId: true });
+        const before = characterSkillSnapshot(actor, loreIds);
+        const after = characterSkillSnapshot(projected, loreIds);
+        const changedUnexpectedly = Object.keys(after.nativeRanks).some((slug) =>
+          after.nativeRanks[slug] < before.nativeRanks[slug]
+          || after.nativeRanks[slug] !== Math.max(snapshot.nativeRanks[slug], finalPlan.sourceRanks[slug] ?? 0));
+        if (changedUnexpectedly) {
+          skillWarnings.push("native-rank-rule");
+          skillWarnings.push(...finalPlan.warnings);
+        } else {
+          skillPlan = finalPlan;
+          finalSkillData = data;
+        }
+      }
+    }
+
+    if (finalSkillData) {
+      const loreUpdates = finalSkillData.items.filter((item) => loreIds.includes(item._id))
+        .filter((item) => item.system.proficient.value !== actor.items.get(item._id)?.system.proficient.value)
+        .map((item) => ({ _id: item._id, "system.proficient.value": item.system.proficient.value }));
+      if (loreUpdates.length) await actor.updateEmbeddedDocuments("Item", loreUpdates);
+      const { items: _items, ...skillUpdates } = finalSkillData;
+      const changedSkills = Object.fromEntries(Object.entries(skillUpdates).filter(([path, rank]) =>
+        (actor._source.system.skills?.[path.split(".")[2]]?.rank ?? 0) !== rank));
+      if (Object.keys(changedSkills).length) await actor.update(changedSkills);
+    }
+
+    // PF2e's ItemPF2e._preCreate adjusts current HP for each incoming ABC item
+    // from the actor's then-current derived HP. A newly empty actor can be
+    // clamped before all grants finish, so fill this one new character from
+    // the system-derived maximum after awaited native item creation completes.
+    // This does not await detached onCreate updates from other rules/modules.
+    const hpMax = actor?.system?.attributes?.hp?.max;
+    if (typeof hpMax !== "number" || !Number.isFinite(hpMax) || hpMax <= 0) {
+      throw new Error("simplypf2e | character creation produced no usable derived HP maximum");
+    }
+
+    // Int-modifier bonus languages (issue #64 item 1): the character gets
+    // extra language slots equal to their Intelligence modifier on top of the
+    // ancestry's own count. Int is read from the system's own derived data
+    // after native creation rather than re-deriving the boost math here.
+    const updates = { "system.attributes.hp.value": hpMax };
+    const intMod = Number(actor?.system?.abilities?.int?.mod) || 0;
+    if (intMod > 0) {
+      const withBonus = resolveLanguages(concept.languages ?? [], resolved.ancestryDoc, intMod);
+      if (withBonus.length > languages.length) {
+        updates["system.details.languages.value"] = withBonus;
+      }
+    }
+
+    await actor.update(updates);
   } catch (err) {
     // Character creation is one operation from the user's perspective. Do
     // not leave an empty or partially populated Actor behind on failure.
     try { await actor.delete(); }
-    catch (cleanupErr) { console.error("simplypf2e | failed to roll back incomplete character", cleanupErr); }
+    catch (cleanupErr) {
+      console.error("simplypf2e | failed to roll back incomplete character", cleanupErr);
+      // The generator owns retryability. Carry the surviving actor out with
+      // the original error so it can discard the draft instead of duplicating
+      // this partially-created character on a retry.
+      err.simplyPF2eRollbackActor = actor;
+    }
     throw err;
   }
 
-  // Int-modifier bonus languages (issue #64 item 1): the character gets extra
-  // language slots equal to their Intelligence modifier on top of the
-  // ancestry's own count. Int is read from the system's own derived data after
-  // create rather than re-deriving the boost math here (the reliable source),
-  // so any AI language picks that overflowed the base cap are now applied.
-  const intMod = Number(actor?.system?.abilities?.int?.mod) || 0;
-  if (intMod > 0) {
-    const withBonus = resolveLanguages(concept.languages ?? [], resolved.ancestryDoc, intMod);
-    if (withBonus.length > languages.length) {
-      await actor.update({ "system.details.languages.value": withBonus });
-    }
-  }
-
-  return actor;
+  // Reporting is presentation-only: a read failure must not roll back a
+  // successfully finalized character or leave a retryable generator draft.
+  let rows = [];
+  try {
+    const snapshot = characterSkillSnapshot(actor, loreIds);
+    rows = Object.entries(snapshot.nativeRanks).filter(([, rank]) => Number.isInteger(rank) && rank > 0)
+      .map(([slug, rank]) => ({ slug, rank, name: snapshot.lore.find((entry) => entry.key === slug)?.name ?? null }));
+  } catch { skillWarnings.push("native-data"); }
+  const warnings = [...new Set([...skillWarnings, ...(skillPlan?.warnings ?? [])])];
+  for (const warning of warnings) console.warn(`simplypf2e | character skill review: ${warning}`);
+  return { actor, expectedItems: [...safeItems, ...stagedClassPaths.expectedPaths], skillReport: { rows, warnings, loadoutWarnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
+    trainingBudget: skillPlan?.trainingBudget ?? null, unspentTraining: skillPlan?.unspentTraining ?? null,
+    unspentIncreases: skillPlan?.unspentIncreases ?? null } };
 }

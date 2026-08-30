@@ -78,7 +78,7 @@ assert.match(
   /spf-mode-toggle" role="radiogroup" aria-label=/,
   "generation modes must expose a named native radio group"
 );
-for (const legendKey of ["ConceptLegend", "EncounterLegend", "CharacterLegend"]) {
+for (const legendKey of ["ConceptLegend", "NpcLegend", "EncounterLegend", "CharacterLegend"]) {
   assert.match(
     generator,
     new RegExp(`SIMPLYPF2E\\.Generator\\.${legendKey}`),
@@ -86,19 +86,22 @@ for (const legendKey of ["ConceptLegend", "EncounterLegend", "CharacterLegend"])
   );
 }
 for (const [mode, preview] of [
-  ["single", "preview"],
+  ["monster", "preview"],
+  ["npc", "preview"],
   ["encounter", "encounterPreview"],
   ["character", "pcPreview"]
 ]) {
   assert.match(
     generatorApp,
-    new RegExp(`${preview}: this\\.#input\\.mode === "${mode}" \\?`),
+    mode === "monster" || mode === "npc"
+      ? new RegExp(`${preview}: \\["monster", "npc"\\]\\.includes\\(this\\.#input\\.mode\\) \\?`)
+      : new RegExp(`${preview}: this\\.#input\\.mode === "${mode}" \\?`),
     `generator must hide other modes' stale previews while ${mode} mode is active`
   );
 }
 assert.match(
   generatorApp,
-  /#modePrompts = \{ single: "", encounter: "", character: "" \}/,
+  /#modePrompts = \{ monster: "", npc: "", encounter: "", character: "" \}/,
   "each generator mode must keep an independent prompt draft"
 );
 assert.match(
@@ -154,6 +157,23 @@ assert.match(
   /spf-busy" role="status" aria-live="polite"/,
   "indeterminate generation work must be announced without interrupting the user"
 );
+assert.match(progress, /\{\{#if busyMessage\}\}[\s\S]*?\{\{busyMessage\}\}[\s\S]*?\{\{else if progress\}\}/,
+  "native character creation must show an escaped status instead of a model progress percentage");
+assert.doesNotMatch(progress, /\{\{\{busyMessage\}\}\}/, "status text must never be rendered as raw HTML");
+assert.match(generatorApp, /busyMessage: this\.#busyMessage/, "generator must expose its native creation status");
+assert.match(generator, /created\.grounding\.rows/, "completion card must report the validated content grounding");
+assert.match(generator, /\{\{#if tokenReport\}\}[\s\S]*?Tokens\.Heading/, "completion card must retain the generation token report");
+assert.match(generatorApp, /const manifest = completionManifest\([\s\S]*?assertComplete\(manifest\);[\s\S]*?this\.#manifest = manifest;/,
+  "a single generation must retain its validated manifest until creation commits");
+assert.doesNotMatch(generatorApp, /this\.#created = \{ name: actor\.name, actorId: actor\.id, count: 1 \};\s*\}\s*finally/,
+  "generation failure handling must not fabricate a creation result from an unavailable actor");
+assert.match(generatorApp, /selectChoices: async \(groups\) =>[\s\S]*?selectCharacterChoices\([\s\S]*?this\._recordTokens\(label, usage\)/,
+  "character creation must use the grounded provider selector and record its usage");
+assert.match(generatorApp, /finally \{\s*this\.#busy = false;\s*this\.#busyMessage = null;\s*this\._progress = null;/,
+  "character success and failure must clear both native and AI progress state");
+const messages = JSON.parse(langJson).SIMPLYPF2E;
+assert.match(messages.Progress.ApplyingCharacter, /PF2e choice dialogs/);
+assert.match(messages.Generator.ChoicesNeedInput, /could not be selected automatically/);
 
 // --- Shared visual system (UI overhaul) ---------------------------------
 // One primary action per window, shared icon-button/card/empty-state kit.
@@ -179,17 +199,27 @@ for (const [name, template, createAction] of [
 assert.match(generatorApp, /showEmptyState:/, "generator must expose the empty-state flag");
 assert.match(itemForgeApp, /showEmptyState:/, "item forge must expose the empty-state flag");
 
-// Reading order: mode switch → prompt → presets → advanced options → generate.
+// Reading order: mode switch → prompt → prominent level → advanced → generate.
 {
   const promptAt = generator.indexOf('id="spf-generator-prompt"');
   const presetAt = generator.indexOf('id="spf-generator-preset"');
   const modeAt = generator.indexOf("spf-mode-toggle");
-  const rowAt = generator.indexOf('class="spf-row"');
-  assert.ok(modeAt >= 0 && promptAt >= 0 && presetAt >= 0 && rowAt >= 0, "generator flow anchors must exist");
+  const levelAt = generator.indexOf('id="spf-generator-level"');
+  const advancedAt = generator.indexOf('class="spf-advanced"');
+  assert.ok(modeAt >= 0 && promptAt >= 0 && presetAt >= 0 && levelAt >= 0 && advancedAt >= 0, "generator flow anchors must exist");
   assert.ok(modeAt < promptAt, "the mode switch must precede the prompt");
-  assert.ok(promptAt < presetAt, "the prompt must precede the preset controls");
-  assert.ok(presetAt < rowAt, "presets must precede the advanced options row");
+  assert.ok(promptAt < levelAt, "the prompt must precede the prominent level control");
+  assert.ok(levelAt < advancedAt, "the level must remain outside the advanced disclosure");
+  assert.ok(advancedAt < presetAt, "presets must live in the advanced disclosure");
 }
+
+assert.match(generator, /<details class="spf-advanced">[\s\S]*?<summary>\{\{localize "SIMPLYPF2E\.Generator\.Advanced"\}\}<\/summary>/,
+  "secondary controls must be in a native, keyboard-operable Advanced disclosure");
+assert.match(generator, /data-action="managePresets"[\s\S]*?SIMPLYPF2E\.Presets\.Manage/,
+  "the generator exposes one labeled Manage Presets control instead of edit icons");
+assert.doesNotMatch(generator, /data-action="savePreset"|data-action="duplicatePreset"|data-action="deletePreset"/,
+  "preset editing controls belong in Manage Presets, not the generation flow");
+assert.match(managePresets, /data-action="newPreset"/, "preset management must retain a direct creation path");
 
 assert.match(providerSetup, /class="spf-primary" data-action="saveAndTest"/,
   "provider setup must mark Save & Test as the primary action");
@@ -264,18 +294,18 @@ assert.match(
   "character generation must honor the selected preset"
 );
 
-// 3. One compendium-sources gear beside Generate in BOTH apps, wired to the
-//    same shared settings app.
-for (const [name, template] of [
-  ["generator", generator],
-  ["item forge", itemForge]
-]) {
+// 3. Source configuration stays visible: a labeled content readiness row in
+//    the generator and the forge's compact action beside Generate.
+for (const [name, template] of [["item forge", itemForge]]) {
   const rowAt = template.indexOf('class="spf-generate-row"');
   const gearAt = template.indexOf('data-action="configureSources"');
   const fieldsetEnd = template.indexOf("</fieldset>");
   assert.ok(rowAt >= 0 && gearAt >= 0 && fieldsetEnd >= 0, `${name} must have a generate row and a sources gear`);
   assert.ok(rowAt < gearAt && gearAt < fieldsetEnd, `${name} sources gear must sit in the generate row`);
 }
+assert.match(generator, /SIMPLYPF2E\.Generator\.CompendiumContent/);
+assert.match(generator, /SIMPLYPF2E\.Generator\.SourcesReady/);
+assert.match(generator, /data-action="configureSources"/);
 for (const [name, source] of [
   ["generator", generatorApp],
   ["item forge", itemForgeApp]
@@ -321,5 +351,27 @@ for (const [name, source] of [
   assert.match(lang.Generator.EncounterThemePlaceholder, /leave blank for a surprise/,
     "the surprise hint must live in the encounter placeholder");
 }
+
+// Native-choice review is an escaped, explicitly limited snapshot, not an actor repair.
+const reviewCard = generator.slice(generator.indexOf("{{#if characterReview}}"));
+assert.match(reviewCard, /role="status"/);
+assert.match(reviewCard, /\{\{characterReview.actorName\}\}/);
+assert.match(reviewCard, /\{\{this.itemName\}\}/);
+assert.match(reviewCard, /\{\{localize this.prompt\}\}/);
+assert.doesNotMatch(reviewCard, /\{\{\{/);
+for (const action of ["openReviewedCharacter", "dismissCharacterReview"]) {
+  assert.match(reviewCard, new RegExp(`data-action="${action}"`));
+  assert.match(generatorApp, new RegExp(`${action}: GeneratorApp\\.#on`));
+}
+const reviewLanguage = JSON.parse(langJson).SIMPLYPF2E.Generator;
+assert.match(reviewLanguage.ReviewHint, /snapshot.*not a full character validation/);
+assert.match(reviewLanguage.ReviewHint, /conditional or intentionally disabled/);
+assert.match(reviewLanguage.ReviewIncomplete, /Not every item/);
+assert.match(generator, /pcPreview.skillPriorities/);
+assert.match(generator, /pcPreview.automaticSkills/);
+assert.match(reviewCard, /characterReview.skills.rows/);
+assert.match(reviewCard, /\{\{this.name\}\} — \{\{this.rank\}\}/);
+assert.match(reviewCard, /characterReview.skills.warnings/);
+assert.match(JSON.parse(langJson).SIMPLYPF2E.Skills.Snapshot, /not a full character validation/);
 
 console.log("UI layout contract checks passed.");

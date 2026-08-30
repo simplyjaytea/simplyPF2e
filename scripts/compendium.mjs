@@ -9,7 +9,7 @@ import { SETTINGS, getSetting } from "./settings.mjs";
 import { slugify } from "./text.mjs";
 
 export const CATEGORIES = [
-  "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "heritages"
+  "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "classFeatures", "heritages", "bestiaryActors"
 ];
 
 export const DEFAULT_PACKS = {
@@ -27,12 +27,18 @@ export const DEFAULT_PACKS = {
   ancestries: ["pf2e.ancestries"],
   backgrounds: ["pf2e.backgrounds"],
   classes: ["pf2e.classes"],
-  heritages: ["pf2e.heritages"]
+  // Class-path features (rackets, methodologies, schools, theses) are
+  // selected from this explicitly enabled source. They are not ordinary PC
+  // feat candidates: the native class grant graph owns their creation.
+  classFeatures: ["pf2e.classfeatures"],
+  heritages: ["pf2e.heritages"],
+  bestiaryActors: ["pf2e.pathfinder-monster-core", "pf2e.pathfinder-bestiary"]
 };
 
 export const EQUIPMENT_TYPES = new Set([
   "weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit"
 ]);
+export const ABILITY_CANDIDATE_LIMIT = 96;
 
 /**
  * Convert a PF2e price-value denomination object ({pp, gp, sp, cp}, any
@@ -74,6 +80,17 @@ export function getPacksFor(category) {
   return DEFAULT_PACKS[category].filter((id) => game.packs.get(id));
 }
 
+/** Report the enabled packs required before a generation may spend tokens. */
+export function sourceReadiness(mode, { allowSpellcasting = true } = {}) {
+  const character = mode === "character";
+  const required = character
+    ? ["ancestries", "backgrounds", "classes", "feats", "equipment", "spells"]
+    : ["abilities", "feats", "equipment", "spells", "bestiaryActors"];
+  const categories = required.map((category) => ({ category, packs: getPacksFor(category) }));
+  const missing = categories.filter(({ packs }) => !packs.length).map(({ category }) => category);
+  return { categories, missing, packCount: categories.reduce((count, item) => count + item.packs.length, 0), ready: missing.length === 0 };
+}
+
 /**
  * Every pack that can serve `category`: the configured/default packs UNION all
  * installed Item packs auto-detected to contain that type. Fixes ABC lookups
@@ -99,9 +116,16 @@ export async function detectAvailablePacks() {
   if (detectedPacks) return detectedPacks;
   const result = {
     abilities: [], spells: [], feats: [], equipment: [],
-    ancestries: [], backgrounds: [], classes: [], heritages: []
+    ancestries: [], backgrounds: [], classes: [], classFeatures: [], heritages: [], bestiaryActors: []
   };
   for (const pack of game.packs) {
+    if (pack.metadata.type === "Actor") {
+      const entries = await getIndex(pack.collection);
+      if (entries?.some((entry) => entry.type === "npc")) {
+        result.bestiaryActors.push({ id: pack.collection, title: pack.title ?? pack.metadata.label, package: pack.metadata.packageName });
+      }
+      continue;
+    }
     if (pack.metadata.type !== "Item") continue;
     const entries = await getIndex(pack.collection);
     if (!entries?.length) continue;
@@ -114,6 +138,7 @@ export async function detectAvailablePacks() {
     if (types.has("ancestry")) result.ancestries.push(info);
     if (types.has("background")) result.backgrounds.push(info);
     if (types.has("class")) result.classes.push(info);
+    if (types.has("feat")) result.classFeatures.push(info);
     if (types.has("heritage")) result.heritages.push(info);
   }
   for (const list of Object.values(result)) list.sort((a, b) => a.title.localeCompare(b.title));
@@ -144,7 +169,7 @@ async function getIndex(packId) {
     fields: [
       "name", "type", "system.slug", "system.level.value",
       "system.traits.value", "system.traits.traditions", "system.ritual",
-      "system.category", "system.traits.rarity"
+      "system.category", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
     ]
   });
   const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
@@ -261,6 +286,41 @@ export async function getDocument(entry) {
   return pack.getDocument(entry._id);
 }
 
+/**
+ * Stable, opaque identifier for a candidate offered to the model. The model
+ * never needs a pack name or document id; those stay in this local reference.
+ */
+export function candidateId(entry) {
+  const packId = String(entry?.packId ?? "");
+  const documentId = String(entry?._id ?? "");
+  return packId && documentId ? `c-${btoa(`${packId}\u0000${documentId}`).replaceAll("=", "")}` : null;
+}
+
+const issuedCandidateRefs = new WeakSet();
+
+function candidateRecord(entry, fields = {}) {
+  const ref = { packId: entry.packId, _id: entry._id };
+  issuedCandidateRefs.add(ref);
+  return {
+    id: candidateId(entry),
+    ref,
+    ...fields
+  };
+}
+
+/** True only for the in-memory reference produced by this run's candidate catalog. */
+export function isIssuedCandidate(ref, packIds = null) {
+  if (!ref?.packId || !ref?._id || !issuedCandidateRefs.has(ref)) return false;
+  return !Array.isArray(packIds) || packIds.includes(ref.packId);
+}
+
+/** Resolve only an exact, locally-issued candidate reference. */
+export async function getCandidateDocument(candidate, packIds = null) {
+  const ref = candidate?.ref;
+  if (!isIssuedCandidate(ref, packIds)) return null;
+  return getDocument(ref);
+}
+
 /* Hard ceilings for the name catalogs serialized into AI prompts. These stay
  * deliberately conservative: broad enough to offer real choices, but small
  * enough that installing another content pack cannot silently consume the
@@ -327,7 +387,7 @@ function withPriority(buckets, priority, limit) {
 }
 
 /** Pure bounded selector used by getSpellCandidates() and its regression test. */
-export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CANDIDATE_LIMIT) {
+export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CANDIDATE_LIMIT, plannedPicks = null) {
   const list = Array.isArray(candidates) ? candidates : [];
   const kw = normalizedKeywords(keywords);
   const exactNames = new Set(kw);
@@ -351,10 +411,24 @@ export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CA
   const matchedCount = kw.length
     ? list.filter((candidate) => relevanceScore(candidate, kw) > 0).length
     : limit;
+  // A PC needs enough distinct candidates to fill its base plan, especially
+  // five cantrips. Exact first-draft names alone can starve other ranks.
+  // Reserve relevant choices per rank before those names, within the same cap.
+  const reserved = plannedPicks ? buckets.flatMap((bucket) => bucket.slice(0,
+    Math.min(SPELL_CANDIDATES_PER_RANK, Math.max(0, Number(plannedPicks[bucket[0]?.rank]) || 0)))) : [];
+  // Ordinary rank-ten repertoires require common spells. Keep enough common
+  // ranked options even when rare exact-name matches occupy the top buckets.
+  // Lower-base spells can legally be learned heightened; cantrips cannot.
+  const commonOptions = plannedPicks?.[10] > 0 ? list
+    .filter((candidate) => candidate.rarity === "common" && candidate.rank > 0 && candidate.rank <= 10)
+    .sort((a, b) => relevanceScore(b, kw) - relevanceScore(a, kw)
+      || b.rank - a.rank || a.name.localeCompare(b.name))
+    .slice(0, Math.min(SPELL_CANDIDATES_PER_RANK, plannedPicks[10])) : [];
+  const priority = [...new Set([...commonOptions, ...reserved, ...exact])];
   const target = kw.length
-    ? Math.min(limit, Math.max(SPELL_CANDIDATE_FLOOR, matchedCount))
+    ? Math.min(limit, Math.max(SPELL_CANDIDATE_FLOOR, matchedCount, new Set([...commonOptions, ...reserved]).size))
     : limit;
-  return withPriority(buckets, exact, target)
+  return withPriority(buckets, priority, target)
     .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
 }
 
@@ -451,9 +525,10 @@ export function limitFeatCandidates(
  * balanced across spell ranks; narrow matches are padded with bounded real
  * options instead of falling back to the full tradition catalog.
  * @param {string[]} [keywords]
+ * @param {object} [plannedPicks] module-owned PC base plan; reserves rank candidates
  * @returns {Promise<{name: string, rank: number, traits: string[]}[]>} sorted by rank then name
  */
-export async function getSpellCandidates(tradition, maxRank, keywords = []) {
+export async function getSpellCandidates(tradition, maxRank, keywords = [], plannedPicks = null) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("spells")) {
@@ -470,11 +545,62 @@ export async function getSpellCandidates(tradition, maxRank, keywords = []) {
       if (rank > maxRank) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({ name: entry.name, rank, traits });
+      candidates.push(candidateRecord(entry, { name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity }));
     }
   }
   candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
-  return limitSpellCandidates(candidates, keywords);
+  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT, plannedPicks);
+}
+
+/**
+ * Bounded exact candidates for spell scrolls. Scroll legality is independent
+ * of a creature's casting tradition, but it still excludes cantrips/rituals
+ * and carries the published base rank for local validation.
+ */
+export async function getScrollSpellCandidates(maxRank = 10, keywords = []) {
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("spells")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "spell" || entry.system?.ritual) continue;
+      const traits = entry.system?.traits?.value ?? [];
+      if (traits.includes("cantrip")) continue;
+      const rank = entry.system?.level?.value ?? 1;
+      if (rank > maxRank || seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push(candidateRecord(entry, { name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity }));
+    }
+  }
+  candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT);
+}
+
+/**
+ * Bounded exact candidates for focus spells. Focus spells deliberately do not
+ * filter by tradition: published focus spells commonly carry no tradition in
+ * their trait data, and their legal source is established by the class/grant
+ * pipeline rather than the spell's own tradition field.
+ */
+export async function getFocusSpellCandidates(maxRank, keywords = []) {
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("spells")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "spell" || entry.system?.ritual) continue;
+      const traits = entry.system?.traits?.value ?? [];
+      if (!traits.includes("focus")) continue;
+      const rank = traits.includes("cantrip") ? 0 : (entry.system?.level?.value ?? 1);
+      if (rank > maxRank || seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push(candidateRecord(entry, { name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity }));
+    }
+  }
+  candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT);
 }
 
 /**
@@ -509,16 +635,16 @@ export async function getEquipmentCandidates(
       if (itemLevel > maxLevel) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({
+      candidates.push(candidateRecord(entry, {
         name: entry.name,
         type: entry.type,
         level: itemLevel,
         traits: entry.system?.traits?.value ?? []
-      });
+      }));
     }
   }
   candidates.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-  const strip = ({ name, type, level: lv }) => ({ name, type, level: lv });
+  const strip = ({ id, ref, name, type, level: lv }) => ({ id, ref, name, type, level: lv });
   return limitEquipmentCandidates(candidates, keywords, limit).map(strip);
 }
 
@@ -553,11 +679,34 @@ async function getFullCandidates(category, type, maxRarity) {
       if ((RARITY_RANK[rarity] ?? 0) > maxRank) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({ name: entry.name, traits: entry.system?.traits?.value ?? [] });
+      candidates.push(candidateRecord(entry, { name: entry.name, traits: entry.system?.traits?.value ?? [] }));
     }
   }
   candidates.sort((a, b) => a.name.localeCompare(b.name));
   return candidates;
+}
+
+/** Bounded exact bestiary-action candidates for creature ability selection. */
+export async function getAbilityCandidates(keywords = []) {
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("abilities")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "action" || seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push(candidateRecord(entry, {
+        name: entry.name,
+        traits: entry.system?.traits?.value ?? [],
+        actionType: entry.system?.actionType?.value ?? "passive"
+      }));
+    }
+  }
+  const words = normalizedKeywords(keywords);
+  const ranked = candidates.slice().sort((a, b) => relevanceScore(b, words) - relevanceScore(a, words)
+    || a.name.localeCompare(b.name));
+  return ranked.slice(0, ABILITY_CANDIDATE_LIMIT);
 }
 
 /**
@@ -582,6 +731,37 @@ export function getClassCandidates() {
 }
 
 /**
+ * Exact, enabled-source class-feature candidates carrying one native path
+ * tag (for example `rogue-racket`). These are deliberately separate from
+ * ordinary feats: the class's own grant graph creates them.
+ */
+export async function getClassFeatureCandidates(tag) {
+  if (typeof tag !== "string" || !tag) return [];
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("classFeatures")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      if (entry.type !== "feat" || entry.system?.category !== "classfeature") continue;
+      const tags = entry.system?.traits?.otherTags;
+      if (!Array.isArray(tags) || !tags.includes(tag)) continue;
+      const identity = `${entry.packId}\u0000${entry._id}`;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      candidates.push(candidateRecord(entry, {
+        name: entry.name,
+        type: entry.type,
+        level: entry.system?.level?.value ?? 0,
+        traits: entry.system?.traits?.value ?? [],
+        uuid: `Compendium.${entry.packId}.Item.${entry._id}`
+      }));
+    }
+  }
+  return candidates.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * @param {string} [maxRarity]
  * @returns {Promise<{name: string, traits: string[]}[]>} every heritage at or below maxRarity
  */
@@ -603,7 +783,7 @@ export function getHeritageCandidates(maxRarity) {
  * @param {string[]} [args.preferredNames] exact legal first-draft picks kept before sampling
  * @returns {Promise<{name: string, level: number, traits: string[]}[]>} sorted by level then name
  */
-export async function getFeatCandidates({ level, category, traits = [], preferredNames = [] } = {}) {
+export async function getFeatCandidates({ level, category, traits = [], preferredNames = [], requireNoPrerequisites = false } = {}) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("feats")) {
@@ -613,11 +793,17 @@ export async function getFeatCandidates({ level, category, traits = [], preferre
       if (entry.type !== "feat") continue;
       if ((entry.system?.level?.value ?? 0) > level) continue;
       if (category && entry.system?.category !== category) continue;
+      // PF2e exposes prerequisite text as authored strings, not a general
+      // actor eligibility predicate. Complete-only PC catalogs therefore
+      // accept only an explicit empty list until a staged evaluator exists;
+      // callers that build NPC/legacy lists keep the prior behavior.
+      if (requireNoPrerequisites && !(Array.isArray(entry.system?.prerequisites?.value)
+        && entry.system.prerequisites.value.length === 0)) continue;
       const entryTraits = entry.system?.traits?.value ?? [];
       if (traits.length && !traits.some((t) => entryTraits.includes(t))) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
-      candidates.push({ name: entry.name, level: entry.system?.level?.value ?? 0, traits: entryTraits });
+      candidates.push(candidateRecord(entry, { name: entry.name, level: entry.system?.level?.value ?? 0, traits: entryTraits }));
     }
   }
   candidates.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));

@@ -100,6 +100,7 @@ export class ManagePresetsApp extends HandlebarsApplicationMixin(ApplicationV2) 
     position: { width: 420, height: "auto" },
     actions: {
       editPreset: ManagePresetsApp.#onEdit,
+      newPreset: ManagePresetsApp.#onNew,
       duplicatePreset: ManagePresetsApp.#onDuplicate,
       deletePreset: ManagePresetsApp.#onDelete,
       exportPreset: ManagePresetsApp.#onExport,
@@ -128,6 +129,14 @@ export class ManagePresetsApp extends HandlebarsApplicationMixin(ApplicationV2) 
   async #refresh() {
     await this.render();
     this.#generator?.render();
+  }
+
+  static async #onNew() {
+    const result = await promptPresetDialog();
+    if (!result) return;
+    const created = await addCustomPreset(result.name, result.prompt, result);
+    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: created.name }));
+    await this.#refresh();
   }
 
   static async #onEdit(_event, target) {

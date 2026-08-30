@@ -50,6 +50,30 @@ assert.deepEqual(
   "spell limiting must be deterministic"
 );
 
+/* PC plans reserve sufficient choices per rank inside the same hard cap. */
+const pcSlots = { 0: 5, 1: 4, 2: 4, 3: 4, 4: 4, 5: 4, 6: 4, 7: 4, 8: 4, 9: 4, 10: 1 };
+const pcCandidates = limitSpellCandidates(spells, exactSpellNames, SPELL_CANDIDATE_LIMIT, pcSlots);
+assert.ok(pcCandidates.length <= SPELL_CANDIDATE_LIMIT);
+for (const [rank, count] of Object.entries(pcSlots)) {
+  assert.ok(pcCandidates.filter((candidate) => candidate.rank === Number(rank)).length >= count,
+    `character rank ${rank} needs enough offered choices to fill its base plan`);
+}
+assert.equal(new Set(pcCandidates).size, pcCandidates.length, "reserved/exact priorities never duplicate a candidate");
+assert.ok(pcCandidates.some((candidate) => candidate.name === "Exact Ember"));
+
+const rareSpells = spells.map((spell) => ({ ...spell, rarity: "rare" }));
+const commonOptions = [
+  { name: "Low Common Option", rank: 1, rarity: "common" },
+  { name: "High Common Option", rank: 10, rarity: "common" },
+  { name: "Common Cantrip", rank: 0, rarity: "common" }
+];
+const rarePriorities = rareSpells.slice(0, 110).map((spell) => spell.name);
+const rankTenCatalog = limitSpellCandidates([...rareSpells, ...commonOptions], rarePriorities,
+  SPELL_CANDIDATE_LIMIT, { ...pcSlots, 10: 2 });
+assert.ok(rankTenCatalog.includes(commonOptions[0]) && rankTenCatalog.includes(commonOptions[1]),
+  "common ranked options cannot be starved by rare exact names; lower-base heightening is legal");
+assert.ok(rankTenCatalog.length <= SPELL_CANDIDATE_LIMIT);
+
 /* Equipment/loot: the cap balances every supported type and every broad level
  * band while ranking an exact requested item ahead of filler in its bucket. */
 const equipmentTypes = ["weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit"];

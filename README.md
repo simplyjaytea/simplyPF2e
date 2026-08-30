@@ -1,7 +1,7 @@
 # SimplyPF2e
 
 [![Latest release](https://img.shields.io/github/v/release/simplyjaytea/simplyPF2e?label=release)](https://github.com/simplyjaytea/simplyPF2e/releases/latest)
-[![Foundry version](https://img.shields.io/badge/Foundry-v13%2B-informational)](https://foundryvtt.com)
+[![Foundry version](https://img.shields.io/badge/Foundry-v14-informational)](https://foundryvtt.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 Turn a one-sentence idea into a fully statted, ready-to-run Pathfinder 2e actor — NPC, monster, whole encounter, or player character — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
@@ -20,9 +20,13 @@ The AI never produces a number and never invents content. The job is split three
 | **Numbers** | The rules | NPCs: every stat comes from the GM Core **Building Creatures** benchmark tables for your chosen level. PCs: the PF2e system's own engine computes AC/HP/saves/proficiencies from the real embedded Ancestry/Background/Class items. |
 | **Content** | Your compendiums | Every named spell, feat, ability, ancestry and item is matched against your installed packs and the **real document** is embedded. |
 
-Anything the AI names that doesn't match a real document is either dropped or created as a clearly-marked custom item — and flagged in the preview either way, with an "X/Y compendium matches" score in the header so you can see how grounded a build is at a glance.
+Every required published spell, feat, ancestry, background, class, item, and loot choice must resolve to the exact offered compendium document before one-click creation proceeds. A planned PC spell slot or a selected item with no exact document blocks creation; neither falls back to an unvetted name. Coins are built from real currency, and scrolls from an exact selected spell document. Deliberately custom creature narrative abilities stay visibly labeled and are never presented as published mechanics.
 
-Nothing touches your world until you click **Create**. Regenerate, edit the prompt, reroll just the loot, or discard, freely.
+After Foundry creates a sheet, SimplyPF2e confirms that every exact source document survived and that each planned spell is attached to a real casting entry. A failed pre-commit check removes only the newly created documents. If Foundry cannot remove a partial actor or encounter folder, the plan is discarded and the survivor is named instead of allowing a duplicate retry. Sheet/notification display happens after the build commits, so a display error never removes a valid actor.
+
+Creature strikes are constrained to PF2e's configured damage types, NPC attack traits, and attack effects. Ranged attacks use the system's structured range field rather than a legacy trait workaround.
+
+**Generate Monster**, **Generate NPC**, **Generate Encounter**, and **Generate Character** validate and create in one pass. Use **Preview Plan** when you want to inspect the same no-write plan before deciding to create it.
 
 ## Status
 
@@ -33,7 +37,9 @@ Nothing touches your world until you click **Create**. Regenerate, edit the prom
 | **Player Character mode** | Released and hardened over several live-testing rounds, but younger than NPC mode. Sanity-check a generated character's numbers on its sheet before play. |
 | **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons are hidden for that reason; open it from the console (see [Item forge](#item-forge)). |
 
-Recent additions — focus spells, Free Archetype, Intelligence languages, runes on PC gear — are on `main` but have not been through a live-play pass yet. See [Limitations](#limitations).
+Recent additions — focus spells, Intelligence languages, runes on PC gear, and the local complete-only work — have not all been through a live-play pass yet. See [Limitations](#limitations).
+
+The current development line is intentionally paused on the unpublished branch `codex/one-click-grounding` at local commit `1d9d755`. It adds exact native class-path staging and a conservative PC feat prerequisite gate on top of the one-click workflow, but it has not been pushed, merged, released, or installed on the VPS. The complete-only PC registry remains Fighter-only until ordinary prerequisites can be evaluated against the staged actor. See [HANDOFF.md](HANDOFF.md) for the exact pickup point and next slice.
 
 ## Install
 
@@ -43,7 +49,7 @@ Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
 https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
 ```
 
-The link is permanent — it always resolves to the newest release, so Foundry offers updates automatically. Requires Foundry **v13+** and the **pf2e** system (6.0.0+).
+The link is permanent — it always resolves to the newest release, so Foundry offers updates automatically. This development line targets Foundry **v14** with the **pf2e** system **8.4.1**. Other version pairs need the same acceptance matrix before being claimed as supported.
 
 ## Setup
 
@@ -64,7 +70,7 @@ Advanced module settings:
 | Creativity | Sampling temperature (0–2) for creative generation. Grounding/selectors always use temperature 0. |
 | Max response tokens | Global ceiling. Each operation applies a smaller production-safe cap where possible. |
 | Request timeout | Aborts only if the provider sends *no data* for this long (default 90 s). |
-| Free Archetype | Optional variant rule, off by default. Adds an extra archetype feat slot at every even level in Character mode. |
+| Free Archetype | Optional variant rule, off by default. Complete one-click character generation stops at level 2+ until its feat prerequisites have staged validation. |
 
 **Providers**
 
@@ -82,15 +88,15 @@ The provider and model currently in use are always shown at the top of the gener
 
 ### Compendium sources
 
-By default the module draws from the PF2e system packs. Under **Compendium Sources** it scans every Item compendium in your world, detects which packs actually contain abilities, spells, feats, or equipment, and lets you pick which each category may use — so homebrew and content-module packs become available to the AI. The AI literally sees and picks from your homebrew spell list. An empty category falls back to the system defaults.
+By default the module draws from the PF2e system packs. Under **Compendium Sources** it scans Item packs for abilities, spells, feats, equipment, and class features plus Actor packs for bestiary NPC scaffolds, then lets you pick which each category may use — so homebrew and content-module packs become available to the AI. The AI literally sees and picks from your homebrew spell list. Creature and encounter generation also require an enabled bestiary Actor pack before they spend provider tokens; the closest real NPC provides a deterministic trait/size/level token scaffold. An empty category falls back to the system defaults.
 
 ## Usage
 
 Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.modules.get("simplypf2e").api.open()`. Pick a mode at the top of the dialog.
 
-### Single creature
+### Monster and NPC
 
-Optionally pick a **preset**, describe the creature, set level (−1 to 24) and rarity, choose a **Treasure amount** and whether spellcasting is allowed, then **Generate**. Review the stat-block preview and **Create Actor**.
+Choose **Monster** for a creature-first combatant or **NPC** for a story-focused, combat-ready non-player character. Describe it and set level (−1 to 24), then click the mode's Generate action to create and open the sheet. Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Choose **Preview Plan** instead to review the same validated plan without writing to the world.
 
 The **dice button** rolls a surprise instead: it ignores the description and rolls a brief locally (creature type × combat role × home × twist — thousands of combinations), so every click is a genuinely new idea. Good for filling a dungeon room.
 
@@ -104,11 +110,17 @@ The preview shows each member with count, level, role and key stats, plus the XP
 
 ### Player Character mode
 
-Describe a concept ("a grizzled dwarf ranger who hunts undead"), set a level (1–20), and optionally cap the **Max rarity** of the ancestry/background/heritage the AI may pick — capping at Uncommon rules out Rare options like Fetchling, so they're never even offered.
+Describe a concept ("a grizzled dwarf ranger who hunts undead") and set a level (1–20). In **Advanced options**, optionally cap the **Max rarity** of the ancestry/background/heritage the AI may pick — capping at Uncommon rules out Rare options like Fetchling, so they're never even offered.
 
 Nothing here is scale-word math. A PC is assembled from real Ancestry, Background and Class items plus feats at every level slot (ancestry/class/skill/general per the Core Rulebook cadence, including any feat the background itself grants — like Acolyte's *Student of the Canon*), ability boosts, and skill increases past Trained. The PF2e system then computes AC, HP, saves and proficiencies exactly as it would for a character built by hand.
 
 Starting wealth buys real gear rather than turning into raw coin, and fundamental runes on weapons and armor are capped to what the character's level actually allows. Single-class builds only — no multiclass archetypes, and no pre-create screen for swapping individual picks (regenerate instead).
+
+After native features establish the character's actual proficiencies, the new sheet readies only its exact generated equipment: one proficient worn armor and no more than two hands of proficient weapons, shields, or tools. Incompatible or conflicting selections stay stowed and appear as a review warning. Compatible generated ammunition is selected for non-repeating reload-0 weapons; reloadable/repeating weapons, investment, and containers stay with the normal PF2e sheet controls.
+
+**Skill completion:** the existing concept request supplies ordered core-skill preferences; no extra AI call or setup screen is needed. Preview shows those preferences followed by key-ability defaults. The module supplies the numbers: real class training plus native Intelligence, replacements for directly overlapping class/background training, and the class document's own skill-increase schedule. Increases are allocated in level order with the Expert/Master/Legendary gates, preserving native proficiencies and existing background Lore.
+
+After creation, the generator shows a dismissible snapshot of resulting skill ranks, unspent/unsupported allocations, and any native choices with no recorded selection. Open Character returns to that exact actor. This is not a live validator or a repair tool: existing characters are untouched. Missing preferences use labeled automatic defaults; missing or invalid class schedules are not guessed. Native grant timing and training from later Intelligence boosts are handled conservatively—unproven earlier availability is never assumed. Duplicate native feat grants, arbitrary new Lore replacements, and comprehensive feat-prerequisite checks remain manual. This local milestone still requires live Foundry QA before publication.
 
 ### Item forge
 
@@ -132,9 +144,7 @@ The preset dropdown shapes the *build* while your description drives the *flavor
 
 Eighteen built-ins: the twelve standard classes, plus six themes for concepts that don't map to one (Cultivator, Fire Mage, Assassin, Healer, Tank, Skill-Monkey). A preset can also carry defaults for rarity, spellcasting and Treasure amount.
 
-- **Save** captures your current form as a new custom preset — or updates the selected custom preset in place.
-- **Duplicate** starts a new preset pre-filled from any preset, built-in or custom.
-- **Manage Presets** lists your custom presets with Edit / Duplicate / Export / Delete, plus Export All and Import. Export writes JSON you can hand to another GM; imports always get a fresh id so they never collide.
+- **Manage Presets** is the one place to create, edit, duplicate, export, or delete custom presets. It also offers Export All and Import. Export writes JSON you can hand to another GM; imports always get a fresh id so they never collide.
 
 The description placeholder cycles five example concepts per preset as inspiration.
 
@@ -160,8 +170,8 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 **Odd results**
 
 - **Missing an ability you expected** (Attack of Opportunity on a soldier, say) — the AI decides case by case; nudging the prompt usually gets it.
-- **An unfamiliar item name** — the module always targets current Remaster terminology. A stray pre-Remaster name simply fails to match and falls back to a flagged custom item rather than breaking anything.
-- **A pick shows as custom, not matched** — that item isn't in your enabled compendium sources. Swap in the real one by hand, or widen your sources.
+- **An unfamiliar item name** — the module targets current Remaster terminology. If it is not in an enabled source, the complete plan stops before creation; widen sources or choose a supported concept.
+- **A plan reports unresolved content** — one or more required published picks was absent from the enabled sources. Use **Compendium Sources** to include the appropriate pack, then generate again.
 
 ## Limitations
 
@@ -170,11 +180,14 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 - Presets guide the AI rather than constrain it; an occasional generation drifts. Regenerating usually lands it.
 - Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions. A phrase that slips through stays readable plain text.
 - A custom (non-glossary) passive is only as interactive as its phrasing — anything outside the standard damage/save/check/heal/area conventions is flavor text you apply by hand.
-- An item with no compendium match becomes a placeholder at the AI's estimated price, not a functional weapon or armor. This should be rare (gear is picked from a real candidate list), but swap in the real item if you see one.
+- Required gear and treasure do not receive custom mechanical placeholders. An unresolved item blocks the complete plan instead of creating an approximation.
 
 **Rules coverage**
 
-- Generated spellcasters use a spontaneous-style entry; adjust on the sheet for prepared or innate casting.
+- Complete one-click Player Character selection currently offers Fighter only. The module now has an exact, closed-path bridge for Rogue rackets and Investigator methodologies, but those classes remain unavailable until regular feat prerequisites can be validated against the staged actor. Wizard additionally needs verified class-owned spellbook and curriculum support. No class is widened merely to create a dialog-dependent or approximate build. NPCs retain spontaneous-style spellcasting entries.
+- PC feat catalogs currently use a fail-closed prerequisite gate: only feats with an explicit empty `system.prerequisites.value` list are offered to the complete path. Dependent or unreadable prerequisite data remains unsupported until it can be evaluated against the staged actor.
+- At level 2 or higher, enabling the module's Free Archetype variant stops complete one-click character generation before any AI request. PF2e stores feat prerequisites as display text rather than a general eligibility API, so the module will not produce an unvalidated build. Its eventual extra class-category feats are wired to the system's distinct `archetype-<level>` slots rather than ordinary class-feat slots.
+- PC loadout readiness currently covers published equipment proficiency, one armor slot, the two-hand limit, and compatible selected ammunition for non-repeating reload-0 weapons. Reloadable/repeating ammunition, item investment, container placement, and broader item-specific activation requirements still use the native sheet controls.
 - Matched feats become NPC action items — the PF2e system doesn't allow feat items on NPCs — keeping the feat's cost, rules text and automation.
 - Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget.
 - The benchmark tables were transcribed by hand from GM Core. If a value disagrees with the book, please open an issue.
@@ -183,7 +196,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 **Not yet live-tested** (built, reviewed, and verified against the real pf2e system source, but not yet run in an actual game)
 
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
-- **Free Archetype.** The archetype feat can land in the same slot location as a regular class feat at that level, so it embeds on the character but may not appear in a distinct Free Archetype slot on the sheet.
+- **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend because PF2e feat prerequisites are not machine-readable. Its eventual slots are now wired to PF2e's distinct `archetype-<level>` group.
 - **Spontaneous spell-slot counts** for high-level PC casters are derived from the standard progression rather than copied from a verified table. Check a high-level caster's slots against Player Core before trusting them.
 - **The item forge**, all three phases. If an item looks right in the preview but misbehaves on a sheet, that's the first thing to check. Its rune path has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
 - **Activated-item macros** lean on PF2e system APIs that can change between versions. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.

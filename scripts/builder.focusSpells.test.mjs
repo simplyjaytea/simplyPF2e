@@ -34,6 +34,12 @@ assert.deepEqual(
   "junk entries must be filtered out before the 3-entry cap is applied"
 );
 
+assert.deepEqual(
+  norm([{ name: "Fire Ray", candidate: { packId: "pf2e.spells", _id: "fire" } }]),
+  [{ name: "Fire Ray", candidate: { packId: "pf2e.spells", _id: "fire" } }],
+  "a grounded focus candidate reference must survive normalization"
+);
+
 // Missing / empty / non-array input -> [], never undefined or null.
 assert.deepEqual(norm(undefined), [], "missing focusSpells must normalize to []");
 assert.deepEqual(norm([]), [], "empty array must stay []");

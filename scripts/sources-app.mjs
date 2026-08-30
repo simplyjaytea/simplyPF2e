@@ -11,7 +11,9 @@ const CATEGORY_LABELS = {
   ancestries: "SIMPLYPF2E.Sources.Ancestries",
   backgrounds: "SIMPLYPF2E.Sources.Backgrounds",
   classes: "SIMPLYPF2E.Sources.Classes",
-  heritages: "SIMPLYPF2E.Sources.Heritages"
+  classFeatures: "SIMPLYPF2E.Sources.ClassFeatures",
+  heritages: "SIMPLYPF2E.Sources.Heritages",
+  bestiaryActors: "SIMPLYPF2E.Sources.BestiaryActors"
 };
 
 /**

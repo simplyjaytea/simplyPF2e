@@ -2,8 +2,8 @@
 // Run: node scripts/choice-set.selection.test.mjs
 import assert from "node:assert/strict";
 import {
-  choiceSetOptions, pickChoiceSelection, applyChoiceSelections,
-  applyGrantPreselections, normalizeChoiceFlag
+  choiceSetOptions, pickChoiceSelection, normalizeChoiceFlag, preselectChoiceSets,
+  validateChoicePicks
 } from "./choice-set.mjs";
 
 /* ---------------------------------------------------------------- options */
@@ -57,14 +57,20 @@ assert.equal(choiceSetOptions("nope.not.here", CONFIG_STUB.PF2E), null, "missing
 assert.equal(choiceSetOptions({ config: "attributes", predicate: ["x"] }, CONFIG_STUB.PF2E), null,
   "a top-level option predicate fails open");
 
-// Predicated individual options are dropped, not picked.
+// A predicated option makes the whole group native: its predicate is actor
+// context we cannot evaluate before creation.
 const MIXED = [
   { value: "gated", label: "Gated", predicate: ["self:class:fighter"] },
   { value: "open", label: "Open" }
 ];
-assert.deepEqual(choiceSetOptions(MIXED).map((o) => o.value), ["open"]);
+assert.equal(choiceSetOptions(MIXED), null);
 assert.equal(choiceSetOptions([{ value: "only", label: "Only", predicate: ["x"] }]), null,
   "an all-predicated option list fails open");
+assert.equal(choiceSetOptions([
+  { value: { complex: true }, label: "Complex" }, { value: "simple", label: "Simple" }
+]), null, "mixed object/string values stay native rather than forcing the simple option");
+assert.equal(choiceSetOptions({ "Compendium.pf2e.feats-srd.Item.abc": "Compendium.pf2e.feats-srd.Item.abc" }), null,
+  "UUID values without a human label stay native");
 
 /* ------------------------------------------------------------ policy: 1/2/3 */
 
@@ -81,11 +87,11 @@ assert.deepEqual(
 );
 // Not an attribute option set -> rule 1 does not fire.
 assert.equal(
-  pickChoiceSelection(FIGHTER_SKILL.choices.map((c) => ({ ...c })), { keyAbility: "str" }).reason,
-  "first"
+  pickChoiceSelection(FIGHTER_SKILL.choices.map((c) => ({ ...c })), { keyAbility: "str" }),
+  null
 );
 // Key ability absent from the options -> fall through.
-assert.equal(pickChoiceSelection(ATTRS, { keyAbility: "cha" }).reason, "first");
+assert.equal(pickChoiceSelection(ATTRS, { keyAbility: "cha" }), null);
 
 // (2) concept match — the AI already gave this dwarf a clan pistol.
 assert.deepEqual(
@@ -99,63 +105,115 @@ assert.equal(
 );
 // Unrelated concept names must not fuzzy-match into a pick.
 assert.equal(
-  pickChoiceSelection(choiceSetOptions(CLAN_WEAPON.choices), { names: ["Longsword", "Ox"] }).reason,
-  "first"
+  pickChoiceSelection(choiceSetOptions(CLAN_WEAPON.choices), { names: ["Longsword", "Ox"] }),
+  null
 );
 
-// (3) deterministic first option.
+// (3) only legal option.
 assert.deepEqual(
-  pickChoiceSelection(choiceSetOptions(CLAN_WEAPON.choices), {}),
-  { value: "clan-dagger", label: "PF2E.Weapon.Base.clan-dagger", reason: "first" }
+  pickChoiceSelection([{ value: "only", label: "Only" }], {}),
+  { value: "only", label: "Only", reason: "only" }
 );
 assert.equal(pickChoiceSelection([], {}), null);
 
-/* --------------------------------------------------------- applied in place */
+// A broad name must not choose the first of multiple substring matches.
+assert.equal(pickChoiceSelection([
+  { value: "longsword", label: "Longsword" }, { value: "longbow", label: "Longbow" }
+], { names: ["Long"] }), null);
 
-const classItem = { name: "Fighter", system: { rules: [structuredClone(FIGHTER_SKILL), { key: "ActiveEffectLike" }] } };
-const report = applyChoiceSelections(classItem, { keyAbility: "str", names: ["Athletics"] });
-assert.equal(classItem.system.rules[0].selection, "athletics", "selection written onto the rule source");
-assert.deepEqual(report.map((r) => [r.item, r.flag, r.reason]), [["Fighter", "fighterSkill", "concept"]]);
+/* ------------------------------------------------------ bounded AI batch */
 
-// An existing selection is never overwritten, and a rule-level predicate fails open.
-const preAnswered = { name: "X", system: { rules: [{ ...structuredClone(FIGHTER_SKILL), selection: "acrobatics" }] } };
-assert.deepEqual(applyChoiceSelections(preAnswered, {}), []);
-const predicated = { name: "Y", system: { rules: [{ ...structuredClone(FIGHTER_SKILL), predicate: ["self:level:1"] }] } };
-assert.deepEqual(applyChoiceSelections(predicated, {}), []);
-assert.equal(predicated.system.rules[0].selection, undefined);
-
-/* ------------------------------------------------- GrantItem preselection */
-
-const GRANTED = {
-  name: "Clan Dagger",
-  system: { rules: [structuredClone(CLAN_WEAPON)] }
+const NUMBER_CHOICE = {
+  key: "ChoiceSet", flag: "number", prompt: "Pick a number",
+  choices: [{ value: 1, label: "One" }, { value: 2, label: "Two" }]
 };
-const granter = {
-  name: "Dwarf",
-  system: { rules: [{ key: "GrantItem", uuid: "Compendium.pf2e.ancestryfeatures.Item.Clan Dagger" }] }
+const staticItem = {
+  name: "Static", system: { rules: [
+    structuredClone(NUMBER_CHOICE),
+    { ...structuredClone(FIGHTER_SKILL), selection: "acrobatics" },
+    { ...structuredClone(FIGHTER_SKILL), predicate: ["self:level:1"] },
+    { ...structuredClone(FIGHTER_SKILL), allowNoSelection: true },
+    { ...structuredClone(FIGHTER_SKILL), allowedDrops: { label: "Drop", predicate: [] } }
+  ] }
 };
-const grantReport = await applyGrantPreselections(granter, async () => structuredClone(GRANTED), { names: ["Clan Pistol"] });
-assert.deepEqual(granter.system.rules[0].preselectChoices, { clanWeapon: "clan-pistol" });
-assert.equal(grantReport[0].reason, "concept");
+const callbackGranter = {
+  name: "Granter", system: { rules: [{ key: "GrantItem", uuid: "Compendium.x.y.Item.granted" }] }
+};
+const callbackGroups = [];
+await preselectChoiceSets(
+  [staticItem, callbackGranter], {}, {},
+  async () => ({ name: "Granted", system: { rules: [structuredClone(FIGHTER_SKILL)] } }),
+  async (groups) => {
+    callbackGroups.push(groups);
+    assert.equal(groups.length, 2, "only safe ambiguous direct and one-level grant choices are batched");
+    assert.notEqual(groups[0].options[0].id, groups[1].options[0].id, "option ids are globally group-scoped");
+    return { picks: groups.map((group) => ({ choice: group.id, option: group.options[1].id })) };
+  }
+);
+assert.equal(callbackGroups.length, 1, "all safe static groups use one callback batch");
+assert.equal(staticItem.system.rules[0].selection, 2, "opaque option id restores its original number locally");
+assert.deepEqual(callbackGranter.system.rules[0].preselectChoices, { fighterSkill: "athletics" });
+assert.deepEqual(staticItem.system.rules.slice(1).map((rule) => rule.selection), ["acrobatics", undefined, undefined, undefined],
+  "authored, predicated, optional, and drop-zone choices are untouched");
 
-// No explicit flag on the grantee's ChoiceSet -> fail open (pf2e derives the
-// flag with its own sluggify; we refuse to re-guess it).
-const unflagged = { name: "Z", system: { rules: [{ key: "GrantItem", uuid: "Compendium.x.y.Item.z" }] } };
-await applyGrantPreselections(unflagged, async () => ({ name: "G", system: { rules: [{ key: "ChoiceSet", choices: CLAN_WEAPON.choices }] } }), {});
-assert.equal(unflagged.system.rules[0].preselectChoices, undefined);
+// Exact validator membership rejects cross-group ids, invalid ids, and every
+// reply for a duplicated group id, without coercing string ids or values.
+const [firstGroup, secondGroup] = callbackGroups[0];
+assert.deepEqual(validateChoicePicks(callbackGroups[0], [
+  { choice: firstGroup.id, option: secondGroup.options[0].id },
+  { choice: "missing", option: firstGroup.options[0].id },
+  { choice: firstGroup.id, option: firstGroup.options[0].id },
+  { choice: firstGroup.id, option: firstGroup.options[1].id },
+  { choice: secondGroup.id, option: 1 },
+  { choice: secondGroup.id, option: secondGroup.options[0].id }
+]), []);
 
-// An injected-property UUID, a predicated grant, and a failed fetch all fail open.
-for (const rule of [
-  { key: "GrantItem", uuid: "{item|flags.pf2e.rulesSelections.clanWeapon}" },
-  { key: "GrantItem", uuid: "Compendium.x.y.Item.z", predicate: ["clan-dagger"] }
-]) {
-  const item = { name: "Q", system: { rules: [rule] } };
-  await applyGrantPreselections(item, async () => structuredClone(GRANTED), {});
-  assert.equal(item.system.rules[0].preselectChoices, undefined);
+// No callback means no arbitrary fallback. A sole option remains deterministic
+// and therefore does not invoke a callback at all.
+const noCallback = { name: "No callback", system: { rules: [structuredClone(NUMBER_CHOICE)] } };
+await preselectChoiceSets([noCallback], {}, {}, async () => null, null);
+assert.equal(noCallback.system.rules[0].selection, undefined);
+let unnecessaryCalls = 0;
+const onlyItem = { name: "Only", system: { rules: [{ key: "ChoiceSet", flag: "only", choices: [{ value: "yes", label: "Yes" }] }] } };
+await preselectChoiceSets([onlyItem], {}, {}, async () => null, async () => { unnecessaryCalls++; return []; });
+assert.equal(onlyItem.system.rules[0].selection, "yes");
+assert.equal(unnecessaryCalls, 0, "callback is not called when local certainty resolves every group");
+
+// Existing GrantItem records and malformed duplicate grantee flags are native
+// safety boundaries: neither is overwritten or assigned an invented order.
+const authoredGrant = { name: "Authored", system: { rules: [{ key: "GrantItem", uuid: "Compendium.x.y.Item.g", preselectChoices: {} }] } };
+const duplicateFlagGrant = { name: "Duplicate", system: { rules: [{ key: "GrantItem", uuid: "Compendium.x.y.Item.d" }] } };
+let duplicateGroups = 0;
+await preselectChoiceSets([authoredGrant, duplicateFlagGrant], {}, {}, async (uuid) => ({ name: uuid, system: { rules: [
+  structuredClone(FIGHTER_SKILL), structuredClone(FIGHTER_SKILL)
+] } }), async (groups) => { duplicateGroups = groups.length; return { picks: [] }; });
+assert.deepEqual(authoredGrant.system.rules[0].preselectChoices, {});
+assert.equal(duplicateGroups, 0, "duplicate normalized grant flags remain native without invented precedence");
+
+// A provider/callback failure keeps the original native choice untouched.
+const failedChoice = { name: "Failure", system: { rules: [structuredClone(NUMBER_CHOICE)] } };
+await preselectChoiceSets([failedChoice], {}, {}, null, async () => { throw new Error("provider unavailable"); });
+assert.equal(failedChoice.system.rules[0].selection, undefined);
+
+// Bound the batch, never an individual legal catalog. Overflow must remain
+// native instead of becoming a smaller, misleading list of choices.
+const makeBatch = (count, options) => Array.from({ length: count }, (_, index) => ({
+  name: `Bounded ${index}`, system: { rules: [{ key: "ChoiceSet", flag: "bounded", choices:
+    Array.from({ length: options }, (_, value) => ({ value, label: `Option ${value}` }))
+  }] }
+}));
+for (const [count, options, expectedGroups] of [[25, 2, 24], [1, 33, 0], [17, 32, 16]]) {
+  const items = makeBatch(count, options);
+  let offered = 0;
+  await preselectChoiceSets(items, {}, {}, null, async (groups) => {
+    offered = groups.length;
+    assert.ok(groups.every((group) => group.options.length === options), "a group's complete list is never truncated");
+    return groups.map((group) => ({ choice: group.id, option: group.options[0].id }));
+  });
+  assert.equal(offered, expectedGroups);
+  assert.equal(items.filter((item) => item.system.rules[0].selection === 0).length, expectedGroups,
+    "only offered groups are selected; every overflow choice remains native");
 }
-const thrower = { name: "Q", system: { rules: [{ key: "GrantItem", uuid: "Compendium.x.y.Item.z" }] } };
-await applyGrantPreselections(thrower, async () => { throw new Error("offline"); }, {});
-assert.equal(thrower.system.rules[0].preselectChoices, undefined);
 
 /* ------------------------------------------------------------------ flags */
 
