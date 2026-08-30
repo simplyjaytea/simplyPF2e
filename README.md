@@ -22,6 +22,8 @@ The AI never produces a number and never invents content. The job is split three
 
 Every required published spell, feat, ancestry, background, class, item, and loot choice must resolve to the exact offered compendium document before one-click creation proceeds. A planned PC spell slot or a selected item with no exact document blocks creation; neither falls back to an unvetted name. Coins are built from real currency, and scrolls from an exact selected spell document. Deliberately custom creature narrative abilities stay visibly labeled and are never presented as published mechanics.
 
+After Foundry creates a sheet, SimplyPF2e confirms that every exact source document survived and that each planned spell is attached to a real casting entry. A failed pre-commit check removes only the newly created documents. If Foundry cannot remove a partial actor or encounter folder, the plan is discarded and the survivor is named instead of allowing a duplicate retry. Sheet/notification display happens after the build commits, so a display error never removes a valid actor.
+
 Creature strikes are constrained to PF2e's configured damage types, NPC attack traits, and attack effects. Ranged attacks use the system's structured range field rather than a legacy trait workaround.
 
 **Generate Monster**, **Generate NPC**, **Generate Encounter**, and **Generate Character** validate and create in one pass. Use **Preview Plan** when you want to inspect the same no-write plan before deciding to create it.

@@ -1181,9 +1181,9 @@ const NPC_ITEM_TYPES = new Set([
  * feat's cost, rules text and automation — the same way bestiary statblocks
  * present feat-based abilities like Goblin Scuttle or Attack of Opportunity.
  */
-export function featToAction(feat) {
+export function featToAction(feat, compendiumSource = null) {
   const actionType = feat.system?.actionType?.value ?? "passive";
-  return {
+  const data = {
     name: feat.name,
     type: "action",
     img: feat.img ?? actionIcon(actionType),
@@ -1198,6 +1198,10 @@ export function featToAction(feat) {
       selfEffect: feat.system?.selfEffect ?? null
     }
   };
+  // NPC feats must be action items, but this remains a faithful conversion of
+  // an exact compendium document. Preserve that source for transaction checks.
+  if (compendiumSource) data._stats = { compendiumSource };
+  return data;
 }
 
 function actionIcon(actionType) {
@@ -1213,7 +1217,7 @@ function actionIcon(actionType) {
  * Build the full actor + embedded item data and create the NPC actor.
  * @param {object} [options]
  * @param {string|null} [options.img]  portrait/token image path
- * @returns {Promise<Actor>}
+ * @returns {Promise<{actor: Actor, expectedItems: object[]}>}
  */
 export async function createActor(concept, resolved, { img = null, scaffold = null } = {}) {
   const stats = computeStats(concept);
@@ -1284,7 +1288,7 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
   for (const { entry } of resolved.feats) {
     const doc = await getDocument(entry);
     if (!doc) continue;
-    items.push(featToAction(doc.toObject()));
+    items.push(featToAction(doc.toObject(), doc.uuid));
   }
 
   // Spellcasting entry + spells (skipped when no spell resolved to a document)
@@ -1445,5 +1449,8 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
     actorData.prototypeToken.texture = { src: img };
   }
 
-  return Actor.create(actorData);
+  const actor = await Actor.create(actorData);
+  // Transient creation data gives post-create verification exact source
+  // identity without persisting module metadata onto the actor.
+  return { actor, expectedItems: safeItems };
 }

@@ -36,6 +36,20 @@ const emptySpellPlan = completionManifest({ mode: "character", concept: {
 assert.equal(emptySpellPlan.unresolved.filter((record) => record.category === "spell").length, 7,
   "every missing module-owned spell-plan pick must block complete-only creation");
 
+const caster = completionManifest({ mode: "npc", concept: { spellcasting: { tradition: "arcane" } }, resolved: {
+  spells: [{ spell: { name: "Fear" }, entry }], focusSpells: [{ spell: { name: "Force Bolt" }, entry }],
+  feats: [], equipment: [], loot: []
+} });
+assert.equal(caster.records.filter((record) => record.category === "spellcasting-entry").length, 2,
+  "normal and focus casting entries are visible module-built completion requirements");
+
+const focusOnly = completionManifest({ mode: "character", concept: {}, resolved: {
+  ancestryDoc: { name: "Human" }, backgroundDoc: { name: "Acolyte" }, classDoc: { name: "Champion" },
+  spells: [], focusSpells: [{ spell: { name: "Lay on Hands" }, entry }], feats: [], equipment: [], loot: []
+} });
+assert.equal(focusOnly.records.filter((record) => record.category === "spellcasting-entry").length, 1,
+  "a focus-only character still records its module-built casting entry");
+
 const summary = completionSummary([creature, pc]);
 assert.deepEqual(summary, {
   total: creature.records.length + pc.records.length,

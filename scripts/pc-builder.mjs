@@ -1082,7 +1082,13 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     // Character creation is one operation from the user's perspective. Do
     // not leave an empty or partially populated Actor behind on failure.
     try { await actor.delete(); }
-    catch (cleanupErr) { console.error("simplypf2e | failed to roll back incomplete character", cleanupErr); }
+    catch (cleanupErr) {
+      console.error("simplypf2e | failed to roll back incomplete character", cleanupErr);
+      // The generator owns retryability. Carry the surviving actor out with
+      // the original error so it can discard the draft instead of duplicating
+      // this partially-created character on a retry.
+      err.simplyPF2eRollbackActor = actor;
+    }
     throw err;
   }
 
@@ -1096,7 +1102,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   } catch { skillWarnings.push("native-data"); }
   const warnings = [...new Set([...skillWarnings, ...(skillPlan?.warnings ?? [])])];
   for (const warning of warnings) console.warn(`simplypf2e | character skill review: ${warning}`);
-  return { actor, skillReport: { rows, warnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
+  return { actor, expectedItems: safeItems, skillReport: { rows, warnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
     trainingBudget: skillPlan?.trainingBudget ?? null, unspentTraining: skillPlan?.unspentTraining ?? null,
     unspentIncreases: skillPlan?.unspentIncreases ?? null } };
 }

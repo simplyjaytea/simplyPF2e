@@ -28,8 +28,20 @@ import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryArt, findBestiaryScaffold } from "./art.mjs";
 import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
+import { verifyCreatedActor } from "./post-create.mjs";
 import { supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
+
+async function rollbackActor(actor, label) {
+  if (!actor) return null;
+  try {
+    await actor.delete();
+    return null;
+  } catch (cleanupErr) {
+    console.warn(`${MODULE_ID} | failed to roll back ${label} "${actor.name}"`, cleanupErr);
+    return `${label} "${actor.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+  }
+}
 
 /**
  * The prompt → preview → create dialog.
@@ -1251,28 +1263,44 @@ export class GeneratorApp extends SpfApp {
     this.#busy = true;
     this.#error = null;
     await this.render();
+    let actor = null;
+    let committed = false;
     try {
       // Art: borrowed from the closest-matching bestiary creature.
       const scaffold = await findBestiaryScaffold(this.#concept);
       const img = scaffold?.img ?? await findBestiaryArt(this.#concept);
-      const actor = await createActor(this.#concept, this.#resolved, { img, scaffold });
+      const created = await createActor(this.#concept, this.#resolved, { img, scaffold });
+      actor = created.actor;
+      verifyCreatedActor(actor, this.#manifest, created.expectedItems);
       // The actor now exists. Clear the retryable plan before any presentation
       // work so a sheet-render failure cannot create a duplicate on retry.
+      const grounding = GeneratorApp.#completionContext(this.#manifest);
       this.#concept = null;
       this.#resolved = null;
-      const grounding = GeneratorApp.#completionContext(this.#manifest);
       this.#manifest = null;
       this.#created = { name: actor.name, actorId: actor.id, count: 1, grounding };
-      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
+      committed = true;
       try {
+        ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: actor.name }));
         await actor.sheet.render(true);
       } catch (err) {
         console.warn(`${MODULE_ID} | actor created, but its sheet could not be displayed`, err);
-        ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed"));
+        try { ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed")); }
+        catch (notificationErr) { console.warn(`${MODULE_ID} | could not show creation presentation warning`, notificationErr); }
       }
     } catch (err) {
-      console.error(`${MODULE_ID} | actor creation failed`, err);
-      this.#error = err.message;
+      if (!committed) {
+        const survivor = await rollbackActor(actor, "unverified actor");
+        if (survivor) {
+          this.#concept = null;
+          this.#resolved = null;
+          this.#manifest = null;
+        }
+        console.error(`${MODULE_ID} | actor creation failed`, err);
+        this.#error = survivor ? `${err.message} ${survivor}` : err.message;
+      } else {
+        console.warn(`${MODULE_ID} | actor committed, but completion presentation failed`, err);
+      }
     } finally {
       this.#busy = false;
       await this.render();
@@ -1288,9 +1316,11 @@ export class GeneratorApp extends SpfApp {
     const applyingMessage = game.i18n.localize("SIMPLYPF2E.Progress.ApplyingCharacter");
     this.#busyMessage = applyingMessage;
     let created = false;
+    let committed = false;
+    let actor = null;
     try {
       await this.render();
-      const { actor, skillReport } = await createCharacterActor(this.#pcConcept, this.#pcResolved, {
+      const result = await createCharacterActor(this.#pcConcept, this.#pcResolved, {
         selectChoices: async (groups) => {
           const label = game.i18n.localize("SIMPLYPF2E.Progress.CharacterChoices");
           this.#busyMessage = null;
@@ -1316,15 +1346,19 @@ export class GeneratorApp extends SpfApp {
           }
         }
       });
-      // Creation has committed. Presentation failures must never leave a
-      // retryable draft that creates a second actor.
-      created = true;
+      actor = result.actor;
+      const { skillReport } = result;
+      verifyCreatedActor(actor, this.#manifest, result.expectedItems);
+      // Commit all creation state before any presentation. Rendering and
+      // notifications are intentionally unable to roll back valid work.
+      const grounding = GeneratorApp.#completionContext(this.#manifest);
       this.#pcConcept = null;
       this.#pcResolved = null;
       this.#characterReview = null;
-      const grounding = GeneratorApp.#completionContext(this.#manifest);
       this.#manifest = null;
       this.#created = { name: actor.name, actorId: actor.id, count: 1, grounding };
+      created = true;
+      committed = true;
       try {
         let review;
         try {
@@ -1347,8 +1381,23 @@ export class GeneratorApp extends SpfApp {
         ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed"));
       }
     } catch (err) {
-      console.error(`${MODULE_ID} | character actor creation failed`, err);
-      this.#error = err.message;
+      let survivor = null;
+      if (actor && !committed) {
+        survivor = await rollbackActor(actor, "unverified character");
+      } else if (err?.simplyPF2eRollbackActor) {
+        const stranded = err.simplyPF2eRollbackActor;
+        survivor = `incomplete character "${stranded.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+      }
+      if (survivor) {
+        this.#pcConcept = null;
+        this.#pcResolved = null;
+        this.#characterReview = null;
+        this.#manifest = null;
+      }
+      if (!committed) {
+        console.error(`${MODULE_ID} | character actor creation failed`, err);
+        this.#error = survivor ? `${err.message} ${survivor}` : err.message;
+      } else console.warn(`${MODULE_ID} | character committed, but completion presentation failed`, err);
     } finally {
       this.#busy = false;
       this.#busyMessage = null;
@@ -1400,6 +1449,7 @@ export class GeneratorApp extends SpfApp {
     await this.render();
     let folder = null;
     const actors = [];
+    let committed = false;
     try {
       folder = await Folder.create({ name: this.#encounter.name, type: "Actor" });
       let created = 0;
@@ -1409,17 +1459,16 @@ export class GeneratorApp extends SpfApp {
         const scaffold = await findBestiaryScaffold(member.concept);
         const img = scaffold?.img ?? await findBestiaryArt(member.concept);
         for (let i = 0; i < member.count; i++) {
-          const actor = await createActor(member.concept, member.resolved, { img, scaffold });
+          const createdActor = await createActor(member.concept, member.resolved, { img, scaffold });
+          const actor = createdActor.actor;
           actors.push(actor);
           const update = { folder: folder.id };
           if (member.count > 1) update.name = `${actor.name} ${i + 1}`;
           await actor.update(update);
+          verifyCreatedActor(actor, member.manifest, createdActor.expectedItems);
           created++;
         }
       }
-      ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.CreatedAll", {
-        count: created, name: this.#encounter.name
-      }));
       // Commit before presentation: all writes succeeded, so this plan cannot
       // safely be retried even if the next render fails.
       const grounding = GeneratorApp.#completionContext(this.#encounter.members.flatMap((member) =>
@@ -1427,21 +1476,39 @@ export class GeneratorApp extends SpfApp {
       ));
       this.#encounter = null;
       this.#created = { name: folder.name, actorId: actors[0]?.id ?? null, count: created, grounding };
+      committed = true;
+      try {
+        ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.CreatedAll", {
+          count: created, name: folder.name
+        }));
+      } catch (err) {
+        console.warn(`${MODULE_ID} | encounter created, but completion presentation failed`, err);
+        try { ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed")); }
+        catch (notificationErr) { console.warn(`${MODULE_ID} | could not show creation presentation warning`, notificationErr); }
+      }
     } catch (err) {
+      if (committed) {
+        console.warn(`${MODULE_ID} | encounter committed, but completion presentation failed`, err);
+        return;
+      }
       console.error(`${MODULE_ID} | encounter creation failed`, err);
       // An encounter is all-or-nothing. Best-effort cleanup preserves the
       // original error while ensuring a retry cannot duplicate a partial roster.
+      const survivors = [];
       for (const actor of actors.reverse()) {
-        try { await actor.delete(); } catch (cleanupErr) {
-          console.warn(`${MODULE_ID} | failed to roll back encounter actor "${actor.name}"`, cleanupErr);
-        }
+        const survivor = await rollbackActor(actor, "encounter actor");
+        if (survivor) survivors.push(survivor);
       }
       if (folder) {
         try { await folder.delete(); } catch (cleanupErr) {
           console.warn(`${MODULE_ID} | failed to roll back encounter folder "${folder.name}"`, cleanupErr);
+          survivors.push(`encounter folder "${folder.name}" still exists`);
         }
       }
-      this.#error = err.message;
+      if (survivors.length) {
+        this.#encounter = null;
+        this.#error = `${err.message} ${survivors.join(" ")} The plan was discarded to prevent a duplicate.`;
+      } else this.#error = err.message;
     } finally {
       this.#busy = false;
       await this.render();

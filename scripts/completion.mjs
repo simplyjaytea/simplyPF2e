@@ -40,6 +40,19 @@ function spellLines(concept, resolved, character) {
   return records;
 }
 
+/** Spellcasting entries are module-built infrastructure, but a completed
+ * plan must account for them just as it accounts for every exact spell. */
+function castingEntryLines(concept, resolved) {
+  const records = [];
+  if (concept?.spellcasting && Array.isArray(resolved?.spells) && resolved.spells.some((spell) => spell?.entry)) {
+    records.push(line("spellcasting-entry", "Spellcasting Entry", "module-built"));
+  }
+  if (Array.isArray(resolved?.focusSpells) && resolved.focusSpells.some((spell) => spell?.entry)) {
+    records.push(line("spellcasting-entry", "Focus Spellcasting Entry", "module-built"));
+  }
+  return records;
+}
+
 /** Build the exact/completion report for a resolved creature or character. */
 export function completionManifest({ mode, concept, resolved }) {
   const records = [];
@@ -55,6 +68,7 @@ export function completionManifest({ mode, concept, resolved }) {
   }
   records.push(...spellLines(concept, resolved, character));
   records.push(...resolvedLines("focus-spell", resolved?.focusSpells));
+  records.push(...castingEntryLines(concept, resolved));
   records.push(...resolvedLines("feat", resolved?.feats));
   for (const item of resolved?.equipment ?? []) records.push(line("equipment", item.name, item.entry ? "compendium" : "unresolved"));
   for (const item of resolved?.loot ?? []) {

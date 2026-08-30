@@ -14,7 +14,7 @@ if (!vm.SourceTextModule) {
   process.exit(run.status ?? 1);
 }
 
-let actor, createFailure, skillReport, creates = 0, sheetCalls = 0;
+let actor, createFailure, verifyFailure, deleteFailure, skillReport, creates = 0, deleted = 0, sheetCalls = 0;
 const notices = [];
 class App {
   element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
@@ -38,6 +38,7 @@ const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fig
 const mocks = {
   SpfApp: App, MODULE_ID: "simplypf2e", reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   assertComplete, completionManifest, completionSummary,
+  verifyCreatedActor: () => { if (verifyFailure) throw verifyFailure; },
   supportedClassCandidates,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
@@ -72,7 +73,10 @@ async function generate() {
   return app;
 }
 function setActor({ items = [], failSheet = false } = {}) {
-  actor = { id: "created", name: "<img src=x>", items: { contents: items }, sheet: { async render() {
+  actor = { id: "created", name: "<img src=x>", items: { contents: items }, async delete() {
+    deleted++;
+    if (deleteFailure) throw deleteFailure;
+  }, sheet: { async render() {
     sheetCalls++;
     if (failSheet) throw new Error("sheet failure");
   } } };
@@ -143,4 +147,34 @@ await actions.createActor.call(failed);
 assert.equal(failed.context.error, createFailure.message);
 assert.ok(failed.context.pcPreview, "genuine creation failure retains the retryable draft");
 assert.equal(failed.context.busy, false);
+createFailure = undefined;
+
+setActor();
+verifyFailure = new Error("expected embedded feat was dropped");
+const unverified = await generate();
+await actions.createActor.call(unverified);
+assert.equal(unverified.context.error, verifyFailure.message, "post-create verification failure reaches the normal creation error state");
+assert.ok(unverified.context.pcPreview, "an unverified actor leaves the retryable plan intact");
+assert.equal(deleted, 1, "an unverified newly created character is rolled back before commit");
+verifyFailure = undefined;
+
+setActor();
+verifyFailure = new Error("expected embedded feat was dropped");
+deleteFailure = new Error("delete rejected");
+const stranded = await generate();
+await actions.createActor.call(stranded);
+assert.equal(stranded.context.pcPreview, null, "a failed rollback must discard the draft so retry cannot duplicate the actor");
+assert.match(stranded.context.error, /still exists/);
+verifyFailure = undefined;
+deleteFailure = undefined;
+
+setActor();
+const nativeStranded = new Error("native write rejected");
+nativeStranded.simplyPF2eRollbackActor = actor;
+createFailure = nativeStranded;
+const incomplete = await generate();
+await actions.createActor.call(incomplete);
+assert.equal(incomplete.context.pcPreview, null, "a builder-reported surviving actor also makes the draft non-retryable");
+assert.match(incomplete.context.error, /still exists/);
+createFailure = undefined;
 console.log("generator-app.review.test.mjs: production generation/creation/review lifecycle passed");

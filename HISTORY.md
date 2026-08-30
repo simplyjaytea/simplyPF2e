@@ -2,6 +2,14 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-30 — Exact post-create transaction boundary (local branch)
+
+- Continued on `codex/one-click-grounding`; no push, PR, merge, release, provider request, VPS action, or change to user-owned `.claude/`.
+- Replaced post-create name/type matching with an in-flight exact-item contract. Builders return the sources supplied to Foundry only for the active transaction; persisted compendium clones are matched by `_stats.compendiumSource`, so same-named documents/native grants cannot satisfy an exact pick. NPC feat-to-action conversion preserves its source UUID. Module-built/narrative items remain structural type/name checks because they intentionally have no source document.
+- Spell survival now also requires that each persisted spell location reference an actual persisted `spellcastingEntry`. Ordinary and focus entries are module-built completion records; the focus entry is recorded even for a focus-only PC. This is verification, not a second PF2e derived-stat or feat-prerequisite engine.
+- Creation now has an explicit commit boundary across NPC, PC, and encounter flows. All writes/verification succeed and drafts clear before notifications, sheets, or result rendering. Pre-commit errors roll back only newly created documents; if actor/folder deletion fails, the draft is discarded and the surviving document is reported so retry cannot duplicate it. PC-builder rollback failures carry the survivor to the generator for the same treatment.
+- Independent review initially caught name-only verification, unsafe retry after cleanup failure, missing spellcasting infrastructure, and presentation before commit; all were corrected. A second review approved, including the focus-only follow-up. Regression coverage adds exact duplicate-name/source rejection, casting-entry links, failed cleanup/non-retry, stranded native creation, and commit-before-presentation behavior. All local tests, script syntax checks, module/localization JSON parsing, and whitespace checks pass. Broader monster/NPC/encounter lifecycle mocks and live Foundry transactional behavior remain QA work.
+
 ## 2026-08-29 — One-click workflow foundation (local branch)
 
 - Started `codex/one-click-grounding` from the completed PC stack. No push, PR, merge, release, deployment, provider request, or VPS action. Baseline verification passed all 46 regression files, all script syntax checks, localization/module JSON parsing, and diff whitespace checks.
