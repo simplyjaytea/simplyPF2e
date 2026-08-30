@@ -9,7 +9,7 @@ const events = [];
 globalThis.foundry = { utils: { randomID: (() => { let id = 0; return () => `id-${++id}`; })() } };
 globalThis.CONST = { TOKEN_DISPLAY_MODES: { OWNER_HOVER: 50 } };
 globalThis.CONFIG = { PF2E: { languages: { dwarven: "Dwarven", elven: "Elven" } } };
-globalThis.game = { i18n: { localize: (label) => label } };
+globalThis.game = { i18n: { localize: (label) => label }, packs: new Map() };
 globalThis.Actor = {
   async create(data) {
     events.push("create");
@@ -25,6 +25,7 @@ globalThis.Actor = {
         assert.equal(type, "Item");
         assert.equal(options.keepId, true, "native grant creation must retain explicit ABC ids");
         if (scenario.embedError) throw scenario.embedError;
+        scenario.embeddedItems = items;
         this.system = scenario.system;
         return items;
       },
@@ -93,6 +94,25 @@ assert.deepEqual(scenario.updates, [{
   "system.attributes.hp.value": 37,
   "system.details.languages.value": ["dwarven", "elven"]
 }], "finalization writes only derived current HP and any Int-bonus languages, never HP max or temp");
+
+// PF2e puts the Free Archetype variant in its own `archetype-N` feat group;
+// its feat category remains `class`, so using class-N would collide with the
+// ordinary class-feat slot at the same level.
+game.packs.set("test.feats", {
+  getDocument: async () => doc("feat", { location: null, level: { value: 2 } })
+});
+reset();
+{
+  const { concept, resolved } = input();
+  resolved.feats = [{
+    entry: { packId: "test.feats", _id: "free-archetype" },
+    type: "class", level: 2, archetype: true, name: "Test Dedication"
+  }];
+  await createCharacterActor(concept, resolved);
+}
+const freeArchetype = scenario.embeddedItems.find((item) => item.type === "feat");
+assert.equal(freeArchetype.system.location, "archetype-2", "Free Archetype feats use PF2e's distinct feat-group location");
+assert.equal(freeArchetype.system.level.taken, 2, "the variant feat retains its earned level");
 
 reset({ system: { attributes: { hp: { value: 11, max: 22 } }, abilities: { int: { mod: 0 } } } });
 {

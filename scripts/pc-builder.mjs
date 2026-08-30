@@ -7,7 +7,7 @@ import {
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
-import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
+import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
 import { CORE_SKILLS, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
@@ -355,7 +355,7 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
  * @param {{type: string, level: number, candidates: {name: string, ref?: object}[]}[]} featSlots
  * @param {{slot: number, name: string, candidate?: object}[]} picks
  * @param {{exactContent?: boolean}} [options]
- * @returns {Promise<{type: string, level: number, name: string, entry: object|null}[]>}
+ * @returns {Promise<{type: string, level: number, archetype: boolean, name: string, entry: object|null}[]>}
  */
 export async function resolveFeatPicks(featSlots, picks, { exactContent = false } = {}) {
   const bySlot = new Map(picks.map((p) => [p.slot, p]));
@@ -419,7 +419,10 @@ export async function resolveFeatPicks(featSlots, picks, { exactContent = false 
     // entry can still be null when every candidate for this slot is already
     // taken (a sparse category at low levels); the name is kept so the preview
     // can still show intent, and the slot is simply left empty on the sheet.
-    resolved.push({ type: slot.type, level: slot.level, name: name ?? `${slot.type} feat`, entry });
+    resolved.push({
+      type: slot.type, level: slot.level, archetype: slot.archetype === true,
+      name: name ?? `${slot.type} feat`, entry
+    });
   }
   return resolved;
 }
@@ -679,12 +682,13 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // and system.level.taken the slot level, or the system's feat-slotting
   // (verified in feats/group.ts assignFeat) can't place it and dumps it into
   // Bonus feats (issue #50 item 4).
-  for (const { entry, type, level } of resolved.feats ?? []) {
+  for (const { entry, type, level, archetype = false } of resolved.feats ?? []) {
     const doc = await getDocument(entry);
     if (!doc) continue;
     const data = toItemData(doc);
-    if (type && level) {
-      data.system.location = `${type}-${level}`;
+    const location = featSlotLocation({ type, level, archetype });
+    if (location) {
+      data.system.location = location;
       data.system.level = { ...(data.system.level ?? {}), taken: level };
     }
     items.push(data);

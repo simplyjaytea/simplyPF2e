@@ -80,6 +80,22 @@ export function buildFeatSlots(level, { freeArchetype = false } = {}) {
 }
 
 /**
+ * PF2e's Free Archetype variant uses its own `archetype` feat group, even
+ * though its candidates remain `class` category feats. In 8.4.1
+ * CharacterFeats creates slots named `archetype-2`, `archetype-4`, and so on;
+ * placing them in `class-N` collides with the character's ordinary class-feat
+ * entitlement. Keep the presentation/category distinction here so every
+ * builder uses the same native location identifier.
+ */
+export function featSlotLocation(slot) {
+  const group = slot?.archetype === true ? "archetype" : slot?.type;
+  const level = Math.round(Number(slot?.level));
+  return typeof group === "string" && group && Number.isInteger(level) && level > 0
+    ? `${group}-${level}`
+    : null;
+}
+
+/**
  * Legacy compatibility approximation for unsupported classes. Recognized
  * Remaster classes use pcSpellcastingProfile()/pcSpellSlots() below, grounded
  * in published tables; do not extend this fallback by inference.
