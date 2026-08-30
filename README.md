@@ -180,7 +180,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 **Rules coverage**
 
-- Complete one-click Player Character selection currently offers Fighter, Rogue, Investigator, and Wizard only. Other classes stay unavailable until their native class-feature, casting, and loadout paths are qualified; they are not silently approximated. NPCs retain spontaneous-style spellcasting entries.
+- Complete one-click Player Character selection currently offers Fighter only. Rogue, Investigator, and Wizard each have mandatory native class-path choices (racket, methodology, school, or thesis) that are not yet staged and resolved by the module, so they stay unavailable rather than creating an approximate or dialog-dependent build. NPCs retain spontaneous-style spellcasting entries.
 - Matched feats become NPC action items — the PF2e system doesn't allow feat items on NPCs — keeping the feat's cost, rules text and automation.
 - Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget.
 - The benchmark tables were transcribed by hand from GM Core. If a value disagrees with the book, please open an issue.
