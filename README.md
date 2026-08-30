@@ -22,6 +22,8 @@ The AI never produces a number and never invents content. The job is split three
 
 Every required published spell, feat, ancestry, background, class, item, and loot choice must resolve to the exact offered compendium document before one-click creation proceeds. A planned PC spell slot or a selected item with no exact document blocks creation; neither falls back to an unvetted name. Coins are built from real currency, and scrolls from an exact selected spell document. Deliberately custom creature narrative abilities stay visibly labeled and are never presented as published mechanics.
 
+Creature strikes are constrained to PF2e's configured damage types, NPC attack traits, and attack effects. Ranged attacks use the system's structured range field rather than a legacy trait workaround.
+
 **Generate Monster**, **Generate NPC**, **Generate Encounter**, and **Generate Character** validate and create in one pass. Use **Preview Plan** when you want to inspect the same no-write plan before deciding to create it.
 
 ## Status
@@ -162,8 +164,8 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 **Odd results**
 
 - **Missing an ability you expected** (Attack of Opportunity on a soldier, say) — the AI decides case by case; nudging the prompt usually gets it.
-- **An unfamiliar item name** — the module always targets current Remaster terminology. A stray pre-Remaster name simply fails to match and falls back to a flagged custom item rather than breaking anything.
-- **A pick shows as custom, not matched** — that item isn't in your enabled compendium sources. Swap in the real one by hand, or widen your sources.
+- **An unfamiliar item name** — the module targets current Remaster terminology. If it is not in an enabled source, the complete plan stops before creation; widen sources or choose a supported concept.
+- **A plan reports unresolved content** — one or more required published picks was absent from the enabled sources. Use **Compendium Sources** to include the appropriate pack, then generate again.
 
 ## Limitations
 
@@ -172,11 +174,11 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 - Presets guide the AI rather than constrain it; an occasional generation drifts. Regenerating usually lands it.
 - Clickable rolls in custom abilities depend on the AI following the module's phrasing conventions. A phrase that slips through stays readable plain text.
 - A custom (non-glossary) passive is only as interactive as its phrasing — anything outside the standard damage/save/check/heal/area conventions is flavor text you apply by hand.
-- An item with no compendium match becomes a placeholder at the AI's estimated price, not a functional weapon or armor. This should be rare (gear is picked from a real candidate list), but swap in the real item if you see one.
+- Required gear and treasure do not receive custom mechanical placeholders. An unresolved item blocks the complete plan instead of creating an approximation.
 
 **Rules coverage**
 
-- PCs using the Remaster Player Core / Player Core 2 Bard, Cleric, Druid, Oracle, Sorcerer, Witch, or Wizard receive their class's base slots and casting mode. Prepared classes get a daily plan with real spell-slot references; spontaneous spells retain their selected heightened rank. Bard, Oracle, and Sorcerer plans also select ordinary signature spells from level 3 and distinguish their two rank-10 repertoire spells from their single slot. Preview shows planned signatures; missing/rejected choices need manual review. Variable traditions (bloodline/patron) and restricted subclass/feat bonuses such as divine font, curriculum, or additional signatures still need review. Unsupported/legacy classes retain a warned generic spontaneous approximation. NPCs retain spontaneous-style entries.
+- Complete one-click Player Character selection currently offers Fighter, Rogue, Investigator, and Wizard only. Other classes stay unavailable until their native class-feature, casting, and loadout paths are qualified; they are not silently approximated. NPCs retain spontaneous-style spellcasting entries.
 - Matched feats become NPC action items — the PF2e system doesn't allow feat items on NPCs — keeping the feat's cost, rules text and automation.
 - Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget.
 - The benchmark tables were transcribed by hand from GM Core. If a value disagrees with the book, please open an issue.

@@ -22,6 +22,56 @@ const STANDARD_SKILLS = new Set([
 ]);
 
 /*
+ * NPC strike values are written directly into a MeleePF2e document. Keep the
+ * boundary at normalization: a model may describe the fiction of a weapon,
+ * but it may not invent PF2e damage types, attack traits, or attack effects.
+ *
+ * Source (PF2e 8.4.1, checked 2026-08-30):
+ * - src/module/item/melee/data.ts: damageType choices are
+ *   CONFIG.PF2E.damageTypes; traits are CONFIG.PF2E.npcAttackTraits; range
+ *   increments are integer multiples of 5 from 5 through 500.
+ * - src/scripts/config/damage.ts: the complete fallback damage type list
+ *   below for non-Foundry unit imports; a live world always uses its runtime
+ *   CONFIG.PF2E.damageTypes catalog.
+ * - src/scripts/config/index.ts: the complete attack-effect list below.
+ *
+ * NPC attack traits deliberately have no partial local copy. Foundry always
+ * provides CONFIG.PF2E.npcAttackTraits before this module can create a
+ * document; outside that runtime we fail closed rather than let a test or a
+ * future integration silently accept made-up traits.
+ */
+const STRIKE_DAMAGE_TYPES = new Set([
+  "acid", "bleed", "bludgeoning", "cold", "electricity", "fire", "force",
+  "mental", "piercing", "poison", "slashing", "sonic", "spirit", "untyped",
+  "vitality", "void"
+]);
+const ATTACK_EFFECTS = new Set([
+  "grab", "improved-grab", "constrict", "greater-constrict", "knockdown",
+  "improved-knockdown", "push", "improved-push", "trip"
+]);
+
+function pf2eChoiceSet(key) {
+  const choices = typeof CONFIG !== "undefined" ? CONFIG.PF2E?.[key] : null;
+  return choices && typeof choices === "object" ? new Set(Object.keys(choices)) : null;
+}
+
+function filterStrikeValues(values, configKey, fallback, label) {
+  const allowed = pf2eChoiceSet(configKey) ?? fallback;
+  return filterAllowed(values, allowed, label);
+}
+
+function normalizeStrikeRange(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.min(500, Math.max(5, Math.round(numeric / 5) * 5));
+}
+
+function thrownRangeFromTraits(traits) {
+  const thrownTrait = traits.find((trait) => /^thrown-\d+$/.test(trait));
+  return thrownTrait ? normalizeStrikeRange(Number(thrownTrait.slice("thrown-".length))) : null;
+}
+
+/*
  * IWR (immunity/weakness/resistance) type slugs, senses, and languages are
  * AI-invented free text like traits (see the validTraits filter below) — bare
  * slugify has no bound on what comes out, and createActor writes the result
@@ -176,16 +226,36 @@ export function normalizeConcept(raw, { level, rarity }) {
   const strikes = (Array.isArray(c.strikes) ? c.strikes : [])
     .filter((s) => s?.name)
     .slice(0, 4)
-    .map((s) => ({
-      name: String(s.name),
-      type: s.type === "ranged" ? "ranged" : "melee",
-      attackScale: scale4(s.attackScale, "high"),
-      damageScale: scale4(s.damageScale, "high"),
-      damageType: slugify(s.damageType) || "bludgeoning",
-      traits: (Array.isArray(s.traits) ? s.traits : []).map(slugify).filter(Boolean),
-      range: Number(s.range) > 0 ? Math.round(Number(s.range) / 5) * 5 : null,
-      attackEffects: (Array.isArray(s.attackEffects) ? s.attackEffects : []).map(slugify).filter(Boolean)
-    }));
+    .map((s) => {
+      const traits = filterStrikeValues(
+        (Array.isArray(s.traits) ? s.traits : []).map(slugify).filter(Boolean),
+        "npcAttackTraits", new Set(), "NPC attack traits"
+      );
+      // PF2e itself gives thrown attacks their range from the trait during
+      // preparation. Use that same source here so preview/manifest data and
+      // the created document cannot disagree about a valid thrown increment.
+      const thrownRange = thrownRangeFromTraits(traits);
+      const type = s.type === "ranged" || thrownRange != null ? "ranged" : "melee";
+      const damageType = slugify(s.damageType);
+      const validDamageType = (pf2eChoiceSet("damageTypes") ?? STRIKE_DAMAGE_TYPES).has(damageType)
+        ? damageType : "bludgeoning";
+      if (damageType && damageType !== validDamageType) {
+        console.warn(`simplypf2e | dropped invalid strike damage type: ${damageType}`);
+      }
+      return {
+        name: String(s.name),
+        type,
+        attackScale: scale4(s.attackScale, "high"),
+        damageScale: scale4(s.damageScale, "high"),
+        damageType: validDamageType,
+        traits,
+        range: type === "ranged" ? thrownRange ?? normalizeStrikeRange(s.range) : null,
+        attackEffects: filterStrikeValues(
+          (Array.isArray(s.attackEffects) ? s.attackEffects : []).map(slugify).filter(Boolean),
+          "attackEffects", ATTACK_EFFECTS, "NPC attack effects"
+        )
+      };
+    });
   if (!strikes.length) {
     strikes.push({
       name: "fist", type: "melee", attackScale: "high", damageScale: "high",
@@ -1162,11 +1232,6 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
 
   // Strikes → melee items
   for (const strike of stats.strikes) {
-    const traits = [...strike.traits];
-    if (strike.type === "ranged") {
-      const hasRange = traits.some((t) => t.startsWith("range"));
-      if (!hasRange) traits.push(`range-increment-${strike.range ?? 30}-feet`);
-    }
     items.push({
       name: capitalized(strike.name),
       type: "melee",
@@ -1180,8 +1245,12 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
             category: null
           }
         },
-        traits: { value: traits },
-        attackEffects: { value: strike.attackEffects }
+        traits: { value: strike.traits },
+        attackEffects: { value: strike.attackEffects },
+        // PF2e 8.4.1 stores NPC range as structured system data. The old
+        // range-increment-* trait encoding is migration input, not a valid
+        // new-document trait (see item/melee/data.ts).
+        range: strike.type === "ranged" ? { increment: strike.range ?? 30, max: null } : null
       }
     });
   }
