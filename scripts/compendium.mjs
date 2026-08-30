@@ -169,7 +169,7 @@ async function getIndex(packId) {
     fields: [
       "name", "type", "system.slug", "system.level.value",
       "system.traits.value", "system.traits.traditions", "system.ritual",
-      "system.category", "system.traits.rarity", "system.traits.otherTags"
+      "system.category", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
     ]
   });
   const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
@@ -783,7 +783,7 @@ export function getHeritageCandidates(maxRarity) {
  * @param {string[]} [args.preferredNames] exact legal first-draft picks kept before sampling
  * @returns {Promise<{name: string, level: number, traits: string[]}[]>} sorted by level then name
  */
-export async function getFeatCandidates({ level, category, traits = [], preferredNames = [] } = {}) {
+export async function getFeatCandidates({ level, category, traits = [], preferredNames = [], requireNoPrerequisites = false } = {}) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("feats")) {
@@ -793,6 +793,12 @@ export async function getFeatCandidates({ level, category, traits = [], preferre
       if (entry.type !== "feat") continue;
       if ((entry.system?.level?.value ?? 0) > level) continue;
       if (category && entry.system?.category !== category) continue;
+      // PF2e exposes prerequisite text as authored strings, not a general
+      // actor eligibility predicate. Complete-only PC catalogs therefore
+      // accept only an explicit empty list until a staged evaluator exists;
+      // callers that build NPC/legacy lists keep the prior behavior.
+      if (requireNoPrerequisites && !(Array.isArray(entry.system?.prerequisites?.value)
+        && entry.system.prerequisites.value.length === 0)) continue;
       const entryTraits = entry.system?.traits?.value ?? [];
       if (traits.length && !traits.some((t) => entryTraits.includes(t))) continue;
       if (seen.has(entry.normalized)) continue;

@@ -291,7 +291,8 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
       : slot.type === "ancestry" ? [ancestryTrait]
       : slot.type === "class" ? [classTrait] : [];
     let candidates = await getFeatCandidates({
-      level: slot.level, category: slot.type, traits, preferredNames: concept.feats
+      level: slot.level, category: slot.type, traits, preferredNames: concept.feats,
+      requireNoPrerequisites: true
     });
     // Retry once without the trait filter before giving up: a valid slot
     // whose ancestry/class trait matched nothing at this level (odd content
@@ -300,11 +301,18 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
     // give plain class feats, defeating the slot). Issue #64 item 4a.
     if (!candidates.length && traits.length && !slot.archetype) {
       candidates = await getFeatCandidates({
-        level: slot.level, category: slot.type, preferredNames: concept.feats
+        level: slot.level, category: slot.type, preferredNames: concept.feats,
+        requireNoPrerequisites: true
       });
     }
     if (candidates.length) featSlots.push({ ...slot, candidates });
-    else console.warn(`simplypf2e | no feat candidates for a ${slot.type}${slot.archetype ? " (archetype)" : ""} slot at level ${slot.level} — slot left empty`);
+    else {
+      // Preserve the earned entitlement through selection and the completion
+      // manifest. Dropping an unsupported slot would let a character commit
+      // while appearing complete merely because no unresolved record existed.
+      console.warn(`simplypf2e | no feat candidates for a ${slot.type}${slot.archetype ? " (archetype)" : ""} slot at level ${slot.level} — slot remains unresolved`);
+      featSlots.push({ ...slot, candidates: [] });
+    }
   }
 
   const spells = [];
