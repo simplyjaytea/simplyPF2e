@@ -3,7 +3,7 @@ import {
   isOfficialOpenAIEndpoint, modelsUrl, resolveProviderModel
 } from "./settings.mjs";
 import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
-import { propertyRuneRestrictionNote } from "./runes.mjs";
+import { hasRunes, parseRunes, propertyRuneRestrictionNote } from "./runes.mjs";
 import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
 import { encodeFeatCandidateSlots, resolveEncodedFeatPicks } from "./ai-candidate-format.mjs";
 import { taskResponseProblem } from "./ai-response-validation.mjs";
@@ -483,7 +483,15 @@ function candidateForPick(candidates, pick) {
     byName.set(key, byName.has(key) ? null : candidate);
   }
   const id = String(pick?.id ?? "").trim();
-  if (id) return byId.get(id) ?? null;
+  if (id) {
+    const issued = byId.get(id);
+    if (issued) return issued;
+    // Some structured-output providers put the displayed candidate name in
+    // an `id` field despite the schema. Accept only an exact, unambiguous
+    // name from this run's issued catalog; never fuzzy-match or trust a
+    // caller-supplied pack/document reference.
+    return byName.get(id.toLocaleLowerCase()) ?? null;
+  }
   const name = String(pick?.name ?? "").toLocaleLowerCase();
   // Test/migration callers without candidate IDs predate the exact-catalog
   // contract. Preserve their deterministic first entry only when the whole
@@ -492,6 +500,19 @@ function candidateForPick(candidates, pick) {
     return candidates.find((candidate) => String(candidate?.name ?? "").toLocaleLowerCase() === name) ?? null;
   }
   return byName.get(name) ?? null;
+}
+
+/** Decode an equipment/loot pick while preserving the one model-authored
+ * name variation the catalog contract allows: a fundamental-rune prefix on
+ * an exact offered base item. */
+function physicalCandidateForPick(candidates, pick) {
+  const direct = candidateForPick(candidates, pick);
+  if (direct) return { candidate: direct, name: direct.name };
+  const selectedName = String(pick?.id ?? pick?.name ?? "").trim();
+  const runes = parseRunes(selectedName);
+  if (!hasRunes(runes)) return null;
+  const candidate = candidateForPick(candidates, { name: runes.base });
+  return candidate ? { candidate, name: selectedName } : null;
 }
 
 /**
@@ -668,10 +689,10 @@ Pick the logical items the creature would carry: the weapons it wields (match it
     task: AI_TASK.EQUIPMENT_SELECTION, system, user, onProgress
   });
   const equipment = (Array.isArray(parsed.equipment) ? parsed.equipment : [])
-    .map((pick) => ({ pick, candidate: candidateForPick(candidates, pick) }))
-    .filter(({ candidate }) => Boolean(candidate))
-    .map(({ pick, candidate }) => ({
-      name: candidate.name,
+    .map((pick) => ({ pick, selection: physicalCandidateForPick(candidates, pick) }))
+    .filter(({ selection }) => Boolean(selection))
+    .map(({ pick, selection: { candidate, name } }) => ({
+      name,
       ...(candidate.ref ? { candidate: candidate.ref } : {}),
       quantity: Math.min(Math.max(Math.round(Number(pick.quantity) || 1), 1), 10),
       // Picks come from the compendium, so no estimated fallback price is needed.
@@ -724,10 +745,10 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
   });
   const picks = Array.isArray(parsed.loot) ? parsed.loot : [];
   const loot = picks
-    .map((pick) => ({ pick, candidate: candidateForPick(candidates, pick) }))
-    .filter(({ candidate }) => Boolean(candidate))
-    .map(({ pick, candidate }) => ({
-      name: candidate.name,
+    .map((pick) => ({ pick, selection: physicalCandidateForPick(candidates, pick) }))
+    .filter(({ selection }) => Boolean(selection))
+    .map(({ pick, selection: { candidate, name } }) => ({
+      name,
       ...(candidate.ref ? { candidate: candidate.ref } : {}),
       // No upper cap here: coin quantities run large. normalizeLoot() clamps.
       quantity: Math.max(Math.round(Number(pick.quantity) || 1), 1),

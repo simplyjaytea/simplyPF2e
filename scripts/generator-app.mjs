@@ -451,9 +451,16 @@ export class GeneratorApp extends SpfApp {
       this.render();
     });
     for (const radio of this.element.querySelectorAll('input[name="mode"]')) {
-      radio.addEventListener("change", () => {
+      radio.addEventListener("change", async () => {
         this.#readForm();
-        this.render();
+        const selectedMode = this.#input.mode;
+        await this.render();
+        // Foundry focuses the first hidden radio after an application render.
+        // Restore focus to the mode the GM actually selected so Monster does
+        // not receive a second, misleading focus highlight.
+        if (this.#input.mode === selectedMode) {
+          this.element.querySelector('[name="mode"]:checked')?.focus({ preventScroll: true });
+        }
       });
     }
   }
