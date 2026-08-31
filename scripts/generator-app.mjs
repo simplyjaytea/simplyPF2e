@@ -1096,7 +1096,7 @@ export class GeneratorApp extends SpfApp {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
         spellcasting.spells = [];
       } else {
-        const { spells, usage } = await selectSpells({
+        const { spells, focusSpells, usage } = await selectSpells({
           concept,
           candidates,
           focusCandidates,

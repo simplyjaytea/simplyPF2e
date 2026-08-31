@@ -35,6 +35,8 @@ const RULES = Object.freeze({
   [AI_TASK.PC_SPELL_SELECTION]: { required: ["spells"], arrays: ["spells"] },
   [AI_TASK.EQUIPMENT_SELECTION]: { required: ["equipment"], arrays: ["equipment"] },
   [AI_TASK.LOOT_SELECTION]: { required: ["loot"], arrays: ["loot"] },
+  [AI_TASK.ABILITY_SELECTION]: { required: ["abilityIds"], arrays: ["abilityIds"] },
+  [AI_TASK.CREATURE_FEAT_SELECTION]: { required: ["featIds"], arrays: ["featIds"] },
   [AI_TASK.ABC_SELECTION]: {
     required: ["ancestry", "heritage", "background", "class", "keyAbility"],
     nonEmptyStrings: ["ancestry", "background", "class", "keyAbility"]

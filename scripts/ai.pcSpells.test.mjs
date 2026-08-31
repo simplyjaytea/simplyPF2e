@@ -156,6 +156,8 @@ assert.match(generator, /pcSpellcastingProfile\(resolved\.classDoc\)/);
 assert.match(generator, /plannedPicks: spellcasting\.plannedPicks/);
 assert.match(generator, /preparationMode: spellcasting\.preparationMode/);
 assert.match(generator, /signatureRanks: spellcasting\.signatureRanks/);
+assert.match(generator, /const \{ spells, focusSpells, usage \} = await selectSpells\(/,
+  "the generator must retain grounded focus spells returned by the shared selector");
 assert.match(generator, /plannedPicks = plan\.picks/);
 assert.match(template, /role="status">\{\{pcPreview\.signatureSummary\}\}/);
 assert.match(template, /\{\{#if this\.signature\}\}/);

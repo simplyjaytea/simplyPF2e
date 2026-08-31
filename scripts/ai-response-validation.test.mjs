@@ -27,5 +27,9 @@ assert.match(taskResponseProblem("unknown", {}), /unknown task/);
 assert.equal(taskResponseProblem(AI_TASK.CHARACTER_CHOICES, { picks: [] }), null);
 assert.match(taskResponseProblem(AI_TASK.CHARACTER_CHOICES, {}), /missing required fields: picks/);
 assert.match(taskResponseProblem(AI_TASK.CHARACTER_CHOICES, { picks: {} }), /fields must be arrays: picks/);
+assert.equal(taskResponseProblem(AI_TASK.ABILITY_SELECTION, { abilityIds: [] }), null);
+assert.match(taskResponseProblem(AI_TASK.ABILITY_SELECTION, { picks: [] }), /missing required fields: abilityIds/);
+assert.equal(taskResponseProblem(AI_TASK.CREATURE_FEAT_SELECTION, { featIds: [] }), null);
+assert.match(taskResponseProblem(AI_TASK.CREATURE_FEAT_SELECTION, { picks: [] }), /missing required fields: featIds/);
 
 console.log("ai-response-validation.test.mjs: all response-shape assertions passed");

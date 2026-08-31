@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-31 — Live generation contract fixes (local branch)
+
+- Connected read-only to the user's running Foundry world and observed a level-6 Monster generation through the public v0.3.5.44 UI. Spell selection raised `ReferenceError: focusSpells is not defined`; ability selection then spent its bounded retry returning `abilityIds` to the PC feat validator, which required `picks`. Completion failed closed on unresolved Grab, and no Tidespore Oracle actor existed afterward, confirming no world write or rollback leak.
+- Traced both failures to the production code. `selectSpells()` already returns grounded `focusSpells`; the generator omitted it from destructuring. Creature feats were assigned the ability task while creature abilities were assigned the PC feat task, and `ABILITY_SELECTION` had no response-shape rule. The fix retains `focusSpells`, gives creature feats a dedicated 1,536-token deterministic task, assigns abilities to their intended task, and validates the exact `featIds`/`abilityIds` arrays before local opaque-ID resolution.
+- Added a provider-path regression that drives both real selectors through mocked OpenAI-compatible responses, verifies exact reference retention/deduplication, response-key rejection plus one bounded retry, and task limits. Existing spell and response validation tests cover the retained focus-spell return. Full local verification passes: 59 regression files, syntax checks for all 91 `scripts/*.mjs`, `module.json`/`lang/en.json` parsing, and `git diff --check`.
+- Work is isolated on `codex/live-qa-generation-fixes`. The user's current request authorizes branch push, PR, and merge; the automatic release and post-release VPS rerun still require verification. No VPS files, world documents, settings, or provider credentials were changed by the agent.
+
 ## 2026-08-31 — PR #83 merged and v0.3.5.43 published
 
 - With explicit user authorization, pushed `codex/one-click-grounding`, opened PR [#83](https://github.com/simplyjaytea/simplyPF2e/pull/83), waited for GitHub's `verify` check, and merged it into `main` as `07a369fc8589c263e537fe65024b704161dba0d7`.
