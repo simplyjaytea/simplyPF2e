@@ -862,7 +862,7 @@ Choose feats that fit the creature's role and tactics. Do not choose a feat more
     catalog
   ].filter((line) => line !== null).join("\n");
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.ABILITY_SELECTION, system, user, onProgress
+    task: AI_TASK.CREATURE_FEAT_SELECTION, system, user, onProgress
   });
   const seen = new Set();
   const feats = (Array.isArray(parsed.featIds) ? parsed.featIds : [])
@@ -897,7 +897,7 @@ Choose the actions that fit the creature's role and tactics. Omit a proposed abi
     catalog
   ].filter((line) => line !== null).join("\n");
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.FEAT_SELECTION, system, user, onProgress
+    task: AI_TASK.ABILITY_SELECTION, system, user, onProgress
   });
   const seen = new Set();
   const abilities = (Array.isArray(parsed.abilityIds) ? parsed.abilityIds : [])
