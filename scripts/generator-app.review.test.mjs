@@ -68,6 +68,29 @@ await appModule.link((specifier) => {
 await appModule.evaluate();
 const { GeneratorApp } = appModule.namespace;
 const actions = GeneratorApp.DEFAULT_OPTIONS.actions;
+
+// A mode change re-renders the application. Foundry focuses the first hidden
+// radio during that render, so production must explicitly restore focus to
+// the checked radio instead of visually highlighting Monster as well.
+{
+  const modeApp = new GeneratorApp();
+  let changeHandler;
+  let focused = false;
+  const npcRadio = {
+    value: "npc", checked: true,
+    addEventListener: (type, handler) => { if (type === "change") changeHandler = handler; },
+    focus: ({ preventScroll } = {}) => { focused = preventScroll === true; }
+  };
+  modeApp.element = {
+    querySelector: (selector) => selector.includes('name="mode"') ? npcRadio : null,
+    querySelectorAll: (selector) => selector.includes('name="mode"') ? [npcRadio] : []
+  };
+  modeApp._onRender({}, {});
+  await changeHandler();
+  assert.equal(modeApp.context.npcMode, true, "the selected NPC mode must survive the re-render");
+  assert.equal(focused, true, "the checked mode radio must regain focus without scrolling");
+}
+
 async function generate() {
   const app = new GeneratorApp();
   await actions.generateRandom.call(app);

@@ -26,7 +26,7 @@ globalThis.fetch = async (_url, options) => {
 };
 
 try {
-  const { selectCreatureAbilities, selectCreatureFeats } = await import("./ai.mjs");
+  const { selectCreatureAbilities, selectCreatureFeats, selectEquipment } = await import("./ai.mjs");
   const concept = {
     name: "Cavern Sentinel", level: 6, blurb: "Guards a flooded shrine", description: "",
     specialAbilities: [{ name: "Grasping Tendrils", glossary: "Grab" }], feats: ["Reactive Shield"]
@@ -51,14 +51,44 @@ try {
     name: "Reactive Shield", candidate: { packId: "pf2e.feats-srd", _id: "shield" }
   }]);
 
-  assert.equal(requests.length, 2, "valid selector payloads must not trigger the bounded retry");
+  // A provider can obey the JSON field shape but put an exact displayed name
+  // into `id`. That must still resolve through the issued catalog, without a
+  // fuzzy lookup or a model-supplied compendium reference.
+  replies.push({ featIds: ["Sudden Charge"] });
+  const namedFeat = await selectCreatureFeats({ concept, candidates: featCandidates });
+  assert.deepEqual(namedFeat.feats, [{
+    name: "Sudden Charge", candidate: { packId: "pf2e.feats-srd", _id: "charge" }
+  }]);
+
+  const equipmentCandidates = [
+    { id: "E0", name: "Repeating Heavy Crossbow", type: "weapon", level: 1,
+      ref: { packId: "pf2e.equipment-srd", _id: "crossbow" } },
+    { id: "E1", name: "Thieves' Tools", type: "equipment", level: 0,
+      ref: { packId: "pf2e.equipment-srd", _id: "tools" } }
+  ];
+  replies.push({ equipment: [
+    { id: "Thieves' Tools", quantity: 1 },
+    { id: "+1 Striking Repeating Heavy Crossbow", quantity: 1 },
+    { id: "+1 Striking Invented Weapon", quantity: 1 }
+  ] });
+  const namedEquipment = await selectEquipment({
+    concept: { ...concept, traits: [], strikes: [], equipment: [{ name: "Thieves' Tools" }] },
+    candidates: equipmentCandidates
+  });
+  assert.deepEqual(namedEquipment.equipment, [
+    { name: "Thieves' Tools", candidate: { packId: "pf2e.equipment-srd", _id: "tools" }, quantity: 1, value: 0 },
+    { name: "+1 Striking Repeating Heavy Crossbow",
+      candidate: { packId: "pf2e.equipment-srd", _id: "crossbow" }, quantity: 1, value: 0 }
+  ], "exact name-in-id picks and allowed runed prefixes retain issued sources; invented bases still drop");
+
+  assert.equal(requests.length, 4, "valid selector payloads must not trigger the bounded retry");
   assert.ok(requests.every((request) => request.temperature === 0 && request.max_tokens === 1536));
   assert.match(requests[0].messages[0].content, /"abilityIds"/);
   assert.match(requests[1].messages[0].content, /"featIds"/);
 
   replies.push({ picks: [] }, { abilityIds: [] });
   await selectCreatureAbilities({ concept, candidates: abilityCandidates });
-  assert.equal(requests.length, 4, "a wrong response key is rejected once, then retried with the same contract");
+  assert.equal(requests.length, 6, "a wrong response key is rejected once, then retried with the same contract");
   assert.equal(replies.length, 0);
 } finally {
   globalThis.fetch = originalFetch;

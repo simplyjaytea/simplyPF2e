@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-08-31 — Post-v0.3.5.45 generator selection fixes (local branch)
+
+- Reproduced the reported double-highlight in the live Foundry UI. The selected mode's checked state was correct, but the application re-render moved focus to the first visually hidden radio (Monster), whose `:focus-within` outline looked like a second selection. The local fix restores focus to the checked mode after rendering and has a production-application regression.
+- Live logs proved only the all-at-once feat/equipment completion failure; they did not capture the provider's raw selector payload. Code tracing separately found and reproduced a compatible shared-decoder failure: a response can satisfy the JSON schema while putting an exact displayed candidate name in the `id` field, which the old decoder rejected before the exact-name catalog path. The decoder now accepts only an exact, unique name from the already-issued catalog when the opaque ID does not match. Equipment/loot also preserve the prompt's existing allowed fundamental-rune prefix only when its base is an exact issued item. Fuzzy names, ambiguous names, invented rune bases, unissued references, and fabricated pack/document identities remain rejected. Post-release live QA must confirm this was the provider's actual response shape.
+- Branch `codex/fix-generator-selection-completeness` contains the two focused code changes and production-path regressions. All 59 regression files, touched-file syntax checks, and `git diff --check` pass. No GitHub or VPS write occurred; live proof awaits publication.
+
 ## 2026-08-31 — Live generation contract fixes (local branch)
 
 - Connected read-only to the user's running Foundry world and observed a level-6 Monster generation through the public v0.3.5.44 UI. Spell selection raised `ReferenceError: focusSpells is not defined`; ability selection then spent its bounded retry returning `abilityIds` to the PC feat validator, which required `picks`. Completion failed closed on unresolved Grab, and no Tidespore Oracle actor existed afterward, confirming no world write or rollback leak.
