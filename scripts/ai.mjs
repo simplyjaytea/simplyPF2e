@@ -184,10 +184,11 @@ Design guidance (GM Core road maps):
 }
 
 export class AIRequestError extends Error {
-  constructor(message, { retryable = false, usage = null } = {}) {
+  constructor(message, { retryable = false, usage = null, details = null } = {}) {
     super(message);
     this.retryable = retryable;
     this.usage = usage;
+    this.details = details;
   }
 }
 
@@ -215,14 +216,28 @@ async function requestJSON(args) {
         retryAttempt: attempt,
         user: `${args.user}\n\nIMPORTANT RETRY: the previous response was truncated, invalid, or incomplete. Return one complete JSON object with every required field. No commentary.`
       };
-      const { content, usage } = await requestCompletion(requestArgs);
+      const { content, usage, finishReason, reasoningChars } = await requestCompletion(requestArgs);
       addUsage(usage);
-      const data = parseConceptJSON(content);
+      let data;
+      try {
+        data = parseConceptJSON(content);
+      } catch (err) {
+        if (err instanceof AIRequestError && err.retryable) {
+          err.details = {
+            ...(err.details ?? {}),
+            ...responseDiagnostic({ content, finishReason, reasoningChars })
+          };
+        }
+        throw err;
+      }
       const structureProblem = taskResponseProblem(args.task, data);
       if (structureProblem) {
         throw new AIRequestError(
           game.i18n.format("SIMPLYPF2E.Errors.BadStructure", { detail: structureProblem }),
-          { retryable: true }
+          {
+            retryable: true,
+            details: responseDiagnostic({ content, finishReason, reasoningChars })
+          }
         );
       }
       return { data, usage: total };
@@ -235,7 +250,13 @@ async function requestJSON(args) {
       }
       if (!(err instanceof AIRequestError) || !err.retryable) throw err;
       lastError = err;
-      if (attempt === 0) console.warn("simplypf2e | generation attempt failed, retrying once:", err.message);
+      if (attempt === 0) {
+        console.warn(
+          "simplypf2e | generation attempt failed, retrying once:",
+          err.message,
+          err.details ?? null
+        );
+      }
     }
   }
   throw lastError;
@@ -1289,36 +1310,48 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
         throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.InvalidResponse"));
       }
       if (isRealProviderError(data?.error)) throw providerStreamError(data.error);
-      content = data?.choices?.[0]?.message?.content;
-      const reasoning = data?.choices?.[0]?.message?.reasoning_content
-        ?? data?.choices?.[0]?.message?.reasoning
-        ?? data?.choices?.[0]?.message?.thinking;
+      const message = data?.choices?.[0]?.message ?? {};
+      content = visibleTextContent(message.content);
+      const reasoning = message.reasoning_content ?? message.reasoning ?? message.thinking;
       reasoningChars = typeof reasoning === "string" ? reasoning.length : 0;
       finishReason = data?.choices?.[0]?.finish_reason ?? null;
       usage = data?.usage ?? null;
     }
+    const details = responseDiagnostic({ content, finishReason, reasoningChars });
     // Never accept a parseable prefix from a length-truncated response. It
     // can omit required fields while still looking like valid JSON.
-    if (finishReason === "length") {
+    if (isTruncatedFinish(finishReason)) {
       const maxTokens = body.max_completion_tokens ?? body.max_tokens ?? completionOptions.maxTokens;
+      console.warn("simplypf2e | AI response truncated:", details);
       throw new AIRequestError(
         game.i18n.format("SIMPLYPF2E.Errors.Truncated", { max: maxTokens }),
         {
           retryable: true,
-          usage: normalizeUsage(usage, { content, system, user, reasoningChars })
+          usage: normalizeUsage(usage, { content, system, user, reasoningChars }),
+          details
         }
       );
     }
-    if (!content) {
+    if (!String(content ?? "").trim()) {
+      const emptyKey = reasoningChars > 0
+        ? "SIMPLYPF2E.Errors.ReasoningWithoutJson"
+        : "SIMPLYPF2E.Errors.EmptyResponse";
+      console.warn("simplypf2e | AI response empty:", details);
       throw new AIRequestError(
-        game.i18n.localize("SIMPLYPF2E.Errors.EmptyResponse"),
+        game.i18n.localize(emptyKey),
         {
           retryable: true,
-          usage: normalizeUsage(usage, { content, system, user, reasoningChars })
+          usage: normalizeUsage(usage, { content, system, user, reasoningChars }),
+          details
         }
       );
     }
-    return { content, usage: normalizeUsage(usage, { content, system, user, reasoningChars }) };
+    return {
+      content,
+      usage: normalizeUsage(usage, { content, system, user, reasoningChars }),
+      finishReason,
+      reasoningChars
+    };
   } catch (err) {
     if (err.name === "AbortError" || controller.signal.aborted) {
       throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.Timeout", { seconds: idleSeconds }));
@@ -1342,7 +1375,9 @@ async function readEventStream(response, { onProgress, resetIdle }) {
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
+  let messageContent = "";
   let reasoningChars = 0;
+  let messageReasoningChars = 0;
   let finishReason = null;
   let usage = null;
 
@@ -1368,15 +1403,30 @@ async function readEventStream(response, { onProgress, resetIdle }) {
     const choice = chunk?.choices?.[0] ?? {};
     if (choice.finish_reason) finishReason = choice.finish_reason;
     const delta = choice.delta ?? {};
-    // Providers use several fields for separated reasoning traces.
-    const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
-    if (typeof reasoning === "string" && reasoning) {
-      reasoningChars += reasoning.length;
+    // Providers use several fields for separated reasoning traces. Those
+    // traces are never parsed as the answer; they only feed usage/progress
+    // and empty-response diagnostics.
+    const deltaReasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
+    if (typeof deltaReasoning === "string" && deltaReasoning) {
+      reasoningChars += deltaReasoning.length;
       onProgress?.({ phase: "thinking", tokens: estimateTokens(reasoningChars) });
     }
-    if (typeof delta.content === "string" && delta.content) {
-      content += delta.content;
+    const messageReasoning = choice.message?.reasoning_content
+      ?? choice.message?.reasoning
+      ?? choice.message?.thinking;
+    if (typeof messageReasoning === "string" && messageReasoning) {
+      messageReasoningChars = messageReasoning.length;
+      if (!deltaReasoning) onProgress?.({ phase: "thinking", tokens: estimateTokens(messageReasoningChars) });
+    }
+    const deltaText = visibleTextContent(delta.content);
+    if (deltaText) {
+      content += deltaText;
       onProgress?.({ phase: "writing", tokens: estimateTokens(content.length) });
+    }
+    const messageText = visibleTextContent(choice.message?.content);
+    if (messageText) {
+      messageContent = messageText;
+      if (!deltaText) onProgress?.({ phase: "writing", tokens: estimateTokens(messageText.length) });
     }
   };
 
@@ -1394,6 +1444,11 @@ async function readEventStream(response, { onProgress, resetIdle }) {
   // empty response or losing the provider's final usage block.
   buffer += decoder.decode();
   for (const line of buffer.split("\n")) consumeLine(line);
+  // Some OpenAI-compatible proxies emit the full message on the final chunk
+  // and never send delta.content. Prefer accumulated deltas when both exist
+  // so a last-chunk message copy cannot concatenate onto streamed text.
+  if (!content && messageContent) content = messageContent;
+  if (!reasoningChars && messageReasoningChars) reasoningChars = messageReasoningChars;
   return { content, finishReason, usage, reasoningChars };
 }
 
@@ -1502,21 +1557,109 @@ async function providerApiError(response) {
  * produce a valid-looking concept with required fields missing.
  */
 export function parseConceptJSON(content) {
-  let text = content.trim();
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
-  if (fenced) text = fenced[1].trim();
-  const start = text.indexOf("{");
-  if (start === -1) {
-    throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.BadJson"), { retryable: true });
+  const text = fencedJsonText(visibleTextContent(content).trim());
+  const parsed = tryParseJsonObject(text) ?? extractFirstJsonObject(text);
+  if (parsed) return parsed;
+  const details = responseDiagnostic({ content: text });
+  console.warn("simplypf2e | Failed to parse AI response:", details);
+  throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.BadJson"), {
+    retryable: true,
+    details
+  });
+}
+
+const JSON_DIAGNOSTIC_PREVIEW = 480;
+
+function isTruncatedFinish(reason) {
+  return reason === "length" || reason === "max_tokens";
+}
+
+/** Coerce Chat Completions content (string or text-part array) to visible text. */
+function visibleTextContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  let text = "";
+  for (const part of content) {
+    if (typeof part === "string") text += part;
+    else if (part && typeof part.text === "string") text += part.text;
   }
-  const end = text.lastIndexOf("}");
-  if (end > start) {
-    try {
-      return JSON.parse(text.slice(start, end + 1));
-    } catch {
-      // fall through to fail-closed error
+  return text;
+}
+
+function responseDiagnostic({ content, finishReason = null, reasoningChars = 0 } = {}) {
+  const text = visibleTextContent(content);
+  return {
+    finishReason: finishReason ?? "unknown",
+    contentLength: text.length,
+    reasoningChars: Number(reasoningChars) || 0,
+    preview: text.length > JSON_DIAGNOSTIC_PREVIEW ? `${text.slice(0, JSON_DIAGNOSTIC_PREVIEW)}…` : text
+  };
+}
+
+function fencedJsonText(text) {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
+  return fenced ? fenced[1].trim() : text;
+}
+
+function tryParseJsonObject(text) {
+  if (!text) return null;
+  try {
+    let value = JSON.parse(text);
+    // Some providers JSON-encode the object as a string. Unwrap once only.
+    if (typeof value === "string") {
+      try { value = JSON.parse(value); }
+      catch { return null; }
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  } catch {
+    // incomplete or invalid JSON stays rejected
+  }
+  return null;
+}
+
+function matchingCloseBrace(text, start) {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === "\"") inString = false;
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return i;
     }
   }
-  console.error("simplypf2e | Failed to parse AI response:", content);
-  throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.BadJson"), { retryable: true });
+  return -1;
+}
+
+function extractFirstJsonObject(text) {
+  let from = 0;
+  while (from < text.length) {
+    const start = text.indexOf("{", from);
+    if (start === -1) return null;
+    const end = matchingCloseBrace(text, start);
+    // An unclosed `{` is truncated output. Do not walk inward and accept a
+    // nested object as if it were the complete response.
+    if (end === -1) return null;
+    const parsed = tryParseJsonObject(text.slice(start, end + 1));
+    if (parsed) return parsed;
+    from = start + 1;
+  }
+  return null;
 }
