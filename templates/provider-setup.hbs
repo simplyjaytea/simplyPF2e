@@ -1,6 +1,29 @@
 <div class="simplypf2e-provider-setup">
   <p class="spf-hint">{{localize "SIMPLYPF2E.ProviderSetup.Intro"}}</p>
 
+  <div class="spf-connection-bank">
+    <label for="spf-active-connection">{{localize "SIMPLYPF2E.ProviderSetup.Connections"}}</label>
+    <div class="spf-connection-row">
+      <select id="spf-active-connection" name="activeConnection" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.ActiveConnection'}}">
+        {{#each connections}}
+          <option value="{{this.id}}" {{#if this.active}}selected{{/if}}>{{this.name}}</option>
+        {{/each}}
+      </select>
+      <button type="button" data-action="createConnection" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.NewConnection'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.NewConnection'}}">
+        <i class="fa-solid fa-plus"></i>
+      </button>
+      <button type="button" data-action="deleteConnection" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.DeleteConnection'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.DeleteConnection'}}" {{#unless canDeleteConnection}}disabled{{/unless}}>
+        <i class="fa-solid fa-trash"></i>
+      </button>
+    </div>
+    <p class="hint">{{localize "SIMPLYPF2E.ProviderSetup.ConnectionsHint"}}</p>
+  </div>
+
+  <div class="form-group stacked">
+    <label for="spf-connection-name">{{localize "SIMPLYPF2E.ProviderSetup.ConnectionName"}}</label>
+    <input id="spf-connection-name" type="text" name="connectionName" value="{{connectionName}}" required spellcheck="false" autocomplete="off" placeholder="{{localize 'SIMPLYPF2E.ProviderSetup.ConnectionNamePlaceholder'}}">
+  </div>
+
   <div class="spf-provider-presets" role="group" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.ChooseProvider'}}">
     {{#each providers}}
       <button type="button" data-action="chooseProvider" data-provider="{{this.id}}" class="{{#if this.selected}}spf-provider-preset-active{{/if}}" aria-pressed="{{#if this.selected}}true{{else}}false{{/if}}">

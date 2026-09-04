@@ -1,8 +1,11 @@
 import {
   MODULE_ID, SETTINGS, authorizeApiKeyForCurrentBaseUrl,
-  describeProvider, getProviderAuthWarningKey, getProviderRequestConfig, normalizeApiBaseUrl
+  createProviderConnection, deleteProviderConnection, describeProvider,
+  ensureProviderBank, getProviderAuthWarningKey, getProviderRequestConfig,
+  normalizeApiBaseUrl, selectProviderConnection, upsertActiveProviderConnection
 } from "./settings.mjs";
 import { listProviderModels, testProviderConnection } from "./ai.mjs";
+import { esc } from "./text.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -51,6 +54,8 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
       chooseProvider: ProviderSetupApp.#onChooseProvider,
       loadModels: ProviderSetupApp.#onLoadModels,
       saveAndTest: ProviderSetupApp.#onSaveAndTest,
+      createConnection: ProviderSetupApp.#onCreateConnection,
+      deleteConnection: ProviderSetupApp.#onDeleteConnection,
       cancel: ProviderSetupApp.#onCancel
     }
   };
@@ -60,6 +65,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
   };
 
   async _prepareContext() {
+    await ensureProviderBank();
     const state = getProviderRequestConfig();
     if (this.#modelsBaseUrl && state.baseUrl !== this.#modelsBaseUrl) {
       this.#availableModels = [];
@@ -74,6 +80,9 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
         ...provider,
         selected: provider.id === selected
       })),
+      connections: state.connections,
+      connectionName: state.connectionName,
+      canDeleteConnection: state.connections.length > 1,
       apiBaseUrl: state.baseUrl,
       model: state.model,
       availableModels: this.#availableModels,
@@ -91,6 +100,9 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
         this.#clearModelSuggestions();
       }
     });
+    this.element.querySelector("[name='activeConnection']")?.addEventListener("change", (event) =>
+      ProviderSetupApp.#switchConnection.call(this, event.currentTarget.value)
+    );
   }
 
   #clearModelSuggestions() {
@@ -132,6 +144,54 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     this.#busy = false;
   }
 
+  static async #switchConnection(id) {
+    if (this.#busy) return;
+    const current = getProviderRequestConfig().connectionId;
+    if (!id || id === current) return;
+    await selectProviderConnection(id);
+    this.#selectedPreset = null;
+    this.#availableModels = [];
+    this.#modelsBaseUrl = "";
+    await this.render();
+  }
+
+  static async #onCreateConnection() {
+    if (this.#busy) return;
+    const inferred = getProviderRequestConfig().provider.id;
+    const selected = this.#selectedPreset
+      ?? (PROVIDER_PRESETS.some((provider) => provider.id === inferred) ? inferred : "custom");
+    const preset = PROVIDER_PRESETS.find((entry) => entry.id === selected) ?? PROVIDER_PRESETS.at(-1);
+    await createProviderConnection({
+      name: preset.preserve ? "New connection" : preset.label,
+      apiBaseUrl: preset.baseUrl,
+      model: preset.model
+    });
+    this.#selectedPreset = preset.id;
+    this.#availableModels = [];
+    this.#modelsBaseUrl = "";
+    await this.render();
+  }
+
+  static async #onDeleteConnection() {
+    if (this.#busy) return;
+    const state = getProviderRequestConfig();
+    if (!state.connectionId || state.connections.length < 2) return;
+    const { DialogV2 } = foundry.applications.api;
+    const confirmed = await DialogV2.confirm({
+      window: { title: "SIMPLYPF2E.ProviderSetup.DeleteTitle" },
+      content: `<p>${game.i18n.format("SIMPLYPF2E.ProviderSetup.DeleteConfirm", {
+        name: esc(state.connectionName)
+      })}</p>`,
+      rejectClose: false
+    });
+    if (!confirmed) return;
+    await deleteProviderConnection(state.connectionId);
+    this.#selectedPreset = null;
+    this.#availableModels = [];
+    this.#modelsBaseUrl = "";
+    await this.render();
+  }
+
   static async #onChooseProvider(_event, target) {
     if (this.#busy) return;
     const preset = PROVIDER_PRESETS.find((entry) => entry.id === target.dataset.provider);
@@ -156,6 +216,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     const model = String(this.element.querySelector("[name='model']")?.value ?? "").trim();
     const enteredApiKey = String(this.element.querySelector("[name='apiKey']")?.value ?? "").trim();
     const clearApiKey = Boolean(this.element.querySelector("[name='clearApiKey']")?.checked);
+    const connectionName = String(this.element.querySelector("[name='connectionName']")?.value ?? "").trim();
 
     let parsed;
     try { parsed = new URL(baseUrl); }
@@ -181,6 +242,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     const authorized = configuredKey
       ? await authorizeApiKeyForCurrentBaseUrl(baseUrl)
       : false;
+    await upsertActiveProviderConnection({ name: connectionName });
     const provider = describeProvider(baseUrl, model);
     const state = getProviderRequestConfig();
     const messageKey = authorized

@@ -12,8 +12,8 @@ import { CORE_SKILLS } from "./pc-skills.mjs";
 
 /**
  * Client for any OpenAI-compatible chat completions API (DeepSeek, OpenAI,
- * OpenRouter, Ollama, LM Studio, ...). Endpoint and model are world settings;
- * each browser keeps its own key, bound to the exact configured endpoint.
+ * OpenRouter, Ollama, LM Studio, ...). The active client connection supplies
+ * the endpoint, model, and key; keys stay bound to that profile's exact URL.
  */
 
 /* Shared reminder everywhere the AI names a published item — the Remaster
@@ -1195,7 +1195,7 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
   // The client-scoped key is returned only when it was explicitly saved for
   // this exact normalized base URL. A world-level provider change can never
   // redirect a legacy or previously authorized key to another endpoint.
-  const { apiKey, baseUrl } = getProviderRequestConfig();
+  const { apiKey, baseUrl, model: configuredModel } = getProviderRequestConfig();
   if (!baseUrl) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoBaseUrl"));
 
   const completionOptions = completionOptionsFor(task, {
@@ -1203,7 +1203,6 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
     configuredMaxTokens: getSetting(SETTINGS.maxTokens),
     retryAttempt
   });
-  const configuredModel = String(getSetting(SETTINGS.model) ?? "").trim();
   const model = resolveProviderModel(baseUrl, configuredModel);
   if (!model) throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.NoModel"));
   if (!warnedLegacyDeepSeekModel && model !== configuredModel) {

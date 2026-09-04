@@ -2,7 +2,16 @@
   <div class="spf-provider-summary {{#if providerReady}}spf-provider-ready{{else}}spf-provider-attention{{/if}}" data-tooltip="{{providerBaseUrl}}">
     <span class="spf-provider-name">
       <i class="fa-solid {{#if provider.local}}fa-server{{else}}fa-cloud{{/if}}"></i>
-      <strong>{{provider.name}}</strong>
+      {{#if canSwitchConnection}}
+        <label for="spf-itemforge-connection" class="spf-sr-only">{{localize "SIMPLYPF2E.ProviderSetup.ActiveConnection"}}</label>
+        <select id="spf-itemforge-connection" name="activeConnection" {{#if busy}}disabled{{/if}} aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.ActiveConnection'}}">
+          {{#each connections}}
+            <option value="{{this.id}}" {{#if this.active}}selected{{/if}}>{{this.name}}</option>
+          {{/each}}
+        </select>
+      {{else}}
+        <strong>{{#if connectionName}}{{connectionName}}{{else}}{{provider.name}}{{/if}}</strong>
+      {{/if}}
     </span>
     <code class="spf-provider-model">{{#if provider.model}}{{provider.model}}{{else}}{{localize "SIMPLYPF2E.Generator.NoModelShort"}}{{/if}}</code>
     <span class="spf-provider-actions">

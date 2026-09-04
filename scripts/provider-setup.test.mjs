@@ -2,7 +2,7 @@
 // Foundry's Application shell and settings storage are replaced here.
 // Run: node scripts/provider-setup.test.mjs
 import assert from "node:assert/strict";
-import { MODULE_ID, SETTINGS, registerSettings } from "./settings.mjs";
+import { MODULE_ID, SETTINGS, registerSettings, getProviderRequestConfig } from "./settings.mjs";
 
 class FakeApplicationV2 {
   constructor() {}
@@ -14,8 +14,18 @@ globalThis.foundry = {
   applications: {
     api: {
       ApplicationV2: FakeApplicationV2,
-      HandlebarsApplicationMixin: (Base) => class extends Base {}
+      HandlebarsApplicationMixin: (Base) => class extends Base {},
+      DialogV2: {
+        confirm: async () => true
+      }
     }
+  },
+  utils: {
+    escapeHTML: (value) => String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
   }
 };
 
@@ -80,7 +90,7 @@ const setCurrent = ({ baseUrl, model = "old-model", apiKey = "old-secret", bound
   values.set(SETTINGS.apiKeyBaseUrl, bound);
 };
 
-const submit = async ({ baseUrl, model, apiKey = "", clearApiKey = false }) => {
+const submit = async ({ baseUrl, model, apiKey = "", clearApiKey = false, connectionName = "" }) => {
   let saved = 0;
   const app = new ProviderSetupApp(() => { saved += 1; });
   const submitButton = makeButton("submit");
@@ -91,6 +101,7 @@ const submit = async ({ baseUrl, model, apiKey = "", clearApiKey = false }) => {
     ["[name='model']", { value: model, disabled: false }],
     ["[name='apiKey']", { value: apiKey, disabled: false }],
     ["[name='clearApiKey']", { checked: clearApiKey, disabled: false }],
+    ["[name='connectionName']", { value: connectionName, disabled: false }],
     ["button[type='submit']", submitButton]
   ]);
   app.element = {
@@ -240,5 +251,95 @@ try {
   globalThis.fetch = originalFetch;
   console.error = originalError;
 }
+
+const resetBank = () => values.set(SETTINGS.providerBank, { activeId: "", connections: [] });
+
+resetBank();
+setCurrent({ baseUrl: "https://api.deepseek.com/v1", model: "deepseek-v4-flash", apiKey: "deepseek-secret" });
+await submit({
+  baseUrl: "https://api.deepseek.com/v1",
+  model: "deepseek-v4-flash",
+  connectionName: "Home DeepSeek"
+});
+assert.equal(values.get(SETTINGS.apiKey), "deepseek-secret", "saving the same endpoint keeps the stored key");
+assert.equal(getProviderRequestConfig().connectionName, "Home DeepSeek");
+assert.equal(getProviderRequestConfig().apiKey, "deepseek-secret");
+assert.equal(getProviderRequestConfig().apiKeyIsBound, true);
+
+const createApp = new ProviderSetupApp();
+createApp.element = {
+  querySelector: () => null,
+  querySelectorAll: () => [],
+  setAttribute: () => {},
+  removeAttribute: () => {}
+};
+let rendered = 0;
+createApp.render = async () => { rendered += 1; };
+await ProviderSetupApp.DEFAULT_OPTIONS.actions.createConnection.call(createApp);
+assert.equal(rendered, 1, "creating a connection must reload the setup form");
+assert.equal(getProviderRequestConfig().apiKey, "", "New connection must not copy the previous profile's key");
+assert.equal(getProviderRequestConfig().hasConfiguredApiKey, false);
+assert.equal(values.get(SETTINGS.providerBank).connections.length, 2);
+const original = values.get(SETTINGS.providerBank).connections.find((connection) => connection.name === "Home DeepSeek");
+assert.ok(original, "the saved DeepSeek profile must remain in the bank");
+assert.equal(original.apiKey, "deepseek-secret");
+const createdId = getProviderRequestConfig().connectionId;
+assert.notEqual(createdId, original.id);
+
+const switchApp = new ProviderSetupApp();
+const changeHandlers = [];
+const liveSelect = {
+  value: original.id,
+  addEventListener: (name, callback) => { if (name === "change") changeHandlers.push(callback); }
+};
+switchApp.element = {
+  querySelector: (selector) => {
+    if (selector.includes("activeConnection")) return liveSelect;
+    if (selector.includes("apiBaseUrl")) {
+      return { addEventListener: () => {} };
+    }
+    return null;
+  },
+  querySelectorAll: () => []
+};
+switchApp._onRender();
+assert.equal(changeHandlers.length, 1);
+await changeHandlers[0]({ currentTarget: liveSelect });
+assert.equal(getProviderRequestConfig().connectionId, original.id);
+assert.equal(getProviderRequestConfig().apiKey, "deepseek-secret", "switching profiles must rebind the stored key to its own URL");
+assert.equal(getProviderRequestConfig().baseUrl, "https://api.deepseek.com/v1");
+
+liveSelect.value = createdId;
+await changeHandlers[0]({ currentTarget: liveSelect });
+assert.equal(getProviderRequestConfig().connectionId, createdId);
+assert.equal(getProviderRequestConfig().apiKey, "", "the inactive profile's key must not leak onto a different endpoint");
+
+await submit({
+  baseUrl: "https://gateway.example/v1",
+  model: "hosted-model",
+  apiKey: "custom-secret",
+  connectionName: "Custom provider"
+});
+assert.equal(getProviderRequestConfig().connectionName, "Custom provider");
+assert.equal(getProviderRequestConfig().apiKey, "custom-secret");
+assert.equal(getProviderRequestConfig().apiKeyIsBound, true);
+assert.equal(
+  values.get(SETTINGS.apiKeyBaseUrl),
+  "https://gateway.example/v1",
+  "a replacement key must bind only to the displayed endpoint of the active profile"
+);
+assert.equal(
+  values.get(SETTINGS.providerBank).connections.find((connection) => connection.id === original.id).apiKey,
+  "deepseek-secret",
+  "saving the active profile must not rewrite another connection's secret"
+);
+
+const deleteApp = new ProviderSetupApp();
+deleteApp.render = async () => {};
+deleteApp.element = { querySelector: () => null, querySelectorAll: () => [] };
+await ProviderSetupApp.DEFAULT_OPTIONS.actions.deleteConnection.call(deleteApp);
+assert.equal(values.get(SETTINGS.providerBank).connections.length, 1, "delete keeps the remaining connection");
+assert.equal(getProviderRequestConfig().connectionName, "Home DeepSeek");
+assert.equal(getProviderRequestConfig().apiKey, "deepseek-secret");
 
 console.log("provider-setup.test.mjs: setup save assertions passed");

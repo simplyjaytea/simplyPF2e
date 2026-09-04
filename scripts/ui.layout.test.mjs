@@ -29,6 +29,8 @@ for (const [name, template] of [
   assert.match(template, /providerReady/, `${name} must expose provider readiness at a glance`);
   assert.match(template, /data-action="configureProvider"/, `${name} must offer direct provider setup`);
   assert.match(template, /data-action="testProvider"/, `${name} must offer a connection check`);
+  assert.match(template, /name="activeConnection"/, `${name} must expose a one-click connection switch`);
+  assert.match(template, /connectionName/, `${name} must show the active connection name`);
   assert.match(
     template,
     /spf-provider-state" role="img" aria-label=/,
@@ -41,7 +43,8 @@ for (const [name, template] of [
 for (const [name, template] of [
   ["generator", generator],
   ["item forge", itemForge],
-  ["preset manager", managePresets]
+  ["preset manager", managePresets],
+  ["provider setup", providerSetup]
 ]) {
   for (const match of template.matchAll(/<button\b([^>]*)>\s*<i\b[^>]*><\/i>\s*<\/button>/g)) {
     assert.match(
@@ -69,6 +72,10 @@ for (const [name, template] of [
 assert.match(providerSetup, /data-provider="\{\{this\.id\}\}"/, "provider setup must render preset choices");
 assert.match(providerSetup, /name="apiBaseUrl"/);
 assert.match(providerSetup, /name="model"/);
+assert.match(providerSetup, /name="connectionName"/, "provider setup must name the active connection");
+assert.match(providerSetup, /name="activeConnection"/, "provider setup must list saved connections");
+assert.match(providerSetup, /data-action="createConnection"/, "provider setup must create a named connection");
+assert.match(providerSetup, /data-action="deleteConnection"/, "provider setup must delete a named connection");
 assert.match(providerSetup, /type="password" name="apiKey"/, "the saved key must never be rendered back into the form");
 assert.match(providerSetup, /data-action="saveAndTest"/, "provider setup must offer direct save-and-test");
 assert.match(providerSetup, /data-action="loadModels"/, "provider setup must offer authorized model discovery");
@@ -137,6 +144,8 @@ assert.match(css, /\.simplypf2e \.spf-actions\s*\{[^}]*flex-wrap:\s*wrap;/s,
   "action rows must wrap when localized labels do not fit");
 assert.match(css, /\.simplypf2e \.spf-model-picker\s*\{[^}]*flex-wrap:\s*wrap;/s,
   "the model input and discovery action must wrap in narrow windows");
+assert.match(css, /\.simplypf2e \.spf-connection-row\s*\{[^}]*flex-wrap:\s*wrap;/s,
+  "saved-connection controls must wrap in the provider setup dialog");
 assert.match(
   css,
   /\.simplypf2e \.spf-mode-toggle input\[type="radio"\]\s*\{[^}]*position:\s*absolute;[^}]*clip:/s,
