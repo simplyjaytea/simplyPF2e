@@ -8,7 +8,7 @@ Turn a one-sentence idea into a fully statted Pathfinder 2e actor — monster, N
 
 > *"A cunning swamp hag who brews poisons from drowned travelers"* → a complete level-6 creature with statistics, strikes, spells, gear and loot, on its sheet, in about a minute.
 
-**[Install](#install)** · **[Setup](#setup)** · **[Generate](#generate)** · **[Troubleshooting](#troubleshooting)** · **[Limitations](#limitations)**
+**[Install](#install)** · **[Setup](#setup)** · **[Generate](#generate)** · **[Mode details](#mode-details)** · **[Troubleshooting](#troubleshooting)** · **[Limitations](#limitations)**
 
 ## Install
 
@@ -56,7 +56,7 @@ Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.mod
 
 **Generate** validates and creates in one pass. **Preview Plan** runs the same no-write plan first. The **dice** button sits beside Generate in every mode: it ignores the typed prompt, rolls a local surprise brief, and runs Preview Plan. Cancel aborts an in-flight generation (not a Foundry write already in progress).
 
-Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity.
+Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity. Mode-specific notes for Monster, NPC, Encounter, and Character are under [Mode details](#mode-details).
 
 ## Status
 
@@ -64,12 +64,12 @@ Open **Advanced options** for a preset, rarity, treasure amount, and spellcastin
 | --- | --- |
 | **NPCs & monsters** | Stable. The oldest, most battle-tested path. |
 | **Encounter mode** | Stable. |
-| **Player Character mode** | Released. Complete one-click selection currently covers **Fighter, Rogue, and Investigator**. Sanity-check a generated character's numbers on its sheet before play. Live Rogue/Investigator grant-chain QA is still required. |
+| **Player Character mode** | Released. Complete one-click currently **offers Fighter, Rogue, and Investigator**. Rogue and Investigator still need live grant-chain QA — they are offered, not done. Sanity-check a generated character's numbers on its sheet before play. |
 | **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons stay hidden; open it from the console (see [Item forge](#item-forge)). |
 
 ## What's new
 
-- Weighted progress with Cancel, thinking vs writing, and a compact last-run token cost that keeps **≈** when the provider did not report usage.
+- Generation progress bar (thinking vs writing), Cancel, and last-run token cost that keeps **≈** when usage is missing.
 - Loot coins clone published PF2e currency items, so gold lands in the sheet's Currency section.
 - The dice button is on all four generator modes.
 - Named connection bank: save more than one provider profile in this browser and switch from the generator header.
@@ -90,7 +90,7 @@ After Foundry creates a sheet, SimplyPF2e confirms that every exact source docum
 
 Creature strikes are constrained to PF2e's configured damage types, NPC attack traits, and attack effects. Ranged attacks use the system's structured range field rather than a legacy trait workaround.
 
-## Usage
+## Mode details
 
 ### Monster and NPC
 
