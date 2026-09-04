@@ -49,7 +49,7 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 | File | Role |
 | --- | --- |
 | `ai.mjs` | All AI calls, SYSTEM_PROMPT, `pcSystemPrompt()`, `lootGuide()`. Streaming SSE, retry-once, fail-closed JSON parsing. |
-| `ai-task-profiles.mjs` / `ai-candidate-format.mjs` | Pure per-operation token/sampling caps and compact grounded-candidate encoding. |
+| `ai-task-profiles.mjs` / `ai-candidate-format.mjs` | Pure per-operation token/sampling caps (`taskMaxTokens`) and compact grounded-candidate encoding. |
 | `settings.mjs` | Foundry settings, exact-endpoint API-key binding, local/keyless provider readiness, and the client-side named connection bank. |
 | `builder.mjs` | NPC pipeline + shared resolve/build helpers used by both actor pipelines (`resolveEquipment`, `resolveLoot`, `resolveFocusSpells`, `buildEquipmentItems`, `buildLootItems`, `filterItemTypes`, `applyTreasureBudget`, `enrichDescription`). |
 | `pc-builder.mjs` | PC pipeline. First file to check when PC generation misbehaves. |
@@ -63,6 +63,9 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 | `rule-templates.mjs` | Harvests real RE exemplars from installed packs at runtime. Used by the forge and the PC focus-pool rule. |
 | `item-builder.mjs` | Item forge: normalize, empirical pricing, item assembly. |
 | `generator-app.mjs` / `itemforge-app.mjs` / `manage-presets-app.mjs` / `sources-app.mjs` | UI apps over `app-base.mjs` (token tracking + progress). |
+| `app-base.mjs` | Shared generator/item-forge shell: connection switch, token report, monotonic progress bar. |
+| `progress.mjs` | Pure weighted/monotonic generation-progress math (step budgets, stream mapping). |
+| `tokens.mjs` | Token estimate + `normalizeUsage`; fallback counts are labeled estimated and coarsened on display. |
 | `encounter.mjs` | XP budget/composition math. |
 | `presets.mjs` | 18 built-in build presets + custom preset CRUD + random briefs. |
 | `*.test.mjs` | Standalone regression checks (`node scripts/<name>.test.mjs`); CI runs every check before release. |
@@ -96,7 +99,7 @@ Claude-side orchestration (when running as Fable/Opus with subagent tools):
 
 ## Current state (2026-09-04)
 
-Public source is `origin/main` `37d60b4` (PR #88) / release **v0.3.5.48**. This session's local work is `cursor/unify-generator-dice-c13e`: Monster, NPC, Encounter, and Character share one dice control in the generate row. Dice ignores the typed prompt, rolls `randomBrief(mode)`, and runs the existing preview pipeline (`create: false`). Character uses a person-oriented adventurer brief so it is not fed a monster concept. Encounter no longer has a separate `generateRandomEncounter` action. No AI/number/schema changes. All 60 regression files pass; live Foundry click-through of all four dice buttons remains required. Do not merge to `main` from the agent.
+Public source is `origin/main` `a8761fa` (PR #89) / release **v0.3.5.49** (dice unify + connection bank). This session's local work is `cursor/smooth-progress-tokens-a379` (PR #90): generation progress is monotonic and weighted from AI task budgets; intra-step fill is phase-only (thinking → writing) with the existing sheen, not chars-vs-unknown-length. Live token copy keeps `≈` until provider usage. Fail-closed AI/parse invariants are unchanged. All 62 `scripts/*.test.mjs` pass. Live Foundry QA still required for bar feel. Do not merge to `main` from the agent.
 
 Public source after PR #87 was `d47bbcb` / **v0.3.5.47** (string-aware matching-brace JSON parse). PR #88 published the client-side connection bank. Git/API reconciliation on 2026-08-31 had recorded `origin/main` as `1527282` (PR #85) / **v0.3.5.45** before PR #86 landed. Follow-up live QA proved that feats/equipment were discarded together and that mode re-renders gave Monster a misleading second focus outline. The raw selector payload was not captured; code tracing separately found and reproduced a shared decoder defect when a provider puts an exact offered name in a JSON `id` field. That hardening is now in `main` via PR #86. The separate release-workflow JSON gate remains local on `codex/release-json-validation-main`. See [HISTORY.md](HISTORY.md) for the preserved audit/QA record.
 

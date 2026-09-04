@@ -483,7 +483,7 @@
   height: 100%;
   background: linear-gradient(90deg, var(--spf-brand-dark), var(--spf-brand-accent));
   border-radius: 0.3rem;
-  transition: width 0.4s ease;
+  transition: width 0.55s ease-out;
   position: relative;
   overflow: hidden;
 }

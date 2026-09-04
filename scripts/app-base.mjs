@@ -1,6 +1,15 @@
 import { testProviderConnection } from "./ai.mjs";
 import { getProviderRequestConfig, selectProviderConnection } from "./settings.mjs";
 import { ProviderSetupApp } from "./provider-setup-app.mjs";
+import {
+  PHASE_FILL,
+  applyStep,
+  createProgress,
+  progressPercent,
+  resetStreamPhase,
+  streamFraction
+} from "./progress.mjs";
+import { coarsenTokenEstimate } from "./tokens.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -78,19 +87,29 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** Per-step token usage lines plus a total, ready for the template. */
   _buildTokenReport() {
     if (!this._tokenUsage.length) return null;
-    const total = this._tokenUsage.reduce((sum, e) => sum + (e.usage.total || 0), 0);
+    const stepTotal = (usage) => usage.estimated
+      ? coarsenTokenEstimate(usage.total || 0)
+      : (usage.total || 0);
+    const total = this._tokenUsage.reduce((sum, e) => sum + stepTotal(e.usage), 0);
     const anyEstimated = this._tokenUsage.some((e) => e.usage.estimated);
     return {
-      steps: this._tokenUsage.map(({ label, usage }) => ({
-        label,
-        text: usage.estimated
-          ? game.i18n.format("SIMPLYPF2E.Tokens.StepEstimated", { total: usage.total.toLocaleString() })
-          : game.i18n.format("SIMPLYPF2E.Tokens.Step", {
-              prompt: usage.prompt.toLocaleString(),
-              completion: usage.completion.toLocaleString(),
-              total: usage.total.toLocaleString()
+      steps: this._tokenUsage.map(({ label, usage }) => {
+        const showSplit = !usage.estimated && ((usage.prompt || 0) > 0 || (usage.completion || 0) > 0);
+        const text = usage.estimated
+          ? game.i18n.format("SIMPLYPF2E.Tokens.StepEstimated", {
+              total: coarsenTokenEstimate(usage.total || 0).toLocaleString()
             })
-      })),
+          : showSplit
+            ? game.i18n.format("SIMPLYPF2E.Tokens.Step", {
+                prompt: usage.prompt.toLocaleString(),
+                completion: usage.completion.toLocaleString(),
+                total: usage.total.toLocaleString()
+              })
+            : game.i18n.format("SIMPLYPF2E.Tokens.StepTotal", {
+                total: (usage.total || 0).toLocaleString()
+              });
+        return { label, text };
+      }),
       totalText: game.i18n.format(
         anyEstimated ? "SIMPLYPF2E.Tokens.TotalEstimated" : "SIMPLYPF2E.Tokens.Total",
         { total: total.toLocaleString() }
@@ -100,48 +119,90 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
   /** Initialize the step list shown while generating. */
   _beginProgress(defs) {
-    this._progress = {
-      steps: defs.map(([key, label]) => ({ key, label, state: "pending" })),
-      detail: "",
-      percent: 0
-    };
+    this._progress = createProgress(defs);
   }
 
-  /** Mark `key` active, everything before it done, and re-render. */
+  /** Mark `key` active, everything before it done, and paint without remounting the bar. */
   async _setStep(key) {
     const progress = this._progress;
     if (!progress) return;
-    let reached = false;
-    for (const step of progress.steps) {
-      if (step.key === key) {
-        step.state = "active";
-        reached = true;
-      } else {
-        step.state = reached ? "pending" : "done";
-      }
-    }
-    const done = progress.steps.filter((s) => s.state === "done").length;
-    progress.percent = Math.round(((done + 0.5) / progress.steps.length) * 100);
+    if (!applyStep(progress.steps, key)) return;
+    resetStreamPhase(progress);
     progress.detail = "";
+    progress.percent = progressPercent({
+      steps: progress.steps,
+      activeKey: key,
+      streamFrac: PHASE_FILL.start,
+      floor: progress.percent
+    });
+    if (this._paintStepList()) {
+      this._paintProgress();
+      return;
+    }
     await this.render();
   }
 
   /**
-   * Streaming callback: updates the detail line directly in the DOM so the
-   * counter ticks live without re-rendering the whole application.
+   * Streaming callback: phase fill (thinking → writing) plus live token copy.
+   * Token counts never drive percent — final length is unknown. Exact copy
+   * is reserved for provider usage; estimates stay marked ≈.
    */
-  _onAIProgress({ phase, tokens }) {
+  _onAIProgress({ phase, tokens = 0, exact = false, call }) {
     const progress = this._progress;
     if (!progress) return;
-    // Name the active step in the detail line — several different AI calls
-    // (spells, equipment, loot, encounter design, ...) share this callback,
-    // so a hardcoded "stat block" phrase would mislabel most of them.
     const step = progress.steps.find((s) => s.state === "active");
+    progress.streamFrac = streamFraction({ phase, prior: progress.streamFrac });
+    progress.percent = progressPercent({
+      steps: progress.steps,
+      activeKey: step?.key,
+      streamFrac: progress.streamFrac,
+      floor: progress.percent
+    });
+    const stepLabel = call && step?.label
+      ? `${step.label} — ${call}`
+      : (call || step?.label || "");
+    const shownTokens = exact
+      ? Math.max(0, Number(tokens) || 0)
+      : coarsenTokenEstimate(tokens);
     progress.detail = game.i18n.format(
-      phase === "thinking" ? "SIMPLYPF2E.Progress.Thinking" : "SIMPLYPF2E.Progress.Writing",
-      { step: step?.label ?? "", tokens: tokens.toLocaleString() }
+      phase === "thinking"
+        ? (exact ? "SIMPLYPF2E.Progress.ThinkingExact" : "SIMPLYPF2E.Progress.Thinking")
+        : (exact ? "SIMPLYPF2E.Progress.WritingExact" : "SIMPLYPF2E.Progress.Writing"),
+      { step: stepLabel, tokens: shownTokens.toLocaleString() }
     );
-    const el = this.element?.querySelector(".spf-progress-detail");
-    if (el) el.textContent = progress.detail;
+    this._paintProgress();
+  }
+
+  /** Patch step icons/classes in place so the fill element is not remounted. */
+  _paintStepList() {
+    const items = this.element?.querySelectorAll(".spf-progress-steps li");
+    const steps = this._progress?.steps;
+    if (!items || !steps || items.length !== steps.length) return false;
+    steps.forEach((step, i) => {
+      const li = items[i];
+      li.className = `spf-step-${step.state}`;
+      const icon = li.querySelector("i");
+      if (!icon) return;
+      icon.className = step.state === "done"
+        ? "fa-solid fa-circle-check"
+        : step.state === "active"
+          ? "fa-solid fa-spinner fa-spin"
+          : "fa-regular fa-circle";
+    });
+    return true;
+  }
+
+  _paintProgress() {
+    const progress = this._progress;
+    const root = this.element;
+    if (!progress || !root) return;
+    const fill = root.querySelector(".spf-progress-fill");
+    const bar = root.querySelector(".spf-progress-bar");
+    const pct = root.querySelector(".spf-progress-percent");
+    const detail = root.querySelector(".spf-progress-detail");
+    if (fill) fill.style.width = `${progress.percent}%`;
+    if (bar) bar.setAttribute("aria-valuenow", String(progress.percent));
+    if (pct) pct.textContent = `${progress.percent}%`;
+    if (detail) detail.textContent = progress.detail;
   }
 }

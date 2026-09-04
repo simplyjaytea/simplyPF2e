@@ -8,7 +8,7 @@ import { readFile } from "node:fs/promises";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-const [generator, itemForge, providerSetup, managePresets, progress, generatorApp, itemForgeApp, css, langJson] = await Promise.all([
+const [generator, itemForge, providerSetup, managePresets, progress, generatorApp, itemForgeApp, appBase, css, langJson] = await Promise.all([
   read("templates/generator.hbs"),
   read("templates/itemforge.hbs"),
   read("templates/provider-setup.hbs"),
@@ -16,6 +16,7 @@ const [generator, itemForge, providerSetup, managePresets, progress, generatorAp
   read("templates/_progress.hbs"),
   read("scripts/generator-app.mjs"),
   read("scripts/itemforge-app.mjs"),
+  read("scripts/app-base.mjs"),
   read("styles/simplypf2e.css"),
   read("lang/en.json")
 ]);
@@ -238,6 +239,24 @@ assert.match(progress, /spf-progress-steps/, "progress must list the pipeline st
 assert.match(progress, /spf-step-\{\{this\.state\}\}/, "each progress step must carry its state class");
 assert.match(progress, /<p class="spf-progress-detail">\{\{progress\.detail\}\}<\/p>/,
   "the streaming detail line must stay a direct-textContent target for app-base");
+assert.match(progress, /<p class="spf-progress-percent">\{\{progress\.percent\}\}%<\/p>/,
+  "the percent readout must stay a direct-textContent target for in-place stream ticks");
+assert.match(
+  css,
+  /\.simplypf2e \.spf-progress-fill\s*\{[^}]*transition:\s*width/s,
+  "the progress fill must CSS-transition width instead of snapping between step buckets"
+);
+assert.match(
+  css,
+  /\.simplypf2e \.spf-progress-fill::after\s*\{[^}]*animation:\s*spf-step-slide/s,
+  "within-step motion stays on the sheen while phase fill holds width"
+);
+assert.match(appBase, /_paintProgress\(\)/, "stream ticks must patch the existing fill instead of re-rendering the app");
+assert.match(appBase, /streamFraction\(\{ phase, prior:/, "intra-step fill is phase-based, not chars-vs-unknown-length");
+assert.match(appBase, /exact \? "SIMPLYPF2E\.Progress\.WritingExact"/, "live copy drops ≈ only for provider usage");
+assert.match(generatorApp, /call: focusLabel/, "multi-call spell steps sub-label the detail line without extra bar steps");
+assert.match(messages.Tokens.StepEstimated, /estimated/);
+assert.match(messages.Tokens.StepTotal, /\{total\} tokens/);
 
 for (const rule of ["spf-card", "spf-icon-btn", "spf-empty"]) {
   assert.match(css, new RegExp(`\\.simplypf2e \\.${rule}\\s*\\{`), `shared kit class .${rule} must be defined`);

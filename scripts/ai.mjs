@@ -5,6 +5,7 @@ import {
 import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
 import { hasRunes, parseRunes, propertyRuneRestrictionNote } from "./runes.mjs";
 import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
+import { estimateTokens, normalizeUsage } from "./tokens.mjs";
 import { encodeFeatCandidateSlots, resolveEncodedFeatPicks } from "./ai-candidate-format.mjs";
 import { taskResponseProblem } from "./ai-response-validation.mjs";
 import { validateChoicePicks } from "./choice-set.mjs";
@@ -260,26 +261,6 @@ async function requestJSON(args) {
     }
   }
   throw lastError;
-}
-
-/**
- * Shape the provider's usage block into {prompt, completion, total, estimated}.
- * When the provider sent no usage at all, fall back to a ~4 chars/token
- * estimate of both sides — completion includes visible and reasoning text,
- * prompt from the request's system+user text — so the report never comes up
- * empty or pretends the prompt cost nothing.
- */
-function normalizeUsage(usage, { content, system, user, reasoningChars = 0 }) {
-  const prompt = Number(usage?.prompt_tokens);
-  const completion = Number(usage?.completion_tokens);
-  if (Number.isFinite(prompt) || Number.isFinite(completion)) {
-    const p = Number.isFinite(prompt) ? prompt : 0;
-    const c = Number.isFinite(completion) ? completion : 0;
-    return { prompt: p, completion: c, total: Number(usage?.total_tokens) || p + c, estimated: false };
-  }
-  const promptEst = estimateTokens((system ?? "").length + (user ?? "").length);
-  const est = estimateTokens((content ?? "").length + reasoningChars);
-  return { prompt: promptEst, completion: est, total: promptEst + est, estimated: true };
 }
 
 /**
@@ -1361,13 +1342,6 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
   }
 }
 
-/**
- * Streaming responses carry no live token counts (providers send usage only
- * at the very end, if at all), so progress is estimated from streamed text
- * at the usual ~4 characters per token.
- */
-const estimateTokens = (chars) => Math.max(1, Math.round(chars / 4));
-
 /** Consume an SSE chat-completions stream, reporting progress per chunk. */
 async function readEventStream(response, { onProgress, resetIdle }) {
   const reader = response.body.getReader();
@@ -1398,7 +1372,7 @@ async function readEventStream(response, { onProgress, resetIdle }) {
     // second attempt against the same failing provider and hiding the real
     // reason from the user.
     if (isRealProviderError(chunk?.error)) throw providerStreamError(chunk.error);
-    if (chunk?.usage) usage = chunk.usage; // exact tokens, sent on the final chunk
+    if (chunk?.usage) usage = chunk.usage;
     const choice = chunk?.choices?.[0] ?? {};
     if (choice.finish_reason) finishReason = choice.finish_reason;
     const delta = choice.delta ?? {};
@@ -1420,12 +1394,28 @@ async function readEventStream(response, { onProgress, resetIdle }) {
     const deltaText = visibleTextContent(delta.content);
     if (deltaText) {
       content += deltaText;
-      onProgress?.({ phase: "writing", tokens: estimateTokens(content.length) });
+      onProgress?.({ phase: "writing", tokens: estimateTokens(content) });
     }
     const messageText = visibleTextContent(choice.message?.content);
     if (messageText) {
       messageContent = messageText;
-      if (!deltaText) onProgress?.({ phase: "writing", tokens: estimateTokens(messageText.length) });
+      if (!deltaText) onProgress?.({ phase: "writing", tokens: estimateTokens(messageText) });
+    }
+    // Usage often arrives after the text deltas. One exact tick updates the
+    // live counter; the bar never rewinds if the estimate was high.
+    if (chunk?.usage) {
+      const completion = Number(usage.completion_tokens);
+      const total = Number(usage.total_tokens);
+      const tokens = Number.isFinite(completion) ? completion
+        : Number.isFinite(total) ? total
+        : null;
+      if (tokens != null) {
+        onProgress?.({
+          phase: content || messageContent ? "writing" : "thinking",
+          tokens,
+          exact: true
+        });
+      }
     }
   };
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
+import { AI_TASK, completionOptionsFor, taskMaxTokens } from "./ai-task-profiles.mjs";
 
 assert.deepEqual(
   completionOptionsFor(AI_TASK.CONNECTION_TEST, {
@@ -78,5 +78,8 @@ assert.deepEqual(
   { temperature: 0, maxTokens: 3072, reasoningEffort: "none", thinkingType: "disabled" },
   "character choice grounding must use a bounded deterministic request"
 );
+
+assert.equal(taskMaxTokens(AI_TASK.SPELL_FOCUS), 768);
+assert.throws(() => taskMaxTokens("missing-task"), /Unknown AI task profile/);
 
 console.log("ai-task-profiles.test.mjs: all task-profile assertions passed");
