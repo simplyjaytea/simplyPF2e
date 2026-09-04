@@ -480,6 +480,201 @@ try {
     assert.ok(result, "empty error placeholders on stream chunks must not abort a successful generation");
   }
 
+  settings.set(SETTINGS.apiBaseUrl, "http://localhost:11434/v1");
+  settings.set(SETTINGS.apiKey, "");
+  settings.set(SETTINGS.apiKeyBaseUrl, "");
+  settings.set(SETTINGS.model, "test-model");
+
+  providerReplies.push(
+    {
+      choices: [{
+        message: { content: '{"keywords":["ember","control"]}' },
+        finish_reason: "length"
+      }],
+      usage: { prompt_tokens: 6, completion_tokens: 4, total_tokens: 10 }
+    },
+    {
+      choices: [{
+        message: { content: '{"keywords":["ember","safe"]}' },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 6, completion_tokens: 4, total_tokens: 10 }
+    }
+  );
+  const completeTruncated = await chooseSpellFocus({
+    concept: {
+      name: "Ember Warden",
+      level: 5,
+      blurb: "A careful fire controller",
+      description: "Shapes flame without overreaching.",
+      traits: ["fire", "humanoid"]
+    },
+    tradition: "arcane"
+  });
+  assert.deepEqual(
+    completeTruncated.keywords,
+    ["ember", "safe"],
+    "finish_reason length must reject even a complete-looking JSON prefix"
+  );
+
+  providerReplies.push(
+    {
+      choices: [{
+        message: { content: '{"keywords":["stone"' },
+        finish_reason: "max_tokens"
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 }
+    },
+    {
+      choices: [{
+        message: { content: '{"keywords":["stone","control"]}' },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 }
+    }
+  );
+  const maxTokensTruncated = await chooseSpellFocus({
+    concept: {
+      name: "Stone Speaker",
+      level: 5,
+      blurb: "An earth mage",
+      description: "Raises walls of stone.",
+      traits: ["earth", "humanoid"]
+    },
+    tradition: "primal"
+  });
+  assert.deepEqual(
+    maxTokensTruncated.keywords,
+    ["stone", "control"],
+    "finish_reason max_tokens is the same truncation condition as length"
+  );
+
+  providerReplies.push({
+    choices: [{
+      message: {
+        content: [
+          { type: "text", text: '{"keywords":["spark"' },
+          { type: "text", text: ',"control"]}' }
+        ]
+      },
+      finish_reason: "stop"
+    }],
+    usage: { prompt_tokens: 4, completion_tokens: 3, total_tokens: 7 }
+  });
+  const partArray = await chooseSpellFocus({
+    concept: {
+      name: "Spark Adept",
+      level: 3,
+      blurb: "A precise spark mage",
+      description: "Uses small flames to control space.",
+      traits: ["fire", "humanoid"]
+    },
+    tradition: "arcane"
+  });
+  assert.deepEqual(partArray.keywords, ["spark", "control"], "text-part message content must parse");
+
+  providerReplies.push({
+    rawBody: `data: ${JSON.stringify({
+      choices: [{
+        message: { content: '{"ok":true}' },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 }
+    })}`,
+    contentType: "text/event-stream"
+  });
+  const messageOnlyStream = await testProviderConnection();
+  assert.deepEqual(
+    messageOnlyStream,
+    { prompt: 3, completion: 2, total: 5, estimated: false },
+    "SSE chunks that put JSON on message.content instead of delta.content must still parse"
+  );
+
+  const retryStart = requestBodies.length;
+  const retryWarns = [];
+  const previousWarn = console.warn;
+  console.warn = (...args) => { retryWarns.push(args); };
+  providerReplies.push(
+    {
+      choices: [{
+        message: { content: "Here is } commentary without an object." },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 8, completion_tokens: 6, total_tokens: 14 }
+    },
+    {
+      choices: [{
+        message: { content: '{"keywords":["retry","ok"]}' },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 9, completion_tokens: 4, total_tokens: 13 }
+    }
+  );
+  try {
+    const retried = await chooseSpellFocus({
+      concept: {
+        name: "Retry Adept",
+        level: 4,
+        blurb: "A second-attempt caster",
+        description: "Gets the JSON right on retry.",
+        traits: ["humanoid"]
+      },
+      tradition: "occult"
+    });
+    assert.deepEqual(retried.keywords, ["retry", "ok"]);
+  } finally {
+    console.warn = previousWarn;
+  }
+  const retryBodies = requestBodies.slice(retryStart);
+  assert.equal(retryBodies.length, 2);
+  assert.match(
+    retryBodies[1].messages[1].content,
+    /IMPORTANT RETRY/,
+    "the bounded retry must tell the model the previous JSON was unusable"
+  );
+  assert.ok(
+    retryWarns.some((args) => String(args[0]).includes("retrying once") && args[2]?.contentLength > 0),
+    "BadJson retries must log truncated diagnostics including content length"
+  );
+  assert.equal(retryBodies[0].response_format?.type, "json_object");
+  assert.equal(retryBodies[1].response_format?.type, "json_object");
+
+  providerReplies.push(
+    {
+      choices: [{
+        message: { content: "", reasoning: "drafted {\"keywords\":[\"hidden\"]}" },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 4, completion_tokens: 8, total_tokens: 12 }
+    },
+    {
+      choices: [{
+        message: { content: "", reasoning_content: "still no visible JSON" },
+        finish_reason: "stop"
+      }],
+      usage: { prompt_tokens: 5, completion_tokens: 7, total_tokens: 12 }
+    }
+  );
+  await assert.rejects(
+    chooseSpellFocus({
+      concept: {
+        name: "Silent Thinker",
+        level: 2,
+        blurb: "Reasons without answering",
+        description: "Puts JSON only in a reasoning trace.",
+        traits: ["humanoid"]
+      },
+      tradition: "occult"
+    }),
+    (error) => {
+      assert.match(error.message, /SIMPLYPF2E\.Errors\.ReasoningWithoutJson/);
+      assert.equal(error.retryable, true);
+      assert.ok(error.details?.reasoningChars > 0);
+      return true;
+    },
+    "JSON that exists only in a reasoning channel must stay rejected with a distinct diagnostic"
+  );
+
   assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
 } finally {
   globalThis.fetch = originalFetch;

@@ -416,6 +416,7 @@
       "NetworkError": "Could not reach the AI provider: {message}. If you are using a local or self-hosted provider, make sure it allows requests from Foundry (CORS).",
       "InvalidResponse": "The provider returned a response that was not valid OpenAI-compatible Chat Completions JSON. Check the API Base URL and provider compatibility mode.",
       "EmptyResponse": "The AI provider returned an empty response. This was retried once already — check the provider's status page and your model name.",
+      "ReasoningWithoutJson": "The AI returned reasoning but no JSON in the message content. Try generating again, disable extra reasoning, or use a model that puts JSON in the content field.",
       "Truncated": "The AI ran out of tokens before finishing its answer ({max} allowed). Try a model with efficient structured output or shorten the prompt; raise \"Max response tokens\" only when it is below this operation's safety cap.",
       "Timeout": "The AI provider sent no data for {seconds} seconds and the request was aborted. Check the model name and provider status. For a local model, make sure it is loaded and the server is not busy; then retry or raise the timeout in module settings.",
       "BadJson": "The AI response was not valid JSON. Try generating again.",

@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-04 — AI JSON parse / BadJson diagnostics
+
+- Live QA surfaced the exact `SIMPLYPF2E.Errors.BadJson` string on NPC Generate/Preview. Audit found `parseConceptJSON` used first `{` + last `}`, which rejects a complete object when trailing prose contains `}` and can also hide truncation as BadJson when `finish_reason` is `max_tokens`.
+- Fix: string-aware matching-brace extract of the first complete object; unwrap a JSON-encoded object string once; join Chat Completions text-part arrays; read SSE `message.content` when `delta.content` is absent. Length truncation still fails closed before parse (`length` and `max_tokens`), including complete-looking prefixes. Reasoning-channel JSON is not accepted; empty content with reasoning uses `ReasoningWithoutJson`. Retry-once still fires with the existing retry prompt plus truncated console diagnostics (finish_reason, content length, preview). `response_format` is unchanged except the existing named compatibility drop.
+- Rejected: repairing truncated JSON, scanning into unmatched `{` to salvage nested objects, treating reasoning traces as the answer.
+- Local regressions expanded in `ai.parseJson.test.mjs` and `ai.usage.test.mjs`. Live NPC Generate/Preview against JT's provider is still required.
+
 ## 2026-08-31 — Post-v0.3.5.45 generator selection fixes (local branch)
 
 - Reproduced the reported double-highlight in the live Foundry UI. The selected mode's checked state was correct, but the application re-render moved focus to the first visually hidden radio (Monster), whose `:focus-within` outline looked like a second selection. The local fix restores focus to the checked mode after rendering and has a production-application regression.
