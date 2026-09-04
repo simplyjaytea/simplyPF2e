@@ -408,17 +408,80 @@ const COIN_ITEM_NAMES = {
   sp: "Silver Pieces", silver: "Silver Pieces",
   cp: "Copper Pieces", copper: "Copper Pieces"
 };
+const COIN_DENOMINATION = {
+  "Platinum Pieces": "pp",
+  "Gold Pieces": "gp",
+  "Silver Pieces": "sp",
+  "Copper Pieces": "cp"
+};
+const COIN_UNIT_GP = { "Platinum Pieces": 10, "Gold Pieces": 1, "Silver Pieces": 0.1, "Copper Pieces": 0.01 };
+/* PF2e 8.4.1 ActorInventory.addCurrency `coinCompendiumUuids`
+ * (src/module/actor/inventory/index.ts). Same documents the sheet uses for
+ * currency. Do not invent coin item data; clone these or an exact-name match. */
+const COIN_COMPENDIUM_IDS = {
+  pp: "JuNPeK5Qm1w6wpb4",
+  gp: "B6B7tBWJSqOBz5zz",
+  sp: "5Ew82vBF9YfaiY9f",
+  cp: "lzJ8AVhRcbFul5fh"
+};
+const OFFICIAL_COIN_PACK = "pf2e.equipment-srd";
 
 /**
  * Recognize coin loot like "Gold Coins", "150 gold pieces" or "20 gp" and map
- * it to the canonical PF2e treasure item, which the sheet displays as
- * currency. Returns null for anything that isn't purely coins.
+ * it to a canonical PF2e coinage name. Unknown denominations return null —
+ * they are not currency and must not be forced onto the sheet as coins.
  */
 export function parseCoins(name) {
   const match = /^\s*(\d+)?\s*(platinum|gold|silver|copper|pp|gp|sp|cp)\s*(?:coins?|pieces?)?\s*$/i
     .exec(String(name ?? ""));
   if (!match) return null;
   return { name: COIN_ITEM_NAMES[match[2].toLowerCase()], count: match[1] ? Number(match[1]) : null };
+}
+
+/**
+ * PF2e 8.4.1 TreasurePF2e#isCoinage is `system.category === "coin"`.
+ * `stackGroup === "coins"` is the pre-8.4.1 source field; 8.4.1 migrateData
+ * maps it onto category. Accept either so a cloned pack document is coinage
+ * whether or not the data model has already migrated it.
+ */
+export function isCoinageDocument(doc) {
+  return doc?.type === "treasure"
+    && (doc.system?.category === "coin" || doc.system?.stackGroup === "coins");
+}
+
+/** PF2e 8.4.1 TreasurePF2e#unit for coinage: the single priced denomination. */
+function coinUnit(doc) {
+  const price = doc?.system?.price?.value ?? {};
+  const hits = ["pp", "gp", "sp", "cp"].filter((d) => price[d]);
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * Load the published coinage document for a canonical name. Prefers the same
+ * pf2e.equipment-srd UUIDs addCurrency uses, then an exact-name treasure in
+ * the enabled equipment packs. Fail closed: a lookalike treasure that is not
+ * coinage is not used.
+ */
+async function resolveCoinage(canonicalName) {
+  const denom = COIN_DENOMINATION[canonicalName];
+  if (!denom) return null;
+  const accept = async (entry) => {
+    const doc = await getDocument(entry);
+    if (!isCoinageDocument(doc) || coinUnit(doc) !== denom) return null;
+    const gp = priceToGp(doc.system?.price?.value);
+    return { entry, resolvedValue: gp > 0 ? gp : (COIN_UNIT_GP[canonicalName] ?? 0) };
+  };
+  try {
+    const official = await accept({ packId: OFFICIAL_COIN_PACK, _id: COIN_COMPENDIUM_IDS[denom] });
+    if (official) return official;
+  } catch (err) {
+    console.warn("simplypf2e | official coinage document lookup failed", err);
+  }
+  return accept(await findEntry(
+    getPacksFor("equipment"),
+    canonicalName,
+    (e) => e.type === "treasure" && e.name === canonicalName
+  ));
 }
 
 /**
@@ -473,6 +536,22 @@ export function parseScroll(name) {
 export async function resolveLoot(concept, { exactContent = false } = {}) {
   const loot = [];
   for (const { name, quantity, value, candidate, scrollCandidate } of concept.loot) {
+    // Coins are module-built currency, not AI-selected equipment. Always
+    // resolve the published coinage document, even under exactContent —
+    // there is no candidate catalog for "Gold Coins".
+    const coins = parseCoins(name);
+    if (coins) {
+      const resolved = await resolveCoinage(coins.name);
+      if (!resolved) {
+        console.warn(`simplypf2e | dropped coin loot "${name}": no published ${coins.name} coinage document`);
+        continue;
+      }
+      loot.push({
+        name: coins.name, quantity, value, runes: parseRunes(coins.name),
+        entry: resolved.entry, resolvedValue: resolved.resolvedValue
+      });
+      continue;
+    }
     const scroll = parseScroll(name);
     if (scroll) {
       let entry = null;
@@ -529,9 +608,6 @@ export function lootValueGp(loot) {
   );
 }
 
-/* gp per coin, used when a coin line resolved without a usable price. */
-const COIN_UNIT_GP = { "Platinum Pieces": 10, "Gold Pieces": 1, "Silver Pieces": 0.1, "Copper Pieces": 0.01 };
-
 const coinUnitGp = (line) => {
   const coins = parseCoins(line.name);
   if (!coins) return 0;
@@ -563,14 +639,18 @@ export async function applyTreasureBudget(loot, targetGp) {
         const unit = coinUnitGp(gold) || 1;
         gold.quantity = Math.min(gold.quantity + Math.max(Math.round(gap / unit), 1), 100000);
       } else {
-        const entry = await findEntry(getPacksFor("equipment"), "Gold Pieces", (e) => e.type === "treasure");
+        const resolved = await resolveCoinage("Gold Pieces");
+        if (!resolved) {
+          console.warn("simplypf2e | treasure-budget coin padding skipped: no published Gold Pieces coinage document");
+          return loot;
+        }
         loot.push({
           name: "Gold Pieces",
           quantity: Math.min(Math.max(Math.round(gap), 1), 100000),
           value: 1,
           runes: parseRunes("Gold Pieces"),
-          entry,
-          resolvedValue: 1
+          entry: resolved.entry,
+          resolvedValue: resolved.resolvedValue || 1
         });
       }
       return loot;
@@ -1120,11 +1200,13 @@ export function applySourceEquipState(data) {
 
 /**
  * Turn resolved loot into embeddable item data (unequipped, in inventory):
+ * published coinage clones (sheet currency via TreasurePF2e#isCoinage),
  * scrolls assembled from their rank template, everything else a real
- * compendium clone with quantities and runes, and anything unmatched a custom
- * treasure item at the AI's estimated value so the haul keeps its worth.
- * Shared by the NPC pipeline (dropped loot) and the PC one (starting wealth).
- * Deduped by name for the same reason equipment is.
+ * compendium clone with quantities and runes, and unmatched non-coin names a
+ * custom treasure item at the AI's estimated value so the haul keeps its
+ * worth. Coin lines never use that custom fallback. Shared by the NPC
+ * pipeline (dropped loot) and the PC one (starting wealth). Deduped by name
+ * for the same reason equipment is, except coins which may repeat.
  * @param {object[]} loot  entries from resolveLoot()
  * @returns {Promise<object[]>} item data ready to embed
  */
@@ -1132,13 +1214,22 @@ export async function buildLootItems(loot) {
   const items = [];
   const seen = new Set();
   for (const { name, quantity, value, runes, entry, scroll } of loot ?? []) {
+    const coins = parseCoins(name);
     // Coins are the one line that legitimately repeats (applyTreasureBudget
     // may add a Gold Pieces line next to an AI-drafted one), so they skip
     // dedup and simply stack on the sheet.
-    if (!parseCoins(name)) {
+    if (!coins) {
       const key = slugify(name);
       if (seen.has(key)) continue;
       seen.add(key);
+    } else {
+      const doc = await getDocument(entry);
+      if (!isCoinageDocument(doc) || coinUnit(doc) !== COIN_DENOMINATION[coins.name]) {
+        console.warn(`simplypf2e | dropped coin loot "${name}": no published coinage document`);
+        continue;
+      }
+      items.push(setQuantity(toItemData(doc), quantity));
+      continue;
     }
     if (scroll) {
       const data = await buildScrollItem(entry, scroll.rank);
