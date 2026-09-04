@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-05 — Re-expose Item Forge in the Items directory
+
+- Started `codex/item-forge-entry` from public `origin/main` `220741b` / **v0.3.5.56** and carried forward the post-publication/live-QA documentation commits. The forge engine had passed its cancellation, runed-sheet parity, and generated-macro escaping acceptance checks, but ordinary users still had no discoverable UI entry point.
+- Extended the existing GM/PF2e directory-button pattern with a shared renderer. The Actors directory keeps its SimplyPF2e Generator button, and the Items directory now gets one idempotent **Item Forge** button that calls the already-protected `openItemForge()` singleton. Player and non-PF2e boundaries remain enforced both at render time and in the public API.
+- Expanded the production-import permission regression to cover player invisibility, GM visibility, duplicate-render prevention, localized button identity, click-to-open behavior for both directories, console API access, and wrong-system invisibility/failure. All 65 regressions, syntax checks for all 100 scripts, JSON parsing, and whitespace checks pass locally.
+- Real Items-directory lifecycle QA requires the updated module artifact. A temporary attempt to imitate the branch inside the already-loaded **v0.3.5.56** world was discarded as non-evidence; its QA macro command was restored exactly and the temporary hook/button cleanup was run. Branch/PR review and the single intended release must complete before the real Items-menu click test.
+
 ## 2026-09-05 — Post-release live QA for v0.3.5.56
 
 - Verified the public module **v0.3.5.56** in the user's logged-in world on Foundry **14.365** / PF2e **8.5.0**. The code audit's schema/source target was PF2e 8.4.1, so this is forward-runtime evidence rather than a replacement source review.

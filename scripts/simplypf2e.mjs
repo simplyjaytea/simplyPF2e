@@ -33,6 +33,22 @@ function openItemForge() {
   return itemForgeApp;
 }
 
+function addDirectoryButton(html, { markerClass, icon, label, onClick }) {
+  const root = html instanceof HTMLElement ? html : html[0];
+  if (!root || root.querySelector(`.${markerClass}`)) return;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `spf-directory-button ${markerClass}`;
+  button.innerHTML = `<i class="fa-solid ${icon}"></i> ${game.i18n.localize(label)}`;
+  button.addEventListener("click", onClick);
+
+  const target = root.querySelector(".directory-header .header-actions")
+    ?? root.querySelector(".directory-header")
+    ?? root;
+  target.appendChild(button);
+}
+
 Hooks.once("init", () => {
   registerSettings(SourcesConfigApp, ProviderSetupApp);
   if (!Handlebars.helpers.eq) {
@@ -62,19 +78,23 @@ Hooks.once("ready", () => {
 /* Add a "SimplyPF2e" button to the Actors directory header (GM only). */
 Hooks.on("renderActorDirectory", (_directory, html) => {
   if (!game.user.isGM || game.system.id !== "pf2e") return;
-  const root = html instanceof HTMLElement ? html : html[0];
-  if (!root || root.querySelector(".spf-directory-button")) return;
+  addDirectoryButton(html, {
+    markerClass: "spf-generator-directory-button",
+    icon: "fa-dragon",
+    label: "SIMPLYPF2E.Generator.OpenButton",
+    onClick: openGenerator
+  });
+});
 
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "spf-directory-button";
-  button.innerHTML = `<i class="fa-solid fa-dragon"></i> ${game.i18n.localize("SIMPLYPF2E.Generator.OpenButton")}`;
-  button.addEventListener("click", openGenerator);
-
-  const target = root.querySelector(".directory-header .header-actions")
-    ?? root.querySelector(".directory-header")
-    ?? root;
-  target.appendChild(button);
+/* Add an "Item Forge" button to the Items directory header (GM only). */
+Hooks.on("renderItemDirectory", (_directory, html) => {
+  if (!game.user.isGM || game.system.id !== "pf2e") return;
+  addDirectoryButton(html, {
+    markerClass: "spf-itemforge-directory-button",
+    icon: "fa-hammer",
+    label: "SIMPLYPF2E.ItemForge.OpenButton",
+    onClick: openItemForge
+  });
 });
 
 /*
@@ -116,9 +136,3 @@ Hooks.on("pf2e.restForTheNight", async (actor) => {
     catch (err) { console.warn(`${MODULE_ID} | failed to recharge forged items on rest`, err); }
   }
 });
-
-/* Item Forge UI entry points (Items directory button, generator window
- * button) are deliberately removed for now — item generation is still
- * unverified end-to-end in a live world. The app, its API access
- * (module.api.openItemForge), and all underlying code are left intact so
- * it's a one-line revert to re-expose once it's been tested. */
