@@ -7,14 +7,14 @@ Full session-by-session narrative, process notes, and the bug log. Not loaded by
 - JT: generating loot put gold coins on the sheet as custom treasure. `parseCoins` already mapped "Gold Coins"/"gp"/etc. to "Gold Pieces", but production `exactContent: true` never resolved those module-built lines (no AI candidate), so `buildLootItems` called `customTreasureItem` — a treasure without PF2e 8.4.1 `system.category === "coin"`.
 - Fetched `foundryvtt/pf2e` **pf2e-8.4.1** (not master). `TreasurePF2e#isCoinage` is `this.system.category === "coin"` (`src/module/item/treasure/document.ts`). `stackGroup === "coins"` is migration input (`TreasureSystemData.migrateData`). `ActorInventory.addCurrency` (addCoins alias) clones `coinCompendiumUuids` from `pf2e.equipment-srd` (`src/module/actor/inventory/index.ts`).
 - Fix: always resolve published coinage in `resolveLoot` (exactContent does not apply), clone it in `buildLootItems`, fail closed on unknown denominations or missing coinage docs. `applyTreasureBudget` padding keeps the official Gold Pieces entry. Did not call addCurrency after Actor.create: that API clones the same documents, and embedding them at create time stays inside the existing transaction/expectedItems path. Shared by NPC loot and PC starting wealth.
-- Rebased onto `origin/main` `cedbd9e` (PR #90 / **v0.3.5.49**) after Sentinel reported CONFLICTING / behind main. Docs conflicts only; coin clone hunks unchanged. Branch + PR only; do not merge to `main`.
+- Rebased onto `origin/main` `cedbd9e` (PR #90 / **v0.3.5.50**) after Sentinel reported CONFLICTING / behind main. Docs conflicts only; coin clone hunks unchanged. Branch + PR only; do not merge to `main`.
 
 ## 2026-09-04 — Smooth progress + clearer token estimates
 
 - JT: the loading bar jumped between equal step buckets and felt inaccurate; token estimates should be more honest.
 - Root cause: `_setStep` assigned `((done + 0.5) / n) * 100` (equal weights, mid-step snap) and re-rendered the whole app, remounting `.spf-progress-fill` so the existing width transition never ran. Stream ticks only patched the detail line. Char/4 estimates were shown at ones precision.
 - Fix: `progress.mjs` weights steps from `taskMaxTokens` (concept > selectors; encounter members cover the creature pipeline; local match/templates/assemble stay a small display share). Intra-step fill is phase-only (thinking → writing); streamed chars never invent % of an unknown final length. The sheen is the within-step motion. `app-base.mjs` patches the existing fill/percent/detail/step icons after the first render. Unknown keys no-op. Live copy keeps `≈` until provider `usage`; spell focus vs selection is a detail sub-label. `tokens.mjs` prefers complete provider usage, labels fallbacks, coarsens displayed estimates, and treats total-only blocks as exact totals without a fake split.
-- Local verification: all 62 regression files pass (`progress.test.mjs`, `tokens.test.mjs`, plus usage/uistate/layout contracts). No live Foundry QA. Published on `main` as PR #90 / **v0.3.5.49**.
+- Local verification: all 62 regression files pass (`progress.test.mjs`, `tokens.test.mjs`, plus usage/uistate/layout contracts). No live Foundry QA. Published on `main` as PR #90 / **v0.3.5.50**.
 
 ## 2026-09-04 — Unify generator dice across four modes
 
