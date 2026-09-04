@@ -186,16 +186,9 @@
         {{#if monsterMode}}{{localize "SIMPLYPF2E.Generator.GenerateMonster"}}{{else if npcMode}}{{localize "SIMPLYPF2E.Generator.GenerateNpc"}}{{else if encounterMode}}{{localize "SIMPLYPF2E.Generator.GenerateEncounter"}}{{else}}{{localize "SIMPLYPF2E.Generator.GenerateCharacter"}}{{/if}}
       </button>
       <button type="button" class="spf-secondary" data-action="previewPlan" {{#if busy}}disabled{{/if}}>{{localize "SIMPLYPF2E.Generator.PreviewPlan"}}</button>
-      {{#if encounterMode}}
-        <button type="button" class="spf-random-button" data-action="generateRandomEncounter" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RandomEncounterTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.RandomEncounterTooltip'}}" {{#if busy}}disabled{{/if}}>
-          <i class="fa-solid fa-dice-d20"></i>
-        </button>
-      {{else if creatureMode}}
-        {{! Character mode gets no dice button: randomBrief() is creature-flavored }}
-        <button type="button" class="spf-random-button" data-action="generateRandom" data-tooltip="{{localize 'SIMPLYPF2E.Generator.RandomTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.RandomTooltip'}}" {{#if busy}}disabled{{/if}}>
-          <i class="fa-solid fa-dice-d20"></i>
-        </button>
-      {{/if}}
+      <button type="button" class="spf-random-button" data-action="generateRandom" data-tooltip="{{localize randomTooltipKey}}" aria-label="{{localize randomTooltipKey}}" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-dice-d20"></i>
+      </button>
     </div>
   </fieldset>
 
