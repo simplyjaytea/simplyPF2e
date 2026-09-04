@@ -5,7 +5,7 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 ## Current session — 2026-09-04
 
 - Public source is `origin/main` `e969e435` (PR #93) / **v0.3.5.53**. This session did not merge or release.
-- Active branch: `cursor/feat-prereq-staged-43e3`. Do not merge to `main`.
+- Active branch: `cursor/feat-prereq-staged-43e3` — PR **#94**. Do not merge to `main`.
 - Shipped on this branch:
   1. Fail-closed ordinary feat prerequisite evaluator (`scripts/pc-prerequisites.mjs`) against a staged ABC/grant/skill snapshot. Cites PF2e 8.4.1 `FeatSystemSchema.prerequisites.value` as display text (`src/module/item/feat/data.ts`); `FeatPF2e.embedHTMLString` joins the strings and `_onCreate` does not evaluate them. ABC grants come from `system.items` `{ uuid, img, name, level }` (`src/module/item/abc/data.ts`).
   2. Complete-only catalogs pass that snapshot into `getFeatCandidates` instead of the empty-array-only gate. `requireNoPrerequisites` without a context remains empty-array. NPC/legacy callers stay permissive. Empty feat entitlements still block the completion manifest.
