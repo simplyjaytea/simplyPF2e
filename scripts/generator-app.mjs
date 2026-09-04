@@ -1066,28 +1066,21 @@ export class GeneratorApp extends SpfApp {
     const spellcasting = concept?.spellcasting;
     if (!spellcasting) return;
     try {
-      // Both AI calls below run under the single "Spell selection" step, so
-      // keep a running token total across them — otherwise the live counter
-      // visibly resets to zero when the second call starts.
-      let stepTokens = 0;
-      let lastTokens = 0;
-      const onProgress = (p) => {
-        lastTokens = p.tokens;
-        this._onAIProgress({ ...p, tokens: stepTokens + p.tokens });
-      };
+      // Two AI calls share the "Spell selection" step. Sub-labels distinguish
+      // them in the detail line; the bar stays on phase fill, not extra steps.
       let keywords = [];
       try {
+        const focusLabel = game.i18n.localize("SIMPLYPF2E.Progress.SpellFocus");
         const focus = await chooseSpellFocus({
           concept,
           tradition: spellcasting.tradition,
-          onProgress
+          onProgress: (p) => this._onAIProgress({ ...p, call: focusLabel })
         });
         keywords = focus.keywords;
-        this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.SpellFocus"), focus.usage);
+        this._recordTokens(focusLabel, focus.usage);
       } catch (err) {
         console.warn(`${MODULE_ID} | spell focus selection failed, using first-draft spell names only`, err);
       }
-      stepTokens += lastTokens;
       const candidates = await getSpellCandidates(
         spellcasting.tradition,
         spellcasting.maxRank,
@@ -1110,7 +1103,10 @@ export class GeneratorApp extends SpfApp {
           plannedPicks: spellcasting.plannedPicks,
           preparationMode: spellcasting.preparationMode,
           signatureRanks: spellcasting.signatureRanks,
-          onProgress
+          onProgress: (p) => this._onAIProgress({
+            ...p,
+            call: game.i18n.localize("SIMPLYPF2E.Progress.Spells")
+          })
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);
         spellcasting.spells = spells;

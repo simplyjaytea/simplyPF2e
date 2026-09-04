@@ -1,14 +1,14 @@
-// Pure progress-bar math: weighted steps, monotonic percent, stream mapping.
+// Pure progress-bar math: weighted steps, monotonic percent, phase fill.
 // Run: node scripts/progress.test.mjs
 import assert from "node:assert/strict";
 import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import {
   LOCAL_STEP_WEIGHT,
-  accumulateStreamTokens,
+  PHASE_FILL,
   applyStep,
   createProgress,
   progressPercent,
-  resetStreamCounters,
+  resetStreamPhase,
   stepWeight,
   streamFraction
 } from "./progress.mjs";
@@ -36,6 +36,7 @@ const creature = createProgress([
 ]);
 assert.equal(creature.percent, 0);
 assert.equal(creature.steps[0].weight, stepWeight("concept"));
+assert.equal(creature.streamFrac, 0);
 
 assert.equal(applyStep(creature.steps, "missing"), false);
 assert.equal(creature.steps.every((s) => s.state === "pending"), true, "unknown keys must not mark steps done");
@@ -47,27 +48,33 @@ assert.equal(creature.steps[1].state, "pending");
 const start = progressPercent({
   steps: creature.steps,
   activeKey: "concept",
-  streamFrac: 0.02,
+  streamFrac: PHASE_FILL.start,
   floor: 0
 });
 assert.ok(start >= 1 && start < 20, "the concept step should start near the left of the bar");
 
-const mid = progressPercent({
+const thinkingPct = progressPercent({
   steps: creature.steps,
   activeKey: "concept",
-  streamFrac: 0.5,
+  streamFrac: PHASE_FILL.thinking,
   floor: start
 });
-assert.ok(mid >= start, "stream ticks must not lower percent");
-assert.ok(mid > start, "halfway through concept must advance the bar");
+const writingPct = progressPercent({
+  steps: creature.steps,
+  activeKey: "concept",
+  streamFrac: PHASE_FILL.writing,
+  floor: thinkingPct
+});
+assert.ok(thinkingPct >= start, "thinking must not lower percent");
+assert.ok(writingPct > thinkingPct, "writing must advance past thinking");
 
 const skipped = progressPercent({
   steps: creature.steps,
   activeKey: "match",
-  streamFrac: 0.02,
-  floor: mid
+  streamFrac: PHASE_FILL.start,
+  floor: writingPct
 });
-assert.ok(skipped >= mid, "skipping to a later step must not rewind the bar");
+assert.ok(skipped >= writingPct, "skipping to a later step must not rewind the bar");
 assert.ok(skipped <= 99, "percent must stay inside the bar");
 
 assert.equal(
@@ -76,46 +83,40 @@ assert.equal(
   "an unknown active key keeps the floor"
 );
 
-const thinking = streamFraction({ phase: "thinking", tokens: 400, expectedTokens: 8000 });
-const stillThinking = streamFraction({
-  phase: "thinking", tokens: 200, expectedTokens: 8000, prior: thinking
-});
-assert.equal(stillThinking, thinking, "a lower thinking count must not shrink the step share");
-const writing = streamFraction({
-  phase: "writing", tokens: 1, expectedTokens: 8000, prior: thinking
-});
-assert.ok(writing >= thinking, "switching to writing must not jump backward");
-const lateWrite = streamFraction({
-  phase: "writing", tokens: 8000, expectedTokens: 8000, prior: writing
-});
-assert.ok(lateWrite <= 0.92, "streaming must leave a sliver until the step completes");
-assert.ok(lateWrite > writing);
+assert.equal(streamFraction({ phase: "thinking" }), PHASE_FILL.thinking);
+assert.equal(
+  streamFraction({ phase: "thinking", prior: PHASE_FILL.thinking }),
+  PHASE_FILL.thinking,
+  "more thinking tokens must not invent extra fill"
+);
+assert.equal(
+  streamFraction({ phase: "writing", prior: PHASE_FILL.thinking }),
+  PHASE_FILL.writing
+);
+assert.equal(
+  streamFraction({ phase: "writing", prior: PHASE_FILL.writing }),
+  PHASE_FILL.writing,
+  "chars-vs-unknown-length must not keep advancing the bar"
+);
+assert.equal(
+  streamFraction({ phase: "thinking", prior: PHASE_FILL.writing }),
+  PHASE_FILL.writing,
+  "a later thinking tick must not rewind writing fill"
+);
+assert.equal(streamFraction({ phase: "start" }), PHASE_FILL.start);
 
 const stream = createProgress([["concept", "Concept"]]);
-accumulateStreamTokens(stream, 100);
-accumulateStreamTokens(stream, 250);
-assert.equal(stream.peakTokens, 250);
-accumulateStreamTokens(stream, 10);
-assert.equal(stream.peakTokens, 260, "a token drop is a new call, not a rewind");
-accumulateStreamTokens(stream, 40, { exact: true });
-assert.equal(stream.peakTokens, 260, "late exact usage below the estimate must not shrink the peak");
-accumulateStreamTokens(stream, 300, { exact: true });
-assert.equal(stream.peakTokens, 300);
-resetStreamCounters(stream);
-assert.equal(stream.peakTokens, 0);
+stream.streamFrac = streamFraction({ phase: "thinking", prior: stream.streamFrac });
+stream.streamFrac = streamFraction({ phase: "writing", prior: stream.streamFrac });
+assert.equal(stream.streamFrac, PHASE_FILL.writing);
+resetStreamPhase(stream);
 assert.equal(stream.streamFrac, 0);
 
 applyStep(creature.steps, "spells");
 const percents = [];
-let floor = 0;
-for (const tokens of [10, 80, 200, 80, 400]) {
-  accumulateStreamTokens(creature, tokens);
-  creature.streamFrac = streamFraction({
-    phase: "writing",
-    tokens: creature.peakTokens,
-    expectedTokens: stepWeight("spells"),
-    prior: creature.streamFrac
-  });
+let floor = writingPct;
+for (const phase of ["thinking", "writing", "writing", "thinking", "writing"]) {
+  creature.streamFrac = streamFraction({ phase, prior: creature.streamFrac });
   floor = progressPercent({
     steps: creature.steps,
     activeKey: "spells",
@@ -125,7 +126,7 @@ for (const tokens of [10, 80, 200, 80, 400]) {
   percents.push(floor);
 }
 for (let i = 1; i < percents.length; i++) {
-  assert.ok(percents[i] >= percents[i - 1], `monotonic stream: ${percents.join(",")}`);
+  assert.ok(percents[i] >= percents[i - 1], `monotonic phase fill: ${percents.join(",")}`);
 }
 
 console.log("progress.test.mjs: weighted monotonic progress assertions passed");

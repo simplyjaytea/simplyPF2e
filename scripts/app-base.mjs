@@ -2,11 +2,11 @@ import { testProviderConnection } from "./ai.mjs";
 import { getProviderRequestConfig, selectProviderConnection } from "./settings.mjs";
 import { ProviderSetupApp } from "./provider-setup-app.mjs";
 import {
-  accumulateStreamTokens,
+  PHASE_FILL,
   applyStep,
   createProgress,
   progressPercent,
-  resetStreamCounters,
+  resetStreamPhase,
   streamFraction
 } from "./progress.mjs";
 import { coarsenTokenEstimate } from "./tokens.mjs";
@@ -127,12 +127,12 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const progress = this._progress;
     if (!progress) return;
     if (!applyStep(progress.steps, key)) return;
-    resetStreamCounters(progress);
+    resetStreamPhase(progress);
     progress.detail = "";
     progress.percent = progressPercent({
       steps: progress.steps,
       activeKey: key,
-      streamFrac: 0.02,
+      streamFrac: PHASE_FILL.start,
       floor: progress.percent
     });
     if (this._paintStepList()) {
@@ -143,32 +143,32 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   }
 
   /**
-   * Streaming callback: maps tokens into the active step's bar share and
-   * patches the DOM so CSS width transitions run on the same fill element.
+   * Streaming callback: phase fill (thinking → writing) plus live token copy.
+   * Token counts never drive percent — final length is unknown. Exact copy
+   * is reserved for provider usage; estimates stay marked ≈.
    */
-  _onAIProgress({ phase, tokens = 0, exact = false }) {
+  _onAIProgress({ phase, tokens = 0, exact = false, call }) {
     const progress = this._progress;
     if (!progress) return;
     const step = progress.steps.find((s) => s.state === "active");
-    const peak = accumulateStreamTokens(progress, tokens, { exact });
-    progress.streamFrac = streamFraction({
-      phase,
-      tokens: peak,
-      expectedTokens: step?.weight,
-      prior: progress.streamFrac
-    });
+    progress.streamFrac = streamFraction({ phase, prior: progress.streamFrac });
     progress.percent = progressPercent({
       steps: progress.steps,
       activeKey: step?.key,
       streamFrac: progress.streamFrac,
       floor: progress.percent
     });
-    const shownTokens = exact ? Math.max(0, Number(tokens) || 0) : peak;
+    const stepLabel = call && step?.label
+      ? `${step.label} — ${call}`
+      : (call || step?.label || "");
+    const shownTokens = exact
+      ? Math.max(0, Number(tokens) || 0)
+      : coarsenTokenEstimate(tokens);
     progress.detail = game.i18n.format(
       phase === "thinking"
         ? (exact ? "SIMPLYPF2E.Progress.ThinkingExact" : "SIMPLYPF2E.Progress.Thinking")
         : (exact ? "SIMPLYPF2E.Progress.WritingExact" : "SIMPLYPF2E.Progress.Writing"),
-      { step: step?.label ?? "", tokens: shownTokens.toLocaleString() }
+      { step: stepLabel, tokens: shownTokens.toLocaleString() }
     );
     this._paintProgress();
   }

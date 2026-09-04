@@ -1,12 +1,19 @@
 /**
  * Pure generation-progress math. Step weights come from AI task budgets so
- * concept writing owns more of the bar than a short selector call. Stream
- * ticks map into the active step's share and never lower the percent.
+ * concept writing owns more of the bar than a short selector call. Intra-step
+ * fill is phase-based (thinking → writing), never chars-vs-unknown-length.
  */
 import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 
 /** Display share for local (non-AI) steps — not a measured duration. */
 export const LOCAL_STEP_WEIGHT = 400;
+
+/** How much of the active step the bar may fill for each stream phase. */
+export const PHASE_FILL = Object.freeze({
+  start: 0.02,
+  thinking: 0.35,
+  writing: 0.75
+});
 
 export function stepWeight(key) {
   const name = String(key ?? "");
@@ -43,10 +50,7 @@ export function createProgress(defs) {
     })),
     detail: "",
     percent: 0,
-    streamFrac: 0,
-    tokenBase: 0,
-    lastTokens: 0,
-    peakTokens: 0
+    streamFrac: 0
   };
 }
 
@@ -66,45 +70,21 @@ export function applyStep(steps, key) {
   return true;
 }
 
-export function resetStreamCounters(progress) {
+export function resetStreamPhase(progress) {
   if (!progress) return progress;
   progress.streamFrac = 0;
-  progress.tokenBase = 0;
-  progress.lastTokens = 0;
-  progress.peakTokens = 0;
   return progress;
 }
 
 /**
- * Fold a new streamed token count into the active step.
- * A drop in `tokens` is a new call or thinking→writing, not a rewind.
- * Exact late usage never lowers the peak (and does not double-count a reset).
+ * Advance the active step's fill from the stream phase only.
+ * Extra tokens do not move the bar — length is unknown until the call ends.
  */
-export function accumulateStreamTokens(progress, tokens, { exact = false } = {}) {
-  const n = Math.max(0, Number(tokens) || 0);
-  if (exact) {
-    progress.lastTokens = n;
-    progress.peakTokens = Math.max(progress.peakTokens || 0, n);
-    return progress.peakTokens;
-  }
-  const last = progress.lastTokens || 0;
-  if (n < last) progress.tokenBase = (progress.tokenBase || 0) + last;
-  progress.lastTokens = n;
-  progress.peakTokens = Math.max(progress.peakTokens || 0, (progress.tokenBase || 0) + n);
-  return progress.peakTokens;
-}
-
-/**
- * Map streamed tokens into [0, 0.92] of the active step.
- * Thinking saturates in the first 30%; writing scales against the step budget.
- */
-export function streamFraction({ phase, tokens, expectedTokens, prior = 0 }) {
-  const t = Math.max(0, Number(tokens) || 0);
-  const expected = Math.max(1, Number(expectedTokens) || 1);
-  const next = phase === "thinking"
-    ? 0.3 * (1 - Math.exp(-t / 96))
-    : 0.92 * Math.min(1, t / expected);
-  return Math.min(0.92, Math.max(prior, next));
+export function streamFraction({ phase, prior = 0 }) {
+  const next = phase === "writing" ? PHASE_FILL.writing
+    : phase === "thinking" ? PHASE_FILL.thinking
+    : PHASE_FILL.start;
+  return Math.min(0.92, Math.max(Number(prior) || 0, next));
 }
 
 /**
@@ -119,7 +99,7 @@ export function progressPercent({ steps, activeKey, streamFrac = 0, floor = 0 })
   if (idx < 0) return floorClamped;
   const totalWeight = list.reduce((sum, step) => sum + (Number(step.weight) || 0), 0) || 1;
   const doneWeight = list.slice(0, idx).reduce((sum, step) => sum + (Number(step.weight) || 0), 0);
-  const frac = Math.min(0.92, Math.max(0.02, Number(streamFrac) || 0));
+  const frac = Math.min(0.92, Math.max(PHASE_FILL.start, Number(streamFrac) || 0));
   const raw = ((doneWeight + frac * (Number(list[idx].weight) || 0)) / totalWeight) * 100;
   const next = Math.round(Math.max(0, Math.min(99, raw)));
   return Math.max(floorClamped, Math.max(1, next));

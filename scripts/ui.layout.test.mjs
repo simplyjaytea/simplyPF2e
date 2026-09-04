@@ -246,8 +246,15 @@ assert.match(
   /\.simplypf2e \.spf-progress-fill\s*\{[^}]*transition:\s*width/s,
   "the progress fill must CSS-transition width instead of snapping between step buckets"
 );
+assert.match(
+  css,
+  /\.simplypf2e \.spf-progress-fill::after\s*\{[^}]*animation:\s*spf-step-slide/s,
+  "within-step motion stays on the sheen while phase fill holds width"
+);
 assert.match(appBase, /_paintProgress\(\)/, "stream ticks must patch the existing fill instead of re-rendering the app");
-assert.match(appBase, /progressPercent\(/, "shared progress math must drive the bar percent");
+assert.match(appBase, /streamFraction\(\{ phase, prior:/, "intra-step fill is phase-based, not chars-vs-unknown-length");
+assert.match(appBase, /exact \? "SIMPLYPF2E\.Progress\.WritingExact"/, "live copy drops ≈ only for provider usage");
+assert.match(generatorApp, /call: focusLabel/, "multi-call spell steps sub-label the detail line without extra bar steps");
 assert.match(messages.Tokens.StepEstimated, /estimated/);
 assert.match(messages.Tokens.StepTotal, /\{total\} tokens/);
 
