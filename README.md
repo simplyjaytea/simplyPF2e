@@ -4,11 +4,75 @@
 [![Foundry version](https://img.shields.io/badge/Foundry-v14-informational)](https://foundryvtt.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Turn a one-sentence idea into a fully statted, ready-to-run Pathfinder 2e actor — NPC, monster, whole encounter, or player character — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
+Turn a one-sentence idea into a fully statted Pathfinder 2e actor — monster, NPC, encounter, or player character — inside [Foundry VTT](https://foundryvtt.com), using the [Pathfinder Second Edition system](https://github.com/foundryvtt/pf2e).
 
 > *"A cunning swamp hag who brews poisons from drowned travelers"* → a complete level-6 creature with statistics, strikes, spells, gear and loot, on its sheet, in about a minute.
 
-**[Install](#install)** · **[Setup](#setup)** · **[Usage](#usage)** · **[Troubleshooting](#troubleshooting)** · **[Limitations](#limitations)** · **[Roadmap](#roadmap)**
+**[Install](#install)** · **[Setup](#setup)** · **[Generate](#generate)** · **[Troubleshooting](#troubleshooting)** · **[Limitations](#limitations)**
+
+## Install
+
+Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
+
+```
+https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
+```
+
+The link always resolves to the newest release, so Foundry offers updates automatically. This line targets Foundry **v14** with the **pf2e** system **8.4.1**. Other version pairs need the same acceptance checks before being claimed as supported.
+
+## Setup
+
+1. Open **AI Provider Setup** under **Game Settings → Configure Settings → SimplyPF2e** (GM only), or click the gear beside the provider name in the generator.
+2. Save a named connection (API Base URL, API Key, Model). Multiple connections stay in this browser so you can keep DeepSeek and a local server and switch which one generation uses.
+3. Click **Save & Test**. That runs a tiny 64-token check through the same streaming path as generation and keeps setup open if the endpoint, key, model, CORS, or request shape is rejected. **Save & Authorize** skips the check for an offline provider.
+
+| Setting | Description |
+| --- | --- |
+| Saved connections | Named profiles stored in this browser. The generator header switches the active one when more than one exists. |
+| API Base URL | Any OpenAI-compatible API root or full `/chat/completions` endpoint. Defaults to DeepSeek. |
+| API Key | Bound to that connection's exact Base URL. Leave blank for a keyless local server. |
+| Model | The exact API identifier (`deepseek-v4-flash`, `gpt-5.6-luna`, …), not the marketing name. |
+
+**Save & Test** may incur the provider's normal small token cost. Model listing does not. An empty model is caught before generation. If Foundry is served over HTTPS, an HTTP local provider is blocked by the browser.
+
+> **Provider security:** requests go from the GM's browser to the configured provider. Keys are client settings, never synced to the world, and are not shown as plaintext in the ordinary Foundry settings form. Changing a connection's endpoint clears that profile's key unless a replacement is entered.
+
+**Providers:** DeepSeek (`https://api.deepseek.com/v1`, recommended), OpenAI, OpenRouter, Ollama (`http://localhost:11434/v1`), and LM Studio (`http://localhost:1234/v1`). Local servers must allow the exact Foundry browser origin through CORS. Set Ollama's `OLLAMA_ORIGINS` to that origin; in LM Studio enable CORS in Developer → Server Settings.
+
+Creativity, max response tokens, request timeout, and the optional Free Archetype variant live under advanced module settings. Grounding/selectors always use temperature 0. Complete one-click characters stop at level 2+ while Free Archetype is enabled, because that extra feat graph is not fully validated yet.
+
+**Compendium sources:** by default the module draws from the PF2e system packs. Under **Compendium Sources** pick which Item packs supply abilities, spells, feats, equipment, and class features, plus which Actor packs supply bestiary scaffolds. Creature and encounter generation require an enabled bestiary Actor pack before they spend tokens.
+
+## Generate
+
+Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.modules.get("simplypf2e").api.open()`. Pick a mode at the top.
+
+| Mode | What it does |
+| --- | --- |
+| **Monster** | Creature-first combatant from a description and level (−1 to 24). |
+| **NPC** | Story-focused, combat-ready non-player character. Same pipeline, different intent. |
+| **Encounter** | Theme plus party level/size/threat → XP budget, roster, and a full creature pipeline per member. |
+| **Character** | Real Ancestry/Background/Class items and feat slots. The pf2e system computes AC/HP/saves. |
+
+**Generate** validates and creates in one pass. **Preview Plan** runs the same no-write plan first. The **dice** button sits beside Generate in every mode: it ignores the typed prompt, rolls a local surprise brief, and runs Preview Plan. Cancel aborts an in-flight generation (not a Foundry write already in progress).
+
+Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity.
+
+## Status
+
+| Feature | Status |
+| --- | --- |
+| **NPCs & monsters** | Stable. The oldest, most battle-tested path. |
+| **Encounter mode** | Stable. |
+| **Player Character mode** | Released. Complete one-click selection currently covers **Fighter, Rogue, and Investigator**. Sanity-check a generated character's numbers on its sheet before play. Live Rogue/Investigator grant-chain QA is still required. |
+| **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons stay hidden; open it from the console (see [Item forge](#item-forge)). |
+
+## What's new
+
+- Weighted progress with Cancel, thinking vs writing, and a compact last-run token cost that keeps **≈** when the provider did not report usage.
+- Loot coins clone published PF2e currency items, so gold lands in the sheet's Currency section.
+- The dice button is on all four generator modes.
+- Named connection bank: save more than one provider profile in this browser and switch from the generator header.
 
 ## How it works
 
@@ -26,82 +90,13 @@ After Foundry creates a sheet, SimplyPF2e confirms that every exact source docum
 
 Creature strikes are constrained to PF2e's configured damage types, NPC attack traits, and attack effects. Ranged attacks use the system's structured range field rather than a legacy trait workaround.
 
-**Generate Monster**, **Generate NPC**, **Generate Encounter**, and **Generate Character** validate and create in one pass. Use **Preview Plan** when you want to inspect the same no-write plan before deciding to create it.
-
-## Status
-
-| Feature | Status |
-| --- | --- |
-| **NPCs & monsters** | Stable. The oldest, most battle-tested path. |
-| **Encounter mode** | Stable. |
-| **Player Character mode** | Released and hardened over several live-testing rounds, but younger than NPC mode. Sanity-check a generated character's numbers on its sheet before play. |
-| **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons are hidden for that reason; open it from the console (see [Item forge](#item-forge)). |
-
-Recent additions — focus spells, Intelligence languages, runes on PC gear, and the local complete-only work — have not all been through a live-play pass yet. See [Limitations](#limitations).
-
-The one-click milestone is published in **v0.3.5.43** (PR [#83](https://github.com/simplyjaytea/simplyPF2e/pull/83), merge `07a369fc`). The source branch `codex/one-click-grounding` remains on GitHub as a recoverable implementation record. It adds exact native class-path staging and a conservative PC feat prerequisite gate, but the complete-only PC registry remains Fighter-only until ordinary prerequisites can be evaluated against the staged actor. The milestone still requires the documented VPS live-acceptance matrix. See [HANDOFF.md](HANDOFF.md) for the exact pickup point and next slice.
-
-## Install
-
-Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
-
-```
-https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
-```
-
-The link is permanent — it always resolves to the newest release, so Foundry offers updates automatically. This development line targets Foundry **v14** with the **pf2e** system **8.4.1**. Other version pairs need the same acceptance matrix before being claimed as supported.
-
-## Setup
-
-Open **AI Provider Setup** under **Game Settings → Configure Settings → SimplyPF2e** (GM only), or click the gear beside the provider name in the generator. It is the single place to configure a provider's API Base URL, API Key, and Model. Saved named connections stay in this browser so you can keep DeepSeek and a custom OpenAI-compatible endpoint (or a local server) and switch which one generation uses. Pick a cloud/local preset. If its Model field is blank, click **Load Models**: setup saves and authorizes the displayed endpoint/key, then offers the provider's `/models` IDs without preventing manual entry. Confirm the model and click **Save & Test**. It makes a tiny 64-token check through the same streaming request path used for generation and keeps setup open if the provider rejects the endpoint, key, model, CORS, or request shape. **Save & Authorize** skips the check for an offline provider. A cloud provider may charge its normal small token cost for a test; model listing itself does not generate tokens, and the signal button beside a ready provider repeats the generation check later.
-
-Provider setup:
-
-| Setting | Description |
-| --- | --- |
-| Saved connections | Named profiles stored in this browser. Create, rename, or delete them here; the generator header switches the active one when more than one exists. |
-| API Base URL | Any OpenAI-compatible API root or full `/chat/completions` endpoint. Defaults to DeepSeek. |
-| API Key | Your provider key for the active connection, stored in this browser and bound to that connection's exact API Base URL. Leave blank for a keyless local server. |
-| Model | e.g. `deepseek-v4-flash`, `deepseek-v4-pro`, `gpt-5.6-luna` — the exact API identifier, not the marketing name. |
-
-Advanced module settings:
-
-| Setting | Description |
-| --- | --- |
-| Creativity | Sampling temperature (0–2) for creative generation. Grounding/selectors always use temperature 0. |
-| Max response tokens | Global ceiling. Each operation applies a smaller production-safe cap where possible. |
-| Request timeout | Aborts only if the provider sends *no data* for this long (default 90 s). |
-| Free Archetype | Optional variant rule, off by default. Complete one-click character generation stops at level 2+ until its feat prerequisites have staged validation. |
-
-**Providers**
-
-- **DeepSeek** — `https://api.deepseek.com/v1`, model `deepseek-v4-flash`. Cheap, strong JSON, the recommended default.
-- **OpenAI** — `https://api.openai.com/v1`, model `gpt-5.6-luna`
-- **OpenRouter** — `https://openrouter.ai/api/v1`, any hosted model
-- **Ollama (local)** — `http://localhost:11434/v1`, usually no key. Set `OLLAMA_ORIGINS` to the exact Foundry browser origin (for example `http://localhost:30000`) so the browser may call it; avoid wildcard origins.
-- **LM Studio (local)** — `http://localhost:1234/v1`, no key unless server authentication is enabled. Enable CORS in **Developer → Server Settings** (or start with `lms server start --cors`) for browser access. Keep the server bound to loopback, and enable authentication when CORS or LAN serving is enabled. **Load Models** lists only loaded models unless LM Studio's Just-In-Time loading is enabled. LM Studio 0.4.8+ honors Chat Completions reasoning controls; older versions still work through compatibility fallback but may not disable reasoning.
-
-SimplyPF2e uses current OpenAI Chat Completions fields for OpenAI and the broadly supported OpenAI-compatible fields everywhere else. If a provider explicitly rejects an optional field, instruction role, or token-limit spelling, the module removes or negotiates only that part and retries the request. It also disables separate model reasoning for structured generation where the provider supports that control, so bounded response budgets are spent on complete JSON.
-
-The active connection and model currently in use are always shown at the top of the generator. An empty model is caught before generation. If Foundry is served over HTTPS, an HTTP local provider will be blocked by the browser; serve the provider over HTTPS, or access Foundry over HTTP on the same trusted local network. Local servers must also allow the exact Foundry browser origin through CORS.
-
-> **Provider security:** requests go straight from the GM's browser to the configured provider. API keys are client settings, never synced to the world, and the ordinary Foundry settings form does not expose them as plaintext fields. Manage keys through the masked **AI Provider Setup** dialog; both save actions authorize a key only for the exact Base URL of that saved connection, and **Save & Test** additionally makes the small provider request described above. Changing a connection's endpoint clears that profile's key unless a replacement is entered; other saved connections keep their own keys. Changing the raw Base URL setting leaves any saved key disabled until the endpoint is confirmed. Existing keys from older SimplyPF2e versions also start disabled after this upgrade. Generated prompts and character data are sent to remote providers when a remote endpoint is configured.
-
-### Compendium sources
-
-By default the module draws from the PF2e system packs. Under **Compendium Sources** it scans Item packs for abilities, spells, feats, equipment, and class features plus Actor packs for bestiary NPC scaffolds, then lets you pick which each category may use — so homebrew and content-module packs become available to the AI. The AI literally sees and picks from your homebrew spell list. Creature and encounter generation also require an enabled bestiary Actor pack before they spend provider tokens; the closest real NPC provides a deterministic trait/size/level token scaffold. An empty category falls back to the system defaults.
-
 ## Usage
-
-Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.modules.get("simplypf2e").api.open()`. Pick a mode at the top of the dialog.
 
 ### Monster and NPC
 
-Choose **Monster** for a creature-first combatant or **NPC** for a story-focused, combat-ready non-player character. Describe it and set level (−1 to 24), then click the mode's Generate action to create and open the sheet. Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Choose **Preview Plan** instead to review the same validated plan without writing to the world.
+Describe the creature and set level (−1 to 24), then click the mode's Generate action to create and open the sheet. Choose **Preview Plan** to review the same validated plan without writing to the world.
 
-The **dice button** sits beside Generate in every mode. It ignores the typed description and rolls a fresh local brief, then runs the same preview pipeline as **Preview Plan**. Monster, NPC, and Encounter roll creature type × combat role × home × twist; Character rolls a person-oriented adventurer brief. Every click is a new surprise.
-
-Each creature also gets GM support baked into its notes: a **read-aloud block** for theater of the mind, a **Recall Knowledge line** with the correct identification skill, a clickable check at the level- and rarity-based DC, and what a player learns on a success. **Art** is borrowed from the closest-matching bestiary creature, scored by shared creature-type traits, size and level.
+Each creature also gets GM support baked into its notes: a **read-aloud block**, a **Recall Knowledge** line with the correct identification skill, a clickable check at the level- and rarity-based DC, and what a player learns on a success. **Art** is borrowed from the closest-matching bestiary creature, scored by shared creature-type traits, size and level.
 
 ### Encounter mode
 
@@ -115,13 +110,15 @@ Describe a concept ("a grizzled dwarf ranger who hunts undead") and set a level 
 
 Nothing here is scale-word math. A PC is assembled from real Ancestry, Background and Class items plus feats at every level slot (ancestry/class/skill/general per the Core Rulebook cadence, including any feat the background itself grants — like Acolyte's *Student of the Canon*), ability boosts, and skill increases past Trained. The PF2e system then computes AC, HP, saves and proficiencies exactly as it would for a character built by hand.
 
+Complete one-click selection currently offers Fighter, Rogue, and Investigator. Rogue rackets and Investigator methodologies are chosen from enabled Class Features sources before the actor exists. Other classes are not widened just to produce a dialog-dependent or approximate build.
+
 Starting wealth buys real gear rather than turning into raw coin, and fundamental runes on weapons and armor are capped to what the character's level actually allows. Single-class builds only — no multiclass archetypes, and no pre-create screen for swapping individual picks (regenerate instead).
 
 After native features establish the character's actual proficiencies, the new sheet readies only its exact generated equipment: one proficient worn armor and no more than two hands of proficient weapons, shields, or tools. Incompatible or conflicting selections stay stowed and appear as a review warning. Compatible generated ammunition is selected for non-repeating reload-0 weapons; reloadable/repeating weapons, investment, and containers stay with the normal PF2e sheet controls.
 
 **Skill completion:** the existing concept request supplies ordered core-skill preferences; no extra AI call or setup screen is needed. Preview shows those preferences followed by key-ability defaults. The module supplies the numbers: real class training plus native Intelligence, replacements for directly overlapping class/background training, and the class document's own skill-increase schedule. Increases are allocated in level order with the Expert/Master/Legendary gates, preserving native proficiencies and existing background Lore.
 
-After creation, the generator shows a dismissible snapshot of resulting skill ranks, unspent/unsupported allocations, and any native choices with no recorded selection. Open Character returns to that exact actor. This is not a live validator or a repair tool: existing characters are untouched. Missing preferences use labeled automatic defaults; missing or invalid class schedules are not guessed. Native grant timing and training from later Intelligence boosts are handled conservatively—unproven earlier availability is never assumed. Duplicate native feat grants, arbitrary new Lore replacements, and comprehensive feat-prerequisite checks remain manual. This local milestone still requires live Foundry QA before publication.
+After creation, the generator shows a dismissible snapshot of resulting skill ranks, unspent/unsupported allocations, and any native choices with no recorded selection. Open Character returns to that exact actor. This is not a live validator or a repair tool: existing characters are untouched. Missing preferences use labeled automatic defaults; missing or invalid class schedules are not guessed.
 
 ### Item forge
 
@@ -161,12 +158,12 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 **Slow or stuck generations**
 
-- Generation is **streamed** — you'll see one animated progress bar with a live percentage and token ticker. Reasoning models show "The model is thinking…" first; that's normal and can take a while.
+- Generation is **streamed** — you'll see one animated progress bar with a live percentage and token ticker. Reasoning models show "The model is thinking…" first; that's normal and can take a while. **Cancel** stops the in-flight request; it does not undo a sheet Foundry has already written.
 - The **request timeout** aborts only on total silence from the provider, so slow-but-alive generations are never cut off. If you get timeouts, check the provider's status page and your model name.
 - A large Ollama or LM Studio model may be silent while it loads, or while another request owns its only generation slot. Load/warm the model in the server first, wait for other work to finish, or temporarily raise **Request timeout**; a warm retry should start streaming much sooner.
 - Check **Model** is the exact API identifier from your provider's docs. A wrong id normally returns an immediate error rather than hanging.
 - Spellcasters make **three** AI calls (concept, a small spell-focus pass, then grounded selection), so they take longer. Creatures carrying gear make one more.
-- After generation the preview shows an exact **token usage report** per call. If a provider doesn't report usage, the step is a clearly-marked estimate.
+- After generation the preview shows an exact **token usage report** per call. If a provider doesn't report usage, the step is a clearly-marked estimate, and the compact last-run line beside the provider keeps **≈**.
 
 **Odd results**
 
@@ -185,9 +182,9 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 **Rules coverage**
 
-- Complete one-click Player Character selection currently offers Fighter only. The module now has an exact, closed-path bridge for Rogue rackets and Investigator methodologies, but those classes remain unavailable until regular feat prerequisites can be validated against the staged actor. Wizard additionally needs verified class-owned spellbook and curriculum support. No class is widened merely to create a dialog-dependent or approximate build. NPCs retain spontaneous-style spellcasting entries.
-- PC feat catalogs currently use a fail-closed prerequisite gate: only feats with an explicit empty `system.prerequisites.value` list are offered to the complete path. Dependent or unreadable prerequisite data remains unsupported until it can be evaluated against the staged actor.
-- At level 2 or higher, enabling the module's Free Archetype variant stops complete one-click character generation before any AI request. PF2e stores feat prerequisites as display text rather than a general eligibility API, so the module will not produce an unvalidated build. Its eventual extra class-category feats are wired to the system's distinct `archetype-<level>` slots rather than ordinary class-feat slots.
+- Complete one-click Player Character selection currently offers **Fighter, Rogue, and Investigator**. Wizard still needs verified class-owned spellbook and curriculum support. No class is widened merely to create a dialog-dependent or approximate build. NPCs retain spontaneous-style spellcasting entries.
+- PF2e stores feat prerequisites as display text, not a general eligibility API. Complete-only catalogs keep a feat only when every published clause is readable and proven against the staged ancestry/background/class grants and already-known skill training. Unmet, malformed, or unprovable text (including most feat-chains, expert/master ranks not yet on the snapshot, and Free Archetype's extra graph) is dropped rather than guessed. Empty feat slots still block creation. NPC and legacy feat lists stay permissive.
+- At level 2 or higher, enabling the module's Free Archetype variant stops complete one-click character generation before any AI request. Its eventual extra class-category feats are wired to the system's distinct `archetype-<level>` slots rather than ordinary class-feat slots.
 - PC loadout readiness currently covers published equipment proficiency, one armor slot, the two-hand limit, and compatible selected ammunition for non-repeating reload-0 weapons. Reloadable/repeating ammunition, item investment, container placement, and broader item-specific activation requirements still use the native sheet controls.
 - Matched feats become NPC action items — the PF2e system doesn't allow feat items on NPCs — keeping the feat's cost, rules text and automation.
 - Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget.
@@ -196,8 +193,9 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 **Not yet live-tested** (built, reviewed, and verified against the real pf2e system source, but not yet run in an actual game)
 
+- **Rogue and Investigator** complete-only creation, including racket/methodology grant chains on a live sheet.
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
-- **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend because PF2e feat prerequisites are not machine-readable. Its eventual slots are now wired to PF2e's distinct `archetype-<level>` group.
+- **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend. Its eventual slots are wired to PF2e's distinct `archetype-<level>` group.
 - **Spontaneous spell-slot counts** for high-level PC casters are derived from the standard progression rather than copied from a verified table. Check a high-level caster's slots against Player Core before trusting them.
 - **The item forge**, all three phases. If an item looks right in the preview but misbehaves on a sheet, that's the first thing to check. Its rune path has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
 - **Activated-item macros** lean on PF2e system APIs that can change between versions. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.

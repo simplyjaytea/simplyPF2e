@@ -28,9 +28,13 @@ async function buildSlots(slots, ancestryTrait, classTrait) {
     const traits = slot.archetype ? ["archetype"]
       : slot.type === "ancestry" ? [ancestryTrait]
       : slot.type === "class" ? [classTrait] : [];
-    let candidates = await getFeatCandidates({ level: slot.level, category: slot.type, traits });
+    let candidates = await getFeatCandidates({
+      level: slot.level, category: slot.type, traits, prerequisiteContext: undefined
+    });
     if (!candidates.length && traits.length && !slot.archetype) {
-      candidates = await getFeatCandidates({ level: slot.level, category: slot.type });
+      candidates = await getFeatCandidates({
+        level: slot.level, category: slot.type, prerequisiteContext: undefined
+      });
     }
     if (candidates.length) featSlots.push({ ...slot, candidates });
     else {
