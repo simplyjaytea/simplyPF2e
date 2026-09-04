@@ -4,16 +4,13 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Current session — 2026-09-04
 
-- Public source is `origin/main` `a8761fa` (PR #89) / release **v0.3.5.49**. This session did not merge or release.
-- Active branch: `cursor/smooth-progress-tokens-a379`.
-- Feature: smoother, more accurate generation progress + clearer token estimates.
-  - Percent is weighted from AI task budgets (concept owns more of the bar than a short selector) and monotonic. Intra-step fill is **phase-only** (thinking → writing); extra streamed chars do not invent % of an unknown final length. The existing sheen is the within-step motion while width holds. Unknown step keys no-op.
-  - Live token copy matches the report: `≈` / coarsened estimates mid-stream; exact numbers only when provider `usage` arrives. Spell focus vs selection is a detail sub-label, not extra bar steps.
-  - Token reports still prefer complete provider usage. Total-only blocks show the total without a fake split. Partial blocks and char-based fallbacks stay labeled estimated; displayed estimates are coarsened. Estimator is ~4 chars/token with a JSON punctuation bump — not a tokenizer.
-  - AI parse / retry / fail-closed invariants are untouched.
-- Local verification: `node --check` on touched `.mjs`; all 62 `scripts/*.test.mjs` pass, including new `progress.test.mjs` and `tokens.test.mjs`.
-- No VPS mutation, no merge to `main`. Live Foundry QA still required: generate Monster/NPC/Character/Encounter and watch the bar (no backward jumps, concept should dominate, thinking→writing should advance once then hold with sheen; `≈` until provider usage; spell step sub-labels focus vs selection).
+- Public source is `origin/main` `cedbd9e` (PR #90) / release **v0.3.5.50**. This session did not merge or release.
+- Active branch: `cursor/loot-coins-currency-a3ef` (PR #91), rebased onto that tip after Sentinel reported CONFLICTING / behind main.
+- Bug: generated gold coins showed as custom treasure. Cause: production `exactContent: true` skipped `findEntry` for module-built coin lines (no AI candidate), so `buildLootItems` fell through to `customTreasureItem` without `system.category === "coin"`. PF2e 8.4.1 `TreasurePF2e#isCoinage` is `system.category === "coin"` (not master's `stackGroup === "coins"`).
+- Fix: `resolveLoot` always loads published coinage, preferring the same `pf2e.equipment-srd` IDs `ActorInventory.addCurrency` uses (`JuNPeK5Qm1w6wpb4` / `B6B7tBWJSqOBz5zz` / `5Ew82vBF9YfaiY9f` / `lzJ8AVhRcbFul5fh`), then an exact-name treasure fallback. `buildLootItems` clones that document and never custom-treasures a coin line. Missing coinage docs warn and drop. `applyTreasureBudget` padding keeps the official Gold Pieces entry. Shared by NPC loot and PC starting wealth.
+- Rejected: post-create `inventory.addCoins` / `addCurrency`. Cloning those same documents at build time is what addCurrency does, and it stays inside the existing Actor.create / createEmbeddedDocuments transaction and post-create expectedItems check. Lexicon already approved those hunks; do not invent coin schema.
+- Local verification after rebase: `node --check` on touched `.mjs`; all **63** `scripts/*.test.mjs` pass (including `builder.coins.test.mjs` plus #90's progress/token tests). Live Foundry QA still required: generate NPC loot and a PC with coin starting wealth and confirm sheet currency, not a custom treasure line.
 
 ## Next step
 
-Review the progress/token PR (do not merge to `main` from this agent). After publication, live-check the bar and token report. The feat prerequisite evaluator remains a later slice.
+Review PR #91 (do not merge to `main` from this agent). After publication, live-check NPC loot coins and PC starting-wealth coins on the VPS. The feat prerequisite evaluator remains a later slice.
