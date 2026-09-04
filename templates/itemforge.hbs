@@ -14,6 +14,7 @@
       {{/if}}
     </span>
     <code class="spf-provider-model">{{#if provider.model}}{{provider.model}}{{else}}{{localize "SIMPLYPF2E.Generator.NoModelShort"}}{{/if}}</code>
+    {{#if lastRunCost}}<span class="spf-last-run">{{lastRunCost}}</span>{{/if}}
     <span class="spf-provider-actions">
       {{#if providerReady}}
         <button type="button" data-action="testProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" {{#if busy}}disabled{{/if}}>

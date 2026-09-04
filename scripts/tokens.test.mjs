@@ -1,7 +1,7 @@
 // Token estimate / usage-normalization helpers.
 // Run: node scripts/tokens.test.mjs
 import assert from "node:assert/strict";
-import { coarsenTokenEstimate, estimateTokens, normalizeUsage } from "./tokens.mjs";
+import { coarsenTokenEstimate, estimateTokens, lastRunTokenTotal, normalizeUsage } from "./tokens.mjs";
 
 assert.equal(estimateTokens(""), 0);
 assert.equal(estimateTokens(0), 0);
@@ -65,5 +65,21 @@ assert.equal(empty.estimated, true);
 assert.equal(empty.prompt, 0);
 assert.equal(empty.completion, 0);
 assert.equal(empty.total, 0);
+
+assert.equal(lastRunTokenTotal(null), null);
+assert.equal(lastRunTokenTotal([]), null);
+assert.deepEqual(
+  lastRunTokenTotal([{ usage: { total: 1200, estimated: false } }]),
+  { total: 1200, estimated: false }
+);
+assert.deepEqual(
+  lastRunTokenTotal([
+    { usage: { total: 1847, estimated: true } },
+    { usage: { total: 10, estimated: false } }
+  ]),
+  { total: coarsenTokenEstimate(1847) + 10, estimated: true },
+  "any estimated step keeps the compact last-run total marked estimated"
+);
+assert.equal(lastRunTokenTotal([{ usage: { total: 1847, estimated: true } }]).estimated, true);
 
 console.log("tokens.test.mjs: estimate and usage-normalization assertions passed");

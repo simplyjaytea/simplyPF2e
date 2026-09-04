@@ -6,8 +6,10 @@ import {
   LOCAL_STEP_WEIGHT,
   PHASE_FILL,
   applyStep,
+  classifyRequestAbort,
   createProgress,
   progressPercent,
+  progressPhaseClass,
   resetStreamPhase,
   stepWeight,
   streamFraction
@@ -35,8 +37,18 @@ const creature = createProgress([
   ["match", "Match"]
 ]);
 assert.equal(creature.percent, 0);
+assert.equal(creature.phase, "local");
 assert.equal(creature.steps[0].weight, stepWeight("concept"));
 assert.equal(creature.streamFrac, 0);
+
+assert.equal(progressPhaseClass("thinking"), "thinking");
+assert.equal(progressPhaseClass("writing"), "writing");
+assert.equal(progressPhaseClass("cancelling"), "cancelling");
+assert.equal(progressPhaseClass("nope"), "local");
+assert.equal(classifyRequestAbort({ userAborted: true, aborted: true }), "cancelled",
+  "a user cancel must not be classified as a timeout");
+assert.equal(classifyRequestAbort({ userAborted: false, aborted: true }), "timeout");
+assert.equal(classifyRequestAbort({}), null);
 
 assert.equal(applyStep(creature.steps, "missing"), false);
 assert.equal(creature.steps.every((s) => s.state === "pending"), true, "unknown keys must not mark steps done");

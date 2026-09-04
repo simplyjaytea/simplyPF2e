@@ -164,13 +164,17 @@ assert.match(
 );
 assert.match(
   progress,
-  /spf-busy" role="status" aria-live="polite"/,
+  /role="status" aria-live="polite"/,
   "indeterminate generation work must be announced without interrupting the user"
 );
-assert.match(progress, /\{\{#if busyMessage\}\}[\s\S]*?\{\{busyMessage\}\}[\s\S]*?\{\{else if progress\}\}/,
-  "native character creation must show an escaped status instead of a model progress percentage");
+assert.match(progress, /\{\{#if progress\}\}[\s\S]*spf-progress-steps[\s\S]*\{\{#if busyMessage\}\}/,
+  "native character creation must keep the step card and put busyMessage on that chrome");
+assert.doesNotMatch(progress, /\{\{#if busyMessage\}\}[\s\S]*\{\{else if progress\}\}/,
+  "busyMessage must not swap the PC apply path to a spinner-only view");
 assert.doesNotMatch(progress, /\{\{\{busyMessage\}\}\}/, "status text must never be rendered as raw HTML");
 assert.match(generatorApp, /busyMessage: this\.#busyMessage/, "generator must expose its native creation status");
+assert.match(generatorApp, /_beginProgress\(\[\s*\["apply", applyLabel\]\s*\], \{\s*cancellable:\s*false\s*\}\)/,
+  "PC apply must stay on progress chrome and must not arm Cancel during Foundry writes");
 assert.match(generator, /created\.grounding\.rows/, "completion card must report the validated content grounding");
 assert.match(generator, /\{\{#if tokenReport\}\}[\s\S]*?Tokens\.Heading/, "completion card must retain the generation token report");
 assert.match(generatorApp, /const manifest = completionManifest\([\s\S]*?assertComplete\(manifest\);[\s\S]*?this\.#manifest = manifest;/,
@@ -179,7 +183,7 @@ assert.doesNotMatch(generatorApp, /this\.#created = \{ name: actor\.name, actorI
   "generation failure handling must not fabricate a creation result from an unavailable actor");
 assert.match(generatorApp, /selectChoices: async \(groups\) =>[\s\S]*?selectCharacterChoices\([\s\S]*?this\._recordTokens\(label, usage\)/,
   "character creation must use the grounded provider selector and record its usage");
-assert.match(generatorApp, /finally \{\s*this\.#busy = false;\s*this\.#busyMessage = null;\s*this\._progress = null;/,
+assert.match(generatorApp, /finally \{\s*this\.#busy = false;\s*this\.#busyMessage = null;\s*this\._finishRun\(\);/,
   "character success and failure must clear both native and AI progress state");
 const messages = JSON.parse(langJson).SIMPLYPF2E;
 assert.match(messages.Progress.ApplyingCharacter, /PF2e choice dialogs/);
@@ -237,8 +241,12 @@ assert.match(providerSetup, /class="spf-primary" data-action="saveAndTest"/,
 // Progress: the step list and the live-updated detail line form one status system.
 assert.match(progress, /spf-progress-steps/, "progress must list the pipeline steps");
 assert.match(progress, /spf-step-\{\{this\.state\}\}/, "each progress step must carry its state class");
-assert.match(progress, /<p class="spf-progress-detail">\{\{progress\.detail\}\}<\/p>/,
+assert.match(progress, /spf-progress-\{\{progress\.phase\}\}/, "progress chrome must expose thinking vs writing");
+assert.match(progress, /<p class="spf-progress-detail">/,
   "the streaming detail line must stay a direct-textContent target for app-base");
+assert.match(progress, /data-action="cancelGeneration"/, "in-flight generation must offer Cancel on the progress chrome");
+assert.match(progress, /SIMPLYPF2E\.Progress\.Cancel/);
+assert.doesNotMatch(progress, /\{\{\{progress\.detail\}\}\}/);
 assert.match(progress, /<p class="spf-progress-percent">\{\{progress\.percent\}\}%<\/p>/,
   "the percent readout must stay a direct-textContent target for in-place stream ticks");
 assert.match(
@@ -257,6 +265,24 @@ assert.match(appBase, /exact \? "SIMPLYPF2E\.Progress\.WritingExact"/, "live cop
 assert.match(generatorApp, /call: focusLabel/, "multi-call spell steps sub-label the detail line without extra bar steps");
 assert.match(messages.Tokens.StepEstimated, /estimated/);
 assert.match(messages.Tokens.StepTotal, /\{total\} tokens/);
+assert.match(messages.Tokens.LastRun, /^last: \{total\} tokens$/);
+assert.match(messages.Tokens.LastRunEstimated, /≈ \{total\} tokens/, "estimated last-run copy must keep ≈");
+assert.match(messages.Errors.Cancelled, /cancelled/i);
+assert.match(css, /prefers-reduced-motion:\s*reduce/, "generating animation must yield to reduced motion");
+assert.match(css, /\.simplypf2e \.spf-progress-thinking/, "thinking must have a distinct phase treatment");
+assert.match(css, /\.simplypf2e \.spf-progress-writing/, "writing must have a distinct phase treatment");
+assert.match(css, /\.simplypf2e \.spf-last-run\s*\{/, "last-run cost must be a compact secondary near the provider strip");
+for (const [name, template] of [["generator", generator], ["item forge", itemForge]]) {
+  assert.match(template, /spf-last-run/, `${name} must show last-run token cost near the provider strip`);
+  assert.match(template, /lastRunCost/);
+}
+assert.match(generatorApp, /cancelGeneration: GeneratorApp\.#onCancelGeneration/);
+assert.match(itemForgeApp, /cancelGeneration: ItemForgeApp\.#onCancelGeneration/);
+assert.match(generatorApp, /lastRunCost: this\._formatLastRunCost\(\)/);
+assert.match(itemForgeApp, /lastRunCost: this\._formatLastRunCost\(\)/);
+const busyAt = generator.indexOf("{{#if busy}}{{> simplypf2e-progress}}");
+const errorAt = generator.indexOf('{{#if error}}');
+assert.ok(busyAt >= 0 && errorAt > busyAt, "generation errors must remain below progress, not covered by it");
 
 for (const rule of ["spf-card", "spf-icon-btn", "spf-empty"]) {
   assert.match(css, new RegExp(`\\.simplypf2e \\.${rule}\\s*\\{`), `shared kit class .${rule} must be defined`);

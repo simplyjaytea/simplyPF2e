@@ -36,6 +36,31 @@ export function coarsenTokenEstimate(n) {
 }
 
 /**
+ * Compact last-run total from recorded per-call usage. Estimated steps stay
+ * coarsened and the whole total is marked estimated whenever any step is.
+ * @param {Array<{usage?: {total?: number, estimated?: boolean}}>} entries
+ * @returns {{total: number, estimated: boolean}|null}
+ */
+export function lastRunTokenTotal(entries) {
+  if (!Array.isArray(entries) || !entries.length) return null;
+  let total = 0;
+  let estimated = false;
+  let any = false;
+  for (const entry of entries) {
+    const usage = entry?.usage;
+    if (!usage) continue;
+    any = true;
+    if (usage.estimated) {
+      estimated = true;
+      total += coarsenTokenEstimate(usage.total || 0);
+    } else {
+      total += usage.total || 0;
+    }
+  }
+  return any ? { total, estimated } : null;
+}
+
+/**
  * Shape a provider usage block into {prompt, completion, total, estimated}.
  * Prefers complete provider counts. Partial blocks fill the missing side from
  * the estimator and stay labeled estimated. No usage at all is fully estimated.

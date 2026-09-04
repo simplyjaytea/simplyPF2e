@@ -284,7 +284,10 @@
       "Thinking": "{step}: the model is thinking… (~{tokens} tokens of reasoning)",
       "Writing": "{step}: receiving… (~{tokens} tokens)",
       "ThinkingExact": "{step}: the model is thinking… ({tokens} tokens of reasoning)",
-      "WritingExact": "{step}: receiving… ({tokens} tokens)"
+      "WritingExact": "{step}: receiving… ({tokens} tokens)",
+      "Cancel": "Cancel generation",
+      "Cancelling": "Cancelling…",
+      "Apply": "Applying character"
     },
     "Tokens": {
       "Heading": "Token usage",
@@ -292,7 +295,9 @@
       "StepEstimated": "≈ {total} tokens (estimated)",
       "StepTotal": "{total} tokens",
       "Total": "Total: {total} tokens",
-      "TotalEstimated": "Total: ≈ {total} tokens"
+      "TotalEstimated": "Total: ≈ {total} tokens",
+      "LastRun": "last: {total} tokens",
+      "LastRunEstimated": "last: ≈ {total} tokens"
     },
     "Sources": {
       "MenuName": "Compendium Sources",
@@ -433,6 +438,7 @@
       "ReasoningWithoutJson": "The AI returned reasoning but no JSON in the message content. Try generating again, disable extra reasoning, or use a model that puts JSON in the content field.",
       "Truncated": "The AI ran out of tokens before finishing its answer ({max} allowed). Try a model with efficient structured output or shorten the prompt; raise \"Max response tokens\" only when it is below this operation's safety cap.",
       "Timeout": "The AI provider sent no data for {seconds} seconds and the request was aborted. Check the model name and provider status. For a local model, make sure it is loaded and the server is not busy; then retry or raise the timeout in module settings.",
+      "Cancelled": "Generation cancelled.",
       "BadJson": "The AI response was not valid JSON. Try generating again.",
       "BadStructure": "The AI response was incomplete ({detail}). Try a stronger structured-output model or generate again.",
       "NoBestiaryScaffold": "No usable NPC actor was available in the enabled Bestiary Actor sources. Check Compendium Sources and try again.",

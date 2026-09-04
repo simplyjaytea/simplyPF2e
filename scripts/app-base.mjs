@@ -1,4 +1,4 @@
-import { testProviderConnection } from "./ai.mjs";
+import { setGenerationAbortSignal, testProviderConnection } from "./ai.mjs";
 import { getProviderRequestConfig, selectProviderConnection } from "./settings.mjs";
 import { ProviderSetupApp } from "./provider-setup-app.mjs";
 import {
@@ -6,10 +6,11 @@ import {
   applyStep,
   createProgress,
   progressPercent,
+  progressPhaseClass,
   resetStreamPhase,
   streamFraction
 } from "./progress.mjs";
-import { coarsenTokenEstimate } from "./tokens.mjs";
+import { coarsenTokenEstimate, lastRunTokenTotal } from "./tokens.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 
@@ -22,6 +23,10 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** Exact token usage per AI call of the last generation: [{label, usage}]. */
   _tokenUsage = [];
   _progress = null;
+  /** Compact last finished run: {total, estimated} or null. */
+  _lastRunCost = null;
+  _generationAbort = null;
+  _canCancel = false;
 
   /** Open the focused provider setup and refresh this app after it saves. */
   _openProviderSetup() {
@@ -117,17 +122,82 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
     };
   }
 
+  /** Compact last-run copy for the provider strip. Null when no finished run. */
+  _formatLastRunCost() {
+    const cost = this._lastRunCost;
+    if (!cost) return null;
+    return game.i18n.format(
+      cost.estimated ? "SIMPLYPF2E.Tokens.LastRunEstimated" : "SIMPLYPF2E.Tokens.LastRun",
+      { total: cost.total.toLocaleString() }
+    );
+  }
+
+  _armCancel() {
+    this._disarmCancel();
+    this._generationAbort = new AbortController();
+    setGenerationAbortSignal(this._generationAbort.signal);
+    this._canCancel = true;
+  }
+
+  _disarmCancel() {
+    this._canCancel = false;
+    setGenerationAbortSignal(null);
+    this._generationAbort = null;
+  }
+
+  /**
+   * Abort the in-flight provider pipeline. Document creation is not armed.
+   * Partial preview state is discarded by the pipeline catch; this only
+   * signals abort and keeps the bar from looking finished.
+   */
+  _cancelGeneration() {
+    const abort = this._generationAbort;
+    if (!abort || abort.signal.aborted) return;
+    this._canCancel = false;
+    abort.abort();
+    const progress = this._progress;
+    if (progress) {
+      progress.phase = "cancelling";
+      progress.detail = game.i18n.localize("SIMPLYPF2E.Progress.Cancelling");
+      this._paintProgress();
+    }
+    const btn = this.element?.querySelector?.('[data-action="cancelGeneration"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.setAttribute("aria-disabled", "true");
+    }
+  }
+
+  _throwIfCancelled() {
+    if (!this._generationAbort?.signal.aborted) return;
+    const err = new Error(game.i18n.localize("SIMPLYPF2E.Errors.Cancelled"));
+    err.cancelled = true;
+    throw err;
+  }
+
+  /** Snapshot last-run cost, drop the bar, and unlink the abort signal. */
+  _finishRun() {
+    const cost = lastRunTokenTotal(this._tokenUsage);
+    if (cost) this._lastRunCost = cost;
+    this._progress = null;
+    this._disarmCancel();
+  }
+
   /** Initialize the step list shown while generating. */
-  _beginProgress(defs) {
+  _beginProgress(defs, { cancellable = true } = {}) {
+    this._disarmCancel();
     this._progress = createProgress(defs);
+    if (cancellable) this._armCancel();
   }
 
   /** Mark `key` active, everything before it done, and paint without remounting the bar. */
   async _setStep(key) {
+    this._throwIfCancelled();
     const progress = this._progress;
     if (!progress) return;
     if (!applyStep(progress.steps, key)) return;
     resetStreamPhase(progress);
+    progress.phase = "local";
     progress.detail = "";
     progress.percent = progressPercent({
       steps: progress.steps,
@@ -150,7 +220,9 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   _onAIProgress({ phase, tokens = 0, exact = false, call }) {
     const progress = this._progress;
     if (!progress) return;
+    if (this._generationAbort?.signal.aborted) return;
     const step = progress.steps.find((s) => s.state === "active");
+    progress.phase = phase === "thinking" || phase === "writing" ? phase : "local";
     progress.streamFrac = streamFraction({ phase, prior: progress.streamFrac });
     progress.percent = progressPercent({
       steps: progress.steps,
@@ -196,6 +268,18 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const progress = this._progress;
     const root = this.element;
     if (!progress || !root) return;
+    const phase = progressPhaseClass(progress.phase);
+    const card = root.querySelector(".spf-progress");
+    if (card) {
+      card.classList.remove(
+        "spf-progress-thinking",
+        "spf-progress-writing",
+        "spf-progress-local",
+        "spf-progress-cancelling"
+      );
+      card.classList.add(`spf-progress-${phase}`);
+      card.dataset.phase = phase;
+    }
     const fill = root.querySelector(".spf-progress-fill");
     const bar = root.querySelector(".spf-progress-bar");
     const pct = root.querySelector(".spf-progress-percent");

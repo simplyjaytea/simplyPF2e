@@ -185,12 +185,26 @@ Design guidance (GM Core road maps):
 }
 
 export class AIRequestError extends Error {
-  constructor(message, { retryable = false, usage = null, details = null } = {}) {
+  constructor(message, { retryable = false, usage = null, details = null, cancelled = false } = {}) {
     super(message);
-    this.retryable = retryable;
+    this.cancelled = Boolean(cancelled);
+    this.retryable = this.cancelled ? false : retryable;
     this.usage = usage;
     this.details = details;
   }
+}
+
+/** Extra abort for the in-flight generation (user Cancel). Timeout stays separate. */
+let generationAbortSignal = null;
+
+/** Arm or clear the user-cancel signal observed by in-flight provider requests. */
+export function setGenerationAbortSignal(signal) {
+  generationAbortSignal = signal ?? null;
+}
+
+function throwIfGenerationCancelled() {
+  if (!generationAbortSignal?.aborted) return;
+  throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.Cancelled"), { cancelled: true });
 }
 
 /**
@@ -211,6 +225,7 @@ async function requestJSON(args) {
     if (usage.estimated) total.estimated = true;
   };
   for (let attempt = 0; attempt < 2; attempt++) {
+    throwIfGenerationCancelled();
     try {
       const requestArgs = attempt === 0 ? args : {
         ...args,
@@ -1173,6 +1188,7 @@ Respond with a single JSON object and nothing else:
  * @returns {Promise<{content: string, usage: object}>}
  */
 async function requestCompletion({ task, system, user, onProgress, retryAttempt = 0 }) {
+  throwIfGenerationCancelled();
   // The client-scoped key is returned only when it was explicitly saved for
   // this exact normalized base URL. A world-level provider change can never
   // redirect a legacy or previously authorized key to another endpoint.
@@ -1216,6 +1232,10 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
 
   const idleSeconds = Math.max(10, Number(getSetting(SETTINGS.requestTimeout)) || 90);
   const controller = new AbortController();
+  const userSignal = generationAbortSignal;
+  const onUserAbort = () => controller.abort();
+  if (userSignal?.aborted) throwIfGenerationCancelled();
+  userSignal?.addEventListener("abort", onUserAbort, { once: true });
   let idleTimer = null;
   const resetIdle = () => {
     clearTimeout(idleTimer);
@@ -1333,11 +1353,16 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
       reasoningChars
     };
   } catch (err) {
+    if (err instanceof AIRequestError) throw err;
     if (err.name === "AbortError" || controller.signal.aborted) {
+      if (userSignal?.aborted) {
+        throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.Cancelled"), { cancelled: true });
+      }
       throw new AIRequestError(game.i18n.format("SIMPLYPF2E.Errors.Timeout", { seconds: idleSeconds }));
     }
     throw err;
   } finally {
+    userSignal?.removeEventListener("abort", onUserAbort);
     clearTimeout(idleTimer);
   }
 }

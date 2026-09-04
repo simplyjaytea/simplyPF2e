@@ -26,6 +26,9 @@ class App {
   async _setStep() {}
   _recordTokens() {}
   _buildTokenReport() { return null; }
+  _formatLastRunCost() { return null; }
+  _finishRun() { this._progress = null; }
+  _cancelGeneration() {}
 }
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
@@ -68,6 +71,7 @@ await appModule.link((specifier) => {
 await appModule.evaluate();
 const { GeneratorApp } = appModule.namespace;
 const actions = GeneratorApp.DEFAULT_OPTIONS.actions;
+assert.equal(typeof actions.cancelGeneration, "function", "in-flight generation must expose Cancel");
 
 // A mode change re-renders the application. Foundry focuses the first hidden
 // radio during that render, so production must explicitly restore focus to
