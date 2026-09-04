@@ -22,7 +22,7 @@ import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
-import { BUILT_IN_PRESETS, getCustomPresets, findPreset, examplePrompt, randomBrief } from "./presets.mjs";
+import { getCustomPresets, findPreset, examplePrompt, randomBrief, presetPickerGroups } from "./presets.mjs";
 import { ManagePresetsApp } from "./manage-presets-app.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
@@ -119,6 +119,8 @@ export class GeneratorApp extends SpfApp {
     const sources = globalThis.game?.packs ? sourceReadiness(this.#input.mode, {
       allowSpellcasting: this.#input.allowSpellcasting
     }) : null;
+    const presetGroups = presetPickerGroups(this.#input.preset, getCustomPresets());
+    this.#input.preset = presetGroups.selectedId;
     return {
       input: this.#input,
       busy: this.#busy,
@@ -148,19 +150,17 @@ export class GeneratorApp extends SpfApp {
         { value: "unique", label: "SIMPLYPF2E.Rarity.Unique" }
       ],
       promptPlaceholder: `${game.i18n.localize("SIMPLYPF2E.Generator.PromptExample")} ${examplePrompt(this.#input.preset, this.#exampleTick)}...`,
-      presets: [
-        { id: "", label: game.i18n.localize("SIMPLYPF2E.Presets.None"), selected: !this.#input.preset },
-        ...BUILT_IN_PRESETS.map((p) => ({
-          id: p.id,
-          label: game.i18n.localize(p.name),
-          selected: this.#input.preset === p.id
-        })),
-        ...getCustomPresets().map((p) => ({
-          id: p.id,
-          label: `${p.name} *`,
-          selected: this.#input.preset === p.id
-        }))
-      ],
+      nonePresetSelected: !presetGroups.selectedId,
+      standardPresets: presetGroups.standard.map((p) => ({
+        id: p.id,
+        label: game.i18n.localize(p.nameKey),
+        selected: p.selected
+      })),
+      customPresets: presetGroups.custom.map((p) => ({
+        id: p.id,
+        label: p.name,
+        selected: p.selected
+      })),
       encounterMode: this.#input.mode === "encounter",
       characterMode: this.#input.mode === "character",
       monsterMode: this.#input.mode === "monster",

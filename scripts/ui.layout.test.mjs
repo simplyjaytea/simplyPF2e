@@ -231,6 +231,14 @@ assert.match(generator, /<details class="spf-advanced">[\s\S]*?<summary>\{\{loca
   "secondary controls must be in a native, keyboard-operable Advanced disclosure");
 assert.match(generator, /data-action="managePresets"[\s\S]*?SIMPLYPF2E\.Presets\.Manage/,
   "the generator exposes one labeled Manage Presets control instead of edit icons");
+assert.match(generator, /<optgroup label="\{\{localize 'SIMPLYPF2E\.Presets\.StandardGroup'\}\}">/,
+  "built-in Remaster classes must render in a Standard optgroup");
+assert.match(generator, /\{\{#if customPresets\.length\}\}[\s\S]*?<optgroup label="\{\{localize 'SIMPLYPF2E\.Presets\.CustomGroup'\}\}">/,
+  "the Custom optgroup must be omitted when this world has no custom presets");
+assert.match(generator, /class="spf-hint">\{\{localize "SIMPLYPF2E\.Presets\.FlavorGuide"\}\}/,
+  "the picker must carry the complete-only flavor-guide trust line");
+assert.doesNotMatch(generator, /\{\{#each presets\}\}/,
+  "the picker must not flatten Standard and Custom into one option list");
 assert.doesNotMatch(generator, /data-action="savePreset"|data-action="duplicatePreset"|data-action="deletePreset"/,
   "preset editing controls belong in Manage Presets, not the generation flow");
 assert.match(managePresets, /data-action="newPreset"/, "preset management must retain a direct creation path");

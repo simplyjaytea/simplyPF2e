@@ -48,6 +48,7 @@ const mocks = {
   freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
+  presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),
   THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, randomBrief: () => "A dwarf",
   generatePCConcept: async () => { conceptCalls++; return { concept: { name: "Test", level: 1, equipment: [], loot: [] } }; },
   normalizePCConcept: (raw) => raw,

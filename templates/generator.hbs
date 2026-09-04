@@ -110,14 +110,25 @@
           <label for="spf-generator-preset">{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
           <div class="spf-preset-controls">
             <select id="spf-generator-preset" name="preset">
-              {{#each presets}}
-                <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
-              {{/each}}
+              <option value="" {{#if nonePresetSelected}}selected{{/if}}>{{localize "SIMPLYPF2E.Presets.None"}}</option>
+              <optgroup label="{{localize 'SIMPLYPF2E.Presets.StandardGroup'}}">
+                {{#each standardPresets}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </optgroup>
+              {{#if customPresets.length}}
+              <optgroup label="{{localize 'SIMPLYPF2E.Presets.CustomGroup'}}">
+                {{#each customPresets}}
+                  <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+                {{/each}}
+              </optgroup>
+              {{/if}}
             </select>
             <button type="button" data-action="managePresets">
               <i class="fa-solid fa-bookmark"></i> {{localize "SIMPLYPF2E.Presets.Manage"}}
             </button>
           </div>
+          <p class="spf-hint">{{localize "SIMPLYPF2E.Presets.FlavorGuide"}}</p>
         </div>
         <div class="spf-row">
       {{! Stable shared column order in every mode: Level → Rarity (a cap in

@@ -345,6 +345,10 @@
   flex: 1;
 }
 
+.simplypf2e .spf-preset .spf-hint {
+  margin-top: var(--spf-space-xs);
+}
+
 .simplypf2e .spf-level-primary {
   display: flex;
   margin-top: var(--spf-space-sm);

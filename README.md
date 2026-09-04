@@ -140,9 +140,9 @@ Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rar
 
 The preset dropdown shapes the *build* while your description drives the *flavor*. "Level 5 hobgoblin veteran" + Fighter gives a disciplined soldier; the same prompt + Barbarian gives a reckless brute.
 
-Eighteen built-ins: the twelve standard classes, plus six themes for concepts that don't map to one (Cultivator, Fire Mage, Assassin, Healer, Tank, Skill-Monkey). A preset can also carry defaults for rarity, spellcasting and Treasure amount.
+**Standard** lists the twenty-three Remaster PF2e classes as flavor guides (Alchemist through Wizard). They are not pack bindings and do not widen complete-only Character generation beyond Fighter, Rogue, and Investigator. **Custom** appears only when this world has saved presets. A preset can also carry defaults for rarity, spellcasting and Treasure amount.
 
-- **Manage Presets** is the one place to create, edit, duplicate, export, or delete custom presets. It also offers Export All and Import. Export writes JSON you can hand to another GM; imports always get a fresh id so they never collide.
+- **Manage Presets** is the one place to create, edit, duplicate, export, or delete custom presets. Built-ins are not editable there. Export writes JSON you can hand to another GM; imports always get a fresh id so they never collide.
 
 The description placeholder cycles five example concepts per preset as inspiration.
 
