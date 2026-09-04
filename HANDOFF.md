@@ -4,12 +4,13 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Current session — 2026-09-04
 
-- Public source is `origin/main` `a2bfa6f` (PR #91) / **v0.3.5.51** (progress #90 + coin currency #91). This session did not merge or release.
-- Active branch: `cursor/t2-ui-polish-0918` — PR **#92**. Do not merge to `main`.
-- T2 UI polish (Architect-approved): (3) Cancel aborts in-flight multi-call pipelines (not Foundry writes); (4) PC apply stays on the progress step card; (5) thinking vs writing phase + `prefers-reduced-motion`, no false 100%; (7) compact last-run token cost near the provider strip, `≈` kept when estimated.
-- Local verification: `node --check` on touched `.mjs`; all **63** `scripts/*.test.mjs` pass (cancel vs timeout on the production request path, last-run totals, phase/abort classification, UI contracts).
-- No VPS mutation. Live Foundry click-through still required for Cancel, PC apply chrome, phase motion, last-run line, and error visibility.
+- Public source is `origin/main` `77c9b28` (PR #92) / **v0.3.5.52**.
+- UX sprint closed green (T2 UI polish: cancel, apply chrome, phase motion, last-run tokens).
+- JT live QA: no errors; gold currency OK.
+- Custom-provider / Tailnet harden cancelled — do not resume.
+- Next parked: staged-actor feat prerequisite evaluator. No feat-prereq work this session.
+- This session: docs/version cleanup only (`HANDOFF.md`, `CLAUDE.md` Current state, `module.json` version `0.3.5.52`). Source `module.json` on main still said `0.4.0`; releases remain `0.3.5.x`. HISTORY.md not rewritten. Branch `cursor/docs-version-03552-713b`, PR **#93**. All 63 regression files pass. Branch + PR only; do not merge to `main`.
 
 ## Next step
 
-Review PR #92 (do not merge to `main` from this agent). After publication, live-check Cancel on all generator modes plus Item Forge, Character apply chrome, and last-run cost after a real provider run.
+Parked next implementation slice: fail-closed ordinary feat prerequisite evaluator against a staged actor, then independent schema review, then Rogue/Investigator qualification. Do not start it from this baton unless JT asks. Do not resume Tailnet / custom-provider harden.
