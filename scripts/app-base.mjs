@@ -1,4 +1,4 @@
-import { setGenerationAbortSignal, testProviderConnection } from "./ai.mjs";
+import { testProviderConnection } from "./ai.mjs";
 import { getProviderRequestConfig, selectProviderConnection } from "./settings.mjs";
 import { ProviderSetupApp } from "./provider-setup-app.mjs";
 import {
@@ -135,13 +135,12 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   _armCancel() {
     this._disarmCancel();
     this._generationAbort = new AbortController();
-    setGenerationAbortSignal(this._generationAbort.signal);
     this._canCancel = true;
+    return this._generationAbort.signal;
   }
 
   _disarmCancel() {
     this._canCancel = false;
-    setGenerationAbortSignal(null);
     this._generationAbort = null;
   }
 
@@ -187,7 +186,7 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   _beginProgress(defs, { cancellable = true } = {}) {
     this._disarmCancel();
     this._progress = createProgress(defs);
-    if (cancellable) this._armCancel();
+    return cancellable ? this._armCancel() : null;
   }
 
   /** Mark `key` active, everything before it done, and paint without remounting the bar. */

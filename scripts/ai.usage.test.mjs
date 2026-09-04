@@ -62,7 +62,7 @@ globalThis.fetch = async (url, options) => {
 };
 
 try {
-  const { chooseSpellFocus, listProviderModels, testProviderConnection, setGenerationAbortSignal } = await import("./ai.mjs");
+  const { chooseSpellFocus, listProviderModels, testProviderConnection } = await import("./ai.mjs");
   const result = await chooseSpellFocus({
     concept: {
       name: "Ember Adept",
@@ -716,10 +716,9 @@ try {
   {
     const controller = new AbortController();
     controller.abort();
-    setGenerationAbortSignal(controller.signal);
     const before = requestUrls.length;
     await assert.rejects(
-      chooseSpellFocus({ concept: focusConcept, tradition: "arcane" }),
+      chooseSpellFocus({ concept: focusConcept, tradition: "arcane", signal: controller.signal }),
       (error) => {
         assert.match(error.message, /SIMPLYPF2E\.Errors\.Cancelled/);
         assert.equal(error.cancelled, true);
@@ -729,12 +728,10 @@ try {
       "an already-cancelled run must fail closed as Cancelled, not Timeout"
     );
     assert.equal(requestUrls.length, before, "an already-cancelled run must not hit the provider");
-    setGenerationAbortSignal(null);
   }
 
   {
     const controller = new AbortController();
-    setGenerationAbortSignal(controller.signal);
     let release;
     const fetchStarted = new Promise((resolve) => { release = resolve; });
     const prevFetch = globalThis.fetch;
@@ -751,7 +748,7 @@ try {
       });
     };
     try {
-      const pending = chooseSpellFocus({ concept: focusConcept, tradition: "arcane" });
+      const pending = chooseSpellFocus({ concept: focusConcept, tradition: "arcane", signal: controller.signal });
       await fetchStarted;
       controller.abort();
       await assert.rejects(
@@ -766,7 +763,44 @@ try {
       );
     } finally {
       globalThis.fetch = prevFetch;
-      setGenerationAbortSignal(null);
+    }
+  }
+
+  {
+    // Two apps can generate at once. Their signals must remain attached to
+    // their own provider calls: cancelling A cannot abort B (and vice versa).
+    const controllerA = new AbortController();
+    const controllerB = new AbortController();
+    let started = 0;
+    let releaseStarted;
+    const bothStarted = new Promise((resolve) => { releaseStarted = resolve; });
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (_url, options) => {
+      if (++started === 2) releaseStarted();
+      return new Promise((_, reject) => {
+        const fail = () => {
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          reject(err);
+        };
+        if (options.signal?.aborted) fail();
+        else options.signal.addEventListener("abort", fail, { once: true });
+      });
+    };
+    try {
+      const pendingA = chooseSpellFocus({ concept: focusConcept, tradition: "arcane", signal: controllerA.signal });
+      const pendingB = chooseSpellFocus({ concept: focusConcept, tradition: "arcane", signal: controllerB.signal });
+      await bothStarted;
+      controllerA.abort();
+      await assert.rejects(pendingA, (error) => error.cancelled === true, "cancel A must classify only A as cancelled");
+      let bSettled = false;
+      pendingB.finally(() => { bSettled = true; }).catch(() => {});
+      await Promise.resolve();
+      assert.equal(bSettled, false, "cancelling A must leave B's provider call pending");
+      controllerB.abort();
+      await assert.rejects(pendingB, (error) => error.cancelled === true, "cancel B must classify B independently");
+    } finally {
+      globalThis.fetch = prevFetch;
     }
   }
 } finally {

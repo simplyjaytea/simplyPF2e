@@ -198,7 +198,7 @@ export async function getEquipmentIndex(packId) {
   let entries = [];
   try {
     const index = await pack.getIndex({
-      fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value", "system.category"]
+      fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value", "system.category", "system.specific"]
     });
     entries = [...index];
   } catch (err) {
@@ -211,7 +211,7 @@ export async function getEquipmentIndex(packId) {
 /**
  * Every equipment-pack entry, deduped by name, as lightweight records. One
  * scan serves rune lookups, base-item candidates and price sampling alike.
- * @returns {Promise<{name: string, type: string, level: number, gp: number, usage: string|null, category: string|null}[]>}
+ * @returns {Promise<{name: string, type: string, level: number, gp: number, usage: string|null, category: string|null, specific: boolean}[]>}
  */
 let equipmentEntriesPromise = null;
 export function getAllEquipmentEntries() {
@@ -229,7 +229,10 @@ export function getAllEquipmentEntries() {
           level: entry.system?.level?.value ?? 0,
           gp: priceToGp(entry.system?.price?.value),
           usage: entry.system?.usage?.value ?? null,
-          category: entry.system?.category ?? null
+          category: entry.system?.category ?? null,
+          // PF2e 8.4.1 weapon/armor isSpecific is true for a non-null
+          // system.specific. Missing legacy/homebrew data remains ordinary.
+          specific: entry.system?.specific != null
         });
       }
     }

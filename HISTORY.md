@@ -2,6 +2,14 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-05 — Audit fixes (local `codex/audit-fixes`)
+
+- Followed the audit finding set against public `origin/main` `eb779209` / **v0.3.5.55**. No PR, merge, tag, release, provider request, Foundry/VPS mutation, or change to the user-owned `.claude/` directory occurred.
+- Replaced the module-global generation abort slot with an `AbortSignal` owned by the individual `SpfApp` run. `_beginProgress()` supplies that signal to every generation/item-forge AI call, `requestJSON`, and `requestCompletion`; request retries retain it. Connection and `/models` probes deliberately remain independent. A provider-path regression starts two pending calls with distinct controllers and proves cancellation A leaves B pending, then cancellation B independently terminates B as non-retryable `Cancelled`.
+- Macro templates cannot import module helpers at execution time, so they now carry one fixed runtime HTML-escape helper. Actor names are escaped only at the final ChatMessage/roll-flavor boundary; already escaped item/effect/duration handling remains intact. The regression executes generated condition/heal macro bodies with hostile target/acting names and proves the emitted chat/flavor text contains entities rather than raw tags.
+- Runed item assembly now separates PF2e source data from transient preview metadata. It clones real base/rune documents as before and returns `{ itemData, preview: { priceGp, level } }`, preserving base `system.price`/`system.level` rather than overwriting them with derived totals. This matches PF2e physical item preparation: `src/module/item/physical/document.ts` calls `computeLevelRarityPrice(this)` and writes `system.level.value`/`system.price.value`; for an ordinary nonspecific runed item, `physical/helpers.ts#computePrice()` excludes base price once rune value is positive. The base catalog now requests and carries `system.specific`, excluding non-null specific weapons/armor before the model can select them. The focused mock-compendium regression confirms a +1 striking longsword retains 1 gp / level 0 source values while preview is 100 gp / level 4.
+- Added `jq empty module.json lang/en.json` to reusable `release.yml`'s `verify` job so workflow-call auto-release, tag, and manual release all use the same JSON gate. Live Foundry behavior and a real GitHub workflow run remain unverified.
+
 ## 2026-09-04 — T2 UI polish (cancel, apply chrome, phase, last-run)
 
 - Architect-approved Prism memo items 3, 4, 5, 7 on `origin/main` `a2bfa6f` / **v0.3.5.51**. Branch `cursor/t2-ui-polish-0918`, PR #92. Do not merge to `main`.

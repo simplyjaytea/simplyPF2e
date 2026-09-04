@@ -251,16 +251,16 @@ export async function runeGp(runes, kind) {
 /* -------------------- item forge candidate lists -------------------- */
 
 /**
- * Real base weapons/armor at or below a target level, so the AI picks a base
- * item that exists instead of naming one from memory. `category` is the base
- * item's real system.category (light/medium/heavy for armor), which gates
- * category-restricted property runes downstream.
+ * Real ordinary (non-specific) base weapons/armor at or below a target level,
+ * so the AI picks a base item that exists instead of naming one from memory.
+ * `category` is the base item's real system.category (light/medium/heavy for
+ * armor), which gates category-restricted property runes downstream.
  * @returns {Promise<{name: string, level: number, category: string|null}[]>}
  */
 export async function getBaseItemCandidates(kind, maxLevel) {
   const entries = await getAllEquipmentEntries();
   return entries
-    .filter((e) => e.type === kind && e.level <= maxLevel)
+    .filter((e) => e.type === kind && !e.specific && e.level <= maxLevel)
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
     .map((e) => ({ name: e.name, level: e.level, category: e.category ?? null }));
 }
