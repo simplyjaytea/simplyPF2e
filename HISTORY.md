@@ -2,6 +2,15 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-04 — T2 UI polish (cancel, apply chrome, phase, last-run)
+
+- Architect-approved Prism memo items 3, 4, 5, 7 on `origin/main` `a2bfa6f` / **v0.3.5.51**. Branch `cursor/t2-ui-polish-0918`, PR #92. Do not merge to `main`.
+- Cancel sits on the shared progress chrome (outside the disabled fieldset). It aborts the in-flight provider `AbortController` and is classified as `Cancelled`, never Timeout, and is not retried. Partial preview state is dropped; the form re-enables. Foundry create/PC apply is not armed, so a write is not left half-done. No generation toasts.
+- PC apply keeps the step card/bar; `busyMessage` is the detail on that chrome instead of swapping to spinner-only.
+- Progress card carries thinking vs writing (and cancelling) phase classes. Sheen/spinner yield to `prefers-reduced-motion`. Percent still caps below 100 during a run; cancel does not mark steps done. Errors remain below the bar.
+- Compact last-run cost on the provider strip (`last: N tokens` / `last: ≈ N tokens`). Estimated totals stay coarsened and keep `≈`. Snapshot persists across the next busy state until a new run finishes.
+- Local verification: all 63 regression files pass. Live Foundry click-through of Cancel, apply chrome, phase motion, last-run, and error visibility is still required.
+
 ## 2026-09-04 — Coin loot as sheet currency
 
 - JT: generating loot put gold coins on the sheet as custom treasure. `parseCoins` already mapped "Gold Coins"/"gp"/etc. to "Gold Pieces", but production `exactContent: true` never resolved those module-built lines (no AI candidate), so `buildLootItems` called `customTreasureItem` — a treasure without PF2e 8.4.1 `system.category === "coin"`.
