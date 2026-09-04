@@ -9,7 +9,7 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 - JT live QA: no errors; gold currency OK.
 - Custom-provider / Tailnet harden cancelled — do not resume.
 - Next parked: staged-actor feat prerequisite evaluator. No feat-prereq work this session.
-- This session: docs/version cleanup only (`HANDOFF.md`, `CLAUDE.md` Current state, `module.json` version `0.3.5.52`). Source `module.json` on main still said `0.4.0`; releases remain `0.3.5.x`. HISTORY.md not rewritten. Branch + PR only; do not merge to `main`.
+- This session: docs/version cleanup only (`HANDOFF.md`, `CLAUDE.md` Current state, `module.json` version `0.3.5.52`). Source `module.json` on main still said `0.4.0`; releases remain `0.3.5.x`. HISTORY.md not rewritten. Branch `cursor/docs-version-03552-713b`, PR **#93**. All 63 regression files pass. Branch + PR only; do not merge to `main`.
 
 ## Next step
 
