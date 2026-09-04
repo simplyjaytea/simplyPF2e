@@ -50,8 +50,26 @@ export function createProgress(defs) {
     })),
     detail: "",
     percent: 0,
-    streamFrac: 0
+    streamFrac: 0,
+    phase: "local"
   };
+}
+
+const PROGRESS_PHASES = new Set(["thinking", "writing", "local", "cancelling"]);
+
+/** CSS/data-phase token for the progress card. Unknown values stay "local". */
+export function progressPhaseClass(phase) {
+  return PROGRESS_PHASES.has(phase) ? phase : "local";
+}
+
+/**
+ * Distinguish a user-cancel abort from the idle timeout abort.
+ * Timeouts stay timeouts; a user abort never looks like completion.
+ */
+export function classifyRequestAbort({ userAborted = false, aborted = false } = {}) {
+  if (userAborted) return "cancelled";
+  if (aborted) return "timeout";
+  return null;
 }
 
 /** Unknown keys leave state unchanged so a missing step cannot mark everything done. */

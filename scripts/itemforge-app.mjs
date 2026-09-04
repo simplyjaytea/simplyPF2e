@@ -39,6 +39,7 @@ export class ItemForgeApp extends SpfApp {
       configureProvider: ItemForgeApp.#onConfigureProvider,
       configureSources: ItemForgeApp.#onConfigureSources,
       testProvider: ItemForgeApp.#onTestProvider,
+      cancelGeneration: ItemForgeApp.#onCancelGeneration,
       levelUp: ItemForgeApp.#onLevelUp,
       levelDown: ItemForgeApp.#onLevelDown
     }
@@ -69,6 +70,8 @@ export class ItemForgeApp extends SpfApp {
     return {
       input: this.#input,
       busy: this.#busy,
+      canCancel: this._canCancel,
+      lastRunCost: this._formatLastRunCost(),
       error: this.#error,
       progress: this._progress,
       apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
@@ -190,6 +193,10 @@ export class ItemForgeApp extends SpfApp {
     await this._testProvider(target);
   }
 
+  static #onCancelGeneration() {
+    this._cancelGeneration();
+  }
+
   static #onLevelDown() {
     this.#stepLevel(-1);
   }
@@ -270,12 +277,13 @@ export class ItemForgeApp extends SpfApp {
       this.#price = await priceForLevel(this.#concept.level, this.#concept.rarity);
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
-      console.error(`${MODULE_ID} | item generation failed`, err);
+      if (err?.cancelled) console.warn(`${MODULE_ID} | item generation cancelled`);
+      else console.error(`${MODULE_ID} | item generation failed`, err);
       this.#error = err.message;
       this.#concept = null;
     } finally {
       this.#busy = false;
-      this._progress = null;
+      this._finishRun();
       await this.render();
     }
   }
@@ -337,13 +345,14 @@ export class ItemForgeApp extends SpfApp {
       this.#itemData = await buildRunedItemData(this.#concept);
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
-      console.error(`${MODULE_ID} | runed item generation failed`, err);
+      if (err?.cancelled) console.warn(`${MODULE_ID} | runed item generation cancelled`);
+      else console.error(`${MODULE_ID} | runed item generation failed`, err);
       this.#error = err.message;
       this.#concept = null;
       this.#itemData = null;
     } finally {
       this.#busy = false;
-      this._progress = null;
+      this._finishRun();
       await this.render();
     }
   }

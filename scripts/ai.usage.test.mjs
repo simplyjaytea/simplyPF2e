@@ -62,7 +62,7 @@ globalThis.fetch = async (url, options) => {
 };
 
 try {
-  const { chooseSpellFocus, listProviderModels, testProviderConnection } = await import("./ai.mjs");
+  const { chooseSpellFocus, listProviderModels, testProviderConnection, setGenerationAbortSignal } = await import("./ai.mjs");
   const result = await chooseSpellFocus({
     concept: {
       name: "Ember Adept",
@@ -704,6 +704,71 @@ try {
   );
 
   assert.equal(providerReplies.length, 0, "all fake provider responses must be consumed");
+
+  const focusConcept = {
+    name: "Ember Adept",
+    level: 5,
+    blurb: "A battlefield fire controller",
+    description: "Shapes flame to divide enemies.",
+    traits: ["fire", "humanoid"]
+  };
+
+  {
+    const controller = new AbortController();
+    controller.abort();
+    setGenerationAbortSignal(controller.signal);
+    const before = requestUrls.length;
+    await assert.rejects(
+      chooseSpellFocus({ concept: focusConcept, tradition: "arcane" }),
+      (error) => {
+        assert.match(error.message, /SIMPLYPF2E\.Errors\.Cancelled/);
+        assert.equal(error.cancelled, true);
+        assert.equal(error.retryable, false);
+        return true;
+      },
+      "an already-cancelled run must fail closed as Cancelled, not Timeout"
+    );
+    assert.equal(requestUrls.length, before, "an already-cancelled run must not hit the provider");
+    setGenerationAbortSignal(null);
+  }
+
+  {
+    const controller = new AbortController();
+    setGenerationAbortSignal(controller.signal);
+    let release;
+    const fetchStarted = new Promise((resolve) => { release = resolve; });
+    const prevFetch = globalThis.fetch;
+    globalThis.fetch = async (_url, options) => {
+      release();
+      return new Promise((_, reject) => {
+        const fail = () => {
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          reject(err);
+        };
+        if (options.signal?.aborted) fail();
+        else options.signal.addEventListener("abort", fail, { once: true });
+      });
+    };
+    try {
+      const pending = chooseSpellFocus({ concept: focusConcept, tradition: "arcane" });
+      await fetchStarted;
+      controller.abort();
+      await assert.rejects(
+        pending,
+        (error) => {
+          assert.match(error.message, /SIMPLYPF2E\.Errors\.Cancelled/);
+          assert.equal(error.cancelled, true);
+          assert.equal(error.retryable, false);
+          return true;
+        },
+        "aborting an in-flight request must not look like a timeout or trigger retry"
+      );
+    } finally {
+      globalThis.fetch = prevFetch;
+      setGenerationAbortSignal(null);
+    }
+  }
 } finally {
   globalThis.fetch = originalFetch;
 }

@@ -78,7 +78,8 @@ export class GeneratorApp extends SpfApp {
       authorizeApiKey: GeneratorApp.#onAuthorizeApiKey,
       configureProvider: GeneratorApp.#onConfigureProvider,
       configureSources: GeneratorApp.#onConfigureSources,
-      testProvider: GeneratorApp.#onTestProvider
+      testProvider: GeneratorApp.#onTestProvider,
+      cancelGeneration: GeneratorApp.#onCancelGeneration
     }
   };
 
@@ -122,6 +123,8 @@ export class GeneratorApp extends SpfApp {
       input: this.#input,
       busy: this.#busy,
       busyMessage: this.#busyMessage,
+      canCancel: this._canCancel,
+      lastRunCost: this._formatLastRunCost(),
       error: this.#error,
       progress: this._progress,
       apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
@@ -567,6 +570,16 @@ export class GeneratorApp extends SpfApp {
     input.value = Math.min(8, Math.max(1, (Number.isNaN(current) ? 4 : current) + delta));
   }
 
+  static async #onCancelGeneration() {
+    this._cancelGeneration();
+  }
+
+  #noteGenerationFailure(err, label) {
+    if (err?.cancelled) console.warn(`${MODULE_ID} | ${label} cancelled`);
+    else console.error(`${MODULE_ID} | ${label} failed`, err);
+    this.#error = err?.message ?? String(err);
+  }
+
   static async #onGenerate() {
     return this.#runGeneration(false, { create: true });
   }
@@ -702,14 +715,13 @@ export class GeneratorApp extends SpfApp {
       }
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
-      console.error(`${MODULE_ID} | generation failed`, err);
-      this.#error = err.message;
+      this.#noteGenerationFailure(err, "generation");
       this.#concept = null;
       this.#resolved = null;
       this.#manifest = null;
     } finally {
       this.#busy = false;
-      this._progress = null;
+      this._finishRun();
       await this.render();
     }
     if (create && this.#concept && !this.#error) await GeneratorApp.#onCreateActor.call(this);
@@ -819,12 +831,11 @@ export class GeneratorApp extends SpfApp {
       };
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
-      console.error(`${MODULE_ID} | encounter generation failed`, err);
-      this.#error = err.message;
+      this.#noteGenerationFailure(err, "encounter generation");
       this.#encounter = null;
     } finally {
       this.#busy = false;
-      this._progress = null;
+      this._finishRun();
       await this.render();
     }
   }
@@ -1040,14 +1051,13 @@ export class GeneratorApp extends SpfApp {
       this.#pcResolved = resolved;
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
-      console.error(`${MODULE_ID} | character generation failed`, err);
-      this.#error = err.message;
+      this.#noteGenerationFailure(err, "character generation");
       this.#pcConcept = null;
       this.#pcResolved = null;
       this.#manifest = null;
     } finally {
       this.#busy = false;
-      this._progress = null;
+      this._finishRun();
       await this.render();
     }
   }
@@ -1333,17 +1343,24 @@ export class GeneratorApp extends SpfApp {
     this.#busy = true;
     this.#error = null;
     const applyingMessage = game.i18n.localize("SIMPLYPF2E.Progress.ApplyingCharacter");
+    const applyLabel = game.i18n.localize("SIMPLYPF2E.Progress.Apply");
     this.#busyMessage = applyingMessage;
+    this._beginProgress([["apply", applyLabel]], { cancellable: false });
     let created = false;
     let committed = false;
     let actor = null;
     try {
+      await this._setStep("apply");
+      if (this._progress) this._progress.detail = applyingMessage;
       await this.render();
       const result = await createCharacterActor(this.#pcConcept, this.#pcResolved, {
         selectChoices: async (groups) => {
           const label = game.i18n.localize("SIMPLYPF2E.Progress.CharacterChoices");
           this.#busyMessage = null;
-          this._beginProgress([["choices", label]]);
+          this._beginProgress([
+            ["apply", applyLabel],
+            ["choices", label]
+          ], { cancellable: false });
           try {
             await this._setStep("choices");
             const { picks, usage } = await selectCharacterChoices({
@@ -1359,8 +1376,10 @@ export class GeneratorApp extends SpfApp {
             ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.ChoicesNeedInput"));
             throw err; // The builder leaves unanswered choices to PF2e.
           } finally {
-            this._progress = null;
+            this._beginProgress([["apply", applyLabel]], { cancellable: false });
             this.#busyMessage = applyingMessage;
+            await this._setStep("apply");
+            if (this._progress) this._progress.detail = applyingMessage;
             await this.render();
           }
         }
@@ -1420,7 +1439,7 @@ export class GeneratorApp extends SpfApp {
     } finally {
       this.#busy = false;
       this.#busyMessage = null;
-      this._progress = null;
+      this._finishRun();
       try {
         await this.render();
       } catch (err) {
@@ -1561,11 +1580,10 @@ export class GeneratorApp extends SpfApp {
       assertComplete(manifest);
       this.#manifest = manifest;
     } catch (err) {
-      console.error(`${MODULE_ID} | loot reroll failed`, err);
-      this.#error = err.message;
+      this.#noteGenerationFailure(err, "loot reroll");
     } finally {
       this.#busy = false;
-      this._progress = null;
+      this._finishRun();
       await this.render();
     }
   }
