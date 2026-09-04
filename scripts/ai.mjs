@@ -194,16 +194,9 @@ export class AIRequestError extends Error {
   }
 }
 
-/** Extra abort for the in-flight generation (user Cancel). Timeout stays separate. */
-let generationAbortSignal = null;
-
-/** Arm or clear the user-cancel signal observed by in-flight provider requests. */
-export function setGenerationAbortSignal(signal) {
-  generationAbortSignal = signal ?? null;
-}
-
-function throwIfGenerationCancelled() {
-  if (!generationAbortSignal?.aborted) return;
+/** Classify only the signal belonging to this request's owning app run. */
+function throwIfGenerationCancelled(signal) {
+  if (!signal?.aborted) return;
   throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.Cancelled"), { cancelled: true });
 }
 
@@ -225,7 +218,7 @@ async function requestJSON(args) {
     if (usage.estimated) total.estimated = true;
   };
   for (let attempt = 0; attempt < 2; attempt++) {
-    throwIfGenerationCancelled();
+    throwIfGenerationCancelled(args.signal);
     try {
       const requestArgs = attempt === 0 ? args : {
         ...args,
@@ -283,7 +276,7 @@ async function requestJSON(args) {
  * Used for the "Reroll Loot" feature to regenerate treasure without changing creature stats.
  * @returns {Promise<{loot: Array}>}
  */
-export async function generateLoot({ concept, amount = "standard", onProgress }) {
+export async function generateLoot({ concept, amount = "standard", onProgress, signal }) {
   const system = `You are a Pathfinder 2e loot designer. Given a creature, respond with ONLY a JSON object containing an appropriate loot array for it to drop when defeated.
 
 Respond with a SINGLE JSON object and nothing else. No markdown fences, no commentary.
@@ -303,7 +296,7 @@ Loot should be ${lootGuide(amount)}`;
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.LOOT_DRAFT, system, user, onProgress
+    task: AI_TASK.LOOT_DRAFT, system, user, onProgress, signal
   });
   return { loot: (Array.isArray(parsed.loot) ? parsed.loot : []), usage };
 }
@@ -320,7 +313,7 @@ Loot should be ${lootGuide(amount)}`;
  * (#refineLoot, applyTreasureBudget) NPC loot already uses.
  * @returns {Promise<{loot: Array, usage: object}>}
  */
-export async function generatePCLoot({ concept, amount = "standard", onProgress }) {
+export async function generatePCLoot({ concept, amount = "standard", onProgress, signal }) {
   const system = `You are a Pathfinder 2e player-character equipment designer. Given a character concept, respond with ONLY a JSON object listing magic items and treasures they own, bought with part of their starting wealth.
 
 Respond with a SINGLE JSON object and nothing else. No markdown fences, no commentary.
@@ -340,7 +333,7 @@ ${lootGuide(amount, "character")} Favor items that reinforce the character's cla
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.LOOT_DRAFT, system, user, onProgress
+    task: AI_TASK.LOOT_DRAFT, system, user, onProgress, signal
   });
   return { loot: (Array.isArray(parsed.loot) ? parsed.loot : []), usage };
 }
@@ -349,7 +342,7 @@ ${lootGuide(amount, "character")} Favor items that reinforce the character's cla
  * Ask the configured model for a creature concept.
  * @returns {Promise<{concept: object, usage: object}>} parsed concept JSON + token usage
  */
-export async function generateConcept({ prompt, level, rarity, allowSpellcasting, preset, amount = "standard", intent = "monster", onProgress }) {
+export async function generateConcept({ prompt, level, rarity, allowSpellcasting, preset, amount = "standard", intent = "monster", onProgress, signal }) {
   const actorIntent = intent === "npc" ? "NPC" : "monster";
   const userPrompt = [
     `Generate a combat-ready Pathfinder 2e ${actorIntent}.`,
@@ -365,7 +358,7 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
     task: AI_TASK.CREATURE_CONCEPT,
     system: systemPrompt(amount),
     user: userPrompt,
-    onProgress
+    onProgress, signal
   });
   return { concept: data, usage };
 }
@@ -435,7 +428,7 @@ Design guidance:
  * counterpart of generateConcept().
  * @returns {Promise<{concept: object, usage: object}>} parsed concept JSON + token usage
  */
-export async function generatePCConcept({ prompt, level, allowSpellcasting, preset, onProgress }) {
+export async function generatePCConcept({ prompt, level, allowSpellcasting, preset, onProgress, signal }) {
   const userPrompt = [
     `Character level: ${level}`,
     `Spellcasting allowed: ${allowSpellcasting ? "yes, if the class you choose casts spells" : "NO - choose a non-caster class, or a caster with spellcasting set to null"}`,
@@ -451,7 +444,7 @@ export async function generatePCConcept({ prompt, level, allowSpellcasting, pres
     task: AI_TASK.PC_CONCEPT,
     system: pcSystemPrompt(),
     user: userPrompt,
-    onProgress
+    onProgress, signal
   });
   return { concept: data, usage };
 }
@@ -464,7 +457,7 @@ export async function generatePCConcept({ prompt, level, allowSpellcasting, pres
  * relevant slice instead of every spell in the tradition.
  * @returns {Promise<{keywords: string[], usage: object}>}
  */
-export async function chooseSpellFocus({ concept, tradition, onProgress }) {
+export async function chooseSpellFocus({ concept, tradition, onProgress, signal }) {
   const system = `You are picking a thematic focus for a Pathfinder 2e creature's spell list, before the actual spell list is known. Respond with a single JSON object and nothing else:
 { "keywords": string[] }
 Give 3-6 lowercase keywords describing the KINDS of spells that fit this creature: descriptor traits (e.g. "fire", "cold", "mental", "death", "poison", "illusion", "necromancy"), and/or general purpose words ("healing", "buff", "debuff", "control", "summon", "detection"). These will be used to filter a real spell list (${REMASTER_NOTE}), so keep them concrete and matchable, not vague.`;
@@ -478,7 +471,7 @@ Give 3-6 lowercase keywords describing the KINDS of spells that fit this creatur
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.SPELL_FOCUS, system, user, onProgress
+    task: AI_TASK.SPELL_FOCUS, system, user, onProgress, signal
   });
   const keywords = (Array.isArray(parsed.keywords) ? parsed.keywords : [])
     .map((k) => String(k).toLowerCase().trim())
@@ -545,7 +538,7 @@ function physicalCandidateForPick(candidates, pick) {
  * @param {number[]} [args.signatureRanks] module-owned ordinary signature eligibility
  * @returns {Promise<{spells: {name: string, rank: number}[], usage: object}>}
  */
-export async function selectSpells({ concept, candidates, focusCandidates = [], maxRank, plannedPicks, preparationMode, signatureRanks = [], onProgress }) {
+export async function selectSpells({ concept, candidates, focusCandidates = [], maxRank, plannedPicks, preparationMode, signatureRanks = [], onProgress, signal }) {
   const pcPlan = plannedPicks != null;
   if (pcPlan && (typeof plannedPicks !== "object" || Array.isArray(plannedPicks)
     || !Number.isInteger(maxRank) || maxRank < 0 || maxRank > 10
@@ -598,7 +591,7 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: pcPlan ? AI_TASK.PC_SPELL_SELECTION : AI_TASK.SPELL_SELECTION, system, user, onProgress
+    task: pcPlan ? AI_TASK.PC_SPELL_SELECTION : AI_TASK.SPELL_SELECTION, system, user, onProgress, signal
   });
   const focusSpells = [];
   const focusSeen = new Set();
@@ -671,7 +664,7 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
  * @param {{name: string, type: string, level: number}[]} args.candidates
  * @returns {Promise<{equipment: {name: string, quantity: number, value: number}[], usage: object}>}
  */
-export async function selectEquipment({ concept, candidates, onProgress }) {
+export async function selectEquipment({ concept, candidates, onProgress, signal }) {
   const byType = new Map();
   for (const c of candidates) {
     if (!byType.has(c.type)) byType.set(c.type, []);
@@ -703,7 +696,7 @@ Pick the logical items the creature would carry: the weapons it wields (match it
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.EQUIPMENT_SELECTION, system, user, onProgress
+    task: AI_TASK.EQUIPMENT_SELECTION, system, user, onProgress, signal
   });
   const equipment = (Array.isArray(parsed.equipment) ? parsed.equipment : [])
     .map((pick) => ({ pick, selection: physicalCandidateForPick(candidates, pick) }))
@@ -732,7 +725,7 @@ Pick the logical items the creature would carry: the weapons it wields (match it
  * @param {{name: string, type: string, level: number}[]} args.candidates
  * @returns {Promise<{loot: {name: string, quantity: number, value: number}[], usage: object}>}
  */
-export async function selectLoot({ concept, candidates, scrollCandidates = [], onProgress }) {
+export async function selectLoot({ concept, candidates, scrollCandidates = [], onProgress, signal }) {
   const byType = new Map();
   for (const c of candidates) {
     if (!byType.has(c.type)) byType.set(c.type, []);
@@ -758,7 +751,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.LOOT_SELECTION, system, user, onProgress
+    task: AI_TASK.LOOT_SELECTION, system, user, onProgress, signal
   });
   const picks = Array.isArray(parsed.loot) ? parsed.loot : [];
   const loot = picks
@@ -800,7 +793,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
  * @returns {Promise<{ancestry: string, heritage: string|null, background: string, class: string, keyAbility: string, usage: object}>}
  */
 export async function selectAncestryBackgroundClass({
-  concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates = [], onProgress
+  concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates = [], onProgress, signal
 }) {
   const system = `You are choosing a Pathfinder 2e character's ancestry, heritage, background and class. Choose ONLY IDs from the provided lists. Respond with a single JSON object and nothing else:
 { "ancestryId": string, "heritageId": string|null, "backgroundId": string, "classId": string, "keyAbility": "str"|"dex"|"con"|"int"|"wis"|"cha" }
@@ -819,7 +812,7 @@ export async function selectAncestryBackgroundClass({
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.ABC_SELECTION, system, user, onProgress
+    task: AI_TASK.ABC_SELECTION, system, user, onProgress, signal
   });
   const ancestry = candidateForPick(ancestryCandidates, { id: parsed.ancestryId, name: parsed.ancestry });
   const heritage = candidateForPick(heritageCandidates, { id: parsed.heritageId, name: parsed.heritage });
@@ -852,7 +845,7 @@ export async function selectAncestryBackgroundClass({
  * @param {{type: string, level: number, candidates: {name: string, level: number}[]}[]} args.slots
  * @returns {Promise<{picks: {slot: number, name: string}[], usage: object}>}
  */
-export async function selectFeats({ concept, slots, onProgress }) {
+export async function selectFeats({ concept, slots, onProgress, signal }) {
   const encoded = encodeFeatCandidateSlots(slots);
   const catalogLines = encoded.catalog.map(({ id, name }) => `${id} | ${name}`).join("\n");
   const slotLines = encoded.slots.map((slot) =>
@@ -876,14 +869,14 @@ Include exactly one entry per slot number (1 to ${slots.length}). Never use an I
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.FEAT_SELECTION, system, user, onProgress
+    task: AI_TASK.FEAT_SELECTION, system, user, onProgress, signal
   });
   const picks = resolveEncodedFeatPicks(encoded, parsed.picks);
   return { picks, usage };
 }
 
 /** Choose a small set of class-like creature feats from an issued catalog. */
-export async function selectCreatureFeats({ concept, candidates, onProgress }) {
+export async function selectCreatureFeats({ concept, candidates, onProgress, signal }) {
   const maximum = Math.min(Math.max(concept?.feats?.length ?? 0, 0), 3);
   if (!maximum || !candidates.length) return { feats: [], usage: null };
   const catalog = candidates.map((candidate) => `${candidate.id} | ${candidate.name}`).join("\n");
@@ -900,7 +893,7 @@ Choose feats that fit the creature's role and tactics. Do not choose a feat more
     catalog
   ].filter((line) => line !== null).join("\n");
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.CREATURE_FEAT_SELECTION, system, user, onProgress
+    task: AI_TASK.CREATURE_FEAT_SELECTION, system, user, onProgress, signal
   });
   const seen = new Set();
   const feats = (Array.isArray(parsed.featIds) ? parsed.featIds : [])
@@ -918,7 +911,7 @@ Choose feats that fit the creature's role and tactics. Do not choose a feat more
 }
 
 /** Select published bestiary actions only from the issued action catalog. */
-export async function selectCreatureAbilities({ concept, candidates, onProgress }) {
+export async function selectCreatureAbilities({ concept, candidates, onProgress, signal }) {
   const maximum = Math.min(Math.max(concept?.specialAbilities?.length ?? 0, 0), 6);
   if (!maximum || !candidates.length) return { abilities: [], usage: null };
   const catalog = candidates.map((candidate) => `${candidate.id} | ${candidate.name}`).join("\n");
@@ -935,7 +928,7 @@ Choose the actions that fit the creature's role and tactics. Omit a proposed abi
     catalog
   ].filter((line) => line !== null).join("\n");
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.ABILITY_SELECTION, system, user, onProgress
+    task: AI_TASK.ABILITY_SELECTION, system, user, onProgress, signal
   });
   const seen = new Set();
   const abilities = (Array.isArray(parsed.abilityIds) ? parsed.abilityIds : [])
@@ -953,7 +946,7 @@ Choose the actions that fit the creature's role and tactics. Omit a proposed abi
 /** Select only opaque IDs from the builder's bounded, static choice catalog.
  * Real rule values and write destinations stay in the builder, never the AI.
  * Missing, invalid, or ambiguous answers are left for native PF2e dialogs. */
-export async function selectCharacterChoices({ concept, groups, onProgress }) {
+export async function selectCharacterChoices({ concept, groups, onProgress, signal }) {
   if (!groups.length) return { picks: [], usage: null };
   const localize = (text) => game.i18n.localize(String(text ?? ""));
   const catalog = groups.map((group) => ({
@@ -975,7 +968,7 @@ Use exact string IDs from the catalog. Each option must belong to that choice. R
     choices: catalog
   });
   const { data, usage } = await requestJSON({
-    task: AI_TASK.CHARACTER_CHOICES, system, user, onProgress
+    task: AI_TASK.CHARACTER_CHOICES, system, user, onProgress, signal
   });
   return { picks: validateChoicePicks(groups, data.picks), usage };
 }
@@ -1018,7 +1011,7 @@ function itemActivationDoc({ suggestedDamage, suggestedDC, effectDocs }) {
  * equipment compendium (item-builder.getUsageOptions()).
  * @returns {Promise<{concept: object, usage: object}>} raw concept JSON + token usage
  */
-export async function generateMagicItemConcept({ prompt, level, rarity, availableKinds, usageOptions, onProgress }) {
+export async function generateMagicItemConcept({ prompt, level, rarity, availableKinds, usageOptions, onProgress, signal }) {
   const kinds = (availableKinds ?? []).filter((k) => ITEM_EFFECT_DOCS[k]);
   const effectDocs = kinds.map((k) => `    ${ITEM_EFFECT_DOCS[k]}`).join("\n");
   const suggestedDamage = damageDiceForLevel(level);
@@ -1061,7 +1054,7 @@ Design guidance:
   ].join("\n");
 
   const { data, usage } = await requestJSON({
-    task: AI_TASK.MAGIC_ITEM_CONCEPT, system, user, onProgress
+    task: AI_TASK.MAGIC_ITEM_CONCEPT, system, user, onProgress, signal
   });
   return { concept: data, usage };
 }
@@ -1082,7 +1075,7 @@ Design guidance:
  * @returns {Promise<{concept: object, usage: object}>} raw concept JSON + token usage
  */
 export async function generateRunedItemConcept({
-  prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyTiers, secondaryTiers, onProgress
+  prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyTiers, secondaryTiers, onProgress, signal
 }) {
   const secondaryLabel = kind === "weapon" ? "striking" : "resilient";
   const baseList = baseCandidates.map((c) => {
@@ -1132,7 +1125,7 @@ Design guidance:
   ].join("\n");
 
   const { data, usage } = await requestJSON({
-    task: AI_TASK.RUNED_ITEM_CONCEPT, system, user, onProgress
+    task: AI_TASK.RUNED_ITEM_CONCEPT, system, user, onProgress, signal
   });
   return { concept: data, usage };
 }
@@ -1143,7 +1136,7 @@ Design guidance:
  * then runs through the normal single-creature pipeline.
  * @returns {Promise<{name: string, briefs: string[], usage: object}>} briefs indexed by slot
  */
-export async function designEncounter({ theme, partyLevel, slots, onProgress }) {
+export async function designEncounter({ theme, partyLevel, slots, onProgress, signal }) {
   const slotLines = slots.map((s, i) =>
     `Slot ${i + 1}: ${s.count} creature${s.count > 1 ? "s" : ""} of level ${s.level} (${s.role})`
   ).join("\n");
@@ -1162,7 +1155,7 @@ Respond with a single JSON object and nothing else:
   ].join("\n");
 
   const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.ENCOUNTER_DESIGN, system, user, onProgress
+    task: AI_TASK.ENCOUNTER_DESIGN, system, user, onProgress, signal
   });
   const briefs = Array.isArray(parsed.briefs) ? parsed.briefs.map((b) => String(b)) : [];
   return {
@@ -1187,8 +1180,8 @@ Respond with a single JSON object and nothing else:
  * @param {(p: {phase: "thinking"|"writing", tokens: number}) => void} [args.onProgress]
  * @returns {Promise<{content: string, usage: object}>}
  */
-async function requestCompletion({ task, system, user, onProgress, retryAttempt = 0 }) {
-  throwIfGenerationCancelled();
+async function requestCompletion({ task, system, user, onProgress, signal, retryAttempt = 0 }) {
+  throwIfGenerationCancelled(signal);
   // The client-scoped key is returned only when it was explicitly saved for
   // this exact normalized base URL. A world-level provider change can never
   // redirect a legacy or previously authorized key to another endpoint.
@@ -1232,9 +1225,9 @@ async function requestCompletion({ task, system, user, onProgress, retryAttempt 
 
   const idleSeconds = Math.max(10, Number(getSetting(SETTINGS.requestTimeout)) || 90);
   const controller = new AbortController();
-  const userSignal = generationAbortSignal;
+  const userSignal = signal;
   const onUserAbort = () => controller.abort();
-  if (userSignal?.aborted) throwIfGenerationCancelled();
+  if (userSignal?.aborted) throwIfGenerationCancelled(userSignal);
   userSignal?.addEventListener("abort", onUserAbort, { once: true });
   let idleTimer = null;
   const resetIdle = () => {

@@ -57,6 +57,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Validate release JSON
+        run: jq empty module.json lang/en.json
+
       - name: Check JavaScript syntax
         shell: bash
         run: |

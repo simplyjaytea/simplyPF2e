@@ -70,4 +70,52 @@ assert.equal(concept.activation.template, "condition");
 assert.ok(!concept.activation.params.duration.includes("<script>"), "AI-supplied duration must be HTML-escaped, never raw");
 assert.match(concept.activation.params.duration, /&lt;script&gt;/, "escaped duration should carry HTML entities instead");
 
+/* -------------------- runtime actor-name escaping regression -------------------- */
+
+const hostileActingName = '<img src=x onerror="acting">';
+const hostileTargetName = '<svg onload="target">';
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const messages = [];
+const flavors = [];
+const acting = {
+  name: hostileActingName,
+  items: [{ getFlag: () => ({ forgeId: "test-forge" }) }]
+};
+const target = {
+  name: hostileTargetName,
+  async increaseCondition() {}
+};
+globalThis.game = {
+  user: { character: acting, targets: new Set([{ actor: target }]) }
+};
+globalThis.canvas = { tokens: { controlled: [] } };
+globalThis.ui = { notifications: { warn() {} } };
+globalThis.ChatMessage = {
+  getSpeaker: () => ({}),
+  create: (message) => messages.push(message)
+};
+globalThis.CONFIG = { Dice: { rolls: [] } };
+globalThis.Roll = class {};
+
+const conditionCommand = await buildActivationCommand({
+  template: "condition", params: { conditionSlug: "frightened", value: 1, saveType: null, dc: null }
+}, { forgeId: "test-forge", itemName: "Test Item", itemLevel: 3 });
+await new AsyncFunction(conditionCommand)();
+assert.match(messages.at(-1).content, /&lt;svg onload=&quot;target&quot;&gt;/,
+  "target actor name must be escaped at ChatMessage construction time");
+assert.doesNotMatch(messages.at(-1).content, /<svg/, "raw target HTML must not reach chat content");
+
+globalThis.game.user.targets = new Set();
+globalThis.CONFIG.Dice.rolls = [class DamageRoll {
+  async evaluate() { return this; }
+  async toMessage({ flavor }) { flavors.push(flavor); }
+}];
+const healCommand = await buildActivationCommand({
+  template: "heal", params: { healDice: "2d8" }
+}, { forgeId: "test-forge", itemName: "Test Item", itemLevel: 3 });
+await new AsyncFunction(healCommand)();
+assert.match(flavors.at(-1), /&lt;img src=x onerror=&quot;acting&quot;&gt;/,
+  "acting actor name must be escaped at roll-flavor construction time");
+assert.doesNotMatch(flavors.at(-1), /<img/, "raw acting HTML must not reach roll flavor");
+
 console.log("macro/item-builder AI-text escaping check: all assertions passed");

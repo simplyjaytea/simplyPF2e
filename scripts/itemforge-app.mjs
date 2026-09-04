@@ -8,7 +8,7 @@ import {
   normalizeMagicItemConcept, buildMagicItemData, priceForLevel, getUsageOptions, describeEffect,
   describeActivation, MIN_ITEM_LEVEL, MAX_ITEM_LEVEL,
   getBaseItemCandidates, getPropertyRuneCandidates, getFundamentalRuneTiers,
-  normalizeRunedItemConcept, buildRunedItemData, SECONDARY_ADJECTIVE, RUNED_ITEM_KINDS
+  normalizeRunedItemConcept, buildRunedItem, SECONDARY_ADJECTIVE, RUNED_ITEM_KINDS
 } from "./item-builder.mjs";
 import { createActivationMacro } from "./macro-templates.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
@@ -61,6 +61,8 @@ export class ItemForgeApp extends SpfApp {
   /** Final, already-resolved item data for a RUNED (weapon/armor) concept — built at generation
    * time since its name/price/level all depend on real component documents. */
   #itemData = null;
+  /** PF2e-derived runed values for preview only; never persisted to source. */
+  #runedPreview = null;
   /** Effect kinds with no real exemplar in this world (set after first scan). */
   #unavailableKinds = null;
 
@@ -143,17 +145,17 @@ export class ItemForgeApp extends SpfApp {
     this.#readForm();
   }
 
-  /** Preview context for a runed weapon/armor concept (built from #itemData). */
+  /** Preview context for a runed weapon/armor concept from the same resolution pass. */
   #buildRunedPreviewContext() {
-    if (!this.#itemData) return null;
+    if (!this.#itemData || !this.#runedPreview) return null;
     const data = this.#itemData;
     const runes = data.system.runes ?? {};
     const secondaryField = this.#kind === "weapon" ? "striking" : "resilient";
     const secondaryTier = runes[secondaryField] ?? 0;
     return {
-      concept: { name: data.name, level: data.system.level.value, description: this.#concept?.description ?? "" },
+      concept: { name: data.name, level: this.#runedPreview.level, description: this.#concept?.description ?? "" },
       traits: [data.system.traits.rarity !== "common" ? data.system.traits.rarity : null, ...data.system.traits.value].filter(Boolean),
-      price: `${(data.system.price.value.gp ?? 0).toLocaleString()} gp`,
+      price: `${this.#runedPreview.priceGp.toLocaleString()} gp`,
       runed: true,
       potency: runes.potency ?? 0,
       secondary: secondaryTier ? SECONDARY_ADJECTIVE[this.#kind][secondaryTier] : null,
@@ -237,7 +239,7 @@ export class ItemForgeApp extends SpfApp {
   }
 
   async #generateWondrous() {
-    this._beginProgress([
+    const signal = this._beginProgress([
       ["templates", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressTemplates")],
       ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")],
       ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble")]
@@ -261,13 +263,14 @@ export class ItemForgeApp extends SpfApp {
         rarity: this.#input.rarity,
         availableKinds,
         usageOptions,
-        onProgress: (p) => this._onAIProgress(p)
+        onProgress: (p) => this._onAIProgress(p), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
 
       // 3. Normalize defensively and price from the empirical benchmark.
       await this._setStep("assemble");
       this.#itemData = null;
+      this.#runedPreview = null;
       this.#concept = normalizeMagicItemConcept(raw, {
         level: this.#input.level,
         rarity: this.#input.rarity,
@@ -292,10 +295,10 @@ export class ItemForgeApp extends SpfApp {
    * Generate a runed weapon/armor (item forge Phase 3). Every choice the AI
    * makes is picked from real compendium candidates harvested up front, and
    * the final name/price/level are all resolved from those real component
-   * documents at generation time — see item-builder.mjs's buildRunedItemData.
+   * documents at generation time — see item-builder.mjs's buildRunedItem.
    */
   async #generateRuned(kind) {
-    this._beginProgress([
+    const signal = this._beginProgress([
       ["templates", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressCandidates")],
       ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")],
       ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble")]
@@ -330,7 +333,7 @@ export class ItemForgeApp extends SpfApp {
         runeCandidates,
         potencyTiers: tiers.potencyTiers,
         secondaryTiers: tiers.secondaryTiers,
-        onProgress: (p) => this._onAIProgress(p)
+        onProgress: (p) => this._onAIProgress(p), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
 
@@ -342,7 +345,9 @@ export class ItemForgeApp extends SpfApp {
         kind, rarity: this.#input.rarity, baseCandidates, runeCandidates,
         potencyTiers: tiers.potencyTiers, secondaryTiers: tiers.secondaryTiers
       });
-      this.#itemData = await buildRunedItemData(this.#concept);
+      const built = await buildRunedItem(this.#concept);
+      this.#itemData = built.itemData;
+      this.#runedPreview = built.preview;
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
       if (err?.cancelled) console.warn(`${MODULE_ID} | runed item generation cancelled`);
@@ -350,6 +355,7 @@ export class ItemForgeApp extends SpfApp {
       this.#error = err.message;
       this.#concept = null;
       this.#itemData = null;
+      this.#runedPreview = null;
     } finally {
       this.#busy = false;
       this._finishRun();
@@ -387,6 +393,7 @@ export class ItemForgeApp extends SpfApp {
       }
       this.#concept = null;
       this.#itemData = null;
+      this.#runedPreview = null;
     } catch (err) {
       console.error(`${MODULE_ID} | item creation failed`, err);
       this.#error = err.message;
@@ -400,6 +407,7 @@ export class ItemForgeApp extends SpfApp {
     this.#readForm();
     this.#concept = null;
     this.#itemData = null;
+    this.#runedPreview = null;
     this.#error = null;
     this._tokenUsage = [];
     await this.render();

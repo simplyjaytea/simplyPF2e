@@ -83,7 +83,12 @@ function header({ forgeId, itemName, itemLevel }, params, extra = {}) {
   const lines = [
     `const MODULE_ID = ${JSON.stringify(MODULE_ID)};`,
     `const META = ${JSON.stringify({ forgeId, itemName, itemLevel })};`,
-    `const P = ${JSON.stringify(params ?? {})};`
+    `const P = ${JSON.stringify(params ?? {})};`,
+    // Generated macros execute independently of this module, so this fixed
+    // runtime helper is the final boundary before document names enter chat
+    // HTML or roll flavor. It deliberately does not touch already-escaped
+    // module-provided item/effect/duration strings.
+    `const escHtml = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;");`
   ];
   for (const [name, value] of Object.entries(extra)) {
     lines.push(`const ${name} = ${JSON.stringify(value)};`);
@@ -114,7 +119,7 @@ if (P.saveType && P.dc) {
       } else { throw new Error("no '" + P.saveType + "' save statistic on actor"); }
     } catch (e) {
       console.error(MODULE_ID + " | itemforge: save roll failed", e);
-      ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: t.actor }), content: t.actor.name + " must attempt a DC " + P.dc + " " + P.saveType + " save." });
+      ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: t.actor }), content: escHtml(t.actor.name) + " must attempt a DC " + P.dc + " " + P.saveType + " save." });
     }
   }
 }
@@ -156,17 +161,17 @@ try {
   const roll = await new DamageRoll("(" + P.healDice + ")[healing]").evaluate();
   await roll.toMessage({
     speaker: ChatMessage.getSpeaker({ actor: healActor }),
-    flavor: "<strong>" + META.itemName + "</strong> — healing " + healActor.name,
+    flavor: "<strong>" + META.itemName + "</strong> — healing " + escHtml(healActor.name),
     flags: { pf2e: { context: { type: "damage-roll" } } }
   });
 } catch (e) {
   console.error(MODULE_ID + " | itemforge: heal card failed, falling back to a plain roll", e);
   try {
     const roll = await new Roll(P.healDice).evaluate();
-    await roll.toMessage({ speaker: ChatMessage.getSpeaker({ actor: healActor }), flavor: META.itemName + ": heal " + healActor.name + " for the rolled amount." });
+    await roll.toMessage({ speaker: ChatMessage.getSpeaker({ actor: healActor }), flavor: META.itemName + ": heal " + escHtml(healActor.name) + " for the rolled amount." });
   } catch (e2) {
     console.error(MODULE_ID + " | itemforge: plain heal roll failed", e2);
-    ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: healActor }), content: META.itemName + ": heal " + healActor.name + " for " + P.healDice + "." });
+    ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: healActor }), content: META.itemName + ": heal " + escHtml(healActor.name) + " for " + P.healDice + "." });
   }
 }
 `;
@@ -202,13 +207,13 @@ for (const t of targets) {
           // save-negates effect into an always-hit one. Degrade the same way
           // as a failed API call: tell the table to adjudicate it themselves.
           console.warn(MODULE_ID + " | itemforge: could not read the save's degree of success; skipping auto-apply so the table can adjudicate manually");
-          ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: tActor }), content: tActor.name + " attempted a DC " + P.dc + " " + P.saveType + " save (result unclear to the macro) — apply " + P.conditionSlug + valueText + durationText + " manually if it failed." });
+          ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: tActor }), content: escHtml(tActor.name) + " attempted a DC " + P.dc + " " + P.saveType + " save (result unclear to the macro) — apply " + P.conditionSlug + valueText + durationText + " manually if it failed." });
           applies = false;
         }
       } else { throw new Error("no '" + P.saveType + "' save statistic on actor"); }
     } catch (e) {
       console.error(MODULE_ID + " | itemforge: condition save roll failed", e);
-      ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: tActor }), content: tActor.name + " must attempt a DC " + P.dc + " " + P.saveType + " save; on a failure, apply " + P.conditionSlug + valueText + durationText + "." });
+      ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: tActor }), content: escHtml(tActor.name) + " must attempt a DC " + P.dc + " " + P.saveType + " save; on a failure, apply " + P.conditionSlug + valueText + durationText + "." });
       applies = false;
     }
   }
@@ -219,10 +224,10 @@ for (const t of targets) {
     } else if (typeof tActor.toggleCondition === "function") {
       await tActor.toggleCondition(P.conditionSlug);
     } else { throw new Error("no condition API on actor"); }
-    ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: acting }), content: "<strong>" + META.itemName + "</strong>: applied " + P.conditionSlug + valueText + durationText + " to " + tActor.name + "." });
+    ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: acting }), content: "<strong>" + META.itemName + "</strong>: applied " + P.conditionSlug + valueText + durationText + " to " + escHtml(tActor.name) + "." });
   } catch (e) {
     console.error(MODULE_ID + " | itemforge: condition application failed", e);
-    ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: acting }), content: "<strong>" + META.itemName + "</strong>: apply " + P.conditionSlug + valueText + durationText + " to " + tActor.name + " manually." });
+    ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: acting }), content: "<strong>" + META.itemName + "</strong>: apply " + P.conditionSlug + valueText + durationText + " to " + escHtml(tActor.name) + " manually." });
   }
 }
 `;
@@ -253,10 +258,10 @@ const effectData = {
 };
 try {
   await acting.createEmbeddedDocuments("Item", [effectData]);
-  ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: acting }), content: "<strong>" + acting.name + "</strong> activates <strong>" + META.itemName + "</strong>: " + P.effectName + "." });
+  ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: acting }), content: "<strong>" + escHtml(acting.name) + "</strong> activates <strong>" + META.itemName + "</strong>: " + P.effectName + "." });
 } catch (e) {
   console.error(MODULE_ID + " | itemforge: selfBuff effect creation failed", e);
-  ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: acting }), content: "<strong>" + META.itemName + "</strong>: apply <em>" + P.effectName + "</em> to " + acting.name + " manually. " + (P.description || "") });
+  ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: acting }), content: "<strong>" + META.itemName + "</strong>: apply <em>" + P.effectName + "</em> to " + escHtml(acting.name) + " manually. " + (P.description || "") });
 }
 `;
 

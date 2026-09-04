@@ -263,12 +263,14 @@ export function normalizeRunedItemConcept(raw, { kind, rarity, baseCandidates, r
 /**
  * Assemble the Foundry item data for a normalized runed-item concept: the
  * REAL base item document, with system.runes set from the chosen tiers, a
- * price that is the exact sum of every real component's own price, a level
- * that is the max level among them, and a name built from the standard PF2e
+ * transient preview price from its real rune components, a transient preview
+ * level that is the max level among base/rune documents, and
+ * a name built from the standard PF2e
  * "+N [secondary] [property runes] [base name]" convention.
- * @returns {Promise<object>} plain item data ready for Item.create()
+ * @returns {Promise<{itemData: object, preview: {priceGp: number, level: number}}>}
+ * source data for Item.create() plus derived preview metadata
  */
-export async function buildRunedItemData(concept) {
+export async function buildRunedItem(concept) {
   const packs = getPacksFor("equipment");
 
   const baseEntry = await findEntry(packs, concept.baseItemName, (e) => e.type === concept.kind);
@@ -291,8 +293,6 @@ export async function buildRunedItemData(concept) {
   }
 
   const data = toItemData(baseDoc);
-  const baseGp = priceToGp(data.system.price?.value);
-
   data.system.runes = {
     ...(data.system.runes ?? {}),
     potency: concept.potency,
@@ -300,21 +300,23 @@ export async function buildRunedItemData(concept) {
     property: propertyDocs.map((d) => propertyRuneKey(d.name))
   };
 
+  // PF2e 8.4.1 computePrice() omits an ordinary nonspecific base item's
+  // price whenever it has rune value. Keep its cloned source price untouched
+  // for system preparation, but preview only the resolved rune components.
   const gp = Math.round(
-    baseGp
-    + (potencyDoc ? priceToGp(potencyDoc.system.price?.value) : 0)
+    (potencyDoc ? priceToGp(potencyDoc.system.price?.value) : 0)
     + (secondaryDoc ? priceToGp(secondaryDoc.system.price?.value) : 0)
     + propertyDocs.reduce((sum, d) => sum + priceToGp(d.system.price?.value), 0)
   );
-  data.system.price = { value: { gp } };
-
   const level = Math.max(
     data.system.level?.value ?? 0,
     potencyDoc?.system.level?.value ?? 0,
     secondaryDoc?.system.level?.value ?? 0,
     ...propertyDocs.map((d) => d.system.level?.value ?? 0)
   );
-  data.system.level = { value: level };
+  // Preserve the cloned base source values. PF2e physical-item preparation
+  // derives the runed totals, so the module must never overwrite these with
+  // its transient preview values.
 
   const nameParts = [`+${concept.potency}`];
   if (concept.secondaryTier) nameParts.push(SECONDARY_ADJECTIVE[concept.kind][concept.secondaryTier]);
@@ -338,7 +340,7 @@ export async function buildRunedItemData(concept) {
   paragraphs.push(`<hr /><p><strong>${game.i18n.localize("SIMPLYPF2E.ItemForge.RunesHeading")}</strong> ${runeSummary}.</p>`);
   data.system.description = { value: paragraphs.join("\n") };
 
-  return data;
+  return { itemData: data, preview: { priceGp: gp, level } };
 }
 
 /* -------------------- grounded usage strings -------------------- */
