@@ -670,11 +670,9 @@ export class GeneratorApp extends SpfApp {
         this.#concept.focusSpells = [];
       }
       // Gate on the SAME condition the step list above was built from — the
-      // "spells" step key only exists in progress.steps when allowSpellcasting
-      // was true. Calling _setStep with a key that isn't in that list left every
-      // step "reached: false" and marked them all "done", pushing percent past
-      // 100%; this used to be reachable when allowSpellcasting was false but a
-      // non-compliant model returned spellcasting anyway.
+      // "spells" step key only exists when allowSpellcasting was true.
+      // applyStep no-ops on a missing key, but we still skip the call so the
+      // UI does not leave a phantom spells step active.
       if (this.#input.allowSpellcasting && this.#concept.spellcasting) await this._setStep("spells");
       await this.#refineSpells(this.#concept);
       if (this.#concept.specialAbilities.length) await this._setStep("abilities");
@@ -955,10 +953,7 @@ export class GeneratorApp extends SpfApp {
       // PC concept carries the same fields they read (blurb/description/
       // traits/strikes/equipment/loot/level/name/rarity).
       // Gate on the SAME condition the step list above was built from, same
-      // reasoning as the NPC pipeline: calling _setStep with a "spells" key
-      // that isn't in progress.steps (when allowSpellcasting was false) left
-      // every step "reached: false" and marked them all "done", pushing
-      // percent past 100%.
+      // as the NPC pipeline: only call _setStep("spells") when that key exists.
       if (this.#input.allowSpellcasting && concept.spellcasting) await this._setStep("spells");
       await this.#refineSpells(concept);
 

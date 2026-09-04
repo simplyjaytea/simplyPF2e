@@ -52,6 +52,13 @@ const finiteNumber = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+/** Profile completion budget for a task, before user-ceiling / retry expansion. */
+export function taskMaxTokens(task) {
+  const profile = TASK_PROFILES[task];
+  if (!profile) throw new TypeError(`Unknown AI task profile: ${String(task)}`);
+  return profile.maxTokens;
+}
+
 /** Resolve effective completion options, honoring user settings as ceilings. */
 export function completionOptionsFor(task, {
   configuredTemperature,

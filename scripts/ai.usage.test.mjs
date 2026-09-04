@@ -4,6 +4,7 @@
 // Run: node scripts/ai.usage.test.mjs
 import assert from "node:assert/strict";
 import { SETTINGS } from "./settings.mjs";
+import { estimateTokens } from "./tokens.mjs";
 
 const settings = new Map([
   [SETTINGS.apiBaseUrl, "http://localhost:11434/v1"],
@@ -157,16 +158,13 @@ try {
     },
     tradition: "primal"
   });
-  const estimateTokens = (chars) => Math.max(1, Math.round(chars / 4));
   const estimatedBodies = requestBodies.slice(estimatedStart);
   const expectedPrompt = estimatedBodies.reduce(
-    (sum, body) => sum + estimateTokens(body.messages.reduce(
-      (chars, message) => chars + message.content.length, 0
-    )),
+    (sum, body) => sum + estimateTokens(body.messages.map((message) => message.content).join("")),
     0
   );
-  const expectedCompletion = estimateTokens('{"keywords":["smoke"'.length)
-    + estimateTokens('{"keywords":["smoke","concealment"]}'.length);
+  const expectedCompletion = estimateTokens('{"keywords":["smoke"')
+    + estimateTokens('{"keywords":["smoke","concealment"]}');
   assert.deepEqual(
     estimatedResult.usage,
     {
@@ -588,6 +586,36 @@ try {
     messageOnlyStream,
     { prompt: 3, completion: 2, total: 5, estimated: false },
     "SSE chunks that put JSON on message.content instead of delta.content must still parse"
+  );
+
+  const lateUsageTicks = [];
+  providerReplies.push({
+    rawBody: [
+      `data: ${JSON.stringify({ choices: [{ delta: { content: '{"keywords":["late"' } }] })}`,
+      `data: ${JSON.stringify({
+        choices: [{ delta: { content: ',"usage"]}' }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 9, completion_tokens: 6, total_tokens: 15 }
+      })}`,
+      "data: [DONE]"
+    ].join("\n\n"),
+    contentType: "text/event-stream"
+  });
+  const lateUsage = await chooseSpellFocus({
+    concept: {
+      name: "Late Counter",
+      level: 3,
+      blurb: "A caster whose usage arrives last",
+      description: "Keeps the live counter honest when usage is delayed.",
+      traits: ["humanoid"]
+    },
+    tradition: "occult",
+    onProgress: (p) => lateUsageTicks.push(p)
+  });
+  assert.deepEqual(lateUsage.keywords, ["late", "usage"]);
+  assert.deepEqual(lateUsage.usage, { prompt: 9, completion: 6, total: 15, estimated: false });
+  assert.ok(
+    lateUsageTicks.some((tick) => tick.exact && tick.tokens === 6 && tick.phase === "writing"),
+    "late stream usage must emit one exact writing tick without replacing the parse path"
   );
 
   const retryStart = requestBodies.length;

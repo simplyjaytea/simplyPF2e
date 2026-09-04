@@ -6,16 +6,15 @@
       value, silently discarding the GM's saved party size.
    2. The allowSpellcasting toggle (~line 490): enforced only in the AI
       prompt, so a non-compliant model output could ship a caster even when
-      disallowed, AND could make the progress-step accounting call
-      `_setStep("spells")` for a key that was never added to `progress.steps`
-      when allowSpellcasting was false — app-base.mjs's _setStep leaves every
-      step "reached: false" in that case, marking them ALL "done" and pushing
-      percent past 100%.
+      disallowed. The generator still only calls `_setStep("spells")` when
+      that key was added to `progress.steps`; applyStep also no-ops on a
+      missing key so a stray call cannot mark every step done.
    Both pieces of logic are ported here without the Foundry Application
    class/DOM/game.i18n, mirroring generator-app.matchSummary.test.mjs's seam
    technique. Keep in sync manually with generator-app.mjs.
    Run: node scripts/generator-app.uistate.test.mjs */
 import assert from "node:assert/strict";
+import { applyStep, createProgress, progressPercent } from "./progress.mjs";
 
 // --- 1. partySize fallback, ported from #readForm (generator-app.mjs) ---
 // `partySizeEl` stands in for `form.querySelector('[name="partySize"]')`,
@@ -83,32 +82,43 @@ function shouldSetSpellsStep(concept, allowSpellcasting) {
   assert.equal(shouldSetSpellsStep(concept, true), false, "the 'spells' step must not fire when the concept has no spellcasting");
 }
 
-// --- 3. _setStep's "unknown key marks everything done" hazard, ported from
-// app-base.mjs, to document why (2) matters: calling _setStep with a key
-// that was never added to progress.steps must never be exercised by the
-// caller above, because when it IS exercised, every step is marked "done"
-// and percent can exceed 100.
-function setStep(steps, key) {
-  let reached = false;
-  for (const step of steps) {
-    if (step.key === key) { step.state = "active"; reached = true; }
-    else { step.state = reached ? "pending" : "done"; }
-  }
-  const done = steps.filter((s) => s.state === "done").length;
-  return Math.round(((done + 0.5) / steps.length) * 100);
-}
+// --- 3. Unknown progress keys must not mark every step done ---
+// Callers still only pass keys that exist in progress.steps (see (2)), and
+// applyStep itself now no-ops on a missing key so a stray call cannot
+// overrun 100%.
 
 {
-  // Steps list built as if allowSpellcasting were false: "spells" was never added.
-  const steps = [{ key: "concept" }, { key: "equipment" }, { key: "loot" }, { key: "match" }];
-  const percent = setStep(steps, "spells");
-  assert.ok(percent > 100, "calling _setStep with a key absent from progress.steps overruns 100% (the bug this fix prevents)");
+  const progress = createProgress([
+    ["concept", "Concept"],
+    ["equipment", "Equipment"],
+    ["loot", "Loot"],
+    ["match", "Match"]
+  ]);
+  assert.equal(applyStep(progress.steps, "spells"), false);
+  assert.ok(progress.steps.every((s) => s.state === "pending"));
+  assert.equal(
+    progressPercent({ steps: progress.steps, activeKey: "spells", streamFrac: 1, floor: 12 }),
+    12,
+    "a key absent from progress.steps must leave percent unchanged"
+  );
 }
 {
-  // With the enforcement fix, "spells" is only ever passed when it's in the list.
-  const steps = [{ key: "concept" }, { key: "spells" }, { key: "equipment" }, { key: "loot" }, { key: "match" }];
-  const percent = setStep(steps, "spells");
-  assert.ok(percent <= 100, "calling _setStep with a key present in progress.steps must stay within 100%");
+  const progress = createProgress([
+    ["concept", "Concept"],
+    ["spells", "Spells"],
+    ["equipment", "Equipment"],
+    ["loot", "Loot"],
+    ["match", "Match"]
+  ]);
+  assert.equal(applyStep(progress.steps, "spells"), true);
+  const percent = progressPercent({
+    steps: progress.steps,
+    activeKey: "spells",
+    streamFrac: 0.5,
+    floor: 0
+  });
+  assert.ok(percent <= 99, "calling applyStep with a key present in progress.steps must stay within the bar");
+  assert.ok(percent >= 1, "an active known step must show progress");
 }
 
 console.log("generator-app.uistate.test.mjs: all partySize fallback and spellcasting-toggle assertions passed");

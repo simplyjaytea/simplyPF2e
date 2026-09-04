@@ -282,12 +282,15 @@
       "Loot": "Loot selection",
       "LootReroll": "Loot reroll",
       "Thinking": "{step}: the model is thinking… (~{tokens} tokens of reasoning)",
-      "Writing": "{step}: receiving… (~{tokens} tokens)"
+      "Writing": "{step}: receiving… (~{tokens} tokens)",
+      "ThinkingExact": "{step}: the model is thinking… ({tokens} tokens of reasoning)",
+      "WritingExact": "{step}: receiving… ({tokens} tokens)"
     },
     "Tokens": {
       "Heading": "Token usage",
       "Step": "{prompt} in, {completion} out — {total} tokens",
-      "StepEstimated": "≈ {total} tokens (the provider sent no usage data)",
+      "StepEstimated": "≈ {total} tokens (estimated)",
+      "StepTotal": "{total} tokens",
       "Total": "Total: {total} tokens",
       "TotalEstimated": "Total: ≈ {total} tokens"
     },
