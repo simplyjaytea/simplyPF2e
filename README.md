@@ -54,9 +54,9 @@ Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.mod
 | **Encounter** | Theme plus party level/size/threat → XP budget, roster, and a full creature pipeline per member. |
 | **Character** | Real Ancestry/Background/Class items and feat slots. The pf2e system computes AC/HP/saves. |
 
-**Generate** validates and creates in one pass. **Preview Plan** runs the same no-write plan first. The **dice** button sits beside Generate in every mode: it ignores the typed prompt, rolls a local surprise brief, and runs Preview Plan. Cancel aborts an in-flight generation (not a Foundry write already in progress).
+**Generate** validates and creates in one pass. **Preview Plan** runs the same no-write plan first. The **dice** button sits beside Generate in every mode: it ignores the typed prompt, rolls a local surprise brief, and runs Preview Plan. Cancel aborts an in-flight generation (not a Foundry write already in progress). Mode-by-mode depth is under [Mode details](#mode-details).
 
-Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity. **Generate** is the quickstart; [Mode details](#mode-details) has the depth for Monster, NPC, Encounter, and Character.
+Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity.
 
 ## Status
 
@@ -64,7 +64,7 @@ Open **Advanced options** for a preset, rarity, treasure amount, and spellcastin
 | --- | --- |
 | **NPCs & monsters** | Stable. The oldest, most battle-tested path. |
 | **Encounter mode** | Stable. |
-| **Player Character mode** | Fighter stable; Rogue & Investigator offered — live grant-chain QA pending. |
+| **Player Character mode** | Released. **Fighter** is the stable complete-only path; **Rogue** and **Investigator** are offered too, with live grant-chain QA still pending. Sanity-check a generated character's numbers on its sheet before play. |
 | **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons stay hidden; open it from the console (see [Item forge](#item-forge)). |
 
 ## What's new
