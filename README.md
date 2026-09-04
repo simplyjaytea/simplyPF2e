@@ -66,7 +66,7 @@ Open **Advanced options** for a preset, rarity, treasure amount, and spellcastin
 | **Encounter mode** | Stable. |
 | **Presets** | **Standard** lists the 23 Remaster PF2e classes as flavor guides. **Custom** appears only when this world has saved presets. Magus, Witch, and the other Standard classes do not finish complete-only Characters. |
 | **Player Character mode** | Released. Complete-only still finishes **Fighter**, **Rogue**, and **Investigator** (Rogue/Investigator grant-chain live QA pending). Standard Magus/Witch/etc. presets are flavor only. Sanity-check a generated character's numbers on its sheet before play. |
-| **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons stay hidden; open it from the console (see [Item forge](#item-forge)). |
+| **Item forge** | Core flows live-verified on Foundry 14 / PF2e 8.5: cancellation isolation, runed sheet parity, and generated-macro escaping. GMs open it from the Items directory; the new entry point's post-release click check is pending. |
 
 ## What's new
 
@@ -124,7 +124,7 @@ After creation, the generator shows a dismissible snapshot of resulting skill ra
 
 ### Item forge
 
-> The UI buttons are hidden while this is unverified in a live game. A GM can open it from the browser console with `game.modules.get("simplypf2e").api.openItemForge()`; player calls are rejected.
+GMs can open the forge from the **Item Forge** button in the Items directory. The same GM-only entry point is available from the browser console with `game.modules.get("simplypf2e").api.openItemForge()`; player calls are rejected.
 
 Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rarity, and **Generate**.
 
@@ -193,14 +193,14 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 - The benchmark tables were transcribed by hand from GM Core. If a value disagrees with the book, please open an issue.
 - The rarity cap covers ancestry/background/heritage only — feats, spells and equipment aren't filtered by it yet.
 
-**Not yet live-tested** (built, reviewed, and verified against the real pf2e system source, but not yet run in an actual game)
+**Remaining live-acceptance gaps** (built, reviewed, and source-verified; the cases below still need actual-game coverage)
 
 - **Rogue and Investigator** complete-only creation, including racket/methodology grant chains on a live sheet.
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
 - **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend. Its eventual slots are wired to PF2e's distinct `archetype-<level>` group.
 - **Spontaneous spell-slot counts** for high-level PC casters are derived from the standard progression rather than copied from a verified table. Check a high-level caster's slots against Player Core before trusting them.
-- **The item forge**, all three phases. If an item looks right in the preview but misbehaves on a sheet, that's the first thing to check. Its rune path has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
-- **Activated-item macros** lean on PF2e system APIs that can change between versions. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.
+- **Item Forge coverage beyond the accepted paths.** A passive wondrous item, runed weapon/armor sheet parity, cancellation isolation, and generated healing/condition macro escaping have live evidence. The full passive-effect and activation matrix does not. Its rune path also has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
+- **Remaining activated-item macro paths** lean on PF2e system APIs that can change between versions. Damage, self-buff, and fallback branches still need live coverage. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.
 
 ## Roadmap
 
