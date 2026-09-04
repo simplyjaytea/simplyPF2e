@@ -6,6 +6,7 @@
  */
 
 import { SETTINGS, getSetting } from "./settings.mjs";
+import { featPrerequisitesMet } from "./pc-prerequisites.mjs";
 import { slugify } from "./text.mjs";
 
 export const CATEGORIES = [
@@ -781,9 +782,13 @@ export function getHeritageCandidates(maxRarity) {
  * @param {string} [args.category]   "ancestry"|"class"|"skill"|"general"
  * @param {string[]} [args.traits]   at least one must appear on the feat
  * @param {string[]} [args.preferredNames] exact legal first-draft picks kept before sampling
+ * @param {boolean} [args.requireNoPrerequisites] empty-array gate when no staged context is supplied
+ * @param {object} [args.prerequisiteContext] staged-actor snapshot from `stagedActorContext()`
  * @returns {Promise<{name: string, level: number, traits: string[]}[]>} sorted by level then name
  */
-export async function getFeatCandidates({ level, category, traits = [], preferredNames = [], requireNoPrerequisites = false } = {}) {
+export async function getFeatCandidates({
+  level, category, traits = [], preferredNames = [], requireNoPrerequisites = false, prerequisiteContext = null
+} = {}) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("feats")) {
@@ -793,11 +798,13 @@ export async function getFeatCandidates({ level, category, traits = [], preferre
       if (entry.type !== "feat") continue;
       if ((entry.system?.level?.value ?? 0) > level) continue;
       if (category && entry.system?.category !== category) continue;
-      // PF2e exposes prerequisite text as authored strings, not a general
-      // actor eligibility predicate. Complete-only PC catalogs therefore
-      // accept only an explicit empty list until a staged evaluator exists;
-      // callers that build NPC/legacy lists keep the prior behavior.
-      if (requireNoPrerequisites && !(Array.isArray(entry.system?.prerequisites?.value)
+      // PF2e stores prerequisite text as authored strings, not an eligibility
+      // API. Complete-only catalogs evaluate that text against a staged actor
+      // when one is supplied; otherwise they still accept only an explicit
+      // empty list. NPC/legacy callers omit both flags and stay permissive.
+      if (prerequisiteContext) {
+        if (!featPrerequisitesMet(entry, prerequisiteContext)) continue;
+      } else if (requireNoPrerequisites && !(Array.isArray(entry.system?.prerequisites?.value)
         && entry.system.prerequisites.value.length === 0)) continue;
       const entryTraits = entry.system?.traits?.value ?? [];
       if (traits.length && !traits.some((t) => entryTraits.includes(t))) continue;

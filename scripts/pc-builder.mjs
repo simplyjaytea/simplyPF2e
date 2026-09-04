@@ -12,6 +12,7 @@ import { SETTINGS, getSetting } from "./settings.mjs";
 import { CORE_SKILLS, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
 import { stageClassPaths } from "./class-paths.mjs";
+import { stagedActorContext } from "./pc-prerequisites.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
@@ -282,6 +283,21 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
 
   // Feat slots: candidates only (no picks yet — generator-app runs
   // selectFeats() and resolveFeatPicks() below once it has these lists).
+  // Ordinary prerequisites are display text; filter them against the staged
+  // ABC/grants/skills the plan already proves, never an empty-array shortcut.
+  const { ranks: provenSkills } = initialSkillTraining(classDoc.system, backgroundDoc.system);
+  const loreSkills = Object.fromEntries((Array.isArray(backgroundDoc.system?.trainedSkills?.lore)
+    ? backgroundDoc.system.trainedSkills.lore : [])
+    .filter((name) => typeof name === "string" && name.trim())
+    .map((name) => [slugify(name), 1]));
+  const prerequisiteContext = stagedActorContext({
+    level: concept.level,
+    ancestry: ancestryDoc,
+    heritage: heritageDoc,
+    background: backgroundDoc,
+    class: classDoc,
+    skills: { ...provenSkills, ...loreSkills }
+  });
   const ancestryTrait = slugify(ancestryDoc.name);
   const classTrait = slugify(classDoc.name);
   const featSlots = [];
@@ -292,7 +308,7 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
       : slot.type === "class" ? [classTrait] : [];
     let candidates = await getFeatCandidates({
       level: slot.level, category: slot.type, traits, preferredNames: concept.feats,
-      requireNoPrerequisites: true
+      prerequisiteContext
     });
     // Retry once without the trait filter before giving up: a valid slot
     // whose ancestry/class trait matched nothing at this level (odd content
@@ -302,7 +318,7 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
     if (!candidates.length && traits.length && !slot.archetype) {
       candidates = await getFeatCandidates({
         level: slot.level, category: slot.type, preferredNames: concept.feats,
-        requireNoPrerequisites: true
+        prerequisiteContext
       });
     }
     if (candidates.length) featSlots.push({ ...slot, candidates });
