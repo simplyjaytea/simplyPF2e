@@ -4,16 +4,20 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Current session — 2026-09-04
 
-- Public source is `origin/main` `e969e435` (PR #93) / **v0.3.5.53**. This session did not merge or release.
-- Active branch: `cursor/feat-prereq-staged-43e3` — PR **#94**. Do not merge to `main`.
+- Public source is `origin/main` `7573885` (PR #94) / **v0.3.5.54**. This session did not merge or release.
+- Active branch: `cursor/presets-remaster-04a6` — PR **#95**. Do not merge to `main`.
 - Shipped on this branch:
-  1. Fail-closed ordinary feat prerequisite evaluator (`scripts/pc-prerequisites.mjs`) against a staged ABC/grant/skill snapshot. Cites PF2e 8.4.1 `FeatSystemSchema.prerequisites.value` as display text (`src/module/item/feat/data.ts`); `FeatPF2e.embedHTMLString` joins the strings and `_onCreate` does not evaluate them. ABC grants come from `system.items` `{ uuid, img, name, level }` (`src/module/item/abc/data.ts`).
-  2. Complete-only catalogs pass that snapshot into `getFeatCandidates` instead of the empty-array-only gate. `requireNoPrerequisites` without a context remains empty-array. NPC/legacy callers stay permissive. Empty feat entitlements still block the completion manifest.
-  3. `COMPLETE_PC_CLASS_SLUGS` is now `fighter`, `rogue`, `investigator`. Wizard still excluded (spellbook/curriculum). Free Archetype level-2+ preflight refusal remains.
-  4. GM-facing README refresh (lead/install/setup/modes/status/what's new). No HANDOFF dump, no v0.3.5.43 recoverability prose.
-- Local verification: `node --check` on touched `.mjs`; all **63** `scripts/*.test.mjs` pass (evaluator cases live in `pc-prerequisites.test.mjs`; class registry in `pc-support.test.mjs`).
-- No VPS mutation. Live Foundry Rogue/Investigator grant-chain QA is still required. Item forge remains unverified.
+  1. Stock presets are the 23 Remaster PF2e classes (Alchemist through Wizard), verified against PF2e 8.4.1 `packs/pf2e/classes/*.json` (`publication.remaster === true`). Preset `id`s are module-local flavor keys, not pack UUIDs and not bound to `COMPLETE_PC_CLASS_SLUGS`.
+  2. Picker: "— No preset —" first, then Standard classes optgroup, then Custom presets optgroup only when world-saved presets exist.
+  3. Dropped thematic stock: cultivator, fire-mage, assassin, healer, tank, skill-monkey (prompts, examples, lang keys).
+  4. Trust line under the picker (`spf-preset-trust`, `aria-describedby`): Standard Magus/Witch/etc. are flavor guides; complete-only Character remains Fighter / Rogue / Investigator.
+  5. Fresh default stays None (injecting Alchemist into every monster would be bad UX). A vanished last-used id (retired thematic or deleted custom) falls back to first Standard (`alchemist`).
+  6. Manage Presets remains custom-only. Advanced row CSS: stacked label, stretch-aligned Manage button, clearer optgroup labels, no new motion.
+  7. README Status / Generate / What's new / Presets / PC mode state the flavor-guide vs complete-only split. No HANDOFF bleed.
+- 8.4.1 class pack also contains Animist, Exemplar, Commander, Guardian, Necromancer, Runesmith (`remaster: true`, later books). Standard follows JT's locked 23, not every JSON in that folder.
+- Local verification: `node --check` on touched `.mjs`; all **64** `scripts/*.test.mjs` (catalog + layout contracts cover optgroups, trust line, README).
+- No VPS mutation. Live Foundry picker QA is still required. Item forge remains unverified.
 
 ## Next step
 
-Independent schema review of this PR (Lexicon: cite 8.4.1 feat/abc prerequisite and grant field shapes; Sentinel: fail-closed boundaries, Rogue/Investigator widening, README truth). Do not merge to `main` from this agent. After publication, live-check a Rogue (Racket) and Investigator (Methodology) complete-only create, including class-path grants and feat-prerequisite filtering on the sheet. Parked after that: Free Archetype graph, Wizard spellbook/curriculum. Custom-provider/Tailnet harden stays cancelled.
+Independent review (Forge: catalog citation + flavor-key not pack; Lexicon only if someone later binds slugs/schema; Prism: README Status/Generate/What's new + picker optgroup/trust-line skim; Sentinel: fail-closed complete-only claim). Do not merge to `main` from this agent. After publication, live-check the Advanced preset picker (None / Standard / empty-Custom omitted / Custom when saved) and that a Magus preset still cannot complete-only a PC. Parked: Free Archetype graph, Wizard spellbook/curriculum, widening COMPLETE_PC.

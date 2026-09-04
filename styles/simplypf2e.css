@@ -335,14 +335,53 @@
   border: 0;
 }
 
+.simplypf2e .spf-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--spf-space-sm);
+  margin: 0 0 var(--spf-space-md);
+}
+
+.simplypf2e .spf-preset > label {
+  font-size: var(--spf-text-sm);
+  font-weight: 600;
+  opacity: 0.9;
+}
+
 .simplypf2e .spf-preset-controls {
   display: flex;
-  gap: var(--spf-space-xs);
-  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spf-space-sm);
+  align-items: stretch;
+  min-width: 0;
 }
 
 .simplypf2e .spf-preset-controls select {
-  flex: 1;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.simplypf2e .spf-preset-controls select optgroup {
+  font-style: normal;
+  font-weight: 600;
+}
+
+.simplypf2e .spf-preset-controls [data-action="managePresets"] {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spf-space-xs);
+  white-space: nowrap;
+}
+
+.simplypf2e .spf-preset-trust {
+  margin: 0;
+  max-width: 42rem;
+  font-size: var(--spf-text-sm);
+  line-height: 1.4;
+  opacity: 0.95;
 }
 
 .simplypf2e .spf-level-primary {

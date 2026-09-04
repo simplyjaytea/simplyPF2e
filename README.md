@@ -56,7 +56,7 @@ Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.mod
 
 **Generate** validates and creates in one pass. **Preview Plan** runs the same no-write plan first. The **dice** button sits beside Generate in every mode: it ignores the typed prompt, rolls a local surprise brief, and runs Preview Plan. Cancel aborts an in-flight generation (not a Foundry write already in progress). Mode-by-mode depth is under [Mode details](#mode-details).
 
-Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity.
+Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity. The preset menu is **— No preset —**, then **Standard classes** (the 23 Remaster PF2e classes as flavor guides), then **Custom presets** only when this world has saved any. Picking Magus or Witch there does not make those classes complete-only.
 
 ## Status
 
@@ -64,11 +64,13 @@ Open **Advanced options** for a preset, rarity, treasure amount, and spellcastin
 | --- | --- |
 | **NPCs & monsters** | Stable. The oldest, most battle-tested path. |
 | **Encounter mode** | Stable. |
-| **Player Character mode** | Released. **Fighter** is the stable complete-only path; **Rogue** and **Investigator** are offered too, with live grant-chain QA still pending. Sanity-check a generated character's numbers on its sheet before play. |
+| **Presets** | **Standard** lists the 23 Remaster PF2e classes as flavor guides. **Custom** appears only when this world has saved presets. Magus, Witch, and the other Standard classes do not finish complete-only Characters. |
+| **Player Character mode** | Released. Complete-only still finishes **Fighter**, **Rogue**, and **Investigator** (Rogue/Investigator grant-chain live QA pending). Standard Magus/Witch/etc. presets are flavor only. Sanity-check a generated character's numbers on its sheet before play. |
 | **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons stay hidden; open it from the console (see [Item forge](#item-forge)). |
 
 ## What's new
 
+- Advanced presets list the 23 Remaster classes under **Standard**, with world-saved **Custom** presets in their own group when any exist. Magus, Witch, and the rest are flavor guides; complete-only Character is still Fighter, Rogue, and Investigator.
 - Smoother progress (fills within each step) with Cancel, thinking vs writing, and a compact last-run token cost that keeps **≈** when the provider did not report usage.
 - Loot coins clone published PF2e currency items, so gold lands in the sheet's Currency section.
 - The dice button is on all four generator modes.
@@ -110,7 +112,7 @@ Describe a concept ("a grizzled dwarf ranger who hunts undead") and set a level 
 
 Nothing here is scale-word math. A PC is assembled from real Ancestry, Background and Class items plus feats at every level slot (ancestry/class/skill/general per the Core Rulebook cadence, including any feat the background itself grants — like Acolyte's *Student of the Canon*), ability boosts, and skill increases past Trained. The PF2e system then computes AC, HP, saves and proficiencies exactly as it would for a character built by hand.
 
-Complete one-click selection currently offers Fighter, Rogue, and Investigator. Rogue rackets and Investigator methodologies are chosen from enabled Class Features sources before the actor exists. Other classes are not widened just to produce a dialog-dependent or approximate build.
+Complete one-click selection currently offers Fighter, Rogue, and Investigator. Rogue rackets and Investigator methodologies are chosen from enabled Class Features sources before the actor exists. A **Standard** Magus or Witch preset only guides flavor and fighting style; it does not make those classes complete-only. Other classes are not widened just to produce a dialog-dependent or approximate build.
 
 Starting wealth buys real gear rather than turning into raw coin, and fundamental runes on weapons and armor are capped to what the character's level actually allows. Single-class builds only — no multiclass archetypes, and no pre-create screen for swapping individual picks (regenerate instead).
 
@@ -140,9 +142,9 @@ Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rar
 
 The preset dropdown shapes the *build* while your description drives the *flavor*. "Level 5 hobgoblin veteran" + Fighter gives a disciplined soldier; the same prompt + Barbarian gives a reckless brute.
 
-Eighteen built-ins: the twelve standard classes, plus six themes for concepts that don't map to one (Cultivator, Fire Mage, Assassin, Healer, Tank, Skill-Monkey). A preset can also carry defaults for rarity, spellcasting and Treasure amount.
+**Standard** is the 23 Remaster PF2e classes (Alchemist through Wizard), listed in their own menu group. They are flavor guides, not pack bindings, and they do not widen complete-only Character generation beyond Fighter, Rogue, and Investigator. **Custom** is a second group that appears only when this world has saved presets — the menu never shows an empty Custom group. A preset can also carry defaults for rarity, spellcasting and Treasure amount.
 
-- **Manage Presets** is the one place to create, edit, duplicate, export, or delete custom presets. It also offers Export All and Import. Export writes JSON you can hand to another GM; imports always get a fresh id so they never collide.
+- **Manage Presets** is the one place to create, edit, duplicate, export, or delete custom presets. Built-in Standard classes are not editable there. Export writes JSON you can hand to another GM; imports always get a fresh id so they never collide.
 
 The description placeholder cycles five example concepts per preset as inspiration.
 
