@@ -2,6 +2,15 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-05 — Post-release live QA for v0.3.5.56
+
+- Verified the public module **v0.3.5.56** in the user's logged-in world on Foundry **14.365** / PF2e **8.5.0**. The code audit's schema/source target was PF2e 8.4.1, so this is forward-runtime evidence rather than a replacement source review.
+- Cancellation isolation passed in both directions with concurrent Generator and Item Forge requests. Generator cancellation produced only the expected `simplypf2e | generation cancelled` warning while Forge completed. Forge cancellation re-enabled only Forge while Generator continued through later phases and reached its own fail-closed unresolved-equipment error. No wrong-request abort appeared in the console.
+- Runed-item prepared parity passed. `+1 Ghost Touch Longsword` was level 4 / 110 gp in preview and on its PF2e sheet; `+1 Slick Chain Mail` was level 5 / 205 gp in both. The armor description unexpectedly mentioned "Custom activation runes" after a no-activation prompt, but the item had only +1 potency and Slick and no activation/rule leak.
+- Macro runtime escaping passed twice using actor name `QA <b>Actor</b>`. A healing macro emitted literal markup text in roll flavor. A generated condition macro forced a Will failure, applied frightened 1, and emitted `applied frightened 1 for 1 round to QA <b>Actor</b>.` with the angle-bracket text preserved rather than rendered as HTML.
+- Preserved QA actors, tokens, world items, companion macros, and chat cards for inspection. The GM's temporary character assignment and token targets were restored. A discarded cleanup attempt used nonexistent `game.user.updateTokenTargets` and failed before mutation; the corrected per-token cleanup succeeded. Foundry/PF2e itself logged `_drawTargetArrows` `clear` errors during programmatic target setup while still targeting correctly.
+- Separate follow-up observations: one early creature preview displayed `Scroll of undefined (Rank 2)`, and the armor description contradicted the no-activation prompt. Neither invalidated the audited cancellation, macro-escaping, or runed-sheet fixes; both need focused triage before deciding whether to patch.
+
 ## 2026-09-05 — Audit fixes (local `codex/audit-fixes`)
 
 - Followed the audit finding set against public `origin/main` `eb779209` / **v0.3.5.55**, then published the combined fix as PR #96 / merge `220741b` / **v0.3.5.56** so only one main push and release occurred. No provider request, Foundry/VPS mutation, live QA, or change to the user-owned `.claude/` directory occurred.
