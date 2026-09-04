@@ -56,8 +56,8 @@ assert.equal(grouped.custom[0].selected, false);
 
 const lang = JSON.parse(await readFile(new URL("../lang/en.json", import.meta.url), "utf8"));
 const keys = lang.SIMPLYPF2E.Presets;
-assert.equal(keys.StandardGroup, "Standard");
-assert.equal(keys.CustomGroup, "Custom");
+assert.equal(keys.StandardGroup, "Standard classes");
+assert.equal(keys.CustomGroup, "Custom presets");
 assert.match(keys.FlavorGuide, /flavor guides only/i);
 assert.match(keys.FlavorGuide, /Fighter, Rogue, and Investigator/);
 assert.match(keys.FlavorGuide, /do not unlock that path/);
@@ -68,5 +68,12 @@ for (const preset of BUILT_IN_PRESETS) {
   const leaf = preset.name.slice("SIMPLYPF2E.Presets.".length);
   assert.equal(typeof keys[leaf], "string", `${preset.name} must exist in en.json`);
 }
+
+const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+assert.match(readme, /\*\*Standard\*\*.*23 Remaster/s);
+assert.match(readme, /\*\*Custom\*\*.*only when this world has saved presets/);
+assert.match(readme, /complete-only still finishes \*\*Fighter\*\*, \*\*Rogue\*\*, and \*\*Investigator\*/i);
+assert.match(readme, /flavor only/);
+assert.doesNotMatch(readme, /Cultivator|Fire Mage|Skill-Monkey|eighteen built-ins/i);
 
 console.log("presets.catalog.test.mjs: Remaster Standard catalog and picker grouping passed");

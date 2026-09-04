@@ -106,10 +106,10 @@
       <div class="spf-advanced-content">
         {{! One stable slot in every mode: presets guide every pipeline. Creation,
             duplication, export, and deletion live in the dedicated manager. }}
-        <div class="form-group spf-preset">
+        <div class="form-group spf-preset stacked">
           <label for="spf-generator-preset">{{localize "SIMPLYPF2E.Generator.Preset"}}</label>
           <div class="spf-preset-controls">
-            <select id="spf-generator-preset" name="preset">
+            <select id="spf-generator-preset" name="preset" aria-describedby="spf-generator-preset-trust">
               <option value="" {{#if nonePresetSelected}}selected{{/if}}>{{localize "SIMPLYPF2E.Presets.None"}}</option>
               <optgroup label="{{localize 'SIMPLYPF2E.Presets.StandardGroup'}}">
                 {{#each standardPresets}}
@@ -125,10 +125,10 @@
               {{/if}}
             </select>
             <button type="button" data-action="managePresets">
-              <i class="fa-solid fa-bookmark"></i> {{localize "SIMPLYPF2E.Presets.Manage"}}
+              <i class="fa-solid fa-bookmark" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Presets.Manage"}}
             </button>
           </div>
-          <p class="spf-hint">{{localize "SIMPLYPF2E.Presets.FlavorGuide"}}</p>
+          <p id="spf-generator-preset-trust" class="spf-hint spf-preset-trust" role="note">{{localize "SIMPLYPF2E.Presets.FlavorGuide"}}</p>
         </div>
         <div class="spf-row">
       {{! Stable shared column order in every mode: Level → Rarity (a cap in

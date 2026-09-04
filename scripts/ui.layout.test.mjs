@@ -235,8 +235,15 @@ assert.match(generator, /<optgroup label="\{\{localize 'SIMPLYPF2E\.Presets\.Sta
   "built-in Remaster classes must render in a Standard optgroup");
 assert.match(generator, /\{\{#if customPresets\.length\}\}[\s\S]*?<optgroup label="\{\{localize 'SIMPLYPF2E\.Presets\.CustomGroup'\}\}">/,
   "the Custom optgroup must be omitted when this world has no custom presets");
-assert.match(generator, /class="spf-hint">\{\{localize "SIMPLYPF2E\.Presets\.FlavorGuide"\}\}/,
-  "the picker must carry the complete-only flavor-guide trust line");
+assert.match(generator, /class="spf-hint spf-preset-trust" role="note"/,
+  "the picker must carry a readable complete-only flavor-guide trust line");
+assert.match(generator, /aria-describedby="spf-generator-preset-trust"/,
+  "the preset select must point at the trust line");
+assert.match(css, /\.simplypf2e \.spf-preset-trust\s*\{/, "preset trust line must have dedicated type, not a buried generic hint");
+assert.match(css, /\.simplypf2e \.spf-preset-controls\s*\{[^}]*align-items:\s*stretch/s,
+  "Manage Presets must stretch to the select height");
+assert.doesNotMatch(css, /\.simplypf2e \.spf-preset[\s\S]{0,800}(?:animation:|transition:)/,
+  "preset chrome must not add motion; prefers-reduced-motion stays a progress-only concern");
 assert.doesNotMatch(generator, /\{\{#each presets\}\}/,
   "the picker must not flatten Standard and Custom into one option list");
 assert.doesNotMatch(generator, /data-action="savePreset"|data-action="duplicatePreset"|data-action="deletePreset"/,
@@ -367,7 +374,7 @@ assert.match(
 //    guidance feeds all three pipelines, Random ignores it like the shared
 //    dice button always has).
 {
-  const presetAt = generator.indexOf('class="form-group spf-preset"');
+  const presetAt = generator.indexOf('class="form-group spf-preset stacked"');
   assert.ok(presetAt >= 0, "the preset row must exist");
   const before = generator.slice(Math.max(0, presetAt - 400), presetAt);
   assert.ok(

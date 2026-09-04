@@ -164,9 +164,9 @@
     },
     "Presets": {
       "None": "— No preset —",
-      "StandardGroup": "Standard",
-      "CustomGroup": "Custom",
-      "FlavorGuide": "Standard class presets are flavor guides only. Complete one-click Character generation still finishes Fighter, Rogue, and Investigator; Magus, Witch, and the other Standard classes do not unlock that path.",
+      "StandardGroup": "Standard classes",
+      "CustomGroup": "Custom presets",
+      "FlavorGuide": "Standard class presets are flavor guides only. Complete one-click Character generation still finishes Fighter, Rogue, and Investigator — Magus, Witch, and the other Standard classes do not unlock that path.",
       "Alchemist": "Alchemist",
       "Barbarian": "Barbarian",
       "Bard": "Bard",
