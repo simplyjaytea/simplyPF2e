@@ -56,7 +56,7 @@ Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.mod
 
 **Generate** validates and creates in one pass. **Preview Plan** runs the same no-write plan first. The **dice** button sits beside Generate in every mode: it ignores the typed prompt, rolls a local surprise brief, and runs Preview Plan. Cancel aborts an in-flight generation (not a Foundry write already in progress).
 
-Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity. Mode-specific notes for Monster, NPC, Encounter, and Character are under [Mode details](#mode-details).
+Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity. **Generate** is the quickstart; [Mode details](#mode-details) has the depth for Monster, NPC, Encounter, and Character.
 
 ## Status
 
@@ -64,12 +64,12 @@ Open **Advanced options** for a preset, rarity, treasure amount, and spellcastin
 | --- | --- |
 | **NPCs & monsters** | Stable. The oldest, most battle-tested path. |
 | **Encounter mode** | Stable. |
-| **Player Character mode** | Released. Complete one-click currently **offers Fighter, Rogue, and Investigator**. Rogue and Investigator still need live grant-chain QA — they are offered, not done. Sanity-check a generated character's numbers on its sheet before play. |
+| **Player Character mode** | Fighter stable; Rogue & Investigator offered — live grant-chain QA pending. |
 | **Item forge** | Built and reviewed, **never verified in a live game**. Its UI buttons stay hidden; open it from the console (see [Item forge](#item-forge)). |
 
 ## What's new
 
-- Generation progress bar (thinking vs writing), Cancel, and last-run token cost that keeps **≈** when usage is missing.
+- Smoother progress (fills within each step) with Cancel, thinking vs writing, and a compact last-run token cost that keeps **≈** when the provider did not report usage.
 - Loot coins clone published PF2e currency items, so gold lands in the sheet's Currency section.
 - The dice button is on all four generator modes.
 - Named connection bank: save more than one provider profile in this browser and switch from the generator header.
