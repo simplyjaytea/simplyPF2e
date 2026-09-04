@@ -6,7 +6,7 @@ Full session-by-session narrative, process notes, and the bug log. Not loaded by
 
 - JT asked for a random-gen button on every mode. Monster/NPC already shared `#onGenerateRandom`; Encounter had a duplicate `#onGenerateRandomEncounter`; Character had the pipeline (`#generatePC(true)` already accepted `isRandom`) but the template gated the button off because `randomBrief()` was creature-flavored.
 - One `spf-random-button` now sits in the generate row for all four modes. It always calls `#onGenerateRandom` → `#runGeneration(true, { create: false })`, so dice remains preview-only and still ignores the typed prompt. `randomBrief(mode)` keeps the creature sentence for Monster/NPC/Encounter and adds a lean person-oriented adventurer brief for Character (flavor words only; not class/ancestry picks). Mode-specific i18n tooltips; no Advanced-control randomization.
-- Local verification still pending at this note's write; live Foundry click-through of all four dice buttons is required. Branch + PR only; do not merge to `main`.
+- Local verification: `node --check` on touched `.mjs`; new `presets.randomBrief.test.mjs` plus `ui.layout.test.mjs` dice-row contract; all 60 `scripts/*.test.mjs` pass. Live Foundry click-through of all four dice buttons is required. Branch + PR only; do not merge to `main`.
 
 ## 2026-09-04 — Client-side AI connection bank
 

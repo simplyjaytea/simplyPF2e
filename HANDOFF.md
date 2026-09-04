@@ -8,6 +8,7 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 - Active branch: `cursor/unify-generator-dice-c13e`, created from that main tip.
 - Feature: one dice/random control on Monster, NPC, Encounter, and Character. Placement and styling are the existing `spf-random-button` in `spf-generate-row`. Dice ignores the typed prompt, rolls `randomBrief(mode)`, and runs `#runGeneration(true, { create: false })` — the same preview path as Preview Plan. Character uses a person-oriented adventurer brief; other modes keep the creature type × role × place × twist sentence. Encounter's extra `generateRandomEncounter` action is gone.
 - Tooltips are i18n keys (`RandomTooltip` / `RandomNpcTooltip` / `RandomEncounterTooltip` / `RandomCharacterTooltip`) via `randomTooltipKey`. No AI/number/schema changes; Advanced controls are not randomized.
+- Local verification: `node --check` on touched `.mjs`; all 60 `scripts/*.test.mjs` pass, including new `presets.randomBrief.test.mjs`. Independent review of the dice contract returned ship-ready.
 - No VPS mutation, no merge to `main`. Live Foundry QA still required: click dice in all four modes, confirm the typed prompt is ignored, Character does not receive a monster brief, and Generate/Preview Plan are unchanged.
 
 ## Next step
