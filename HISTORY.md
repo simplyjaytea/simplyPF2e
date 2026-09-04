@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-04 — Unify generator dice across four modes
+
+- JT asked for a random-gen button on every mode. Monster/NPC already shared `#onGenerateRandom`; Encounter had a duplicate `#onGenerateRandomEncounter`; Character had the pipeline (`#generatePC(true)` already accepted `isRandom`) but the template gated the button off because `randomBrief()` was creature-flavored.
+- One `spf-random-button` now sits in the generate row for all four modes. It always calls `#onGenerateRandom` → `#runGeneration(true, { create: false })`, so dice remains preview-only and still ignores the typed prompt. `randomBrief(mode)` keeps the creature sentence for Monster/NPC/Encounter and adds a lean person-oriented adventurer brief for Character (flavor words only; not class/ancestry picks). Mode-specific i18n tooltips; no Advanced-control randomization.
+- Local verification still pending at this note's write; live Foundry click-through of all four dice buttons is required. Branch + PR only; do not merge to `main`.
+
 ## 2026-09-04 — Client-side AI connection bank
 
 - JT needed to keep a working DeepSeek connection and a second custom OpenAI-compatible endpoint without re-entering URL/key/model each time. Added named connection profiles in a client-scoped `providerBank` setting (keys stay browser-local, never world-synced, never shown as plaintext in ordinary settings). Each profile stores display name, API root, model, key, and that profile's exact-URL binding.

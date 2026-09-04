@@ -266,15 +266,27 @@ const RANDOM_TWISTS = [
   "that hunts only at dusk", "hoarding treasure it cannot use", "fleeing something even worse",
   "far smarter than it looks", "stitched together from many creatures"
 ];
+const RANDOM_PC_ORIGINS = [
+  "dwarven", "elven", "gnomish", "goblin", "halfling", "human", "orc", "leshy"
+];
+const RANDOM_PC_ROLES = [
+  "mercenary", "exiled heir", "caravan guard", "disgraced duelist",
+  "village champion", "retired gladiator", "knight-errant", "dockside brawler",
+  "oathbound bodyguard", "battlefield veteran"
+];
 
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 /**
- * A fresh randomized creature brief for "Random" mode — a local dice roll
- * over creature type, combat role, home and twist so repeat generations
- * don't converge on the same ideas.
+ * A fresh local dice-roll brief. Monster/NPC/Encounter reuse the creature
+ * type × role × home × twist sentence; Character mode uses a person-oriented
+ * adventurer brief so the PC pipeline is not fed a monster concept. Flavor
+ * only — the module never treats these words as class or ancestry picks.
  */
-export function randomBrief() {
+export function randomBrief(mode = "monster") {
+  if (mode === "character") {
+    return `Invent an original ${pick(RANDOM_PC_ORIGINS)} ${pick(RANDOM_PC_ROLES)} from ${pick(RANDOM_PLACES)}, ${pick(RANDOM_TWISTS)}. Surprise us: avoid clichés, and give them one memorable personality hook.`;
+  }
   return `Invent an original ${pick(RANDOM_TYPES)} ${pick(RANDOM_ROLES)} from ${pick(RANDOM_PLACES)}, ${pick(RANDOM_TWISTS)}. Surprise us: avoid clichés, and give it one memorable signature ability.`;
 }
 

@@ -99,7 +99,7 @@ Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.mod
 
 Choose **Monster** for a creature-first combatant or **NPC** for a story-focused, combat-ready non-player character. Describe it and set level (−1 to 24), then click the mode's Generate action to create and open the sheet. Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Choose **Preview Plan** instead to review the same validated plan without writing to the world.
 
-The **dice button** rolls a surprise instead: it ignores the description and rolls a brief locally (creature type × combat role × home × twist — thousands of combinations), so every click is a genuinely new idea. Good for filling a dungeon room.
+The **dice button** sits beside Generate in every mode. It ignores the typed description and rolls a fresh local brief, then runs the same preview pipeline as **Preview Plan**. Monster, NPC, and Encounter roll creature type × combat role × home × twist; Character rolls a person-oriented adventurer brief. Every click is a new surprise.
 
 Each creature also gets GM support baked into its notes: a **read-aloud block** for theater of the mind, a **Recall Knowledge line** with the correct identification skill, a clickable check at the level- and rarity-based DC, and what a player learns on a success. **Art** is borrowed from the closest-matching bestiary creature, scored by shared creature-type traits, size and level.
 
@@ -111,7 +111,7 @@ The preview shows each member with count, level, role and key stats, plus the XP
 
 ### Player Character mode
 
-Describe a concept ("a grizzled dwarf ranger who hunts undead") and set a level (1–20). In **Advanced options**, optionally cap the **Max rarity** of the ancestry/background/heritage the AI may pick — capping at Uncommon rules out Rare options like Fetchling, so they're never even offered.
+Describe a concept ("a grizzled dwarf ranger who hunts undead") and set a level (1–20), or use the **dice button** to ignore the prompt and roll a local adventurer brief at that level. In **Advanced options**, optionally cap the **Max rarity** of the ancestry/background/heritage the AI may pick — capping at Uncommon rules out Rare options like Fetchling, so they're never even offered.
 
 Nothing here is scale-word math. A PC is assembled from real Ancestry, Background and Class items plus feats at every level slot (ancestry/class/skill/general per the Core Rulebook cadence, including any feat the background itself grants — like Acolyte's *Student of the Canon*), ability boosts, and skill increases past Trained. The PF2e system then computes AC, HP, saves and proficiencies exactly as it would for a character built by hand.
 

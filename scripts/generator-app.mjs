@@ -61,7 +61,6 @@ export class GeneratorApp extends SpfApp {
       generate: GeneratorApp.#onGenerate,
       previewPlan: GeneratorApp.#onPreviewPlan,
       generateRandom: GeneratorApp.#onGenerateRandom,
-      generateRandomEncounter: GeneratorApp.#onGenerateRandomEncounter,
       createActor: GeneratorApp.#onCreateActor,
       discard: GeneratorApp.#onDiscard,
       dismissCharacterReview: GeneratorApp.#onDismissCharacterReview,
@@ -163,7 +162,12 @@ export class GeneratorApp extends SpfApp {
       characterMode: this.#input.mode === "character",
       monsterMode: this.#input.mode === "monster",
       npcMode: this.#input.mode === "npc",
-      creatureMode: ["monster", "npc"].includes(this.#input.mode),
+      randomTooltipKey: {
+        monster: "SIMPLYPF2E.Generator.RandomTooltip",
+        npc: "SIMPLYPF2E.Generator.RandomNpcTooltip",
+        encounter: "SIMPLYPF2E.Generator.RandomEncounterTooltip",
+        character: "SIMPLYPF2E.Generator.RandomCharacterTooltip"
+      }[this.#input.mode] ?? "SIMPLYPF2E.Generator.RandomTooltip",
       levelMin: ["monster", "npc"].includes(this.#input.mode) ? -1 : 1,
       levelMax: ["monster", "npc"].includes(this.#input.mode) ? 24 : 20,
       threats: Object.keys(THREATS).map((key) => ({
@@ -572,17 +576,10 @@ export class GeneratorApp extends SpfApp {
     return this.#runGeneration(false, { create: false });
   }
 
-  /** The dice button: same pipeline, module-rolled surprise brief as prompt. */
+  /** The dice button in every mode: same preview pipeline, module-rolled
+   * surprise brief as the prompt. Ignores whatever the GM typed. */
   static async #onGenerateRandom() {
     return this.#runGeneration(true, { create: false });
-  }
-
-  /** The encounter mode dice button: forces a fresh random theme even if the
-   * GM already typed one, matching #onGenerateRandom's Single-mode behavior. */
-  static async #onGenerateRandomEncounter() {
-    this.#readForm();
-    if (!this.#assertGenerationReady()) return;
-    return this.#generateEncounter(true);
   }
 
   #assertGenerationReady() {
@@ -652,7 +649,7 @@ export class GeneratorApp extends SpfApp {
       const { concept: raw, usage } = await generateConcept({
         // Random mode rolls a fresh local brief each generation, so
         // Regenerate gives a genuinely different creature every time.
-        prompt: isRandom ? randomBrief() : this.#input.prompt,
+        prompt: isRandom ? randomBrief(this.#input.mode) : this.#input.prompt,
         level: this.#input.level,
         rarity: this.#input.rarity,
         allowSpellcasting: this.#input.allowSpellcasting,
@@ -748,8 +745,8 @@ export class GeneratorApp extends SpfApp {
     try {
       await this._setStep("design");
       // Random mode always rolls a fresh theme, even over a typed prompt —
-      // same contract as the Single-mode dice button (#onGenerateRandom).
-      const theme = isRandom ? randomBrief() : (this.#input.prompt.trim() || randomBrief());
+      // same contract as the other modes' dice button (#onGenerateRandom).
+      const theme = isRandom ? randomBrief(this.#input.mode) : (this.#input.prompt.trim() || randomBrief(this.#input.mode));
       const design = await designEncounter({
         theme,
         partyLevel,
@@ -869,7 +866,7 @@ export class GeneratorApp extends SpfApp {
     try {
       await this._setStep("concept");
       const { concept: raw, usage } = await generatePCConcept({
-        prompt: isRandom ? randomBrief() : this.#input.prompt,
+        prompt: isRandom ? randomBrief(this.#input.mode) : this.#input.prompt,
         level: this.#input.level,
         allowSpellcasting: this.#input.allowSpellcasting,
         // Stable preset slot, PC flavor: the guidance steers class/style

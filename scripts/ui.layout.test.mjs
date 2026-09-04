@@ -280,8 +280,38 @@ assert.match(
   "the forge must re-render when the kind switch changes"
 );
 
+// Dice: one control in the generate row for every mode. Encounter no longer
+// uses a separate action; Character is no longer gated off as creature-only.
+{
+  const rowAt = generator.indexOf('class="spf-generate-row"');
+  const fieldsetEnd = generator.indexOf("</fieldset>");
+  const row = generator.slice(rowAt, fieldsetEnd);
+  assert.ok(rowAt >= 0 && fieldsetEnd > rowAt, "the generate row must sit inside the input fieldset");
+  assert.match(row, /data-action="generate"/);
+  assert.match(row, /data-action="previewPlan"/);
+  assert.match(row, /class="spf-random-button" data-action="generateRandom"/);
+  assert.ok(row.indexOf('data-action="generate"') < row.indexOf('data-action="previewPlan"'));
+  assert.ok(row.indexOf('data-action="previewPlan"') < row.indexOf('data-action="generateRandom"'));
+  assert.doesNotMatch(generator, /data-action="generateRandomEncounter"/);
+  assert.doesNotMatch(generator, /Character mode gets no dice button/);
+  assert.doesNotMatch(generator, /creatureMode/);
+  assert.match(generator, /data-tooltip="\{\{localize randomTooltipKey\}\}"/);
+  assert.match(generator, /aria-label="\{\{localize randomTooltipKey\}\}"/);
+  assert.match(
+    generatorApp,
+    /randomTooltipKey: \{[\s\S]*?monster: "SIMPLYPF2E\.Generator\.RandomTooltip"[\s\S]*?npc: "SIMPLYPF2E\.Generator\.RandomNpcTooltip"[\s\S]*?encounter: "SIMPLYPF2E\.Generator\.RandomEncounterTooltip"[\s\S]*?character: "SIMPLYPF2E\.Generator\.RandomCharacterTooltip"/,
+    "each mode must expose its own dice tooltip key"
+  );
+  assert.doesNotMatch(generatorApp, /generateRandomEncounter/);
+  const lang = JSON.parse(langJson).SIMPLYPF2E.Generator;
+  assert.match(lang.RandomTooltip, /Random creature/);
+  assert.match(lang.RandomNpcTooltip, /Random NPC/);
+  assert.match(lang.RandomEncounterTooltip, /Random encounter/);
+  assert.match(lang.RandomCharacterTooltip, /Random character/);
+}
+
 // 2. The preset row renders in EVERY generator mode (one stable slot; the
-//    guidance feeds all three pipelines, Random ignores it like Single's
+//    guidance feeds all three pipelines, Random ignores it like the shared
 //    dice button always has).
 {
   const presetAt = generator.indexOf('class="form-group spf-preset"');
