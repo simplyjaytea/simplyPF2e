@@ -5,6 +5,7 @@ export const SETTINGS = {
   apiKey: "apiKey",
   apiKeyBaseUrl: "apiKeyBaseUrl",
   model: "model",
+  providerBank: "providerBank",
   temperature: "temperature",
   maxTokens: "maxTokens",
   requestTimeout: "requestTimeout",
@@ -48,6 +49,16 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
     config: false,
     type: Array,
     default: []
+  });
+
+  // Named connection profiles, including each profile's key and exact-URL
+  // binding. Client-scoped so secrets stay in this browser and are never
+  // world-synced. The ordinary settings form never renders this object.
+  game.settings.register(MODULE_ID, SETTINGS.providerBank, {
+    scope: "client",
+    config: false,
+    type: Object,
+    default: { activeId: "", connections: [] }
   });
 
   // Security binding for the client-scoped key. This is deliberately a new,
@@ -302,6 +313,210 @@ export function describeProvider(baseUrl, model = "") {
   }
 }
 
+function newConnectionId() {
+  return globalThis.crypto?.randomUUID?.()
+    ?? `conn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function snapshotLiveProviderSettings() {
+  return {
+    apiBaseUrl: normalizeApiBaseUrl(getSetting(SETTINGS.apiBaseUrl)),
+    model: String(getSetting(SETTINGS.model) ?? "").trim(),
+    apiKey: String(getSetting(SETTINGS.apiKey) ?? "").trim(),
+    apiKeyBaseUrl: normalizeApiBaseUrl(getSetting(SETTINGS.apiKeyBaseUrl))
+  };
+}
+
+/** Display name inferred from the endpoint, used for the first migrated profile. */
+export function defaultConnectionName(baseUrl, model = "") {
+  const provider = describeProvider(baseUrl, model);
+  return provider.id === "missing" ? "Default" : provider.name;
+}
+
+function normalizeProviderConnection(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const id = String(raw.id ?? "").trim();
+  if (!id) return null;
+  const apiBaseUrl = normalizeApiBaseUrl(raw.apiBaseUrl);
+  const model = String(raw.model ?? "").trim();
+  const name = String(raw.name ?? "").trim() || defaultConnectionName(apiBaseUrl, model);
+  return {
+    id,
+    name,
+    apiBaseUrl,
+    model,
+    apiKey: String(raw.apiKey ?? "").trim(),
+    apiKeyBaseUrl: normalizeApiBaseUrl(raw.apiKeyBaseUrl)
+  };
+}
+
+function readProviderBank() {
+  let raw;
+  try { raw = getSetting(SETTINGS.providerBank); }
+  catch { raw = null; }
+  const connections = Array.isArray(raw?.connections)
+    ? raw.connections.map(normalizeProviderConnection).filter(Boolean)
+    : [];
+  let activeId = String(raw?.activeId ?? "").trim();
+  if (!connections.some((connection) => connection.id === activeId)) {
+    activeId = connections[0]?.id ?? "";
+  }
+  return { activeId, connections };
+}
+
+async function persistProviderBank(bank) {
+  await game.settings.set(MODULE_ID, SETTINGS.providerBank, {
+    activeId: bank.activeId,
+    connections: bank.connections.map((connection) => ({
+      id: connection.id,
+      name: connection.name,
+      apiBaseUrl: connection.apiBaseUrl,
+      model: connection.model,
+      apiKey: connection.apiKey,
+      apiKeyBaseUrl: connection.apiKeyBaseUrl
+    }))
+  });
+}
+
+let applyingProviderConnection = false;
+
+async function applyConnectionToSettings(connection) {
+  applyingProviderConnection = true;
+  try {
+    await game.settings.set(MODULE_ID, SETTINGS.apiBaseUrl, connection.apiBaseUrl);
+    await game.settings.set(MODULE_ID, SETTINGS.model, connection.model);
+    await game.settings.set(MODULE_ID, SETTINGS.apiKey, connection.apiKey);
+    await game.settings.set(MODULE_ID, SETTINGS.apiKeyBaseUrl, connection.apiKeyBaseUrl);
+  } finally {
+    applyingProviderConnection = false;
+  }
+}
+
+/**
+ * Seed the client connection bank from the legacy single endpoint/key/model
+ * settings. Existing worlds keep working; the first setup or save creates one
+ * named profile instead of inventing a second configuration.
+ */
+export async function ensureProviderBank() {
+  const bank = readProviderBank();
+  if (bank.connections.length) return bank;
+  const snapshot = snapshotLiveProviderSettings();
+  const connection = {
+    id: newConnectionId(),
+    name: defaultConnectionName(snapshot.apiBaseUrl, snapshot.model),
+    ...snapshot
+  };
+  const next = { activeId: connection.id, connections: [connection] };
+  await persistProviderBank(next);
+  return next;
+}
+
+/** Compact named profiles for the setup list and generator header switch. */
+export function listProviderConnections() {
+  const bank = readProviderBank();
+  return bank.connections.map((connection) => ({
+    id: connection.id,
+    name: connection.name,
+    active: connection.id === bank.activeId
+  }));
+}
+
+/** Write the live endpoint/key/model into the active named profile. */
+export async function upsertActiveProviderConnection(patch = {}) {
+  const bank = await ensureProviderBank();
+  const active = bank.connections.find((connection) => connection.id === bank.activeId);
+  if (!active) return null;
+  Object.assign(active, snapshotLiveProviderSettings());
+  if (patch.name !== undefined) {
+    const name = String(patch.name ?? "").trim();
+    if (name) active.name = name;
+  }
+  await persistProviderBank(bank);
+  return active;
+}
+
+/**
+ * Activate a stored profile. Live settings become that profile's endpoint,
+ * model, key, and exact-URL binding; the previous live values are saved onto
+ * the profile being left. Unknown ids fail closed.
+ */
+export async function selectProviderConnection(id) {
+  const wanted = String(id ?? "").trim();
+  if (!wanted) return false;
+  const bank = await ensureProviderBank();
+  const next = bank.connections.find((connection) => connection.id === wanted);
+  if (!next) return false;
+  if (bank.activeId === next.id) return true;
+  const leaving = bank.connections.find((connection) => connection.id === bank.activeId);
+  if (leaving) Object.assign(leaving, snapshotLiveProviderSettings());
+  bank.activeId = next.id;
+  await persistProviderBank(bank);
+  await applyConnectionToSettings(next);
+  return true;
+}
+
+/**
+ * Add a named profile and make it active. New profiles start with no key —
+ * they never copy a secret from a different endpoint.
+ */
+export async function createProviderConnection({ name, apiBaseUrl, model } = {}) {
+  const bank = await ensureProviderBank();
+  const leaving = bank.connections.find((connection) => connection.id === bank.activeId);
+  if (leaving) Object.assign(leaving, snapshotLiveProviderSettings());
+  const snapshot = {
+    apiBaseUrl: normalizeApiBaseUrl(apiBaseUrl),
+    model: String(model ?? "").trim(),
+    apiKey: "",
+    apiKeyBaseUrl: ""
+  };
+  const connection = {
+    id: newConnectionId(),
+    name: String(name ?? "").trim() || defaultConnectionName(snapshot.apiBaseUrl, snapshot.model),
+    ...snapshot
+  };
+  bank.connections.push(connection);
+  bank.activeId = connection.id;
+  await persistProviderBank(bank);
+  await applyConnectionToSettings(connection);
+  return connection;
+}
+
+/** Rename a stored profile. Empty names fail closed. */
+export async function renameProviderConnection(id, name) {
+  const wanted = String(id ?? "").trim();
+  const nextName = String(name ?? "").trim();
+  if (!wanted || !nextName) return false;
+  const bank = await ensureProviderBank();
+  const connection = bank.connections.find((entry) => entry.id === wanted);
+  if (!connection) return false;
+  connection.name = nextName;
+  await persistProviderBank(bank);
+  return true;
+}
+
+/**
+ * Remove a stored profile. The last remaining profile cannot be deleted.
+ * Deleting the active profile activates another stored connection.
+ */
+export async function deleteProviderConnection(id) {
+  const wanted = String(id ?? "").trim();
+  if (!wanted) return false;
+  const bank = await ensureProviderBank();
+  if (bank.connections.length < 2) return false;
+  const remaining = bank.connections.filter((connection) => connection.id !== wanted);
+  if (remaining.length === bank.connections.length) return false;
+  const wasActive = bank.activeId === wanted;
+  bank.connections = remaining;
+  if (wasActive) {
+    bank.activeId = remaining[0].id;
+    await persistProviderBank(bank);
+    await applyConnectionToSettings(remaining[0]);
+  } else {
+    await persistProviderBank(bank);
+  }
+  return true;
+}
+
 /**
  * Read provider authentication without exposing an unbound key to callers.
  * `apiKey` is non-empty only when its stored binding exactly matches baseUrl.
@@ -312,6 +527,9 @@ export function getProviderRequestConfig() {
   const configuredApiKey = String(getSetting(SETTINGS.apiKey) ?? "").trim();
   const apiKeyBaseUrl = normalizeApiBaseUrl(getSetting(SETTINGS.apiKeyBaseUrl));
   const apiKeyIsBound = Boolean(configuredApiKey && baseUrl && apiKeyBaseUrl === baseUrl);
+  const provider = describeProvider(baseUrl, model);
+  const bank = readProviderBank();
+  const active = bank.connections.find((connection) => connection.id === bank.activeId) ?? null;
   return {
     baseUrl,
     apiKey: apiKeyIsBound ? configuredApiKey : "",
@@ -319,7 +537,14 @@ export function getProviderRequestConfig() {
     apiKeyIsBound,
     keylessLocal: isLikelyKeylessLocalEndpoint(baseUrl),
     model,
-    provider: describeProvider(baseUrl, model)
+    provider,
+    connectionId: active?.id ?? "",
+    connectionName: active?.name || provider.name,
+    connections: bank.connections.map((connection) => ({
+      id: connection.id,
+      name: connection.name,
+      active: connection.id === bank.activeId
+    }))
   };
 }
 
@@ -360,18 +585,22 @@ export async function authorizeApiKeyForCurrentBaseUrl(expectedBaseUrl) {
   await game.settings.set(MODULE_ID, SETTINGS.apiKeyBaseUrl, baseUrl);
   if (normalizeApiBaseUrl(getSetting(SETTINGS.apiBaseUrl)) !== expected) {
     await game.settings.set(MODULE_ID, SETTINGS.apiKeyBaseUrl, "");
+    await upsertActiveProviderConnection();
     return false;
   }
+  await upsertActiveProviderConnection();
   return true;
 }
 
 async function clearApiKeyBindingForChangedKey() {
+  if (applyingProviderConnection) return;
   if (getSetting(SETTINGS.apiKeyBaseUrl)) {
     await game.settings.set(MODULE_ID, SETTINGS.apiKeyBaseUrl, "");
   }
 }
 
 async function clearApiKeyBindingForChangedBaseUrl(value) {
+  if (applyingProviderConnection) return;
   const nextBaseUrl = normalizeApiBaseUrl(value);
   const boundBaseUrl = normalizeApiBaseUrl(getSetting(SETTINGS.apiKeyBaseUrl));
   if (boundBaseUrl && boundBaseUrl !== nextBaseUrl) {

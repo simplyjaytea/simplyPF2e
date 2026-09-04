@@ -7,16 +7,23 @@ import {
   SETTINGS,
   authorizeApiKeyForCurrentBaseUrl,
   chatCompletionsUrl,
+  createProviderConnection,
+  defaultConnectionName,
+  deleteProviderConnection,
   describeProvider,
+  ensureProviderBank,
   getProviderAuthWarningKey,
   getProviderRequestConfig,
   isOfficialDeepSeekEndpoint,
   isOfficialOpenAIEndpoint,
   isLikelyKeylessLocalEndpoint,
+  listProviderConnections,
   modelsUrl,
   normalizeApiBaseUrl,
   registerSettings,
-  resolveProviderModel
+  renameProviderConnection,
+  resolveProviderModel,
+  selectProviderConnection
 } from "./settings.mjs";
 
 const values = new Map();
@@ -247,6 +254,13 @@ assert.equal(
   "deepseek-v4-flash",
   "fresh installs must use a current DeepSeek model identifier"
 );
+const bankConfig = registrations.get(SETTINGS.providerBank);
+assert.equal(bankConfig?.scope, "client", "connection profiles must remain local to the GM client");
+assert.equal(
+  bankConfig?.config,
+  false,
+  "connection profiles must not appear as plaintext fields in Foundry's ordinary settings form"
+);
 assert.ok(keyConfig?.onChange, "API-key setting must register a binding invalidation callback");
 assert.ok(baseConfig?.onChange, "base-URL setting must register a binding invalidation callback");
 
@@ -272,5 +286,111 @@ assert.equal(
   "https://provider.example/v1",
   "normalization-only URL edits must preserve a valid binding"
 );
+
+const resetBank = () => values.set(SETTINGS.providerBank, { activeId: "", connections: [] });
+const storedConnections = () => values.get(SETTINGS.providerBank)?.connections ?? [];
+
+resetBank();
+setAuth({
+  baseUrl: "https://api.deepseek.com/v1",
+  apiKey: "deepseek-secret",
+  apiKeyBaseUrl: "https://api.deepseek.com/v1"
+});
+values.set(SETTINGS.model, "deepseek-v4-flash");
+assert.equal(defaultConnectionName("https://api.deepseek.com/v1"), "DeepSeek");
+const migrated = await ensureProviderBank();
+assert.equal(migrated.connections.length, 1, "legacy single settings must become one named profile");
+assert.equal(migrated.connections[0].name, "DeepSeek");
+assert.equal(migrated.connections[0].apiKey, "deepseek-secret");
+assert.equal(migrated.connections[0].apiKeyBaseUrl, "https://api.deepseek.com/v1");
+assert.equal(migrated.connections[0].model, "deepseek-v4-flash");
+assert.equal(getProviderRequestConfig().apiKey, "deepseek-secret", "migration must not unbind a valid live key");
+assert.equal(getProviderRequestConfig().connectionName, "DeepSeek");
+const migratedAgain = await ensureProviderBank();
+assert.equal(migratedAgain.connections.length, 1, "a second ensure must not invent another profile");
+assert.equal(migratedAgain.connections[0].id, migrated.connections[0].id);
+
+values.set(SETTINGS.providerBank, {
+  activeId: "gone",
+  connections: [
+    { name: "missing-id", apiBaseUrl: "https://evil.example/v1", apiKey: "nope" },
+    {
+      id: "kept",
+      name: "  Custom GPU  ",
+      apiBaseUrl: "https://gateway.example/v1/",
+      model: "local-model",
+      apiKey: " gpu-secret ",
+      apiKeyBaseUrl: "https://gateway.example/v1"
+    }
+  ]
+});
+assert.deepEqual(
+  listProviderConnections(),
+  [{ id: "kept", name: "Custom GPU", active: true }],
+  "malformed profiles without ids must be dropped rather than guessed"
+);
+
+resetBank();
+setAuth({
+  baseUrl: "https://api.deepseek.com/v1",
+  apiKey: "deepseek-secret",
+  apiKeyBaseUrl: "https://api.deepseek.com/v1"
+});
+values.set(SETTINGS.model, "deepseek-v4-flash");
+await ensureProviderBank();
+const custom = await createProviderConnection({
+  name: "Work GPU",
+  apiBaseUrl: "https://gateway.example/v1",
+  model: "hosted-model"
+});
+assert.equal(custom.apiKey, "", "a new connection must not copy another profile's secret");
+assert.equal(getProviderRequestConfig().apiKey, "", "the new remote connection must not invent a bound key");
+assert.equal(
+  getProviderAuthWarningKey(),
+  "SIMPLYPF2E.Generator.NoApiKey",
+  "an empty remote key must still block generation"
+);
+assert.equal(storedConnections().length, 2);
+const deepseek = storedConnections().find((connection) => connection.name === "DeepSeek");
+assert.equal(deepseek.apiKey, "deepseek-secret", "creating a profile must keep the previous profile's key stored");
+assert.equal(await selectProviderConnection("missing"), false, "unknown ids fail closed");
+assert.equal(await selectProviderConnection(deepseek.id), true);
+assert.equal(getProviderRequestConfig().apiKey, "deepseek-secret", "switching back must restore the bound key");
+assert.equal(getProviderRequestConfig().model, "deepseek-v4-flash");
+assert.equal(getProviderRequestConfig().connectionName, "DeepSeek");
+assert.equal(await selectProviderConnection(custom.id), true);
+assert.equal(getProviderRequestConfig().apiKey, "");
+assert.equal(getProviderRequestConfig().model, "hosted-model");
+
+assert.equal(await renameProviderConnection(custom.id, "  Studio  "), true);
+assert.equal(await renameProviderConnection(custom.id, "   "), false, "empty names fail closed");
+assert.equal(
+  storedConnections().find((connection) => connection.id === custom.id).name,
+  "Studio"
+);
+
+assert.equal(await deleteProviderConnection("missing"), false);
+const beforeDelete = storedConnections().length;
+assert.equal(await deleteProviderConnection(custom.id), true);
+assert.equal(storedConnections().length, beforeDelete - 1);
+assert.equal(getProviderRequestConfig().connectionName, "DeepSeek");
+assert.equal(getProviderRequestConfig().apiKey, "deepseek-secret");
+assert.equal(await deleteProviderConnection(deepseek.id), false, "the last connection cannot be deleted");
+assert.equal(storedConnections().length, 1);
+
+resetBank();
+setAuth({
+  baseUrl: "https://api.deepseek.com/v1",
+  apiKey: "deepseek-secret",
+  apiKeyBaseUrl: "https://api.deepseek.com/v1"
+});
+await ensureProviderBank();
+await createProviderConnection({
+  name: "Local",
+  apiBaseUrl: "http://localhost:11434/v1",
+  model: "qwen3:8b"
+});
+assert.equal(getProviderAuthWarningKey(getProviderRequestConfig(), "https:"), "SIMPLYPF2E.Errors.MixedContentProvider");
+assert.equal(getProviderAuthWarningKey(getProviderRequestConfig(), "http:"), null);
 
 console.log("settings.auth.test.mjs: all provider-auth assertions passed");

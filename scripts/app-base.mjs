@@ -1,5 +1,5 @@
 import { testProviderConnection } from "./ai.mjs";
-import { getProviderRequestConfig } from "./settings.mjs";
+import { getProviderRequestConfig, selectProviderConnection } from "./settings.mjs";
 import { ProviderSetupApp } from "./provider-setup-app.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -17,6 +17,28 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   /** Open the focused provider setup and refresh this app after it saves. */
   _openProviderSetup() {
     new ProviderSetupApp(() => this.render()).render(true);
+  }
+
+  /** Subclasses that keep unsaved form drafts override this before a provider switch. */
+  _preserveForm() {}
+
+  /**
+   * Activate a saved connection from the compact header switch. The live
+   * request config follows that profile; unknown ids fail closed.
+   */
+  async _switchActiveConnection(id) {
+    const current = getProviderRequestConfig().connectionId;
+    if (!id || id === current) return;
+    this._preserveForm();
+    await selectProviderConnection(id);
+    await this.render();
+  }
+
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    this.element?.querySelector?.("[name='activeConnection']")?.addEventListener("change", (event) =>
+      this._switchActiveConnection(event.currentTarget.value)
+    );
   }
 
   /**

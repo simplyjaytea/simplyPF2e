@@ -74,6 +74,9 @@ export class ItemForgeApp extends SpfApp {
       apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
       providerBaseUrl: authState.baseUrl,
       provider: authState.provider,
+      connectionName: authState.connectionName,
+      connections: authState.connections ?? [],
+      canSwitchConnection: (authState.connections?.length ?? 0) > 1,
       providerReady: !authWarningKey,
       canAuthorizeApiKey: Boolean(
         authState.baseUrl && authState.hasConfiguredApiKey && !authState.apiKeyIsBound
@@ -131,6 +134,10 @@ export class ItemForgeApp extends SpfApp {
     const rawKind = form.querySelector('[name="kind"]:checked')?.value ?? this.#input.kind;
     const kind = rawKind === "wondrous" || RUNED_ITEM_KINDS.has(rawKind) ? rawKind : "wondrous";
     this.#input = { prompt, level, rarity, kind };
+  }
+
+  _preserveForm() {
+    this.#readForm();
   }
 
   /** Preview context for a runed weapon/armor concept (built from #itemData). */

@@ -128,6 +128,9 @@ export class GeneratorApp extends SpfApp {
       apiKeyWarning: authWarningKey ? game.i18n.localize(authWarningKey) : null,
       providerBaseUrl: authState.baseUrl,
       provider: authState.provider,
+      connectionName: authState.connectionName,
+      connections: authState.connections ?? [],
+      canSwitchConnection: (authState.connections?.length ?? 0) > 1,
       providerReady: !authWarningKey,
       sourcesReady: sources?.ready ?? true,
       sourcePackCount: sources?.packCount ?? 0,
@@ -428,6 +431,10 @@ export class GeneratorApp extends SpfApp {
     const treasureAmount = form.querySelector('[name="treasureAmount"]')?.value ?? this.#input.treasureAmount;
     const rarityCap = form.querySelector('[name="rarityCap"]')?.value ?? this.#input.rarityCap;
     this.#input = { mode, prompt, level, rarity, allowSpellcasting, preset, partySize, threat, treasureAmount, rarityCap };
+  }
+
+  _preserveForm() {
+    this.#readForm();
   }
 
   /**

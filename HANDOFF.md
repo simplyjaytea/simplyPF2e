@@ -4,12 +4,15 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Current session — 2026-09-04
 
-- Public source is `origin/main` `51c47a6` / PR #86; latest GitHub release **v0.3.5.46**. User-owned untracked `.claude/` remains untouched.
-- Active branch: `cursor/fix-ai-json-parse-0e21`, created from `origin/main`.
-- Live QA (JT) hit `SIMPLYPF2E.Errors.BadJson` during NPC Generate/Preview. Provider/model unknown. Mode-radio focus already works; module enabled.
-- This session audited `requestJSON` / `requestCompletion` / `parseConceptJSON` and replaced first-`{` + last-`}` extraction with string-aware matching braces. Length truncation (`length` and `max_tokens`) still fails closed before parse. Reasoning-channel JSON is still rejected; empty content with reasoning now uses a distinct error plus truncated console diagnostics (length, finish_reason, preview). Bounded retry prompt/logging verified. `response_format: json_object` is still sent unless a named 400/422 compatibility retry removes it.
-- Not done: live Foundry retest of NPC Generate/Preview with the original provider; feat-prerequisite evaluator; merge/release.
+- Public source is `origin/main` `d47bbcb` (PR #87) / release **v0.3.5.47**. This session did not merge or release.
+- Active branch: `cursor/connection-bank-e6ea`, rebased onto that main tip.
+- Feature: a client-side **connection bank** so the GM can save named AI provider profiles (DeepSeek, a custom OpenAI-compatible endpoint, local Ollama, …) and switch the active one without re-entering URL/key/model.
+- Live request config is unchanged in shape: `getProviderRequestConfig()` still reads the four live settings (`apiBaseUrl` / `model` / `apiKey` / `apiKeyBaseUrl`) and only releases a key when its binding matches the exact URL. Named profiles live in a new client-scoped `providerBank` object (`config: false`). Switching copies a profile into those live settings; saving copies live settings back onto the active profile. New profiles start with an empty key and never copy another endpoint's secret.
+- First Provider Setup open or save migrates the legacy single endpoint/key/model into one named profile (inferred from `describeProvider`, e.g. "DeepSeek"). Generator/item-forge headers show that name and, once two or more profiles exist, a compact `<select>` for one-click switch. Setup has list/select/create/rename/delete; the last profile cannot be deleted. Save & Test / Save & Authorize still authorize the active profile's exact URL.
+- Fail-closed invariants kept: empty remote key still blocks; mixed-content HTTPS→HTTP still blocks; unbound keys are not sent; malformed bank entries without ids are dropped. No fuzzy JSON salvage; PR #87's matching-brace parse remains as published on main.
+- Rebase onto `d47bbcb` conflicted only in HANDOFF.md, CLAUDE.md, and HISTORY.md (session docs). `scripts/ai.mjs` auto-merged: connection-bank model/key path plus #87 parse diagnostics.
+- No VPS mutation, no merge to `main`. Live Foundry QA still required: save DeepSeek + a custom provider, switch from the header, confirm generation uses the active profile, and confirm a mismatched/empty remote key stays blocked.
 
-## Live-QA boundary
+## Next step
 
-Local `scripts/*.test.mjs` cover parse recovery and mocked provider retries. They cannot prove a live NPC concept call against JT's provider. After merge/release, rerun NPC Generate and Preview Plan once and confirm either a parsed concept or a non-BadJson error that matches the real failure mode (Truncated / ReasoningWithoutJson / BadStructure / provider error).
+Review PR #88 (do not merge to `main` from this agent). After release, live-check two saved connections and a header switch. Dice/random UI unify and the feat prerequisite evaluator remain later slices.

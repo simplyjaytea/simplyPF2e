@@ -50,7 +50,7 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 | --- | --- |
 | `ai.mjs` | All AI calls, SYSTEM_PROMPT, `pcSystemPrompt()`, `lootGuide()`. Streaming SSE, retry-once, fail-closed JSON parsing. |
 | `ai-task-profiles.mjs` / `ai-candidate-format.mjs` | Pure per-operation token/sampling caps and compact grounded-candidate encoding. |
-| `settings.mjs` | Foundry settings plus exact-endpoint API-key binding and local/keyless provider readiness. |
+| `settings.mjs` | Foundry settings, exact-endpoint API-key binding, local/keyless provider readiness, and the client-side named connection bank. |
 | `builder.mjs` | NPC pipeline + shared resolve/build helpers used by both actor pipelines (`resolveEquipment`, `resolveLoot`, `resolveFocusSpells`, `buildEquipmentItems`, `buildLootItems`, `filterItemTypes`, `applyTreasureBudget`, `enrichDescription`). |
 | `pc-builder.mjs` | PC pipeline. First file to check when PC generation misbehaves. |
 | `pc-skills.mjs` | Pure concept-priority validation, real-class skill schedules, chronological allocation and conservative reconciliation; read-only native skill snapshot extraction. |
@@ -96,7 +96,7 @@ Claude-side orchestration (when running as Fable/Opus with subagent tools):
 
 ## Current state (2026-09-04)
 
-Public source is `origin/main` `51c47a6` (PR #86); latest GitHub release **v0.3.5.46**. PR #86 published the generator selection-completeness and mode-radio focus hotfix. Live QA after that release hit `SIMPLYPF2E.Errors.BadJson` on NPC Generate/Preview; `cursor/fix-ai-json-parse-0e21` hardens JSON parse/retry diagnostics without salvaging truncated JSON. The staged-actor feat-prerequisite evaluator remains unbuilt. See [HANDOFF.md](HANDOFF.md).
+Public source is `origin/main` `d47bbcb` (PR #87) / release **v0.3.5.47**. PR #87 published the string-aware matching-brace JSON parse (no truncated salvage). This session's local work is `cursor/connection-bank-e6ea` rebased onto that tip: a client-side bank of named AI provider connections (display name, URL, model, key bound to that profile's exact URL). Legacy single `apiBaseUrl`/`apiKey`/`apiKeyBaseUrl`/`model` settings migrate into one initial profile. The active profile is mirrored into those live settings so `describeProvider` / `getProviderRequestConfig` keep driving generation; the generator header shows the active name and switches when more than one profile exists. Empty remote keys, mixed-content, and unbound keys still fail closed. All 59 regression files pass; live Foundry switch/generation QA remains required. Do not merge to `main` from the agent.
 
 Git/API reconciliation on 2026-08-31 had recorded `origin/main` as `1527282` (PR #85) / **v0.3.5.45** before PR #86 landed. Follow-up live QA proved that feats/equipment were discarded together and that mode re-renders gave Monster a misleading second focus outline. The raw selector payload was not captured; code tracing separately found and reproduced a shared decoder defect when a provider puts an exact offered name in a JSON `id` field. That hardening is now in `main` via PR #86. The separate release-workflow JSON gate remains local on `codex/release-json-validation-main`. See [HISTORY.md](HISTORY.md) for the preserved audit/QA record.
 

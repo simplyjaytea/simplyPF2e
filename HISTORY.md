@@ -2,12 +2,19 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-04 — Client-side AI connection bank
+
+- JT needed to keep a working DeepSeek connection and a second custom OpenAI-compatible endpoint without re-entering URL/key/model each time. Added named connection profiles in a client-scoped `providerBank` setting (keys stay browser-local, never world-synced, never shown as plaintext in ordinary settings). Each profile stores display name, API root, model, key, and that profile's exact-URL binding.
+- The four existing live settings remain the active connection that `getProviderRequestConfig()` / generation use. Switching a profile writes it into those settings (restoring that profile's binding after the key write); saving writes live settings back onto the active profile. Creating a profile never copies another endpoint's secret. The last profile cannot be deleted.
+- Existing single-endpoint worlds migrate into one inferred-name profile on first setup/save. Provider Setup lists/selects/creates/renames/deletes profiles; Save & Test / Save & Authorize still bind the active profile. Generator and item-forge headers show the active name and offer a one-click switch once two profiles exist.
+- Rebased onto `origin/main` `d47bbcb` (PR #87 / **v0.3.5.47**). Docs conflicts only; JSON matching-brace parse from #87 kept. Local verification: all 59 regression files pass, including expanded auth/setup coverage for migration, CRUD, active switch, and per-profile key binding. Empty remote keys, mixed-content HTTP providers, and unbound keys still fail closed. No live Foundry QA.
+
 ## 2026-09-04 — AI JSON parse / BadJson diagnostics
 
 - Live QA surfaced the exact `SIMPLYPF2E.Errors.BadJson` string on NPC Generate/Preview. Audit found `parseConceptJSON` used first `{` + last `}`, which rejects a complete object when trailing prose contains `}` and can also hide truncation as BadJson when `finish_reason` is `max_tokens`.
 - Fix: string-aware matching-brace extract of the first complete object; unwrap a JSON-encoded object string once; join Chat Completions text-part arrays; read SSE `message.content` when `delta.content` is absent. Length truncation still fails closed before parse (`length` and `max_tokens`), including complete-looking prefixes. Reasoning-channel JSON is not accepted; empty content with reasoning uses `ReasoningWithoutJson`. Retry-once still fires with the existing retry prompt plus truncated console diagnostics (finish_reason, content length, preview). `response_format` is unchanged except the existing named compatibility drop.
 - Rejected: repairing truncated JSON, scanning into unmatched `{` to salvage nested objects, treating reasoning traces as the answer.
-- Local regressions expanded in `ai.parseJson.test.mjs` and `ai.usage.test.mjs`. Live NPC Generate/Preview against JT's provider is still required.
+- Local regressions expanded in `ai.parseJson.test.mjs` and `ai.usage.test.mjs`. Live NPC Generate/Preview against JT's provider is still required. Published on `main` as PR #87 / **v0.3.5.47**.
 
 ## 2026-08-31 — Post-v0.3.5.45 generator selection fixes (local branch)
 
