@@ -878,11 +878,11 @@ Include exactly one entry per slot number (1 to ${slots.length}). Never use an I
 /** Choose a small set of class-like creature feats from an issued catalog. */
 export async function selectCreatureFeats({ concept, candidates, onProgress, signal }) {
   const maximum = Math.min(Math.max(concept?.feats?.length ?? 0, 0), 3);
-  if (!maximum || !candidates.length) return { feats: [], usage: null };
+  if (!maximum || !candidates.length) return { feats: [], omitted: false, usage: null };
   const catalog = candidates.map((candidate) => `${candidate.id} | ${candidate.name}`).join("\n");
   const system = `You are selecting up to ${maximum} published Pathfinder 2e class feats for a creature. Choose ONLY IDs from the provided catalog. Return a single JSON object and nothing else:
 { "featIds": string[] }
-Choose feats that fit the creature's role and tactics. Do not choose a feat more than once. It is valid to choose fewer than ${maximum} when none fit.`;
+Choose feats that fit the creature's role and tactics. Do not choose a feat more than once. It is valid to choose fewer than ${maximum}; return { "featIds": [] } when none fit.`;
   const user = [
     `Creature: ${concept.name} (level ${concept.level})`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
@@ -907,7 +907,9 @@ Choose feats that fit the creature's role and tactics. Do not choose a feat more
     })
     .slice(0, maximum)
     .map((candidate) => ({ name: candidate.name, ...(candidate.ref ? { candidate: candidate.ref } : {}) }));
-  return { feats, usage };
+  // Only an explicitly empty, schema-validated reply declines the wishlist.
+  // Nonempty replies that decode to no issued candidates remain failures.
+  return { feats, omitted: parsed.featIds.length === 0, usage };
 }
 
 /** Select published bestiary actions only from the issued action catalog. */
