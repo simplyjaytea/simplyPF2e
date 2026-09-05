@@ -1,5 +1,6 @@
 import { MODULE_ID } from "./settings.mjs";
 import { TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
+import { esc } from "./text.mjs";
 import {
   PRESET_RARITIES, getCustomPresets, findPreset, addCustomPreset, updateCustomPreset,
   deleteCustomPreset, exportPresets, importPresets
@@ -8,7 +9,6 @@ import {
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-const esc = (s) => Handlebars.escapeExpression(String(s ?? ""));
 
 /**
  * The shared save/edit preset dialog: name + AI guidance text plus the

@@ -1,0 +1,9 @@
+# Local agent state belongs to this checkout, not the module.
+/.claude/
+
+# Release build outputs (the source manifest stays tracked).
+/module.zip
+/module.json.tmp
+
+# OS metadata.
+.DS_Store
