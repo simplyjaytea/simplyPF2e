@@ -2,7 +2,16 @@
 
 Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved in HISTORY.md.
 
-## Current session — 2026-09-05
+## Current continuation — scroll preview labels
+
+- Checkout: `C:\Users\jtf\Documents\Projects\simplyPF2e`, branch `fix/scroll-preview-label`, based on `f1d1eb5` (PR #97 / v0.3.5.57). The prior entry's pending PR/publication steps are superseded: #97 already merged.
+- BrowserOS live QA found v0.3.5.57 active on Foundry 14.365 / PF2e 8.5.0. The actual Items-directory button appears once, opens Item Forge, and repeated clicks leave exactly one forge window. Switching Actors → Items retained one button. No module update was needed; existing QA artifacts were untouched.
+- Fixed preview-only `Scroll of undefined`: exact scroll references contain identity, not `name`. The shared gear mapper now rebuilds scroll names only for named entries; ref-only entries retain the selector's already-grounded loot label. Creation and reference validation remain unchanged. The closing parenthesis was already correct.
+- Added production-app regression covering ref-only scroll labels, stack suffixes, and legacy named entries. Observed the undefined-label failure before the fix. All 65 regression files, all 100 script syntax checks, module/localization JSON parsing, and whitespace checks passed afterward.
+- Independent reviewer `6217c769-98b3-4347-a584-38bb8b60aa79` approved with no findings. Commit/push/PR/merge, release verification, Foundry update, and post-update scroll-preview QA remain pending. User authorized those operations; preserve branch + PR release discipline.
+- Armor activation wording is model-generated description, not a runed-item activation path. No prose-stripping or mechanics change is included.
+
+## Prior session — 2026-09-05
 
 - Public source is `origin/main` `220741b` (PR **#96**) / **v0.3.5.56**. The single audit-fix PR merged and its auto-release completed successfully.
 - Active branch: `codex/item-forge-entry`, based on `origin/main` and carrying forward the two post-release documentation commits from the merged audit branch. It is the single intended next release branch; do not push or merge `main` directly.
@@ -24,4 +33,6 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Next step
 
-Obtain a fresh independent review of the Item Forge entry diff, commit and push `codex/item-forge-entry`, open and merge its PR, wait for the single auto-release, update SimplyPF2e in Foundry, and verify that the Items-directory button appears once and opens Item Forge. Preserve the successful QA artifacts until the user explicitly approves deletion. Afterward, triage the non-blocking `Scroll of undefined (Rank 2)` preview and no-activation armor flavor observations. Also note the non-blocking GitHub annotation that `actions/checkout@v4` and `actions/setup-node@v4` still target deprecated Node 20 internally and were forced onto Node 24 by the runner.
+Complete independent review of `fix/scroll-preview-label`, publish via PR if approved, verify the release, update the module in Foundry if needed, and test the actual released scroll preview. The older next-step paragraph below is historical and superseded by this continuation.
+
+Previously: Obtain a fresh independent review of the Item Forge entry diff, commit and push `codex/item-forge-entry`, open and merge its PR, wait for the single auto-release, update SimplyPF2e in Foundry, and verify that the Items-directory button appears once and opens Item Forge. Preserve the successful QA artifacts until the user explicitly approves deletion. Afterward, triage the non-blocking `Scroll of undefined (Rank 2)` preview and no-activation armor flavor observations. Also note the non-blocking GitHub annotation that `actions/checkout@v4` and `actions/setup-node@v4` still target deprecated Node 20 internally and were forced onto Node 24 by the runner.

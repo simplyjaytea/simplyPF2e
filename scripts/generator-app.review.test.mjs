@@ -16,6 +16,7 @@ if (!vm.SourceTextModule) {
 
 let actor, createFailure, verifyFailure, deleteFailure, skillReport, creates = 0, deleted = 0, sheetCalls = 0;
 let conceptCalls = 0, generatorLevel = 1, freeArchetype = false;
+let previewLoot = [];
 const notices = [];
 class App {
   element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
@@ -40,7 +41,7 @@ const context = vm.createContext({
   ui: { notifications: Object.fromEntries(["info", "warn"].map((kind) => [kind, (text) => notices.push([kind, text])])) }
 });
 const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fighter" },
-  backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [], equipment: [], loot: [] });
+  backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [], equipment: [], loot: previewLoot });
 const mocks = {
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   assertComplete, completionManifest, completionSummary,
@@ -57,7 +58,7 @@ const mocks = {
   resolvePCConcept: async () => resolved(), pcSpellcastingProfile: () => null, slugify: (name) => name.toLowerCase(),
   generatePCLoot: async () => ({ loot: [] }), normalizeLoot: (loot) => loot,
   dedupeLootAgainstEquipment: (loot) => loot, enforceNamedLootBudget: (loot) => loot, applyTreasureBudget: (loot) => loot,
-  pcStartingWealthGp: () => 0, equipmentValueGp: () => 0, lootValueGp: () => 0,
+  pcStartingWealthGp: () => 0, equipmentValueGp: () => 0, lootValueGp: () => 0, parseCoins: () => null,
   createCharacterActor: async () => { creates++; if (createFailure) throw createFailure; return { actor, skillReport }; }
 };
 const source = await readFile(new URL("./generator-app.mjs", import.meta.url), "utf8");
@@ -103,6 +104,19 @@ async function generate() {
   assert.ok(app.context.pcPreview, "real generation flow must seed the private PC draft");
   return app;
 }
+
+// Exact scroll references carry identity only, not a spell display name.
+// Exercise the production private mapper through the real preview lifecycle.
+previewLoot = [
+  { name: "Scroll of Fear (Rank 2)", quantity: 2, scroll: { rank: 2 }, entry: { packId: "spells", _id: "fear" } },
+  { name: "Scroll of Draft (Rank 1)", quantity: 1, scroll: { rank: 1 }, entry: { name: "Heal" } }
+];
+const scrollPreview = await generate();
+assert.deepEqual(Array.from(scrollPreview.context.pcPreview.loot, ({ name, found }) => ({ name, found })), [
+  { name: "Scroll of Fear (Rank 2) ×2", found: true },
+  { name: "Scroll of Heal (Rank 1)", found: true }
+]);
+previewLoot = [];
 
 // Free Archetype begins adding feats at level 2. Until its published text
 // prerequisites can be checked on a staged actor, the production preflight

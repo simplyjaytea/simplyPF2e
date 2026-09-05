@@ -311,7 +311,7 @@ export class GeneratorApp extends SpfApp {
    */
   static #mapGear(list) {
     return (list ?? []).map(({ name, quantity, runes, entry, scroll }) => ({
-      name: (scroll && entry
+      name: (scroll && entry?.name
         ? `Scroll of ${entry.name} (Rank ${scroll.rank})`
         : (runes?.potency ? name : entry?.name ?? name)) + (quantity > 1 ? ` ×${quantity}` : ""),
       found: Boolean(entry)

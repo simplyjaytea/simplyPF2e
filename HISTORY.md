@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## Continuation — v0.3.5.57 acceptance and scroll preview correction
+
+- Reconciled the stale handoff against git: PR #97 already merged at `f1d1eb5` / v0.3.5.57. BrowserOS confirmed that installed version on Foundry 14.365 / PF2e 8.5.0. The real Items-directory button opens the forge, remains singular across tab switches, and repeated clicks retain one window. No update or world-document mutation was needed.
+- Read-only scout `935b3204-c8c2-43a5-a70b-a4148ee2a8a7` traced `Scroll of undefined` to the shared preview mapper reading `.name` from identity-only exact references. Parent verified the source and rejected the scout's additional missing-parenthesis claim (the parenthesis already exists).
+- The mapper now uses the selector's original grounded scroll label when an entry lacks a name; named legacy entries retain existing formatting. Reference identity, completion checks, and document creation are untouched. A production-app regression failed with `Scroll of undefined (Rank 2) ×2` before the change and passed afterward; full regression/syntax/JSON/whitespace gates passed.
+- The armor observation is model prose, not a module-created activation; no speculative prose removal or mechanics patch was made. Independent review, publication, and released scroll-preview live QA remain pending; see HANDOFF.md.
+
 ## 2026-09-05 — Re-expose Item Forge in the Items directory
 
 - Started `codex/item-forge-entry` from public `origin/main` `220741b` / **v0.3.5.56** and carried forward the post-publication/live-QA documentation commits. The forge engine had passed its cancellation, runed-sheet parity, and generated-macro escaping acceptance checks, but ordinary users still had no discoverable UI entry point.
