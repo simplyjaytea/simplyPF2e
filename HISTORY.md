@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-05 — Item Forge directory and kind-selector refresh
+
+- Started `feat/item-forge-ui` from the local post-v0.3.5.61 documentation. The Items-directory forge entry now inserts a dedicated full-width row directly after the directory header and before item-list content, below native Create Item/Create Folder controls. Actor-directory placement, access checks, duplicate guards, and singleton opening are unchanged.
+- Replaced per-render radio listeners with ApplicationV2 `data-action` choice tiles. Wondrous, Weapon, and Armor expose exclusive selected/`aria-pressed` state from private input, retain prompt/level/rarity through rerenders, include localized hints and icons, reject invalid kinds, and use intrinsic auto-fit sizing so narrow resizable windows do not depend on viewport media queries.
+- Initial independent review found the first pass still used viewport responsiveness, omitted icon context, had an underpowered directory fixture, referenced unavailable CSS variables, and duplicated a localization key. Parent corrected all findings and added a production-class action regression plus exact `[header, forge row, directory list]` order coverage. All 68 regressions, 103 script syntax checks, JSON parsing, and whitespace gates pass; follow-up reviewer `6200e335-ec68-4bc7-9e66-5a613aa140d3` approved the final diff with no findings.
+- No provider request, Item creation, world mutation, GitHub write, module update, or live acceptance occurred before the final gate. User explicitly requested GitHub CLI publication and module-only Foundry update/live UI QA afterward.
+
 ## 2026-09-05 — GitHub Actions Node 24 runtime maintenance
 
 - Continued from the committed post-v0.3.5.60 QA branch onto `chore/github-actions-node24`. Updated every `actions/checkout` and `actions/setup-node` reference across PR checks, auto-release, and the reusable release workflow from v4 to v5, addressing the GitHub runner's deprecated Node 20 action-runtime annotation. The explicit project runtime remains Node 22.

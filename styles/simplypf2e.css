@@ -281,6 +281,62 @@
   font-family: inherit;
 }
 
+/* Item Forge kind choices. Kept separate from the generator's mode switch. */
+.simplypf2e .spf-kind-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: var(--spf-space-sm);
+  margin-bottom: var(--spf-space-md);
+}
+
+.simplypf2e .spf-kind-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spf-space-sm);
+  min-width: 0;
+  padding: var(--spf-space-md);
+  text-align: left;
+  border: 1px solid var(--spf-border);
+  border-radius: var(--spf-radius);
+  background: var(--spf-surface);
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.simplypf2e .spf-kind-choice:hover {
+  border-color: var(--spf-brand-accent);
+}
+
+.simplypf2e .spf-kind-choice:focus-visible {
+  outline: 2px solid var(--spf-focus);
+  outline-offset: 2px;
+}
+
+.simplypf2e .spf-kind-choice.spf-kind-selected {
+  border-color: var(--spf-brand-accent);
+  background: var(--spf-brand-soft);
+  box-shadow: inset 0 0 0 1px var(--spf-brand-accent);
+}
+
+.simplypf2e .spf-kind-choice > i {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  color: var(--spf-brand-accent);
+}
+
+.simplypf2e .spf-kind-choice-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.simplypf2e .spf-kind-choice-copy small {
+  color: var(--color-text-subtle, rgba(255, 255, 255, 0.72));
+  font-size: var(--spf-text-sm);
+  line-height: 1.25;
+}
+
 /* Segmented mode switch */
 .simplypf2e .spf-mode-toggle {
   display: flex;
@@ -1019,6 +1075,15 @@
 /* --------------------------------------------------------------------------
    Directory buttons (outside the app windows)
    -------------------------------------------------------------------------- */
+.spf-directory-row {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.spf-directory-row .spf-directory-button {
+  width: 100%;
+}
+
 .spf-directory-button i {
   color: inherit;
 }
