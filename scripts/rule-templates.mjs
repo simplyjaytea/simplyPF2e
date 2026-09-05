@@ -7,8 +7,8 @@
  * nobody notices. Instead, this module scans the world's actually-installed
  * Item compendiums for published items whose `system.rules` already carry
  * each kind of RE the item forge needs, and hands back a working exemplar
- * to be cloned and parameterized (substituting only the value / selector /
- * damage type). Ground truth from real compendium data beats recalled
+ * to be cloned. The forge's level-filtered catalog preserves each complete
+ * rule unchanged. Ground truth from real compendium data beats recalled
  * schema — the same grounding principle as the spell/equipment candidate
  * passes in compendium.mjs.
  *
@@ -17,17 +17,35 @@
  * offers it). There is deliberately NO hand-authored fallback.
  */
 
-import { getPacksFor } from "./compendium.mjs";
+import { getPacksFor, priceToGp, RARITY_RANK } from "./compendium.mjs";
+
+// The catalog and its consumer share one supported-target boundary. These
+// are also re-exported by item-builder for activation and existing callers.
+export const DAMAGE_TYPES = new Set([
+  "acid", "bludgeoning", "cold", "electricity", "fire", "force", "mental",
+  "piercing", "poison", "slashing", "sonic", "spirit", "vitality", "void", "bleed"
+]);
+export const ITEM_BONUS_STATISTICS = new Set([
+  "ac", "perception", "fortitude", "reflex", "will",
+  "acrobatics", "arcana", "athletics", "crafting", "deception", "diplomacy",
+  "intimidation", "medicine", "nature", "occultism", "performance", "religion",
+  "society", "stealth", "survival", "thievery"
+]);
+export const SENSE_TYPES = new Set([
+  "darkvision", "greater-darkvision", "low-light-vision", "scent", "tremorsense",
+  "echolocation", "see-invisibility", "truesight", "lifesense", "wavesense"
+]);
+export const SPEED_TYPES = new Set(["fly", "swim", "climb", "burrow"]);
 
 /**
  * What each effect kind searches for. `key` is the RE key to match and
  * `allowed` is an exact-shape whitelist: an exemplar rule may contain ONLY
  * these fields, which guarantees the clone carries no baggage from its
  * source item (predicates, labels, alteration modes, aura machinery, ...).
- * `matches` further requires the parameterized fields to hold plain values
- * of the type we substitute — e.g. Weakness rules on some published items
+ * `matches` further requires the mechanical fields to hold plain values
+ * — e.g. Weakness rules on some published items
  * carry an ARRAY of types, and BaseSpeed values are often roll formulas;
- * those shapes are skipped so substitution stays strictly like-for-like.
+ * those shapes are skipped so the forge can compare concrete magnitudes.
  *
  * The field names below are search FILTERS, not authored output: if any of
  * them were wrong, the scan would simply find no exemplar and the kind
@@ -107,6 +125,19 @@ function isComplete(rule, kind) {
 /* packId -> [{name, uuid, rules}] for entries that carry any rules. */
 const rulesEntryCache = new Map();
 
+const ruleRecord = (entry, packId) => ({
+  name: entry.name,
+  uuid: entry.uuid ?? `Compendium.${packId}.Item.${entry._id}`,
+  type: entry.type,
+  level: entry.system?.level?.value,
+  traits: entry.system?.traits?.value,
+  rarity: entry.system?.traits?.rarity,
+  description: entry.system?.description?.value,
+  usage: entry.system?.usage?.value,
+  price: entry.system?.price?.value,
+  rules: entry.system.rules
+});
+
 /**
  * All entries of an Item pack that carry a non-empty `system.rules`, as
  * lightweight {name, uuid, rules} records. Rule data is not in the default
@@ -125,29 +156,95 @@ async function getRulesEntries(packId) {
   }
   let records = [];
   try {
-    const index = await pack.getIndex({ fields: ["system.rules"] });
+    const index = await pack.getIndex({ fields: [
+      "system.rules", "system.level.value", "system.traits.value", "system.traits.rarity",
+      "system.description.value", "system.usage.value", "system.price.value"
+    ] });
     const entries = [...index];
     const indexHasRules = entries.some((e) => Array.isArray(e.system?.rules));
     if (indexHasRules) {
       records = entries
         .filter((e) => Array.isArray(e.system?.rules) && e.system.rules.length)
-        .map((e) => ({
-          name: e.name,
-          uuid: e.uuid ?? `Compendium.${packId}.Item.${e._id}`,
-          rules: e.system.rules
-        }));
+        .map((e) => ruleRecord(e, packId));
     } else if (entries.length) {
       // Index carried no rules data at all — fall back to full documents.
       const docs = await pack.getDocuments();
       records = docs
         .filter((d) => Array.isArray(d.system?.rules) && d.system.rules.length)
-        .map((d) => ({ name: d.name, uuid: d.uuid, rules: d.system.rules }));
+        .map((d) => ruleRecord(d, packId));
     }
   } catch (err) {
     console.warn(`simplypf2e | itemforge: failed to scan pack "${packId}" for rule exemplars`, err);
   }
   rulesEntryCache.set(packId, records);
   return records;
+}
+
+/**
+ * Exact equipment effects within level/rarity limits, excluding sources with
+ * unsupported access conditions. This conservative filter is not a complete
+ * rules-text eligibility parser or proof of a custom combination's balance.
+ * PC focus-pool discovery keeps using the broader exemplar scan below.
+ */
+export async function getForgeEffectCatalog(level, rarity = "common") {
+  const catalog = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("equipment")) {
+    for (const entry of await getRulesEntries(packId)) {
+      if (!eligibleForgeSource(entry, level, rarity)) continue;
+      for (const rule of entry.rules) {
+        const kind = EFFECT_KINDS.find((candidate) => ruleMatchesKind(rule, candidate) && supportedForgeTarget(rule, candidate));
+        if (!kind) continue;
+        if ("value" in rule && (!Number.isFinite(rule.value) || rule.value <= 0)) continue;
+        if (kind === "sense" && "range" in rule && (!Number.isFinite(rule.range) || rule.range <= 0)) continue;
+        const requiresInvestment = entry.traits.includes("invested");
+        const key = `${kind}:${requiresInvestment}:${JSON.stringify(rule)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const effect = kind === "itemBonus" ? { statistic: rule.selector, value: rule.value }
+          : ["resistance", "weakness", "immunity"].includes(kind)
+            ? { damageType: rule.type, ...(kind === "immunity" ? {} : { value: rule.value }) }
+            : kind === "sense" ? { type: rule.selector, acuity: rule.acuity ?? null, range: rule.range ?? null }
+              : { type: rule.selector, value: rule.value };
+        catalog.push({
+          kind, ...effect,
+          exemplar: {
+            rule: structuredClone(rule), sourceName: entry.name, sourceUuid: entry.uuid,
+            sourceLevel: entry.level, sourceRarity: entry.rarity, requiresInvestment
+          }
+        });
+      }
+    }
+  }
+  return catalog;
+}
+
+const EXCLUDED_FORGE_TRAITS = new Set(["artifact", "mythic", "cursed", "intelligent"]);
+
+function eligibleForgeSource(entry, level, rarity) {
+  if (entry.type !== "equipment" || !Number.isFinite(entry.level) || entry.level < 0 || entry.level > level) return false;
+  if (!Object.hasOwn(RARITY_RANK, entry.rarity) || RARITY_RANK[entry.rarity] > (RARITY_RANK[rarity] ?? 0)) return false;
+  if (!Array.isArray(entry.traits) || entry.traits.some((trait) => EXCLUDED_FORGE_TRAITS.has(trait))) return false;
+  if (typeof entry.usage !== "string" || !entry.usage) return false;
+  if (entry.traits.includes("invested") && !entry.usage.startsWith("worn")) return false;
+  if (!(priceToGp(entry.price) > 0) || typeof entry.description !== "string" || !entry.description.trim()) return false;
+  const text = entry.description.replace(/<[^>]*>/g, " ").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ");
+  // Published sources use headings such as Prerequisite, Craft Requirements,
+  // and Access. Reject the whole source rather than detach a simple RE from
+  // those conditions. Unpriced gifts are also excluded by the price gate.
+  if (/\b(?:prerequisites?|requirements?|access)\b/i.test(text)) return false;
+  if (/\b(?:granted|given|bestowed) by\b/i.test(text)) return false;
+  if (/\b(?:gift[- ]only|only (?:as a |a )?gift|(?:cannot|can't) be (?:bought|purchased|crafted))\b/i.test(text)) return false;
+  if (/\b(?:given|granted|bestowed|received)\b[^.!?]{0,100}\bonly\b|\bonly\b[^.!?]{0,100}\b(?:given|granted|bestowed|received)\b/i.test(text)) return false;
+  return true;
+}
+
+function supportedForgeTarget(rule, kind) {
+  if (kind === "itemBonus") return ITEM_BONUS_STATISTICS.has(rule.selector);
+  if (["resistance", "weakness", "immunity"].includes(kind)) return DAMAGE_TYPES.has(rule.type);
+  if (kind === "sense") return SENSE_TYPES.has(rule.selector)
+    && (rule.acuity === undefined || ["precise", "imprecise", "vague"].includes(rule.acuity));
+  return kind === "speed" && SPEED_TYPES.has(rule.selector);
 }
 
 /**

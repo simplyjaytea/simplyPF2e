@@ -53,8 +53,8 @@ const concept = normalizeMagicItemConcept({
 }, { level: 3, rarity: "common", availableKinds: [], usageOptions: ["held"] });
 
 assert.equal(concept.activation.template, "condition");
-assert.ok(!concept.activation.params.duration.includes("<script>"), "AI-supplied duration must be HTML-escaped, never raw");
-assert.match(concept.activation.params.duration, /&lt;script&gt;/, "escaped duration should carry HTML entities instead");
+assert.equal(concept.activation.params.duration, null,
+  "free-form durations are rejected; the model may only choose module-owned duration enums");
 
 /* -------------------- runtime actor-name escaping regression -------------------- */
 
@@ -63,10 +63,17 @@ const hostileTargetName = '<svg onload="target">';
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const messages = [];
 const flavors = [];
+let activationFlag = { forgeId: "test-forge", uses: { value: 1, max: 1, per: "day" } };
 const acting = {
   name: hostileActingName,
-  items: [{ getFlag: () => ({ forgeId: "test-forge" }) }]
+  items: [{
+    getFlag: () => structuredClone(activationFlag),
+    async setFlag(_module, _key, value) { activationFlag = value; }
+  }]
 };
+globalThis.foundry = { utils: {
+  mergeObject: (a, b) => ({ ...a, ...b, uses: { ...a.uses, ...b.uses } })
+} };
 const target = {
   name: hostileTargetName,
   async increaseCondition() {}
@@ -92,6 +99,7 @@ assert.match(messages.at(-1).content, /&lt;svg onload=&quot;target&quot;&gt;/,
 assert.doesNotMatch(messages.at(-1).content, /<svg/, "raw target HTML must not reach chat content");
 
 globalThis.game.user.targets = new Set();
+activationFlag.uses.value = 1; // Separate healing activation scenario.
 globalThis.CONFIG.Dice.rolls = [class DamageRoll {
   async evaluate() { return this; }
   async toMessage({ flavor }) { flavors.push(flavor); }

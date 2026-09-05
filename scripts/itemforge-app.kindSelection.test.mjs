@@ -96,4 +96,11 @@ prepared = await app._prepareContext();
 assert.equal(prepared.input.kind, "armor", "invalid kinds fail closed without changing selection");
 assert.equal(app.renders, rendersBeforeInvalid, "invalid kinds do not trigger a render");
 
+controls['[name="level"]'].value = "6.7";
+await selectKind.call(app, null, { dataset: { kind: "weapon" } });
+assert.equal((await app._prepareContext()).input.level, 7, "provider and catalog receive the same whole item level");
+controls['[name="level"]'].value = "not-a-level";
+await selectKind.call(app, null, { dataset: { kind: "wondrous" } });
+assert.equal((await app._prepareContext()).input.level, 7, "malformed level input preserves the last valid level");
+
 console.log("itemforge-app.kindSelection.test.mjs: production kind selection and preservation passed");

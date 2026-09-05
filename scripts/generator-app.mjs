@@ -421,7 +421,7 @@ export class GeneratorApp extends SpfApp {
     // (the concept is clamped later; the prompt text was not).
     const [levelMin, levelMax] = ["monster", "npc"].includes(mode) ? [-1, 24] : [1, 20];
     const rawLevel = Number(form.querySelector('[name="level"]')?.value ?? 1);
-    const level = Math.min(levelMax, Math.max(levelMin, Number.isNaN(rawLevel) ? 1 : rawLevel));
+    const level = Math.min(levelMax, Math.max(levelMin, Number.isNaN(rawLevel) ? 1 : Math.round(rawLevel)));
     const rarity = form.querySelector('[name="rarity"]')?.value ?? this.#input.rarity;
     const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked ?? true;
     const preset = form.querySelector('[name="preset"]')?.value ?? this.#input.preset;
@@ -432,7 +432,7 @@ export class GeneratorApp extends SpfApp {
     const partySizeEl = form.querySelector('[name="partySize"]');
     const rawPartySize = partySizeEl ? Number(partySizeEl.value) : NaN;
     const partySize = partySizeEl
-      ? Math.min(8, Math.max(1, Number.isNaN(rawPartySize) ? this.#input.partySize : rawPartySize))
+      ? Math.min(8, Math.max(1, Number.isNaN(rawPartySize) ? this.#input.partySize : Math.round(rawPartySize)))
       : this.#input.partySize;
     const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
     const treasureAmount = form.querySelector('[name="treasureAmount"]')?.value ?? this.#input.treasureAmount;
@@ -624,6 +624,7 @@ export class GeneratorApp extends SpfApp {
   }
 
   async #runGeneration(isRandom, { create = false } = {}) {
+    if (this.#busy) return;
     this.#readForm();
     if (!this.#assertGenerationReady()) return;
     if (this.#input.mode === "character") {
@@ -659,10 +660,11 @@ export class GeneratorApp extends SpfApp {
     ]);
     try {
       await this._setStep("concept");
+      const gmPrompt = isRandom ? randomBrief(this.#input.mode) : this.#input.prompt;
       const { concept: raw, usage } = await generateConcept({
         // Random mode rolls a fresh local brief each generation, so
         // Regenerate gives a genuinely different creature every time.
-        prompt: isRandom ? randomBrief(this.#input.mode) : this.#input.prompt,
+        prompt: gmPrompt,
         level: this.#input.level,
         rarity: this.#input.rarity,
         allowSpellcasting: this.#input.allowSpellcasting,
@@ -672,7 +674,7 @@ export class GeneratorApp extends SpfApp {
         onProgress: (p) => this._onAIProgress(p), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Concept"), usage);
-      this.#concept = normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity });
+      this.#concept = { ...normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity }), gmPrompt };
       // Defensive filter: allowSpellcasting is only enforced in the AI prompt,
       // so a non-compliant model output can still return a valid tradition.
       // Strip it here (focus spells ride on it — normalizeConcept already
@@ -702,9 +704,10 @@ export class GeneratorApp extends SpfApp {
       // tables, scaled by the Treasure amount control); only coins flex.
       this.#resolved.loot = await applyTreasureBudget(
         this.#resolved.loot,
-        treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)
+        this.#concept.loot.length ? treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount) : 0
       );
       const manifest = completionManifest({ mode: this.#input.mode, concept: this.#concept, resolved: this.#resolved });
+      this._throwIfCancelled();
       assertComplete(manifest);
       this.#manifest = manifest;
       const eq = this.#resolved.equipment;
@@ -743,16 +746,16 @@ export class GeneratorApp extends SpfApp {
     this.#pcResolved = null;
     this._tokenUsage = [];
     const { level: partyLevel, partySize, threat, rarity } = this.#input;
-    const composition = composeEncounter(threat, partySize, partyLevel);
-    const memberLabel = (i) => game.i18n.format("SIMPLYPF2E.Progress.Member", {
-      index: i + 1, total: composition.members.length
-    });
-    const signal = this._beginProgress([
-      ["design", game.i18n.localize("SIMPLYPF2E.Progress.Design")],
-      ...composition.members.map((_, i) => [`member${i}`, memberLabel(i)]),
-      ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
-    ]);
     try {
+      const composition = composeEncounter(threat, partySize, partyLevel);
+      const memberLabel = (i) => game.i18n.format("SIMPLYPF2E.Progress.Member", {
+        index: i + 1, total: composition.members.length
+      });
+      const signal = this._beginProgress([
+        ["design", game.i18n.localize("SIMPLYPF2E.Progress.Design")],
+        ...composition.members.map((_, i) => [`member${i}`, memberLabel(i)]),
+        ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match")]
+      ]);
       await this._setStep("design");
       // Random mode always rolls a fresh theme, even over a typed prompt —
       // same contract as the other modes' dice button (#onGenerateRandom).
@@ -783,7 +786,7 @@ export class GeneratorApp extends SpfApp {
           onProgress: (p) => this._onAIProgress(p), signal
         });
         this._recordTokens(memberLabel(i), usage);
-        const concept = normalizeConcept(raw, { level: slot.level, rarity });
+        const concept = { ...normalizeConcept(raw, { level: slot.level, rarity }), gmPrompt: theme };
         // Same defensive filter as the single-creature pipeline: the prompt
         // asks for no spellcasting, but a non-compliant model can still
         // return a valid tradition.
@@ -808,7 +811,7 @@ export class GeneratorApp extends SpfApp {
         // regardless of copy count — only the per-copy split changes
         // (#stepMemberCount recomputes it the same way).
         member.treasureGroupBudget =
-          treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / members.length;
+          member.concept.loot.length ? treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / members.length : 0;
         member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
         member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
         member.manifest = completionManifest({ mode: "monster", concept: member.concept, resolved: member.resolved });
@@ -821,6 +824,7 @@ export class GeneratorApp extends SpfApp {
         console.log(`${MODULE_ID} | equipment matches: ${allEq.length - misses.length}/${allEq.length}`,
           misses.length ? { missing: misses } : "");
       }
+      this._throwIfCancelled();
       this.#encounter = {
         name: design.name,
         budget: composition.budget,
@@ -1045,6 +1049,7 @@ export class GeneratorApp extends SpfApp {
         }
       }
       const manifest = completionManifest({ mode: "character", concept, resolved });
+      this._throwIfCancelled();
       assertComplete(manifest);
       this.#manifest = manifest;
 
@@ -1203,13 +1208,13 @@ export class GeneratorApp extends SpfApp {
       ])];
       const candidates = await getEquipmentCandidates(concept.level, keywords);
       if (!candidates.length) return;
-      const { equipment, usage } = await selectEquipment({
+      const { equipment, omitted, usage } = await selectEquipment({
         concept,
         candidates,
         onProgress: (p) => this._onAIProgress(p), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Equipment"), usage);
-      if (equipment.length) concept.equipment = equipment;
+      if (equipment.length || omitted === true) concept.equipment = equipment;
     } catch (err) {
       if (err?.cancelled) throw err;
       console.warn(`${MODULE_ID} | grounded equipment selection failed; unresolved draft equipment will block creation`, err);
@@ -1244,14 +1249,14 @@ export class GeneratorApp extends SpfApp {
         scrollKeywords.length ? getScrollSpellCandidates(10, scrollKeywords) : []
       ]);
       if (!candidates.length && !scrollCandidates.length) return;
-      const { loot, usage } = await selectLoot({
+      const { loot, omitted, usage } = await selectLoot({
         concept,
         candidates,
         scrollCandidates,
         onProgress: (p) => this._onAIProgress(p), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
-      if (loot.length) {
+      if (loot.length || omitted === true) {
         const coins = concept.loot.filter((item) => parseCoins(item.name));
         concept.loot = normalizeLoot([...coins, ...loot]);
       }
@@ -1304,6 +1309,7 @@ export class GeneratorApp extends SpfApp {
     let actor = null;
     let committed = false;
     try {
+      assertComplete(this.#manifest);
       // Art: borrowed from the closest-matching bestiary creature.
       const scaffold = await findBestiaryScaffold(this.#concept);
       if (!scaffold) throw new Error(game.i18n.localize("SIMPLYPF2E.Errors.NoBestiaryScaffold"));
@@ -1568,7 +1574,6 @@ export class GeneratorApp extends SpfApp {
     if (this.#busy || !this.#concept) return;
     this.#busy = true;
     this.#error = null;
-    this.#manifest = null;
     const signal = this._beginProgress([["loot", game.i18n.localize("SIMPLYPF2E.Progress.LootReroll")]]);
     try {
       await this._setStep("loot");
@@ -1578,16 +1583,21 @@ export class GeneratorApp extends SpfApp {
         onProgress: (p) => this._onAIProgress(p), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.LootReroll"), usage);
-      this.#concept.loot = normalizeLoot(loot);
+      // Keep the accepted preview usable if this replacement fails or is
+      // cancelled. A shallow stage also preserves issued-reference identity.
+      const concept = { ...this.#concept, loot: normalizeLoot(loot) };
       // Ground the fresh draft too — same Remaster-name protection as the
       // main pipeline (a reroll is a new ungrounded draft).
-      await this.#refineLoot(this.#concept, signal);
-      this.#resolved.loot = await applyTreasureBudget(
-        await resolveLoot(this.#concept),
-        treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount)
-      );
-      const manifest = completionManifest({ mode: this.#input.mode, concept: this.#concept, resolved: this.#resolved });
+      await this.#refineLoot(concept, signal);
+      const resolved = { ...this.#resolved, loot: await applyTreasureBudget(
+        await resolveLoot(concept, { exactContent: true }),
+        concept.loot.length ? treasureBudget(concept.level, concept.rarity, this.#input.treasureAmount) : 0
+      ) };
+      const manifest = completionManifest({ mode: this.#manifest?.mode ?? "monster", concept, resolved });
+      this._throwIfCancelled();
       assertComplete(manifest);
+      this.#concept = concept;
+      this.#resolved = resolved;
       this.#manifest = manifest;
     } catch (err) {
       this.#noteGenerationFailure(err, "loot reroll");
@@ -1599,6 +1609,7 @@ export class GeneratorApp extends SpfApp {
   }
 
   static async #onDiscard() {
+    if (this.#busy) return;
     this.#readForm();
     this.#concept = null;
     this.#resolved = null;

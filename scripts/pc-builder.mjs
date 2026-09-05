@@ -9,7 +9,7 @@ import { findRuleExemplar } from "./rule-templates.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
-import { CORE_SKILLS, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
+import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
 import { stageClassPaths } from "./class-paths.mjs";
 import { stagedActorContext } from "./pc-prerequisites.mjs";
@@ -290,19 +290,29 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
     ? backgroundDoc.system.trainedSkills.lore : [])
     .filter((name) => typeof name === "string" && name.trim())
     .map((name) => [slugify(name), 1]));
-  const prerequisiteContext = stagedActorContext({
-    level: concept.level,
-    ancestry: ancestryDoc,
-    heritage: heritageDoc,
-    background: backgroundDoc,
-    class: classDoc,
-    skills: { ...provenSkills, ...loreSkills }
-  });
+  // Published Skillful Lessons limits Investigator's odd-level skill feats
+  // to mental skills or its methodology skill. Prove the mental-skill branch
+  // from ordinary rank prerequisites; methodology-only and generic choices
+  // remain unavailable until their native selection is known. Match the real
+  // feature's source identity, never its display name alone.
+  // pf2e-8.5.0/packs/pf2e/class-features/skillful-lessons.json (dmK1wya8GBi9MmCB).
+  const skillfulLessons = Object.values(classDoc.system?.items ?? {}).some((feature) =>
+    feature?.level === 3 && [
+      "Compendium.pf2e.classfeatures.Item.dmK1wya8GBi9MmCB",
+      "Compendium.pf2e.classfeatures.Item.Skillful Lessons"
+    ].includes(feature.uuid));
+  const mentalSkills = [...CORE_SKILLS.filter((skill) => ["int", "wis", "cha"].includes(SKILL_ATTRIBUTES[skill])), ...Object.keys(loreSkills)];
   const ancestryTrait = slugify(ancestryDoc.name);
   const classTrait = slugify(classDoc.name);
   const featSlots = [];
   const freeArchetype = Boolean(getSetting(SETTINGS.freeArchetype));
-  for (const slot of buildFeatSlots(concept.level, { freeArchetype })) {
+  for (const slot of buildFeatSlots(concept.level, { freeArchetype, classSystem: classDoc.system })) {
+    const prerequisiteContext = stagedActorContext({
+      level: slot.level, ancestry: ancestryDoc, heritage: heritageDoc,
+      background: backgroundDoc, class: classDoc, skills: { ...provenSkills, ...loreSkills },
+      allowedSkillFeats: skillfulLessons && slot.type === "skill" && slot.level >= 3 && slot.level % 2 === 1
+        ? mentalSkills : null
+    });
     const traits = slot.archetype ? ["archetype"]
       : slot.type === "ancestry" ? [ancestryTrait]
       : slot.type === "class" ? [classTrait] : [];
@@ -585,7 +595,7 @@ function loreItem(name, rank = 1) {
  */
 const CHARACTER_ITEM_TYPES = new Set([
   "ancestry", "heritage", "background", "class", "feat", "action", "lore",
-  "spell", "spellcastingEntry", "weapon", "armor", "equipment", "consumable",
+  "spell", "spellcastingEntry", "weapon", "armor", "equipment", "consumable", "ammo",
   "treasure", "backpack", "shield", "kit", "condition", "effect", "deity"
 ]);
 

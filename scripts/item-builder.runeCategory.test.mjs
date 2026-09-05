@@ -61,7 +61,7 @@ const realWarn = console.warn;
 console.warn = (...args) => warnings.push(args.join(" "));
 try {
   const onHeavy = normalizeRunedItemConcept({
-    baseItemName: "Full Plate", potency: 2, secondaryTier: 1,
+    baseItemName: "Full Plate", potency: "double", secondaryTier: "standard",
     propertyRunes: ["Invisibility", "Fortification"]
   }, ARGS);
   assert.deepEqual(onHeavy.propertyRunes, ["Fortification"],
@@ -70,7 +70,7 @@ try {
     "the drop is warned, naming the rune and the base category");
 
   const onLight = normalizeRunedItemConcept({
-    baseItemName: "Leather Armor", potency: 3, secondaryTier: 0,
+    baseItemName: "Leather Armor", potency: "triple", secondaryTier: "none",
     propertyRunes: ["Fortification", "Invisibility", "Acid-Resistant"]
   }, ARGS);
   assert.deepEqual(onLight.propertyRunes, ["Invisibility", "Acid-Resistant"],
@@ -80,7 +80,7 @@ try {
   // could have used: with potency 1, an illegal first pick still leaves the
   // slot for the next legal rune.
   const slotNotWasted = normalizeRunedItemConcept({
-    baseItemName: "Full Plate", potency: 1, secondaryTier: 0,
+    baseItemName: "Full Plate", potency: "single", secondaryTier: "none",
     propertyRunes: ["Invisibility", "Acid-Resistant"]
   }, ARGS);
   assert.deepEqual(slotNotWasted.propertyRunes, ["Acid-Resistant"],
@@ -88,7 +88,7 @@ try {
 
   // Weapons are untouched by the category gate.
   const weapon = normalizeRunedItemConcept({
-    baseItemName: "Longsword", potency: 1, secondaryTier: 0,
+    baseItemName: "Longsword", potency: "single", secondaryTier: "none",
     propertyRunes: ["Flaming"]
   }, {
     kind: "weapon", rarity: "common",

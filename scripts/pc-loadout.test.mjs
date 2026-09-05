@@ -53,6 +53,18 @@ assert.equal(byId.get("shield")?.["system.equipped.carryType"], "stowed");
 assert.equal(byId.get("bow")?.["system.selectedAmmoId"], "arrows", "reload-0 weapons use PF2e's selected-ammo relationship");
 assert.ok(!byId.has("native"), "a native item with the same compendium source is never changed");
 
+// Worn equipment uses PF2e's own usage, not armor proficiency. The shared
+// equipment builder already readies it; the PC pass must preserve that state.
+const cloak = item("cloak", "equipment", { usage: { value: "worncloak" },
+  equipped: { carryType: "worn", handsHeld: 0, inSlot: true, invested: true } });
+const backpack = item("backpack", "backpack", { usage: { value: "wornbackpack" },
+  equipped: { carryType: "worn", handsHeld: 0, inSlot: true } });
+const wornActor = { ...actor, items: new Map([leather, cloak, backpack].map((entry) => [entry.id, entry])) };
+const wornPlan = planCharacterLoadout(wornActor, [leather, cloak, backpack]);
+assert.deepEqual(wornPlan.warnings, [], "ordinary worn equipment needs no armor proficiency and does not conflict with armor");
+assert.ok(!wornPlan.updates.some((patch) => ["cloak", "backpack"].includes(patch._id)),
+  "published worn carry/slot state and existing investment are preserved");
+
 let written = null;
 actor.updateEmbeddedDocuments = async (type, updates) => { written = { type, updates }; };
 const applied = await applyCharacterLoadout(actor, expected);

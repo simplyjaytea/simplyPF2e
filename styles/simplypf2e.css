@@ -291,11 +291,15 @@
 
 .simplypf2e .spf-kind-choice {
   display: flex;
+  /* Foundry gives buttons a fixed control height; these contain wrapped copy. */
+  height: auto;
+  min-height: 4.5rem;
   align-items: flex-start;
   gap: var(--spf-space-sm);
   min-width: 0;
   padding: var(--spf-space-md);
   text-align: left;
+  white-space: normal;
   border: 1px solid var(--spf-border);
   border-radius: var(--spf-radius);
   background: var(--spf-surface);

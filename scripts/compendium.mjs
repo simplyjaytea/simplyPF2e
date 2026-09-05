@@ -37,7 +37,7 @@ export const DEFAULT_PACKS = {
 };
 
 export const EQUIPMENT_TYPES = new Set([
-  "weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit"
+  "weapon", "armor", "equipment", "consumable", "ammo", "treasure", "backpack", "shield", "kit"
 ]);
 export const ABILITY_CANDIDATE_LIMIT = 96;
 

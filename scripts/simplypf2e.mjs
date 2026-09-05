@@ -112,36 +112,41 @@ Hooks.on("renderItemDirectory", (_directory, html) => {
 });
 
 /*
- * Clean up a forged item's companion activation macro when the item is
- * deleted, so macros don't accumulate as orphans. Guarded so it ONLY ever
- * touches a macro this module recorded on the item's own flag — it never
- * looks at, or deletes, any other macro. Only the client that initiated the
- * deletion runs the cleanup (userId check), avoiding duplicate deletes.
+ * World items and their actor/token copies share a companion macro. Delete
+ * it only after the last world reference disappears, and only when its own
+ * forge identity agrees. The initiating client alone handles cleanup.
  */
 Hooks.on("deleteItem", async (item, _options, userId) => {
   if (userId !== game.user.id) return;
   const uuid = item?.getFlag?.(MODULE_ID, "activationMacroUuid");
-  if (!uuid) return;
+  const forgeId = item?.getFlag?.(MODULE_ID, "forge")?.forgeId;
+  if (!uuid || !forgeId) return;
   try {
+    const referencesMacro = (candidate) => candidate !== item && candidate?.uuid !== item.uuid
+      && candidate?.getFlag?.(MODULE_ID, "activationMacroUuid") === uuid;
+    if (Array.from(game.items ?? []).some(referencesMacro)) return;
+    if (Array.from(game.actors ?? []).some((actor) => Array.from(actor.items ?? []).some(referencesMacro))) return;
+    for (const scene of game.scenes ?? []) {
+      if (Array.from(scene.tokens ?? []).some((token) => Array.from(token.actor?.items ?? []).some(referencesMacro))) return;
+    }
     const macro = await fromUuid(uuid);
-    if (macro?.documentName === "Macro") await macro.delete();
+    if (macro?.documentName === "Macro" && macro.getFlag?.(MODULE_ID, "forgeId") === forgeId) await macro.delete();
   } catch (err) {
     console.warn(`${MODULE_ID} | failed to clean up activation macro ${uuid}`, err);
   }
 });
 
 /*
- * Recharge forged 1/day items on a full night's rest (best-effort: this hook
- * is fired by the PF2e "Rest for the Night" flow; if it never fires, charges
- * simply don't auto-reset and the GM resets them manually). Only resets our
- * own flag on the rested actor's own items, never anything else.
+ * PF2e calls this hook locally on the client performing Rest for the Night
+ * (src/scripts/macros/rest-for-the-night.ts), including player clients. The
+ * initiating owner resets only their actor's forged daily counters.
  */
 Hooks.on("pf2e.restForTheNight", async (actor) => {
-  if (!game.user.isGM || !actor?.items) return;
+  if (!actor?.isOwner || !actor.items) return;
   const updates = [];
   for (const item of actor.items) {
     const forge = item.getFlag?.(MODULE_ID, "forge");
-    if (forge?.uses && typeof forge.uses.max === "number" && forge.uses.value !== forge.uses.max) {
+    if (forge?.uses?.per === "day" && Number.isInteger(forge.uses.max) && forge.uses.max > 0 && forge.uses.value !== forge.uses.max) {
       updates.push({ _id: item.id, [`flags.${MODULE_ID}.forge.uses.value`]: forge.uses.max });
     }
   }

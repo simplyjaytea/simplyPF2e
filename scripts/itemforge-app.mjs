@@ -3,7 +3,7 @@ import {
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
 import { generateMagicItemConcept, generateRunedItemConcept } from "./ai.mjs";
-import { availableEffectKinds, EFFECT_KINDS } from "./rule-templates.mjs";
+import { getForgeEffectCatalog, EFFECT_KINDS } from "./rule-templates.mjs";
 import {
   normalizeMagicItemConcept, buildMagicItemData, priceForLevel, getUsageOptions, describeEffect,
   describeActivation, MIN_ITEM_LEVEL, MAX_ITEM_LEVEL,
@@ -132,8 +132,10 @@ export class ItemForgeApp extends SpfApp {
   #readForm() {
     const form = this.element;
     const prompt = form.querySelector('[name="prompt"]')?.value ?? this.#input.prompt;
-    const level = Math.min(MAX_ITEM_LEVEL, Math.max(MIN_ITEM_LEVEL,
-      Number(form.querySelector('[name="level"]')?.value ?? this.#input.level)));
+    const rawLevel = Number(form.querySelector('[name="level"]')?.value ?? this.#input.level);
+    const level = Number.isFinite(rawLevel)
+      ? Math.min(MAX_ITEM_LEVEL, Math.max(MIN_ITEM_LEVEL, Math.round(rawLevel)))
+      : this.#input.level;
     const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
     // The kind tiles are buttons, so preserve the authoritative selected kind
     // when no form control for it exists in the current render.
@@ -205,6 +207,7 @@ export class ItemForgeApp extends SpfApp {
   }
 
   static async #onSelectKind(_event, target) {
+    if (this.#busy) return;
     const kind = target?.dataset?.kind;
     if (kind !== "wondrous" && !RUNED_ITEM_KINDS.has(kind)) return;
     this.#readForm();
@@ -220,6 +223,7 @@ export class ItemForgeApp extends SpfApp {
   }
 
   static async #onGenerate() {
+    if (this.#busy) return;
     this.#readForm();
     if (!this.#input.prompt.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.NoPrompt"));
@@ -229,6 +233,8 @@ export class ItemForgeApp extends SpfApp {
     this.#error = null;
     this._tokenUsage = [];
     this.#kind = this.#input.kind;
+    this.#clearPreview();
+    this.#unavailableKinds = null;
     if (this.#kind === "wondrous") await this.#generateWondrous();
     else await this.#generateRuned(this.#kind);
   }
@@ -243,11 +249,9 @@ export class ItemForgeApp extends SpfApp {
       // 1. Ground truth first: which effect kinds have real rule exemplars
       // in this world's compendiums? Only those are offered to the AI.
       await this._setStep("templates");
-      const availableKinds = await availableEffectKinds();
+      const effectCatalog = await getForgeEffectCatalog(this.#input.level, this.#input.rarity);
+      const availableKinds = [...new Set(effectCatalog.map((effect) => effect.kind))];
       this.#unavailableKinds = EFFECT_KINDS.filter((k) => !availableKinds.includes(k));
-      if (!availableKinds.length) {
-        throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.NoExemplars"));
-      }
       const usageOptions = await getUsageOptions();
 
       // 2. One AI call, constrained to the available kinds and real usages.
@@ -257,6 +261,7 @@ export class ItemForgeApp extends SpfApp {
         level: this.#input.level,
         rarity: this.#input.rarity,
         availableKinds,
+        effectCatalog,
         usageOptions,
         onProgress: (p) => this._onAIProgress(p), signal
       });
@@ -270,9 +275,11 @@ export class ItemForgeApp extends SpfApp {
         level: this.#input.level,
         rarity: this.#input.rarity,
         availableKinds,
+        effectCatalog,
         usageOptions
       });
       this.#price = await priceForLevel(this.#concept.level, this.#concept.rarity);
+      this._throwIfCancelled();
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
       if (err?.cancelled) console.warn(`${MODULE_ID} | item generation cancelled`);
@@ -341,6 +348,7 @@ export class ItemForgeApp extends SpfApp {
         potencyTiers: tiers.potencyTiers, secondaryTiers: tiers.secondaryTiers
       });
       const built = await buildRunedItem(this.#concept);
+      this._throwIfCancelled();
       this.#itemData = built.itemData;
       this.#runedPreview = built.preview;
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
@@ -362,33 +370,34 @@ export class ItemForgeApp extends SpfApp {
     if (this.#busy) return;
     if (this.#kind === "wondrous" ? !this.#concept : !this.#itemData) return;
     this.#busy = true;
-    await this.render();
+    this.#error = null;
     try {
-      if (this.#kind === "wondrous") {
-        const data = await buildMagicItemData(this.#concept);
-        const item = await Item.create(data);
-        // Activated items get a companion click-to-run macro filed in a
-        // dedicated folder; a macro failure must not lose the created item.
-        if (this.#concept.activation) {
+      await this.render();
+      const concept = this.#concept;
+      const data = this.#kind === "wondrous"
+        ? await buildMagicItemData(concept)
+        : this.#itemData;
+      const item = await Item.create(data);
+      if (!item?.id) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.CreateFailed"));
+
+      // The item is committed. Consume the draft before any companion or
+      // presentation work so a display failure cannot enable duplicate writes.
+      this.#clearPreview();
+      try {
+        if (this.#kind === "wondrous" && concept.activation) {
           try {
-            await createActivationMacro({ item, concept: this.#concept });
+            await createActivationMacro({ item, concept });
           } catch (err) {
             console.error(`${MODULE_ID} | activation macro creation failed`, err);
             ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.MacroFailed"));
           }
         }
         ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Created", { name: item.name }));
-        item.sheet.render(true);
-      } else {
-        // Runed weapons/armor have no activation step — #itemData was fully
-        // resolved (name/price/level/runes) back at generation time.
-        const item = await Item.create(this.#itemData);
-        ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Created", { name: item.name }));
-        item.sheet.render(true);
+        await item.sheet.render(true);
+      } catch (err) {
+        console.error(`${MODULE_ID} | created item presentation failed`, err);
+        ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.CreatedPresentationFailed"));
       }
-      this.#concept = null;
-      this.#itemData = null;
-      this.#runedPreview = null;
     } catch (err) {
       console.error(`${MODULE_ID} | item creation failed`, err);
       this.#error = err.message;
@@ -399,12 +408,17 @@ export class ItemForgeApp extends SpfApp {
   }
 
   static async #onDiscard() {
+    if (this.#busy) return;
     this.#readForm();
-    this.#concept = null;
-    this.#itemData = null;
-    this.#runedPreview = null;
+    this.#clearPreview();
     this.#error = null;
     this._tokenUsage = [];
     await this.render();
+  }
+
+  #clearPreview() {
+    this.#concept = null;
+    this.#itemData = null;
+    this.#runedPreview = null;
   }
 }

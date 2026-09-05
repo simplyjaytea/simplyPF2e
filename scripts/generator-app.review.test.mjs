@@ -17,19 +17,24 @@ if (!vm.SourceTextModule) {
 let actor, createFailure, verifyFailure, deleteFailure, skillReport, creates = 0, deleted = 0, sheetCalls = 0;
 let conceptCalls = 0, generatorLevel = 1, freeArchetype = false;
 let previewLoot = [];
+let budgetPending = null, budgetStarted = null;
 const notices = [];
 class App {
   element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
     : selector.includes('name="level"') ? { value: String(generatorLevel) }
+      : selector.includes('name="prompt"') ? { value: "A dwarf fighter" }
       : selector.includes('name="allowSpellcasting"') ? { checked: false } : null };
   async render() { this.context = await this._prepareContext(); }
-  _beginProgress() {}
+  _beginProgress() { this.abort = new AbortController(); return this.abort.signal; }
   async _setStep() {}
   _recordTokens() {}
   _buildTokenReport() { return null; }
   _formatLastRunCost() { return null; }
   _finishRun() { this._progress = null; }
-  _cancelGeneration() {}
+  _cancelGeneration() { this.abort?.abort(); }
+  _throwIfCancelled() {
+    if (this.abort?.signal.aborted) throw Object.assign(new Error("cancelled"), { cancelled: true });
+  }
 }
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
@@ -57,7 +62,8 @@ const mocks = {
   selectAncestryBackgroundClass: async () => ({ ancestry: "Dwarf", background: "Warrior", class: "Fighter" }),
   resolvePCConcept: async () => resolved(), pcSpellcastingProfile: () => null, slugify: (name) => name.toLowerCase(),
   generatePCLoot: async () => ({ loot: [] }), normalizeLoot: (loot) => loot,
-  dedupeLootAgainstEquipment: (loot) => loot, enforceNamedLootBudget: (loot) => loot, applyTreasureBudget: (loot) => loot,
+  dedupeLootAgainstEquipment: (loot) => loot, enforceNamedLootBudget: (loot) => loot,
+  applyTreasureBudget: async (loot) => { budgetStarted?.(); if (budgetPending) await budgetPending; return loot; },
   pcStartingWealthGp: () => 0, equipmentValueGp: () => 0, lootValueGp: () => 0, parseCoins: () => null,
   createCharacterActor: async () => { creates++; if (createFailure) throw createFailure; return { actor, skillReport }; }
 };
@@ -235,4 +241,38 @@ await actions.createActor.call(incomplete);
 assert.equal(incomplete.context.pcPreview, null, "a builder-reported surviving actor also makes the draft non-retryable");
 assert.match(incomplete.context.error, /still exists/);
 createFailure = undefined;
+
+// Cancellation can arrive after the provider has finished, while the last
+// compendium/coin step is pending. One-click must not write that cancelled PC.
+setActor();
+let releaseBudget;
+budgetPending = new Promise((resolve) => { releaseBudget = resolve; });
+const budgetReady = new Promise((resolve) => { budgetStarted = resolve; });
+const cancelledApp = new GeneratorApp();
+cancelledApp._preserveForm(); // model the preceding switch into Character mode
+const createsBeforeCancel = creates;
+const cancelledRun = actions.generate.call(cancelledApp);
+await budgetReady;
+actions.cancelGeneration.call(cancelledApp);
+releaseBudget();
+await cancelledRun;
+assert.equal(creates, createsBeforeCancel, "a late cancelled one-click PC run must not create an actor");
+assert.equal(cancelledApp.context.pcPreview, null);
+assert.equal(cancelledApp.context.error, "cancelled");
+budgetPending = budgetStarted = null;
+
+// Re-entrant Generate is also rejected while a previous request owns the app.
+setActor();
+budgetPending = new Promise((resolve) => { releaseBudget = resolve; });
+const duplicateReady = new Promise((resolve) => { budgetStarted = resolve; });
+const duplicateApp = new GeneratorApp();
+duplicateApp._preserveForm();
+const callsBeforeDuplicate = conceptCalls;
+const firstRun = actions.generate.call(duplicateApp);
+await duplicateReady;
+const secondRun = actions.generate.call(duplicateApp);
+releaseBudget();
+await Promise.all([firstRun, secondRun]);
+assert.equal(conceptCalls, callsBeforeDuplicate + 1, "one active run owns the provider calls and cancellation signal");
+budgetPending = budgetStarted = null;
 console.log("generator-app.review.test.mjs: production generation/creation/review lifecycle passed");

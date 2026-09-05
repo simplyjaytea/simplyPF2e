@@ -1,28 +1,44 @@
 # HANDOFF.md — live session baton
 
-Read this first, then CLAUDE.md. Keep only current work and unresolved acceptance here; release/review history belongs in HISTORY.md.
+Read this first, then CLAUDE.md. Release/review history belongs in HISTORY.md; detailed audit evidence is in [docs/audit-2026-09-05.md](docs/audit-2026-09-05.md).
 
-## Current session — 2026-09-05 repository cleanup
+## Current session — 2026-09-05 Item Forge and generator audit
 
-- Branch: `codex/repo-cleanup`, based on fetched `origin/main` `7f8558e` (PR #102). GitHub's public API confirms release **v0.3.5.62** and both module assets. The earlier Item Forge publication task is complete; its post-update live QA remains unrecorded.
-- The checkout initially had a stale local `main` at `62fb942`. Created this cleanup branch directly from the current remote. The user-owned `.claude/` directory remains untouched; new ignore rules exclude it, OS metadata, and the two release build outputs.
-- Cleanup: shared HTML escaping now always escapes all five HTML-sensitive characters without a Foundry dependency, including quotes in preset attributes; the preset dialogs use that shared helper. Removed two unused CSS blocks. Reconciled the project brief and README with shipped behavior and replaced the accumulated handoff with this current baton. Historical detail remains in HISTORY.md and git.
-- New direct-production escaping regression reproduced the original failure and passes after the fix. Baseline: all 68 regression files passed before edits. Final checks passed all **69 regression files**, **104 script syntax checks**, module/localization JSON parsing, and `git diff --check` on local Node **26.7.0** (CI targets Node 22). Independent reviewer `cleanup_final_review` approved with no correctness findings after inspecting the final diff and exercising text, macro, UI-layout, and actual preset-dialog paths with test stubs. Removed the obsolete macro-test escaping stub at the reviewer's suggestion and reran that regression/syntax check.
-- The user has now explicitly authorized pushing/merging the cleanup and cleaning up branches. Publication is proceeding through a PR with CI and automatic-release verification. Remove only merged branches and clean, unused merged worktrees; preserve unique commits, dirty worktrees, main, release tags, and QA artifacts. No provider request, module update, or Foundry/world mutation is part of this continuation.
+- Branch: `codex/forge-generator-audit`, based on clean `b043a51` (PR #103). GitHub's public API confirms **v0.3.5.63**; main was still `b043a51` at the final read. The previous cleanup/publication task is complete. This audit's fixes are **local, unpublished, and not installed**.
+- Fixed forge UI clipping; overlapping generation and final cancellation; committed item/actor retry boundaries; AI numeric forge mechanics; restricted/unsupported passive catalogs; charge persistence/copy selection/click guards; shared macro deletion and owner-local rest. Fixed creature loot reroll atomicity/exact grounding, original-brief fidelity, empty-loot preservation, ammo/quantities/unit pricing, vanished-source preflight, encounter budgets, and duplicate Perception. Fixed PC worn gear, native feat schedules/earned-level prerequisites, and restricted Investigator skill-slot proof.
+- Final parent verification on **Node 22.23.2** passed **82 regression files**, **117 script syntax checks**, module/localization JSON (2), and whitespace checks. Full log is local `.git/audit-node22.log`. Existing test regressions were extended and 13 new regression files added. No runtime dependency was added to the project.
+- Independent reviewer `independent_audit_review` inspected the final diff and source evidence, ran all 82 regressions, and approved with **no remaining actionable findings**. Review-found catalog/investment/PC-cancellation issues were fixed and rechecked. No review remains in flight.
+- Actual forge template/CSS rendered with native Foundry CSS fits at **360, 480, and 720px** with no horizontal overflow. This is browser layout evidence, not an installed revised ApplicationV2 acceptance run.
+- Prepared PR text is local `.git/forge-generator-audit-pr.md`. **No authenticated GitHub write, push, PR, merge, or release has been performed or authorized in this audit request.** AGENTS.md requires asking before authenticated GitHub writes. A merge automatically publishes to every install; do not push main directly.
 
-## Outstanding live acceptance
+## Live QA performed — installed baseline only
 
-- Last recorded installed module: **v0.3.5.60**, Foundry **14.365** / PF2e **8.5.0**. Do not assume the public v0.3.5.62 release is already installed. The earlier user request for a module-only update and forge UI QA is preserved as pending work, not a completed action.
-- **Forge UI refresh (#102):** confirm the directory row sits below native controls; repeated renders/clicks produce one button/window; Wondrous/Weapon/Armor selection is exclusive; prompt/level/rarity survive switching; narrow resizable windows remain usable. This UI acceptance needs no provider request or item creation.
-- **Cleanup:** confirm preset create/edit/delete dialogs display names containing quotes, angle brackets, and ampersands literally. Local escaping tests cover the boundary; actual Foundry dialog rendering has not run here.
-- **Previous coverage limits:** full Rogue/Investigator grant chains; native skill completion, current HP, languages, loadout/runes; focus spells; broader Item Forge passive/activation paths; a complete local-provider actor flow; and an omission-bearing provider/UI creature-feat run. Complete-only PC support stays Fighter/Rogue/Investigator; Wizard and level-2+ Free Archetype remain gated. See CLAUDE.md known gaps.
-- **Recorded accepted paths:** v0.3.5.56 cancellation isolation, runed weapon/armor preview-sheet parity, healing/condition macro escaping; v0.3.5.60 courier preview with 19/19 matches and correct scroll label. Its separate direct selector returned `feats: []`, `omitted: true`; the preview itself did not request that selector, so it is not full omission-bearing UI evidence.
-- Extra spells/gear despite a minimal prompt and armor prose mentioning activation remain uninvestigated fidelity observations. Earlier raw feat-failure responses are unavailable; do not claim their exact causes were proven.
+- Verified installed **SimplyPF2e 0.3.5.63**, Foundry **14.365**, PF2e **8.5.0**, existing GM session at `https://foundry-test.gigaserver.xyz/game`. No module/core/system update performed.
+- Directory Forge row, singleton reopening, exclusive kind selection and prompt/level/rarity retention passed. Live tile overflow reproduced and fixed locally.
+- Generated/created Ghost Touch longsword: preview/native **level 4, 110 gp**. Slick chain shirt: preview/native **level 5, 205 gp**, passive-only description. NPC Dock Watchman: one-click completion and native sheet, **level 2, AC17, HP30/30**, no spells with Allow spellcasting disabled.
+- NPC had duplicate Perception and two leather armors; duplicate Perception is fixed locally. Duplicate gear is a prompt-fidelity observation, not proof of the new fidelity fix. Original constraints now reach refinements; deliberate spare gear is preserved.
+- Total displayed provider usage **32,172 tokens** (3,242 weapon + 1,909 armor + 27,021 NPC). Existing `omniroute / auto/best-free` connection used; no keys/settings changed. No captured SimplyPF2e error logs in the browser's checked buffer.
 
-## Preserve existing QA artifacts
+## Preserve QA artifacts
 
-The last recorded world has 19 actors, 5 world items, and 5 macros; BrowserOS page 17 retained the courier preview (page/session availability must be rechecked). Preserve `QA <b>Actor</b>`, `QA Caster`, their tokens, the two `Clockwork Moth Scout` actors, forged items/companion macros, `QA Open Item Forge`, `QA Prepare Markup Actor`, and chat evidence. Prior QA restored GM assignment and targets. Do not delete these artifacts without explicit approval. Prior programmatic targeting logged a Foundry/PF2e `_drawTargetArrows` error; it was not traced to SimplyPF2e.
+Preserve every earlier actor/item/macro/token listed in prior HISTORY: `QA <b>Actor</b>`, `QA Caster`, both Clockwork Moth Scouts, earlier forged items/macros, and chat evidence. No earlier QA artifact was deleted or changed.
 
-## Next step
+New this session (created, then named through their sheets):
 
-Push `codex/repo-cleanup`, open its PR, verify CI, merge through GitHub, and confirm the single automatic release. Then fast-forward local main and remove safely merged branches/worktrees. Git and GitHub are authoritative for final publication state; the local cleanup inventory/results are recorded under `.git/repo-cleanup-report.json` so recording branch deletions does not trigger a documentation-only release. Recheck installed state before any later forge UI acceptance; preserve existing QA artifacts.
+- `Item.4zojkUhnP0mA7hWm` — **QA Audit — Ghost Touch Longsword**.
+- `Item.OcXYMsSWCyKluKdn` — **QA Audit — Slick Chain Shirt**.
+- `Actor.VsI4lYxCL0DbvVRq` — **QA Audit — Dock Watchman**.
+
+No new macros or tokens were created. GM character assignment and targets were preserved. Browser ends on Items directory; temporary QA viewport is reset. No reliance on old BrowserOS page17 state.
+
+## Exact next step
+
+Obtain authorization to push this reviewed branch, open/merge its PR after CI, and update **only SimplyPF2e** in the test world. Then finish native QA on the revised code: all three forge kinds; new companion activation/rest/multiple-copy cases; cancellation and failure boundaries; NPC/monster/encounter creation; no-gear/no-loot requests; Fighter/Rogue/Investigator native first-level/accelerated feat placement, grant chains, ammo and worn gear. Record CI/release/version and live results; preserve all QA artifacts.
+
+## Material limits
+
+- Old companions save command snapshots. A module update fixes global rest/cleanup hooks but **does not rewrite old macro commands or forged mechanics**. Test new companions; do not silently migrate old macros.
+- Charge locking covers one client. Foundry updates do not offer atomic cross-client compare-and-swap.
+- Passive source screening is conservative (including detected prose restrictions), not a full rule-interaction/balance proof. Activation dice/DCs remain module-defined GM Core defaults, not published magic-item balance. Condition durations need manual adjudication.
+- Investigator restricted odd-level feats require explicit proven mental-skill/Lore rank prerequisites; generic or unmodeled methodology exceptions remain excluded. Complete-only classes remain Fighter/Rogue/Investigator. Level2+ Free Archetype stays gated.
+- Existing known gaps remain: rune prerequisites/exclusivity, material-constrained armor runes, shield/ammo forging, broader focus/casting/loadout acceptance, local-provider actor flow, and unsupported classes. See CLAUDE.md and audit report.

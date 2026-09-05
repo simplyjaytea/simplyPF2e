@@ -76,6 +76,27 @@ assert.equal(featPrerequisitesMet(feat([{ value: "follower of a specific religio
   "ambiguous leftover prose is not treated as proven");
 assert.equal(featPrerequisitesMet(feat([]), null), false, "evaluation without a staged context fails closed");
 
+const restricted = stagedActorContext({ level: 3, skills: { society: 1, stealth: 1, "underworld-lore": 1 },
+  allowedSkillFeats: ["society", "arcana", "underworld-lore"] });
+assert.equal(featPrerequisitesMet(feat([{ value: "trained in Society" }]), restricted), true,
+  "a proven mental-skill rank qualifies for a restricted skill feat");
+assert.equal(featPrerequisitesMet(feat([{ value: "trained in Underworld Lore" }]), restricted), true,
+  "a proven named Lore can qualify through Intelligence");
+assert.equal(featPrerequisitesMet(feat([{ value: "trained in Stealth" }]), restricted), false,
+  "ordinary eligibility does not make a physical skill qualify");
+assert.equal(featPrerequisitesMet(feat([{ value: "trained in Arcana or Stealth" }]), restricted), false,
+  "mentioning a mental skill in an unmet OR branch cannot qualify a physical-skill pick");
+assert.equal(featPrerequisitesMet(feat([{ value: "trained in Society or Stealth" }]), restricted), true,
+  "a satisfied mental-skill OR branch proves a qualifying dependency");
+assert.equal(featPrerequisitesMet(feat([{ value: "trained in Society and Stealth" }]), restricted), false,
+  "mixed mental/physical AND requirements remain conservatively unavailable");
+assert.equal(featPrerequisitesMet(feat([{ value: "trained in at least one skill" }]), restricted), false,
+  "a generic skill requirement does not prove the skill this feat is for");
+assert.equal(featPrerequisitesMet(feat([]), restricted), false,
+  "an empty prerequisite list has no qualifying skill dependency");
+assert.equal(featPrerequisitesMet(feat([{ value: "expert in Society" }]), restricted), false,
+  "a mental-skill label does not bypass the required native rank");
+
 globalThis.game = { settings: { get: () => ({ feats: ["test.feats"] }) }, packs: new Map([
   ["test.feats", { async getIndex() { return [
     { _id: "free", name: "Free Feat", type: "feat", system: { level: { value: 1 }, category: "class", traits: { value: [] }, prerequisites: { value: [] } } },

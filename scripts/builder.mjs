@@ -334,6 +334,11 @@ export function normalizeConcept(raw, { level, rarity }) {
       }),
     skills: (Array.isArray(c.skills) ? c.skills : [])
       .filter((s) => s?.name)
+      .filter((s) => {
+        if (slugify(s.name) !== "perception") return true;
+        console.warn("simplypf2e | dropped Perception from skills: perceptionScale owns that statistic");
+        return false;
+      })
       .slice(0, 8)
       .map((s) => ({ name: String(s.name), scale: scale4(s.scale, "high") })),
     strikes,
@@ -590,7 +595,7 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
     let resolvedValue = value;
     if (entry) {
       const doc = await getDocument(entry);
-      const gp = priceToGp(doc?.system?.price?.value);
+      const gp = unitPriceGp(doc);
       // The matched entry is the BASE item, so add the runes' own real price.
       if (gp > 0) resolvedValue = gp + await runeGp(runes, entry.type);
       else if (hasRunes(runes)) resolvedValue = value + await runeGp(runes, entry.type);
@@ -879,13 +884,18 @@ export async function equipmentValueGp(equipment) {
     let unitGp = Number(value) || 0;
     if (entry) {
       const doc = await getDocument(entry);
-      const gp = priceToGp(doc?.system?.price?.value);
+      const gp = unitPriceGp(doc);
       if (gp > 0) unitGp = gp + await runeGp(runes, entry.type);
       else if (hasRunes(runes)) unitGp = unitGp + await runeGp(runes, entry.type);
     }
     total += unitGp * (Number(quantity) || 1);
   }
   return total;
+}
+
+/** PF2e prices may describe a pack (for example, ten arrows), not one unit. */
+function unitPriceGp(doc) {
+  return priceToGp(doc?.system?.price?.value) / Math.max(1, Number(doc?.system?.price?.per) || 1);
 }
 
 /** Resolved loot/equipment line's total gp value (per-unit resolvedValue/value × quantity). */
@@ -1167,7 +1177,7 @@ export async function buildEquipmentItems(equipment, { dedup = false } = {}) {
       if (seen.has(key)) continue;
       seen.add(key);
     }
-    const doc = await getDocument(entry);
+    const doc = await getSelectedDocument(entry);
     if (!doc) {
       items.push(customEquipmentItem(name, quantity, value));
       continue;
@@ -1225,18 +1235,18 @@ export async function buildLootItems(loot) {
     } else {
       const doc = await getDocument(entry);
       if (!isCoinageDocument(doc) || coinUnit(doc) !== COIN_DENOMINATION[coins.name]) {
-        console.warn(`simplypf2e | dropped coin loot "${name}": no published coinage document`);
-        continue;
+        throw new Error(`Cannot create coin loot "${name}": no published coinage source`);
       }
       items.push(setQuantity(toItemData(doc), quantity));
       continue;
     }
     if (scroll) {
       const data = await buildScrollItem(entry, scroll.rank);
-      items.push(data ? setQuantity(data, quantity) : customTreasureItem(name, quantity, value));
+      if (!data) throw new Error(`Cannot create scroll "${name}": its spell or template source is unavailable`);
+      items.push(setQuantity(data, quantity));
       continue;
     }
-    const doc = await getDocument(entry);
+    const doc = await getSelectedDocument(entry);
     if (!doc) {
       items.push(customTreasureItem(name, quantity, value));
       continue;
@@ -1251,8 +1261,15 @@ export async function buildLootItems(loot) {
 
 /** Set a stack size, but only on item types that actually carry one. */
 function setQuantity(data, quantity) {
-  if (quantity > 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
+  if (Number.isInteger(quantity) && quantity >= 1 && "quantity" in (data.system ?? {})) data.system.quantity = quantity;
   return data;
+}
+
+/** A selected source may disappear after preview. Never silently replace it. */
+async function getSelectedDocument(entry) {
+  const doc = await getDocument(entry);
+  if (entry && !doc) throw new Error(`Selected compendium source is unavailable: ${entry.packId}.${entry._id}`);
+  return doc;
 }
 
 /**
@@ -1275,7 +1292,7 @@ export function filterItemTypes(items, allowed, actorLabel) {
  */
 const NPC_ITEM_TYPES = new Set([
   "action", "lore", "melee", "spell", "spellcastingEntry",
-  "weapon", "armor", "equipment", "consumable", "treasure", "backpack", "shield", "kit",
+  "weapon", "armor", "equipment", "consumable", "ammo", "treasure", "backpack", "shield", "kit",
   "condition", "effect"
 ]);
 
@@ -1365,7 +1382,7 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
 
   // Special abilities → exact glossary clones or explicitly narrative actions.
   for (const { ability, entry } of resolved.abilities) {
-    const doc = await getDocument(entry);
+    const doc = await getSelectedDocument(entry);
     if (doc) {
       items.push(toItemData(doc));
       continue;
@@ -1390,7 +1407,7 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
 
   // Feats (class-like trained techniques) become NPC action items
   for (const { entry } of resolved.feats) {
-    const doc = await getDocument(entry);
+    const doc = await getSelectedDocument(entry);
     if (!doc) continue;
     items.push(featToAction(doc.toObject(), doc.uuid));
   }
@@ -1418,7 +1435,7 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
       }
     });
     for (const { spell, entry } of resolved.spells) {
-      const doc = await getDocument(entry);
+      const doc = await getSelectedDocument(entry);
       if (!doc) continue;
       const data = toItemData(doc);
       data.system.location = { ...(data.system.location ?? {}), value: entryId };
@@ -1462,7 +1479,7 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
       }
     });
     for (const { entry } of resolved.focusSpells) {
-      const doc = await getDocument(entry);
+      const doc = await getSelectedDocument(entry);
       if (!doc) continue;
       const data = toItemData(doc);
       data.system.location = { ...(data.system.location ?? {}), value: focusEntryId };
