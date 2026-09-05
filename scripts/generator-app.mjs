@@ -1171,11 +1171,13 @@ export class GeneratorApp extends SpfApp {
         preferredNames: concept.feats.map((feat) => typeof feat === "string" ? feat : feat.name)
       });
       if (!candidates.length) return;
-      const { feats, usage } = await selectCreatureFeats({
+      const { feats, omitted, usage } = await selectCreatureFeats({
         concept, candidates, onProgress: (p) => this._onAIProgress(p), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), usage);
-      if (feats.length) concept.feats = feats;
+      // An explicit empty selection is allowed for this optional wishlist;
+      // invalid picks/provider failures must not silently erase requirements.
+      if (feats.length || omitted === true) concept.feats = feats;
     } catch (err) {
       if (err?.cancelled) throw err;
       console.warn(`${MODULE_ID} | grounded creature feat selection failed; unresolved draft feats will block creation`, err);

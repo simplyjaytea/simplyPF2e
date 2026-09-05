@@ -89,6 +89,28 @@ try {
   replies.push({ picks: [] }, { abilityIds: [] });
   await selectCreatureAbilities({ concept, candidates: abilityCandidates });
   assert.equal(requests.length, 6, "a wrong response key is rejected once, then retried with the same contract");
+
+  replies.push({ featIds: [] });
+  const omitted = await selectCreatureFeats({ concept, candidates: featCandidates });
+  assert.deepEqual(omitted.feats, []);
+  assert.equal(omitted.omitted, true, "an explicit empty reply declines the optional wishlist");
+  assert.equal(omitted.usage.total, 30, "omission retains provider token accounting");
+  assert.equal(feats.omitted, false, "mixed valid/invalid picks preserve existing grounded selection behavior");
+  assert.equal(namedFeat.omitted, false);
+  for (const featIds of [["invented"], [null], [{ packId: "pf2e.feats-srd", _id: "shield" }]]) {
+    replies.push({ featIds });
+    const invalid = await selectCreatureFeats({ concept, candidates: featCandidates });
+    assert.deepEqual(invalid.feats, []);
+    assert.equal(invalid.omitted, false, "unresolvable nonempty replies are not intentional omission");
+  }
+  const beforeSkip = requests.length;
+  const unavailable = await selectCreatureFeats({ concept, candidates: [] });
+  assert.equal(unavailable.omitted, false, "an unavailable catalog does not decline draft requirements");
+  assert.equal(requests.length, beforeSkip);
+  replies.push({ picks: [] }, { picks: [] });
+  await assert.rejects(selectCreatureFeats({ concept, candidates: featCandidates }),
+    "malformed replies still fail after the bounded retry");
+  assert.equal(requests.length, beforeSkip + 2);
   assert.equal(replies.length, 0);
 } finally {
   globalThis.fetch = originalFetch;

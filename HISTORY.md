@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## Continuation — distinguish optional feat omission from failed grounding
+
+- Resumed from `3b96d7c` on `fix/creature-feat-omission`. Read-only BrowserOS checks of the installed v0.3.5.59 module show Fleet is a level-1 general feat, excluded from the class-only creature catalog, while level-4 Sneak Attacker is offered. Both earlier runs' raw selector replies remain unavailable; do not claim their precise cause is established.
+- Found a deterministic contract mismatch: the creature feat selector allows an explicit empty selection but its caller only replaced the wishlist for nonempty decoded feats. A valid `featIds: []` therefore retained ungrounded first-draft names and caused completion failure. Added a local `omitted` result flag derived strictly from that explicit empty reply; the caller now clears only that intentionally declined wishlist. Nonempty all-invalid results, unavailable catalogs, provider errors, and malformed replies retain the existing fail-closed behavior. No feat eligibility expansion, PC change, schema change, or invented mechanics.
+- Production-caller regression reproduced the failure before the fix. Actual provider-path regressions distinguish intentional omission from unresolvable picks and preserve bounded retry/token behavior. All 67 regression files, 102 syntax checks, module/localization JSON parsing, and whitespace gates passed. No live provider spend or world-document mutation; actor count stayed 19.
+- Independent review remains pending because subagents were uninstalled and no child-agent tool is available. No push, PR, release, deployment, or post-fix live acceptance is claimed. Preserve the post-release documentation on this branch and follow normal review/publication authorization gates.
+
 ## Continuation — blank scroll catalogs and narrative match counts
 
 - Live v0.3.5.58 catalogs returned published blank scroll templates as equipment/loot candidates. Actual PF2e 8.5.0 documents showed `system.category: scroll`, `system.spell: null`; fetched PF2e 8.4.1 consumable source confirmed `SpellSource | null`, and the master template explicitly directs creating a scroll by dragging a spell. Worker `8173acb7-700a-4477-8c4a-9344169fbded` added indexed spell data and a nullish-spell scroll filter, preserving the underlying index for spell-grounded building.
