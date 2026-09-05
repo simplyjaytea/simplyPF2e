@@ -66,7 +66,7 @@ Open **Advanced options** for a preset, rarity, treasure amount, and spellcastin
 | **Encounter mode** | Stable. |
 | **Presets** | **Standard** lists the 23 Remaster PF2e classes as flavor guides. **Custom** appears only when this world has saved presets. Magus, Witch, and the other Standard classes do not finish complete-only Characters. |
 | **Player Character mode** | Released. Complete-only still finishes **Fighter**, **Rogue**, and **Investigator** (Rogue/Investigator grant-chain live QA pending). Standard Magus/Witch/etc. presets are flavor only. Sanity-check a generated character's numbers on its sheet before play. |
-| **Item forge** | Core flows live-verified on Foundry 14 / PF2e 8.5: cancellation isolation, runed sheet parity, and generated-macro escaping. GMs open it from the Items directory; the new entry point's post-release click check is pending. |
+| **Item forge** | Core flows live-verified on Foundry 14 / PF2e 8.5: cancellation isolation, runed sheet parity, and generated-macro escaping. GMs open it from the Items directory; the v0.3.5.57 entry point passed live click and singleton-window checks. |
 
 ## What's new
 
