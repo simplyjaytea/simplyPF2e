@@ -2,7 +2,14 @@
 
 Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved in HISTORY.md.
 
-## Current continuation — post-release v0.3.5.60 creature-feat QA
+## Current continuation — GitHub Actions Node 24 runtime upgrade
+
+- Branch `chore/github-actions-node24` carries forward the committed post-v0.3.5.60 QA documentation from `docs/creature-feat-release-qa` and upgrades every `actions/checkout` and `actions/setup-node` use across all three workflows from v4 to v5. This addresses the runner annotation about the old actions' deprecated Node 20 runtime; the workflows still explicitly execute project checks with Node 22.
+- The change is limited to eight action-version strings: checkout in PR verification, auto-release verification/version calculation, and reusable release verification/build; setup-node in each verification job. Fetch depth, permissions, triggers, reusable-workflow wiring, release logic, and project runtime are unchanged.
+- Local verification passed all **67 regression files**, **102 script syntax checks**, Node-based module/localization JSON parsing, and `git diff --check`. `jq`, `actionlint`, Ruby, and PyYAML are unavailable locally, so JSON used the documented Node fallback and workflow YAML has not received a local parser/linter gate. Independent reviewer `640d1683-e045-4f31-96d5-2e3f4322463f` approved with no findings after checking action coverage, Node/runtime separation, hosted-runner compatibility, fetch depth, permissions, and reusable release wiring; its inspection was static and CI remains the authoritative runtime gate.
+- No push, PR, merge, release, browser operation, provider spend, or Foundry mutation occurred. Because every merge to `main` auto-publishes, do not merge this maintenance change without explicit user authorization.
+
+## Prior continuation — post-release v0.3.5.60 creature-feat QA
 
 - **Publication and review blockers superseded:** while the parent session was paused, the user merged PR #100, making `origin/main` `5158902` and publishing **v0.3.5.60**. A fresh independent reviewer tool approved with no findings. A separate read-only reviewer inspected HEAD and adjacent validation but could not execute tests or mechanically diff, so that inspection is not execution evidence. BrowserOS verified successful PR checks run `33941974897`, successful Auto Release run `33941979908`, and release assets `module.json` and `module.zip`.
 - This documentation branch, `docs/creature-feat-release-qa`, was created from `origin/main` `5158902`; it contains documentation only. The earlier sign-in/authentication, pending-review, and publication blockers remain below as preserved history but no longer block this handoff.
@@ -68,6 +75,6 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Next step
 
-Preserve the page-17 preview and existing QA artifacts. Optional prompt/control fidelity triage is user-directed only; do not perform further automatic provider retries or another docs-only release. Leave the documentation committed on named branch `docs/creature-feat-release-qa`; do not push, open a PR, or merge. Report the final commit and working-tree status. Do not change code or run live/provider/GitHub operations in this handoff. The earlier auth, review, and publication blockers are superseded; older next-step paragraphs remain historical.
+The workflow maintenance and updated handoff are ready on `chore/github-actions-node24`. Do not push, open a PR, merge, or trigger a release without explicit user authorization. CI is the remaining authoritative workflow-syntax/runtime gate because no local Actions linter/parser is installed. Preserve BrowserOS page 17 and existing QA artifacts; do not perform another provider retry or Foundry mutation.
 
 Previously: Obtain a fresh independent review of the Item Forge entry diff, commit and push `codex/item-forge-entry`, open and merge its PR, wait for the single auto-release, update SimplyPF2e in Foundry, and verify that the Items-directory button appears once and opens Item Forge. Preserve the successful QA artifacts until the user explicitly approves deletion. Afterward, triage the non-blocking `Scroll of undefined (Rank 2)` preview and no-activation armor flavor observations. Also note the non-blocking GitHub annotation that `actions/checkout@v4` and `actions/setup-node@v4` still target deprecated Node 20 internally and were forced onto Node 24 by the runner.

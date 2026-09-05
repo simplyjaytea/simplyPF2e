@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-05 — GitHub Actions Node 24 runtime maintenance
+
+- Continued from the committed post-v0.3.5.60 QA branch onto `chore/github-actions-node24`. Updated every `actions/checkout` and `actions/setup-node` reference across PR checks, auto-release, and the reusable release workflow from v4 to v5, addressing the GitHub runner's deprecated Node 20 action-runtime annotation. The explicit project runtime remains Node 22.
+- The eight version-string substitutions leave permissions, checkout depth, triggers, verification commands, release versioning, and reusable-workflow behavior unchanged. Local gates passed all 67 regression files, 102 script syntax checks, Node-based parsing of `module.json` and `lang/en.json`, and whitespace checks. `jq`, `actionlint`, Ruby, and PyYAML were unavailable, so workflow syntax/runtime still requires CI confirmation. Independent reviewer `640d1683-e045-4f31-96d5-2e3f4322463f` approved with no findings after checking complete action coverage, Node/runtime separation, hosted-runner compatibility, fetch depth, permissions, and reusable release wiring; its validation was static.
+- No push, PR, merge, auto-release, browser/provider activity, or Foundry mutation occurred. A future merge requires explicit publication authorization because `main` automatically releases.
+
 ## 2026-09-05 — Post-release v0.3.5.60 creature-feat QA
 
 - While the parent session was paused, the user merged PR #100, moving `origin/main` to `5158902` and publishing **v0.3.5.60**. A fresh independent reviewer tool approved with no findings. A separate read-only reviewer inspected HEAD and adjacent validation but could not execute tests or mechanically diff; that inspection is recorded as context, not as a test result. BrowserOS verified successful PR checks run `33941974897`, successful Auto Release run `33941979908`, and release assets `module.json` and `module.zip`.
