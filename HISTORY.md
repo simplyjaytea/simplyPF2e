@@ -2,6 +2,10 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-05 — Authorized cleanup publication and branch maintenance
+
+- The user requested pushing and merging the reviewed repository cleanup, followed by branch cleanup. Proceed through PR checks and the automatic release; do not push main directly. Local cleanup removes only merged references and clean, unused merged worktrees, preserving unique commits and user data. This request does not perform a Foundry update or consume provider tokens. Final deletion inventory is local git metadata (`.git/repo-cleanup-report.json`), avoiding a second release solely to record housekeeping.
+
 ## 2026-09-05 — Repository cleanup and state reconciliation
 
 - Started from a stale local `main` at `62fb942`, fetched the remote, and created `codex/repo-cleanup` from `7f8558e`. Confirmed PR #102 is merged and release **v0.3.5.62** is published with `module.json` and `module.zip`; earlier handoff instructions to publish that feature are superseded. Its module-only update/live UI QA remains unrecorded. Last recorded installed version is v0.3.5.60.
