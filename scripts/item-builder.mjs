@@ -3,8 +3,8 @@
  * Foundry item data. Two grounding rules keep it honest:
  *
  * 1. Every Rule Element in the output is a CLONE of a real published rule
- *    found by rule-templates.mjs, with only the value / selector / damage
- *    type substituted — never an RE authored from memory (Foundry fails
+ *    found on published equipment at or below the chosen level, unchanged
+ *    — never an RE authored from memory (Foundry fails
  *    silently on malformed REs, so recall is not trusted here).
  * 2. The price is an empirical benchmark: the median real compendium price
  *    of items at the concept's level, not a remembered price table.
@@ -26,10 +26,11 @@ export {
   SECONDARY_ADJECTIVE, RUNED_ITEM_KINDS
 } from "./runes.mjs";
 import {
-  RARITY_TREASURE_MULTIPLIER, RESISTANCE, MAX_LEVEL, lookup,
+  RARITY_TREASURE_MULTIPLIER, MAX_LEVEL, lookup,
   STRIKE_DAMAGE, SPELL_DC, RARITY_DC_ADJUSTMENT
 } from "./tables.mjs";
-import { findRuleExemplar, EFFECT_KINDS } from "./rule-templates.mjs";
+import { EFFECT_KINDS, DAMAGE_TYPES, ITEM_BONUS_STATISTICS, SENSE_TYPES, SPEED_TYPES } from "./rule-templates.mjs";
+export { DAMAGE_TYPES, ITEM_BONUS_STATISTICS, SENSE_TYPES, SPEED_TYPES } from "./rule-templates.mjs";
 
 const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
 
@@ -37,40 +38,17 @@ const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
 export const MIN_ITEM_LEVEL = 1;
 export const MAX_ITEM_LEVEL = MAX_LEVEL;
 
-/* Damage types an effect may reference — the same list enrichDescription()
- * recognizes for creatures, minus the meta-types (precision/untyped) that
- * make no sense as an item's resistance/weakness/immunity. */
-export const DAMAGE_TYPES = new Set([
-  "acid", "bludgeoning", "cold", "electricity", "fire", "force", "mental",
-  "piercing", "poison", "slashing", "sonic", "spirit", "vitality", "void", "bleed"
-]);
-
-/* Statistics an item bonus may target: FlatModifier selectors for AC,
- * perception, the three saves, and the standard skills — the same slugs the
- * creature pipeline already uses for skills and saves. */
-export const ITEM_BONUS_STATISTICS = new Set([
-  "ac", "perception", "fortitude", "reflex", "will",
-  "acrobatics", "arcana", "athletics", "crafting", "deception", "diplomacy",
-  "intimidation", "medicine", "nature", "occultism", "performance", "religion",
-  "society", "stealth", "survival", "thievery"
-]);
-
-/* Sense slugs the forge offers (the common passive senses on published gear). */
-export const SENSE_TYPES = new Set([
-  "darkvision", "greater-darkvision", "low-light-vision", "scent", "tremorsense",
-  "echolocation", "see-invisibility", "truesight", "lifesense", "wavesense"
-]);
-
-/* BaseSpeed selectors for movement an item can grant. */
-export const SPEED_TYPES = new Set(["fly", "swim", "climb", "burrow"]);
-
 /* -------------------- activation (Phase 2) -------------------- */
 
 /* The four activated-effect templates the macro builder knows how to emit. */
 export const ACTIVATION_TEMPLATES = new Set(["damage", "heal", "condition", "selfBuff"]);
 
 /* Action costs an activation may declare. */
-const ACTION_COSTS = new Set([1, 2, 3, "reaction", "free"]);
+const ACTION_COSTS = { single: 1, two: 2, three: 3, reaction: "reaction", free: "free" };
+const ACTIVATION_DURATIONS = { round: { rounds: 1, label: "1 round" }, minute: { minutes: 1, label: "1 minute" }, "ten-minutes": { minutes: 10, label: "10 minutes" } };
+const BULK_VALUES = { negligible: 0, light: 0.1, one: 1, two: 2 };
+const POTENCY_CHOICES = { single: 1, double: 2, triple: 3 };
+const SECONDARY_CHOICES = { none: 0, standard: 1, greater: 2, major: 3 };
 
 /* The three PF2e saving throws an activation may call for. */
 export const SAVE_TYPES = new Set(["fortitude", "reflex", "will"]);
@@ -101,7 +79,7 @@ function diceOnly(formula) {
 /**
  * A level-appropriate damage-dice suggestion for an activated item, taken
  * from the GM Core moderate Strike Damage row (dice only, no ability mod).
- * Shared by the schema prompt (ai.mjs) and the normalize clamp so both agree.
+ * This fixed module default is independent of every model-provided value.
  */
 export function damageDiceForLevel(level) {
   return diceOnly(lookup(STRIKE_DAMAGE, level, "moderate"));
@@ -110,28 +88,10 @@ export function damageDiceForLevel(level) {
 /**
  * A level-appropriate save DC for an activated item: the GM Core moderate
  * Spell DC benchmark for the level, adjusted for rarity (same shape the
- * creature spell DCs use). Reused by the schema prompt and the normalize clamp.
+ * creature spell DCs use). This is a module default, not a published item DC.
  */
 export function saveDcForLevel(level, rarity = "common") {
   return Math.round(lookup(SPELL_DC, level, "moderate") + (RARITY_DC_ADJUSTMENT[rarity] ?? 0));
-}
-
-/** Normalize a dice string ("4d6", "2d8+3"); null when it isn't a clean formula. */
-function normalizeDice(raw) {
-  const m = /^\s*(\d{1,2})d(4|6|8|10|12)\s*(?:\+\s*(\d{1,3}))?\s*$/i.exec(String(raw ?? ""));
-  if (!m) return null;
-  const count = Math.min(Math.max(Number(m[1]), 1), 12);
-  const faces = m[2];
-  const bonus = m[3] ? Math.min(Number(m[3]), 99) : 0;
-  return `${count}d${faces}${bonus ? `+${bonus}` : ""}`;
-}
-
-/** Clamp a save DC to a sane window around the level/rarity benchmark. */
-function clampDc(raw, level, rarity) {
-  const base = saveDcForLevel(level, rarity);
-  const n = Math.round(Number(raw));
-  if (!Number.isFinite(n)) return base;
-  return Math.min(Math.max(n, base - 6), base + 6);
 }
 
 /* -------------------- shared pack index -------------------- */
@@ -219,13 +179,24 @@ export function normalizeRunedItemConcept(raw, { kind, rarity, baseCandidates, r
   const c = typeof raw === "object" && raw !== null ? raw : {};
   const findByName = (list, name) => list.find((x) => slugify(x.name) === slugify(name)) ?? null;
 
-  const base = findByName(baseCandidates, c.baseItemName) ?? baseCandidates[0] ?? null;
+  const base = findByName(baseCandidates, c.baseItemName);
+  if (!base) {
+    console.warn(`simplypf2e | itemforge: unresolved base ${kind} "${c.baseItemName}"`);
+    throw new Error(`The selected base ${kind} could not be matched to the offered compendium items. Generate a new plan.`);
+  }
 
-  const rawPotency = Math.round(Number(c.potency));
-  const potency = potencyTiers.includes(rawPotency) ? rawPotency : potencyTiers[0];
+  const rawPotency = POTENCY_CHOICES[c.potency];
+  if (!potencyTiers.includes(rawPotency)) {
+    console.warn(`simplypf2e | itemforge: unresolved potency tier "${c.potency}"`);
+    throw new Error("The selected potency rune is not one of the offered tiers. Generate a new plan.");
+  }
+  const potency = rawPotency;
 
-  const rawSecondary = Math.round(Number(c.secondaryTier));
+  const rawSecondary = SECONDARY_CHOICES[c.secondaryTier];
   const secondaryTier = secondaryTiers.includes(rawSecondary) ? rawSecondary : 0;
+  if (rawSecondary !== 0 && !secondaryTiers.includes(rawSecondary)) {
+    console.warn(`simplypf2e | itemforge: dropped unavailable secondary rune tier "${c.secondaryTier}"`);
+  }
 
   const propertyRunes = [];
   const seen = new Set();
@@ -407,34 +378,33 @@ const clampInt = (value, min, max, fallback) => {
  * @param {string} args.rarity              GM-chosen rarity
  * @param {string[]} args.availableKinds    kinds rule-templates found exemplars for
  * @param {string[]} args.usageOptions      harvested real usage strings
+ * @param {object[]} args.effectCatalog     issued published equipment rules
  */
-export function normalizeMagicItemConcept(raw, { level, rarity, availableKinds, usageOptions }) {
+export function normalizeMagicItemConcept(raw, { level, rarity, availableKinds, usageOptions, effectCatalog = [] }) {
   const c = typeof raw === "object" && raw !== null ? raw : {};
   const clampedLevel = clampInt(level, MIN_ITEM_LEVEL, MAX_ITEM_LEVEL, 1);
   const usage = normalizeUsage(c.usage, usageOptions ?? [DEFAULT_USAGE]);
+  const resolvedRarity = RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common";
   // Only worn items are invested in PF2e; held/affixed gear never is.
-  const invested = Boolean(c.invested) && usage.startsWith("worn");
+  let invested = Boolean(c.invested) && usage.startsWith("worn");
 
+  const bulk = Object.hasOwn(BULK_VALUES, c.bulk) ? BULK_VALUES[c.bulk] : 0;
+
+  const available = new Set(availableKinds ?? EFFECT_KINDS);
+  const effects = (Array.isArray(c.effects) ? c.effects : [])
+    .map((e) => normalizeEffect(e, { level: clampedLevel, rarity: resolvedRarity, usage, available, effectCatalog }))
+    .filter(Boolean)
+    .slice(0, 3);
+
+  const activation = normalizeActivation(c.activation, {
+    level: clampedLevel, rarity: resolvedRarity, usage, available, effectCatalog
+  });
+  const appliedEffects = [...effects, ...(activation?.params?.ruleEffectKinds ?? [])];
+  invested ||= appliedEffects.some((effect) => effect.exemplar.requiresInvestment);
   const traits = new Set((Array.isArray(c.traits) ? c.traits : []).map(slugify).filter(Boolean));
   traits.add("magical");
   if (invested) traits.add("invested");
   else traits.delete("invested");
-
-  const rawBulk = Number(c.bulk);
-  const bulk = !Number.isFinite(rawBulk) || rawBulk <= 0 ? 0
-    : rawBulk < 1 ? 0.1
-    : Math.min(Math.round(rawBulk), 10);
-
-  const available = new Set(availableKinds ?? EFFECT_KINDS);
-  const effects = (Array.isArray(c.effects) ? c.effects : [])
-    .map((e) => normalizeEffect(e, { level: clampedLevel, available }))
-    .filter(Boolean)
-    .slice(0, 3);
-
-  const resolvedRarity = RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common";
-  const activation = normalizeActivation(c.activation, {
-    level: clampedLevel, rarity: resolvedRarity, available
-  });
 
   return {
     name: String(c.name || "Unnamed Item").slice(0, 120),
@@ -453,11 +423,10 @@ export function normalizeMagicItemConcept(raw, { level, rarity, availableKinds, 
 /**
  * Validate and clamp the optional `activation` field into one of the four
  * known macro templates, or null when absent/unrecognizable. Every numeric
- * parameter is clamped to a level-appropriate benchmark and every enum is
- * whitelisted — the AI supplies only numbers and slugs, never code, so the
- * generated macro is assembled from a fixed, tested script body.
+ * parameter is supplied locally and every model choice is an enum. These
+ * activation benchmarks are module defaults, not published-item balance.
  */
-function normalizeActivation(raw, { level, rarity, available }) {
+function normalizeActivation(raw, { level, rarity, usage, available, effectCatalog }) {
   if (!raw || typeof raw !== "object") return null;
   const template = raw.template;
   if (!ACTIVATION_TEMPLATES.has(template)) {
@@ -465,9 +434,7 @@ function normalizeActivation(raw, { level, rarity, available }) {
     return null;
   }
 
-  let ac = raw.actionCost;
-  if (typeof ac === "string" && /^[123]$/.test(ac)) ac = Number(ac);
-  const actionCost = ACTION_COSTS.has(ac) ? ac : 1;
+  const actionCost = Object.hasOwn(ACTION_COSTS, raw.actionCost) ? ACTION_COSTS[raw.actionCost] : 1;
 
   const p = raw.params && typeof raw.params === "object" ? raw.params : {};
   let params = null;
@@ -476,16 +443,16 @@ function normalizeActivation(raw, { level, rarity, available }) {
     case "damage": {
       const saveType = SAVE_TYPES.has(p.saveType) ? p.saveType : null;
       params = {
-        damageDice: normalizeDice(p.damageDice) ?? damageDiceForLevel(level),
+        damageDice: damageDiceForLevel(level),
         damageType: DAMAGE_TYPES.has(slugify(p.damageType)) ? slugify(p.damageType) : "force",
         saveType,
-        dc: clampDc(p.dc, level, rarity),
+        dc: saveDcForLevel(level, rarity),
         basicSave: saveType ? p.basicSave !== false : false
       };
       break;
     }
     case "heal": {
-      params = { healDice: normalizeDice(p.healDice) ?? damageDiceForLevel(level) };
+      params = { healDice: damageDiceForLevel(level) };
       break;
     }
     case "condition": {
@@ -495,34 +462,34 @@ function normalizeActivation(raw, { level, rarity, available }) {
         return null;
       }
       const saveType = SAVE_TYPES.has(p.saveType) ? p.saveType : null;
-      // AI free text concatenated into the macro's chat HTML — escaped here
-      // at build time, same as selfBuff's effectName/description below.
-      const duration = typeof p.duration === "string" && p.duration.trim()
-        ? esc(p.duration.trim().slice(0, 40)) : null;
+      const duration = Object.hasOwn(ACTIVATION_DURATIONS, p.duration) ? ACTIVATION_DURATIONS[p.duration].label : null;
       params = {
         conditionSlug,
-        value: VALUED_CONDITIONS.has(conditionSlug) ? clampInt(p.value, 1, 6, 1) : null,
+        value: VALUED_CONDITIONS.has(conditionSlug) ? 1 : null,
         duration,
         saveType,
-        dc: saveType ? clampDc(p.dc, level, rarity) : null,
-        basicSave: saveType ? Boolean(p.basicSave) : false
+        dc: saveType ? saveDcForLevel(level, rarity) : null,
+        basicSave: false
       };
       break;
     }
     case "selfBuff": {
-      const rounds = Number(p.durationRounds) > 0 ? clampInt(p.durationRounds, 1, 100, null) : null;
-      const minutes = !rounds && Number(p.durationMinutes) > 0 ? clampInt(p.durationMinutes, 1, 600, null) : null;
+      const duration = Object.hasOwn(ACTIVATION_DURATIONS, p.duration) ? ACTIVATION_DURATIONS[p.duration] : ACTIVATION_DURATIONS.minute;
       const ruleEffectKinds = (Array.isArray(p.ruleEffectKinds) ? p.ruleEffectKinds : [])
-        .map((e) => normalizeEffect(e, { level, available }))
+        .map((e) => normalizeEffect(e, { level, rarity, usage, available, effectCatalog }))
         .filter(Boolean)
         .slice(0, 3);
+      if (!ruleEffectKinds.length) {
+        console.warn("simplypf2e | itemforge: dropped self-buff without a supported published effect");
+        return null;
+      }
       // These two are AI free text concatenated into the macro's chat/effect
       // HTML — escaped here at build time, same as every other AI string.
       params = {
         effectName: esc(String(p.effectName || "Magic Effect").slice(0, 80)),
         description: esc(String(p.description ?? "").slice(0, 600)),
-        durationRounds: rounds,
-        durationMinutes: minutes,
+        durationRounds: duration.rounds ?? null,
+        durationMinutes: duration.minutes ?? null,
         ruleEffectKinds
       };
       break;
@@ -532,48 +499,56 @@ function normalizeActivation(raw, { level, rarity, available }) {
   return { template, actionCost, params };
 }
 
-/** Validate and clamp one effect; null drops it (with a warning). */
-function normalizeEffect(e, { level, available }) {
+/** Resolve one enum/scale effect to an unchanged issued equipment rule. */
+function normalizeEffect(e, { level, rarity, usage, available, effectCatalog = [] }) {
   const kind = e?.kind;
   if (!available.has(kind)) {
     if (kind) console.warn(`simplypf2e | itemforge: dropped effect of unavailable kind "${kind}"`);
     return null;
   }
-  // Resistance/weakness magnitudes follow the GM Core Resistances &
-  // Weaknesses benchmarks for the item's level (same table creatures use).
-  const maxRW = Math.max(lookup(RESISTANCE, level, "maximum", ["minimum"]) ?? 1, 1);
+  let field;
+  let value;
   switch (kind) {
     case "itemBonus": {
       const statistic = slugify(e.statistic);
       if (!ITEM_BONUS_STATISTICS.has(statistic)) break;
-      return { kind, statistic, value: clampInt(e.value, 1, 4, 1) };
+      field = "statistic"; value = statistic; break;
     }
     case "resistance":
     case "weakness": {
       const damageType = slugify(e.damageType);
       if (!DAMAGE_TYPES.has(damageType)) break;
-      return { kind, damageType, value: clampInt(e.value, 1, maxRW, Math.ceil(maxRW / 2)) };
+      field = "damageType"; value = damageType; break;
     }
     case "immunity": {
       const damageType = slugify(e.damageType);
       if (!DAMAGE_TYPES.has(damageType)) break;
-      return { kind, damageType };
+      field = "damageType"; value = damageType; break;
     }
     case "sense": {
       const type = slugify(e.type);
       if (!SENSE_TYPES.has(type)) break;
-      const acuity = ["precise", "imprecise", "vague"].includes(e.acuity) ? e.acuity : null;
-      const range = Number(e.range) > 0 ? Math.min(Math.round(Number(e.range) / 5) * 5, 120) : null;
-      return { kind, type, acuity, range };
+      field = "type"; value = type; break;
     }
     case "speed": {
       const type = slugify(e.type);
       if (!SPEED_TYPES.has(type)) break;
-      return { kind, type, value: clampInt(Math.round(Number(e.value) / 5) * 5, 5, 100, 20) };
+      field = "type"; value = type; break;
     }
   }
-  console.warn(`simplypf2e | itemforge: dropped malformed "${kind}" effect`, e);
-  return null;
+  const candidates = field ? effectCatalog.filter((candidate) => candidate.kind === kind && candidate[field] === value
+    && candidate.exemplar?.sourceLevel <= level
+    && Object.hasOwn(RARITY_RANK, candidate.exemplar?.sourceRarity)
+    && RARITY_RANK[candidate.exemplar.sourceRarity] <= (RARITY_RANK[rarity] ?? 0)
+    && (!candidate.exemplar.requiresInvestment || usage?.startsWith("worn"))) : [];
+  const magnitude = (candidate) => candidate.value ?? candidate.range ?? Infinity;
+  candidates.sort((a, b) => magnitude(a) - magnitude(b));
+  if (!candidates.length) {
+    console.warn(`simplypf2e | itemforge: dropped "${kind}" effect without a matching published equipment rule at level ${level}`, e);
+    return null;
+  }
+  const index = e.scale === "low" ? 0 : e.scale === "high" ? candidates.length - 1 : Math.floor((candidates.length - 1) / 2);
+  return structuredClone(candidates[index]);
 }
 
 /* -------------------- plain-English effect summaries -------------------- */
@@ -658,8 +633,7 @@ export function describeActivation(activation, { charged = true } = {}) {
 /* -------------------- rule cloning & item assembly -------------------- */
 
 /**
- * Clone a real published Rule Element for every effect in `effects` and
- * parameterize it (value/selector/damage-type only). Shared by both the
+ * Clone the exact issued published Rule Element for each effect. Shared by the
  * passive item assembly below and the selfBuff activation macro, so the
  * Phase 1 "clone, never hand-author" guarantee holds for activated buffs too.
  * @returns {Promise<{rules: object[], applied: object[]}>}
@@ -669,12 +643,12 @@ export async function cloneRulesForEffects(effects) {
   const applied = [];
   for (const effect of effects ?? []) {
     try {
-      const exemplar = await findRuleExemplar(effect.kind);
+      const exemplar = effect.exemplar;
       if (!exemplar) {
         console.warn(`simplypf2e | itemforge: no exemplar for "${effect.kind}" — effect skipped`);
         continue;
       }
-      rules.push(parameterizeRule(structuredClone(exemplar.rule), effect));
+      rules.push(structuredClone(exemplar.rule));
       applied.push(effect);
       console.debug(
         `simplypf2e | itemforge: "${effect.kind}" rule cloned from "${exemplar.sourceName}" (${exemplar.sourceUuid})`
@@ -684,41 +658,6 @@ export async function cloneRulesForEffects(effects) {
     }
   }
   return { rules, applied };
-}
-
-/**
- * Parameterize a cloned exemplar rule with the concept's effect. ONLY the
- * fields verified by the exemplar filter are touched, with values of the
- * same primitive type the real rule carried — the structure is otherwise
- * exactly the published item's.
- */
-function parameterizeRule(rule, effect) {
-  switch (effect.kind) {
-    case "itemBonus":
-      rule.selector = effect.statistic;
-      rule.value = effect.value;
-      break;
-    case "resistance":
-    case "weakness":
-      rule.type = effect.damageType;
-      rule.value = effect.value;
-      break;
-    case "immunity":
-      rule.type = effect.damageType;
-      break;
-    case "sense":
-      rule.selector = effect.type;
-      if (effect.acuity) rule.acuity = effect.acuity;
-      else delete rule.acuity;
-      if (effect.range) rule.range = effect.range;
-      else delete rule.range;
-      break;
-    case "speed":
-      rule.selector = effect.type;
-      rule.value = effect.value;
-      break;
-  }
-  return rule;
 }
 
 /**

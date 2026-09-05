@@ -156,15 +156,10 @@ assert.equal(isCoinageDocument({ type: "treasure", system: { price: { value: { g
 }
 
 {
-  const warnings = [];
-  const original = console.warn;
-  console.warn = (...args) => warnings.push(args.join(" "));
-  const items = await buildLootItems([
+  await assert.rejects(buildLootItems([
     { name: "Gold Pieces", quantity: 12, value: 1, entry: null }
-  ]);
-  console.warn = original;
-  assert.equal(items.length, 0, "unresolved coin lines are dropped rather than custom-treasured");
-  assert.ok(warnings.some((line) => line.includes("Gold Pieces")), "missing coinage documents warn");
+  ]), /Cannot create coin loot "Gold Pieces"/,
+  "missing coinage must stop assembly before a partial actor is written");
 }
 
 {

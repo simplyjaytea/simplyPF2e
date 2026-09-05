@@ -44,14 +44,16 @@ const RULES = Object.freeze({
   [AI_TASK.FEAT_SELECTION]: { required: ["picks"], arrays: ["picks"] },
   [AI_TASK.CHARACTER_CHOICES]: { required: ["picks"], arrays: ["picks"] },
   [AI_TASK.MAGIC_ITEM_CONCEPT]: {
-    required: ["name", "description", "level", "rarity", "usage", "traits", "bulk", "invested", "effects"],
+    required: ["name", "description", "rarity", "usage", "traits", "bulk", "invested", "effects"],
     arrays: ["traits", "effects"],
-    nonEmptyStrings: ["name", "description", "rarity", "usage"]
+    nonEmptyStrings: ["name", "description", "rarity", "usage"],
+    enums: { bulk: ["negligible", "light", "one", "two"] }
   },
   [AI_TASK.RUNED_ITEM_CONCEPT]: {
     required: ["baseItemName", "potency", "secondaryTier", "propertyRunes", "description"],
     arrays: ["propertyRunes"],
-    nonEmptyStrings: ["baseItemName", "description"]
+    nonEmptyStrings: ["baseItemName", "description"],
+    enums: { potency: ["single", "double", "triple"], secondaryTier: ["none", "standard", "greater", "major"] }
   },
   [AI_TASK.ENCOUNTER_DESIGN]: {
     required: ["name", "briefs"],
@@ -80,5 +82,9 @@ export function taskResponseProblem(task, data) {
   const emptyStrings = (rule.nonEmptyStrings ?? [])
     .filter((key) => typeof data[key] !== "string" || !data[key].trim());
   if (emptyStrings.length) return `fields must be non-empty strings: ${emptyStrings.join(", ")}`;
+  const wrongEnums = Object.entries(rule.enums ?? {})
+    .filter(([key, allowed]) => !allowed.includes(data[key]))
+    .map(([key]) => key);
+  if (wrongEnums.length) return `fields must use offered enum slugs: ${wrongEnums.join(", ")}`;
   return null;
 }

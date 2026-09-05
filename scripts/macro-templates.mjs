@@ -3,8 +3,8 @@
  *
  * SAFETY PRINCIPLE (the Phase 1 principle, applied to macros instead of Rule
  * Elements): the AI never writes code. Each of the four templates below is a
- * PRE-WRITTEN, tested script body; the AI supplies only numbers and enum
- * slugs, which are validated/clamped in item-builder.normalizeActivation and
+ * PRE-WRITTEN, tested script body; the AI supplies only enum slugs and prose.
+ * Mechanical values come from item-builder.normalizeActivation and are
  * then embedded as JSON.stringify-serialized CONSTANTS at the top of the
  * chosen body. There is no code-injection surface — a parameter can only ever
  * be a number, a whitelisted string, or a validated dice formula.
@@ -40,30 +40,43 @@ const MACRO_FOLDER_NAME = "SimplyPF2e Item Forge";
 const RESOLVE_ACTOR_AND_ITEM = `
 const acting = game.user?.character ?? canvas?.tokens?.controlled?.[0]?.actor ?? null;
 if (!acting) { ui.notifications.warn(META.itemName + ": assign a character to your user, or select your token, then activate again."); return; }
-const forgeItem = acting.items?.find((i) => i.getFlag(MODULE_ID, "forge")?.forgeId === META.forgeId) ?? null;
+const forgeCopies = Array.from(acting.items ?? []).filter((i) => i.getFlag(MODULE_ID, "forge")?.forgeId === META.forgeId);
+const forgeItem = forgeCopies.find((i) => {
+  const uses = i.getFlag(MODULE_ID, "forge")?.uses;
+  return i.isInvested !== false && Number.isInteger(uses?.value) && uses.value > 0 && uses.value <= uses.max;
+}) ?? forgeCopies[0] ?? null;
 if (!forgeItem) { ui.notifications.warn(META.itemName + ": the acting character isn't carrying this item."); return; }
+if (forgeItem.isInvested === false) { ui.notifications.warn(META.itemName + ": invest and equip this item before activating it."); return; }
 `;
 
 /** Block when out of daily charges (does NOT consume). */
 const CHARGE_CHECK = `
 const forgeFlag = forgeItem.getFlag(MODULE_ID, "forge") ?? {};
 const forgeUses = forgeFlag.uses ?? null;
-if (forgeUses && typeof forgeUses.value === "number" && forgeUses.value <= 0) {
+if (!Number.isInteger(forgeUses?.value) || !Number.isInteger(forgeUses?.max) || forgeUses.max < 1 || forgeUses.value < 0 || forgeUses.value > forgeUses.max || forgeUses.per !== "day") {
+  ui.notifications.warn(META.itemName + ": its activation counter is missing or invalid. Ask the GM to repair this item before activating it.");
+  return;
+}
+if (forgeUses.value === 0) {
   ChatMessage.create({ speaker: ChatMessage.getSpeaker({ actor: acting }), content: "<strong>" + META.itemName + "</strong> has no activations remaining. It recharges during daily preparations." });
   return;
 }
 `;
 
 /**
- * Consume one charge BEFORE running the effect. Decrementing first is the
- * standard single-click double-fire mitigation: a second click re-reads the
- * flag and (usually) sees 0. It is not a hard mutex against a genuine
- * same-tick double dispatch, which is acceptable for click-driven use.
+ * Persist one charge BEFORE running the effect. The command's in-flight
+ * guard also serializes same-client double clicks. Foundry flag updates do
+ * not provide a cross-client compare-and-swap operation.
  */
 const CHARGE_CONSUME = `
-if (forgeUses && typeof forgeUses.value === "number") {
-  try { await forgeItem.setFlag(MODULE_ID, "forge", foundry.utils.mergeObject(forgeFlag, { uses: { value: forgeUses.value - 1 } }, { inplace: false })); }
-  catch (e) { console.error(MODULE_ID + " | itemforge: failed to decrement charges", e); }
+try {
+  await forgeItem.setFlag(MODULE_ID, "forge", foundry.utils.mergeObject(forgeFlag, { uses: { value: forgeUses.value - 1 } }, { inplace: false }));
+  if (forgeItem.getFlag(MODULE_ID, "forge")?.uses?.value !== forgeUses.value - 1) throw new Error("Activation counter update was not retained");
+}
+catch (e) {
+  console.error(MODULE_ID + " | itemforge: failed to decrement charges", e);
+  ui.notifications.warn(META.itemName + ": the activation charge could not be saved. No effect was applied; try again after resolving the item update error.");
+  return;
 }
 `;
 
@@ -283,19 +296,28 @@ function effectDuration(params) {
  */
 export async function buildActivationCommand(activation, meta) {
   const { template, params } = activation;
+  const assemble = (body, extra) => `${header(meta, params, extra)}\n${RESOLVE_ACTOR_AND_ITEM}
+const inFlight = globalThis[Symbol.for("simplypf2e.forge.activations")] ??= new Set();
+const activationKey = forgeItem.uuid ?? ((acting.uuid ?? acting.id ?? "actor") + ":" + (forgeItem.id ?? META.forgeId));
+if (inFlight.has(activationKey)) return;
+inFlight.add(activationKey);
+try {
+${body}
+} finally { inFlight.delete(activationKey); }
+`;
   switch (template) {
     case "damage":
-      return `${header(meta, params)}\n${RESOLVE_ACTOR_AND_ITEM}\n${DAMAGE_BODY}`;
+      return assemble(DAMAGE_BODY);
     case "heal":
-      return `${header(meta, params)}\n${RESOLVE_ACTOR_AND_ITEM}\n${HEAL_BODY}`;
+      return assemble(HEAL_BODY);
     case "condition":
-      return `${header(meta, params)}\n${RESOLVE_ACTOR_AND_ITEM}\n${CONDITION_BODY}`;
+      return assemble(CONDITION_BODY);
     case "selfBuff": {
       // Clone the real Rule Elements now and embed them as a constant — the
       // macro never re-derives them at runtime.
       const { rules } = await cloneRulesForEffects(params.ruleEffectKinds);
       const extra = { RULES: rules, DURATION: effectDuration(params) };
-      return `${header(meta, params, extra)}\n${RESOLVE_ACTOR_AND_ITEM}\n${SELF_BUFF_BODY}`;
+      return assemble(SELF_BUFF_BODY, extra);
     }
     default:
       throw new Error(`unknown activation template "${template}"`);

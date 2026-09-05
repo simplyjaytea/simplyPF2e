@@ -96,12 +96,12 @@ function hasSkillRank(skills, slug, rank) {
   return validRank(skills[slug]) && skills[slug] >= rank;
 }
 
-function skillClauseMet(rank, rest, context) {
+function skillClauseMet(rank, rest, context, allowedSkills = null) {
   const target = skillTargets(rest);
   if (!target) return false;
   const skills = context.skills;
-  if (target.any) return Object.values(skills).some((value) => validRank(value) && value >= rank);
-  const check = (slug) => hasSkillRank(skills, slug, rank);
+  if (target.any) return !allowedSkills && Object.values(skills).some((value) => validRank(value) && value >= rank);
+  const check = (slug) => (!allowedSkills || allowedSkills.has(slug)) && hasSkillRank(skills, slug, rank);
   return target.op === "or" ? target.skills.some(check) : target.skills.every(check);
 }
 
@@ -142,10 +142,12 @@ function clauseMet(entry, context) {
 /**
  * Snapshot of the generation plan used to prove ordinary prerequisite text.
  * Only names and ranks the caller can already document belong here.
+ * `allowedSkillFeats` optionally narrows a published restricted skill slot
+ * to explicit, proven rank prerequisites for the supplied skill slugs.
  */
 export function stagedActorContext({
   level, ancestry = null, heritage = null, background = null, class: classItem = null,
-  feats = [], features = [], skills = {}, abilities = {}
+  feats = [], features = [], skills = {}, abilities = {}, allowedSkillFeats = null
 } = {}) {
   const characterLevel = clampLevel(level);
   const possessed = [
@@ -173,7 +175,10 @@ export function stagedActorContext({
     level: characterLevel,
     names: new Set(possessed.map(slugify).filter(Boolean)),
     skills: skillRanks,
-    abilities: abilityScores
+    abilities: abilityScores,
+    allowedSkillFeats: allowedSkillFeats === null ? null
+      : new Set((Array.isArray(allowedSkillFeats) ? allowedSkillFeats : [])
+        .filter((skill) => typeof skill === "string" && skillKey(skill.replaceAll("-", " "))))
   };
 }
 
@@ -184,5 +189,15 @@ export function stagedActorContext({
 export function featPrerequisitesMet(feat, context) {
   const list = feat?.system?.prerequisites?.value;
   if (!Array.isArray(list) || !context?.names) return false;
-  return list.every((entry) => clauseMet(entry, context));
+  if (!list.every((entry) => clauseMet(entry, context))) return false;
+  if (context.allowedSkillFeats == null) return true;
+  // A restricted skill feat needs an explicit, satisfied rank prerequisite
+  // for an allowed skill. Merely naming a mental skill in an unsatisfied OR
+  // branch does not qualify; generic "at least one skill" cannot prove which
+  // skill the feat is for. Unknown/methodology-dependent cases stay closed.
+  if (!(context.allowedSkillFeats instanceof Set)) return false;
+  return list.some((entry) => {
+    const skill = /^(trained|expert|master|legendary)\s+in\s+(.+)$/i.exec(entry.value.trim());
+    return skill && skillClauseMet(RANK[skill[1].toLowerCase()], skill[2], context, context.allowedSkillFeats);
+  });
 }

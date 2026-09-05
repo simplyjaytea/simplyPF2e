@@ -62,17 +62,28 @@ export const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 /**
  * The ordered feat slots a PC of `level` has earned, one entry per slot in
  * level order — the shape #generatePC()/pc-builder.mjs feed to
- * getFeatCandidates()/selectFeats(). With `freeArchetype`, adds the Free
+ * getFeatCandidates()/selectFeats(). The production builder supplies the real
+ * class system: ClassPF2e#grantedFeatSlots (master and pf2e-8.5.0) reads its
+ * ancestry/class/skill/generalFeatLevels.value arrays. No universal schedule
+ * can represent level-one class feats or Rogue/Investigator skill feats.
+ * Missing or malformed native schedules fail closed; legacy callers without
+ * class data retain the former generic cadence. With `freeArchetype`, adds the Free
  * Archetype variant's extra archetype class-feat slot at every even level
  * (CLASS_FEAT_LEVELS are exactly the even levels 2-20) — issue #64 item 4b.
  * @returns {{type: "ancestry"|"class"|"skill"|"general", level: number, archetype?: boolean}[]}
  */
-export function buildFeatSlots(level, { freeArchetype = false } = {}) {
+export function buildFeatSlots(level, { freeArchetype = false, classSystem = null } = {}) {
   const slots = [];
-  for (const lv of ANCESTRY_FEAT_LEVELS) if (lv <= level) slots.push({ type: "ancestry", level: lv });
-  for (const lv of CLASS_FEAT_LEVELS) if (lv <= level) slots.push({ type: "class", level: lv });
-  for (const lv of SKILL_FEAT_LEVELS) if (lv <= level) slots.push({ type: "skill", level: lv });
-  for (const lv of GENERAL_FEAT_LEVELS) if (lv <= level) slots.push({ type: "general", level: lv });
+  const defaults = { ancestry: ANCESTRY_FEAT_LEVELS, class: CLASS_FEAT_LEVELS, skill: SKILL_FEAT_LEVELS, general: GENERAL_FEAT_LEVELS };
+  for (const [type, fallback] of Object.entries(defaults)) {
+    const schedule = classSystem === null ? fallback : classSystem?.[`${type}FeatLevels`]?.value;
+    if (!Array.isArray(schedule) || schedule.some((lv) => !Number.isInteger(lv) || lv < 1 || lv > 20)) {
+      throw new Error(`simplypf2e | class ${type} feat schedule is missing or malformed`);
+    }
+    for (const lv of [...new Set(schedule)].sort((a, b) => a - b)) {
+      if (lv <= level) slots.push({ type, level: lv });
+    }
+  }
   if (freeArchetype) {
     for (const lv of CLASS_FEAT_LEVELS) if (lv <= level) slots.push({ type: "class", level: lv, archetype: true });
   }

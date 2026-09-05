@@ -114,6 +114,22 @@ const freeArchetype = scenario.embeddedItems.find((item) => item.type === "feat"
 assert.equal(freeArchetype.system.location, "archetype-2", "Free Archetype feats use PF2e's distinct feat-group location");
 assert.equal(freeArchetype.system.level.taken, 2, "the variant feat retains its earned level");
 
+// PF2e 8.5 Arrows is an `ammo` item. It must survive the PC type gate so the
+// native inventory and the existing post-native ammo selection can see it.
+game.packs.set("test.equipment", {
+  getDocument: async () => doc("ammo", { baseItem: "arrows", quantity: 10 })
+});
+reset();
+{
+  const { concept, resolved } = input();
+  resolved.equipment = [{ name: "Arrows", quantity: 10, entry: { packId: "test.equipment", _id: "arrows" } }];
+  const created = await createCharacterActor(concept, resolved);
+  assert.equal(scenario.embeddedItems.filter((item) => item.type === "ammo").length, 1,
+    "published ammunition reaches native PC item creation");
+  assert.equal(created.expectedItems.filter((item) => item.type === "ammo").length, 1,
+    "ammunition remains covered by the post-create survival contract");
+}
+
 reset({ system: { attributes: { hp: { value: 11, max: 22 } }, abilities: { int: { mod: 0 } } } });
 {
   const { concept, resolved } = input();

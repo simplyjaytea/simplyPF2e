@@ -2,7 +2,6 @@ import {
   SETTINGS, chatCompletionsUrl, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
   isOfficialOpenAIEndpoint, modelsUrl, resolveProviderModel
 } from "./settings.mjs";
-import { damageDiceForLevel, saveDcForLevel } from "./item-builder.mjs";
 import { hasRunes, parseRunes, propertyRuneRestrictionNote } from "./runes.mjs";
 import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
 import { estimateTokens, normalizeUsage } from "./tokens.mjs";
@@ -112,8 +111,12 @@ export function lootGuide(amount, subject = "creature") {
  * "loot" schema field's guidance depends on the GM's Treasure amount setting
  * — see lootGuide() above.
  */
+const GM_CONCEPT_PRIORITY = "The GM's explicit concept constraints override preset suggestions and default item/spell counts. If the GM requests no equipment, no loot, or no spellcasting, omit that category (use [] or null). For a minimal concept, use a small relevant selection and do not add filler. Spellcasting being allowed is permission, never a requirement. Equipment and loot are distinct holdings: do not repeat carried gear as extra loot unless the GM explicitly requests spares. Preserve these constraints when refining the draft.";
+
 function systemPrompt(amount) {
   return `You are an expert Pathfinder 2e (remaster) creature designer. You design creature CONCEPTS; numbers are computed elsewhere from the official Building Creatures benchmark tables, so choose only named scales, never numeric statistics.
+
+${GM_CONCEPT_PRIORITY}
 
 Respond with a SINGLE JSON object only. No markdown fences, no commentary.
 
@@ -277,7 +280,7 @@ async function requestJSON(args) {
  * @returns {Promise<{loot: Array}>}
  */
 export async function generateLoot({ concept, amount = "standard", onProgress, signal }) {
-  const system = `You are a Pathfinder 2e loot designer. Given a creature, respond with ONLY a JSON object containing an appropriate loot array for it to drop when defeated.
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are a Pathfinder 2e loot designer. Given a creature, respond with ONLY a JSON object containing an appropriate loot array for it to drop when defeated.
 
 Respond with a SINGLE JSON object and nothing else. No markdown fences, no commentary.
 
@@ -289,10 +292,12 @@ JSON schema (loot key required):
 Loot should be ${lootGuide(amount)}`;
 
   const user = [
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.description ? `Description: ${concept.description}` : null,
-    concept.traits.length ? `Traits: ${concept.traits.join(", ")}` : null
+    concept.traits.length ? `Traits: ${concept.traits.join(", ")}` : null,
+    concept.equipment?.length ? `Already carried equipment: ${concept.equipment.map((item) => item.name).join(", ")}` : null
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
@@ -349,7 +354,7 @@ export async function generateConcept({ prompt, level, rarity, allowSpellcasting
     `Creature level: ${level}`,
     `Rarity: ${rarity}`,
     `Spellcasting allowed: ${allowSpellcasting ? "yes, if it fits the concept" : "NO - do not include spellcasting"}`,
-    preset ? `Build preset (follow this road map; the concept below drives flavor): ${preset}` : null,
+    preset ? `Build preset (suggestions only; the GM's explicit concept takes priority): ${preset}` : null,
     "",
     `Concept from the GM: ${prompt}`
   ].filter((line) => line !== null).join("\n");
@@ -463,6 +468,7 @@ export async function chooseSpellFocus({ concept, tradition, onProgress, signal 
 Give 3-6 lowercase keywords describing the KINDS of spells that fit this creature: descriptor traits (e.g. "fire", "cold", "mental", "death", "poison", "illusion", "necromancy"), and/or general purpose words ("healing", "buff", "debuff", "control", "summon", "detection"). These will be used to filter a real spell list (${REMASTER_NOTE}), so keep them concrete and matchable, not vague.`;
 
   const user = [
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level})`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.description ? `Description: ${concept.description}` : null,
@@ -561,7 +567,7 @@ export async function selectSpells({ concept, candidates, focusCandidates = [], 
     .join("\n");
   const focusList = focusCandidates.map((candidate) => `${candidate.id} | ${candidate.name} (Rank ${candidate.rank})`).join("; ");
 
-  const system = `You are selecting spells for a Pathfinder 2e ${pcPlan ? "player character" : "creature"}. Choose ONLY from the provided list, copying each name EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting spells for a Pathfinder 2e ${pcPlan ? "player character" : "creature"}. Choose ONLY from the provided list, copying each name EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
 { "spells": [ { "id": string, "rank": ${pcPlan ? 'string, "signature": "regular" | "signature"' : "number"} } ], "focusSpellIds": string[] }
 ${pcPlan
     ? `"rank" must be one of these enum slugs, never a number: ${PC_SPELL_RANKS.slice(0, maxRank + 1).join(", ")}. Use cantrip only for cantrips; ranked spells use their listed rank or a higher allowed rank to heighten.`
@@ -576,6 +582,7 @@ ${pcPlan
 ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provided focus-spell list when they genuinely fit the concept; otherwise return []." : "Return [] for focusSpellIds."}`;
 
   const user = [
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `${pcPlan ? "Character" : "Creature"}: ${concept.name} (level ${concept.level})`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.description ? `Description: ${concept.description}` : null,
@@ -674,12 +681,13 @@ export async function selectEquipment({ concept, candidates, onProgress, signal 
     .map(([type, names]) => `${type}: ${names.join("; ")}`)
     .join("\n");
 
-  const system = `You are selecting carried equipment for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written. Respond with a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting carried equipment for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written. Respond with a single JSON object and nothing else:
 { "equipment": [ { "id": string, "quantity": number } ] }
 ${RUNE_PREFIX_NOTE}
 Pick the logical items the creature would carry: the weapons it wields (match its strikes), sensible consumables (healing potions, elixirs, bombs, talismans, poisons it applies), and everyday adventuring gear it would plausibly use (rope, torches, rations, tools). Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its role and level. Pick each DISTINCT item at most once — a smaller focused set is fine; never repeat an item or add filler to reach a count. NO coins or currency. "quantity" is usually 1; use 2-5 only for ammunition and stackable consumables.`;
 
   const user = [
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level})`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.description ? `Description: ${concept.description}` : null,
@@ -708,7 +716,7 @@ Pick the logical items the creature would carry: the weapons it wields (match it
       // Picks come from the compendium, so no estimated fallback price is needed.
       value: 0
     }));
-  return { equipment, usage };
+  return { equipment, omitted: parsed.equipment.length === 0, usage };
 }
 
 /**
@@ -735,16 +743,18 @@ export async function selectLoot({ concept, candidates, scrollCandidates = [], o
     .map(([type, names]) => `${type}: ${names.join("; ")}`)
     .join("\n");
 
-  const system = `You are selecting dropped loot for a Pathfinder 2e creature. Choose ONLY IDs from the provided lists. Coins are module-built and retain their first-draft quantities automatically. A scroll must use an offered spell ID and a rank no lower than that spell's base rank. Respond with a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting dropped loot for a Pathfinder 2e creature. Choose ONLY IDs from the provided lists. Coins are module-built and retain their first-draft quantities automatically. A scroll must use an offered spell ID and a rank no lower than that spell's base rank. Respond with a single JSON object and nothing else:
 { "loot": [ { "id": string, "quantity": number }, { "scrollSpellId": string, "rank": number, "quantity": number } ] }
 ${RUNE_PREFIX_NOTE}
 Recreate the first-draft haul: replace each non-coin entry with the closest valid item or scroll spell. Keep the draft's quantities. Drop an entry only when nothing available comes close.`;
 
   const user = [
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     `Traits: ${concept.traits.join(", ")}`,
     `First-draft loot (recreate this haul from the list): ${concept.loot.map((l) => `${l.name} x${l.quantity}`).join(", ")}`,
+    concept.equipment?.length ? `Already carried equipment: ${concept.equipment.map((item) => item.name).join(", ")}` : null,
     "",
     "Available items:", list,
     scrollCandidates.length ? `Available scroll spells (ID | name | base rank): ${scrollCandidates.map((s) => `${s.id} | ${s.name} | ${s.rank}`).join("; ")}` : null
@@ -776,7 +786,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
       value: 0
     });
   }
-  return { loot, usage };
+  return { loot, omitted: parsed.loot.length === 0, usage };
 }
 
 /**
@@ -880,10 +890,11 @@ export async function selectCreatureFeats({ concept, candidates, onProgress, sig
   const maximum = Math.min(Math.max(concept?.feats?.length ?? 0, 0), 3);
   if (!maximum || !candidates.length) return { feats: [], omitted: false, usage: null };
   const catalog = candidates.map((candidate) => `${candidate.id} | ${candidate.name}`).join("\n");
-  const system = `You are selecting up to ${maximum} published Pathfinder 2e class feats for a creature. Choose ONLY IDs from the provided catalog. Return a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting up to ${maximum} published Pathfinder 2e class feats for a creature. Choose ONLY IDs from the provided catalog. Return a single JSON object and nothing else:
 { "featIds": string[] }
 Choose feats that fit the creature's role and tactics. Do not choose a feat more than once. It is valid to choose fewer than ${maximum}; return { "featIds": [] } when none fit.`;
   const user = [
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level})`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.description ? `Description: ${concept.description}` : null,
@@ -917,10 +928,11 @@ export async function selectCreatureAbilities({ concept, candidates, onProgress,
   const maximum = Math.min(Math.max(concept?.specialAbilities?.length ?? 0, 0), 6);
   if (!maximum || !candidates.length) return { abilities: [], usage: null };
   const catalog = candidates.map((candidate) => `${candidate.id} | ${candidate.name}`).join("\n");
-  const system = `You are selecting up to ${maximum} published Pathfinder 2e bestiary actions for a creature. Choose ONLY IDs from the catalog. Return a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting up to ${maximum} published Pathfinder 2e bestiary actions for a creature. Choose ONLY IDs from the catalog. Return a single JSON object and nothing else:
 { "abilityIds": string[] }
 Choose the actions that fit the creature's role and tactics. Omit a proposed ability when no published action fits; it will remain labeled narrative-only, with no custom mechanics.`;
   const user = [
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level})`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.description ? `Description: ${concept.description}` : null,
@@ -979,27 +991,27 @@ Use exact string IDs from the catalog. Each option must belong to that choice. R
  * rule-templates.mjs actually found real exemplars for in this world are
  * offered to the model — see generateMagicItemConcept(). */
 const ITEM_EFFECT_DOCS = {
-  itemBonus: `{ "kind": "itemBonus", "statistic": "ac"|"perception"|"fortitude"|"reflex"|"will"|"acrobatics"|"arcana"|"athletics"|"crafting"|"deception"|"diplomacy"|"intimidation"|"medicine"|"nature"|"occultism"|"performance"|"religion"|"society"|"stealth"|"survival"|"thievery", "value": number } // item bonus scaled like published items: +1 up to about level 9, +2 for levels 10-15, +3 for level 16+`,
-  resistance: `{ "kind": "resistance", "damageType": DAMAGE_TYPE, "value": number } // roughly half the item's level, minimum 2`,
-  weakness: `{ "kind": "weakness", "damageType": DAMAGE_TYPE, "value": number } // a drawback; use only when the concept calls for one`,
-  immunity: `{ "kind": "immunity", "damageType": DAMAGE_TYPE } // very strong; only for high-level (13+) or rare items`,
-  sense: `{ "kind": "sense", "type": "darkvision"|"greater-darkvision"|"low-light-vision"|"scent"|"tremorsense"|"echolocation"|"see-invisibility"|"truesight"|"lifesense"|"wavesense", "acuity": "precise"|"imprecise"|"vague"|null, "range": number|null } // acuity/range only for senses that need them (e.g. scent imprecise 30); null for vision senses`,
-  speed: `{ "kind": "speed", "type": "fly"|"swim"|"climb"|"burrow", "value": number } // speed in feet, multiple of 5 (20-40 typical); a passive permanent speed is powerful, fit it to the level`
+  itemBonus: `{ "kind": "itemBonus", "statistic": OFFERED_STATISTIC, "scale": "low"|"moderate"|"high" }`,
+  resistance: `{ "kind": "resistance", "damageType": OFFERED_DAMAGE_TYPE, "scale": "low"|"moderate"|"high" }`,
+  weakness: `{ "kind": "weakness", "damageType": OFFERED_DAMAGE_TYPE, "scale": "low"|"moderate"|"high" } // a drawback; only when requested`,
+  immunity: `{ "kind": "immunity", "damageType": OFFERED_DAMAGE_TYPE }`,
+  sense: `{ "kind": "sense", "type": OFFERED_SENSE, "scale": "low"|"moderate"|"high" }`,
+  speed: `{ "kind": "speed", "type": OFFERED_MOVEMENT, "scale": "low"|"moderate"|"high" }`
 };
 
 /* Documentation for the optional `activation` field (item forge Phase 2): a
  * single activated ability the player triggers via a generated macro. The four
  * templates map to the four macro-templates.mjs builders. {dmg} and {dc} are
  * filled with level-appropriate benchmark suggestions per generation. */
-function itemActivationDoc({ suggestedDamage, suggestedDC, effectDocs }) {
+function itemActivationDoc() {
   return `"activation": { // OPTIONAL — omit entirely (null) for a pure passive item. One activated ability the player clicks to use.
     "template": "damage"|"heal"|"condition"|"selfBuff",
-    "actionCost": 1|2|3|"reaction"|"free",
+    "actionCost": "single"|"two"|"three"|"reaction"|"free",
     "params": { // shape depends on "template":
-      // damage:   { "damageDice": "${suggestedDamage}", "damageType": DAMAGE_TYPE, "saveType": "fortitude"|"reflex"|"will"|null, "dc": ${suggestedDC}, "basicSave": boolean } // dice ~${suggestedDamage} for this level; DC ~${suggestedDC}; use a basic save for area/blast damage
-      // heal:     { "healDice": "${suggestedDamage}" } // Hit Points restored; heals a target or the user
-      // condition:{ "conditionSlug": "frightened"|"clumsy"|"slowed"|"sickened"|"off-guard"|"blinded"|"dazzled"|"prone"|"stupefied"|"enfeebled"|"drained"|..., "value": number|null, "duration": string|null, "saveType": "fortitude"|"reflex"|"will"|null, "dc": ${suggestedDC}, "basicSave": boolean } // value only for valued conditions (e.g. frightened 1); duration is short text like "1 minute"
-      // selfBuff: { "effectName": string, "description": string, "durationRounds": number|null, "durationMinutes": number|null, "ruleEffectKinds": [ /* 0-3 of the SAME passive effect shapes as "effects" above */ ] } // a temporary buff on the user only
+      // damage:   { "damageType": DAMAGE_TYPE, "saveType": "fortitude"|"reflex"|"will"|null, "basicSave": boolean } // the module supplies dice and DC
+      // heal:     {} // the module supplies healing dice; heals a target or the user
+      // condition:{ "conditionSlug": "frightened"|"clumsy"|"slowed"|"sickened"|"off-guard"|"blinded"|"dazzled"|"prone"|"stupefied"|"enfeebled"|"drained", "duration": "round"|"minute"|"ten-minutes"|null, "saveType": "fortitude"|"reflex"|"will"|null } // a valued condition receives the module's fixed minimum value; duration is an adjudication reminder
+      // selfBuff: { "effectName": string, "description": string, "duration": "round"|"minute"|"ten-minutes", "ruleEffectKinds": [ /* one to three of the SAME offered passive effect shapes above */ ] } // a temporary buff on the user only
     }
   }`;
 }
@@ -1013,26 +1025,30 @@ function itemActivationDoc({ suggestedDamage, suggestedDC, effectDocs }) {
  * equipment compendium (item-builder.getUsageOptions()).
  * @returns {Promise<{concept: object, usage: object}>} raw concept JSON + token usage
  */
-export async function generateMagicItemConcept({ prompt, level, rarity, availableKinds, usageOptions, onProgress, signal }) {
+export async function generateMagicItemConcept({ prompt, level, rarity, availableKinds, usageOptions, effectCatalog = [], onProgress, signal }) {
   const kinds = (availableKinds ?? []).filter((k) => ITEM_EFFECT_DOCS[k]);
   const effectDocs = kinds.map((k) => `    ${ITEM_EFFECT_DOCS[k]}`).join("\n");
-  const suggestedDamage = damageDiceForLevel(level);
-  const suggestedDC = saveDcForLevel(level, rarity);
-  const activationDoc = itemActivationDoc({ suggestedDamage, suggestedDC, effectDocs });
+  const activationDoc = itemActivationDoc();
+  const offeredEffects = [...new Set(effectCatalog.map((effect) => JSON.stringify({
+    kind: effect.kind,
+    ...(effect.statistic ? { statistic: effect.statistic } : {}),
+    ...(effect.damageType ? { damageType: effect.damageType } : {}),
+    ...(effect.type ? { type: effect.type } : {}),
+    ...(effect.exemplar?.requiresInvestment ? { requiresInvestment: true } : {})
+  })))].join("; ") || "(none; use an activation without a self-buff if appropriate)";
 
   const system = `You are an expert Pathfinder 2e (remaster) magic item designer. You design wondrous item CONCEPTS; the final price is computed elsewhere from real compendium benchmarks.
 
-Respond with a SINGLE JSON object only. No markdown fences, no commentary.
+Respond with a SINGLE JSON object only. No markdown fences, no commentary. Never emit numeric values, dice formulas, or code: choose only the enum slugs and scale words below. The module supplies all mechanical values.
 
 JSON schema (all keys required unless marked OPTIONAL):
 {
   "name": string, // evocative item name in current PF2e Remaster style — an ORIGINAL item, not a copy of a published one
   "description": string, // 2-4 sentences of evocative flavor: appearance, history, feel. Plain text. Do NOT restate the mechanical effects — a mechanical summary is appended automatically.
-  "level": number, // echo the requested item level
   "rarity": "common"|"uncommon"|"rare"|"unique", // echo the requested rarity
   "usage": string, // EXACTLY one of: ${usageOptions.join(", ")}
   "traits": string[], // lowercase PF2e item traits; always include "magical", plus fitting descriptors (e.g. "fire", "air", "healing", "detection"); "invested" is handled separately
-  "bulk": number, // 0 = negligible, 0.1 = light (L), 1+ = heavier items
+  "bulk": "negligible"|"light"|"one"|"two",
   "invested": boolean, // true for most worn magic items (they must be invested to function); false for held items
   "effects": [ // 0-3 ALWAYS-ON PASSIVE effects, each one of these shapes ("kind" MUST be from this list):
 ${effectDocs}
@@ -1041,6 +1057,10 @@ ${effectDocs}
 }
 
 DAMAGE_TYPE = "acid"|"bludgeoning"|"cold"|"electricity"|"fire"|"force"|"mental"|"piercing"|"poison"|"slashing"|"sonic"|"spirit"|"vitality"|"void"|"bleed".
+
+Only these exact passive effect kind/target combinations are available from published equipment at this level:
+${offeredEffects}
+Scale selects among those published rules; it never changes a rule's value, range, or acuity. Effects marked requiresInvestment require worn usage and retain the invested trait. If an effect is absent, omit it and do not promise it in the description.
 
 Design guidance:
 - The "effects" array is for ALWAYS-ON passives only. A once-per-day or triggered ability goes in the OPTIONAL "activation" field instead (the player clicks a generated macro to use it, once per day).
@@ -1080,6 +1100,8 @@ export async function generateRunedItemConcept({
   prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyTiers, secondaryTiers, onProgress, signal
 }) {
   const secondaryLabel = kind === "weapon" ? "striking" : "resilient";
+  const potencyChoices = potencyTiers.map((tier) => ({ 1: "single", 2: "double", 3: "triple" })[tier]).filter(Boolean);
+  const secondaryChoices = ["none", ...secondaryTiers.map((tier) => ({ 1: "standard", 2: "greater", 3: "major" })[tier]).filter(Boolean)];
   const baseList = baseCandidates.map((c) => {
     const category = kind === "armor" && c.category ? `${c.category} armor, ` : "";
     return c.level > 0 || category ? `${c.name} (${category}L${c.level})` : c.name;
@@ -1101,8 +1123,8 @@ Respond with a SINGLE JSON object only. No markdown fences, no commentary.
 JSON schema:
 {
   "baseItemName": string, // EXACTLY one name from the base ${kind} list below, copied exactly
-  "potency": number, // one of: ${potencyTiers.join(", ")} — the fundamental potency rune tier (+N)
-  "secondaryTier": number, // one of: 0, ${secondaryTiers.join(", ")} — 0 for no ${secondaryLabel} rune, else the tier (1=normal, 2=greater, 3=major)
+  "potency": string, // EXACTLY one enum: ${potencyChoices.join(", ")}; single/double/triple are the ordered potency tiers
+  "secondaryTier": string, // EXACTLY one enum: ${secondaryChoices.join(", ")}; none means no ${secondaryLabel} rune
   "propertyRunes": string[], // 0 to ${Math.max(...potencyTiers)} names copied EXACTLY from the property rune list below — never more than the chosen "potency" value
   "description": string // 2-4 sentences of evocative flavor: appearance, history, feel. Plain text. Do NOT restate the mechanical runes — a mechanical summary is appended automatically.
 }
@@ -1114,6 +1136,7 @@ Property runes available (name (rune level)):
 ${runeList}
 
 Design guidance:
+- Never emit numeric fields, dice formulas, or code. Copy names and choose the offered tier enums; the module supplies all values.
 - Pick a base ${kind} and runes that together tell a clear, thematic story for the GM's concept.
 - Avoid combining runes that are thematically opposed (e.g. never pick both Holy and Unholy, or both Anarchic and Axiomatic) unless the concept explicitly wants that tension.
 - "propertyRunes" length must never exceed "potency" (potency N grants N property rune slots) — prefer fewer, more thematic runes over maxing out every slot.${kind === "armor" ? `

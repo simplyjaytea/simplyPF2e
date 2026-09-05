@@ -183,11 +183,12 @@ export function planCharacterLoadout(actor, expectedItems) {
     if (warning) warnings.push(warning);
   };
 
-  // A character can wear a single armor item in a slot. The selected order is
-  // the frozen exact selection order, which keeps this deterministic without
-  // pretending to score published mechanics itself.
+  // A character can wear a single armor item in a slot. Ordinary worn gear
+  // already has its published usage applied by buildEquipmentItems and must
+  // not be stowed for lacking armor proficiency or sharing the armor slot.
+  // Preserve the frozen exact selection order for actual armor.
   let armorWorn = false;
-  for (const item of items.filter((item) => usage(item).kind === "worn")) {
+  for (const item of items.filter((item) => type(item) === "armor")) {
     if (armorProficiencyRank(actor, item) < 1) {
       stow(item, "loadout-untrained-armor");
       continue;
