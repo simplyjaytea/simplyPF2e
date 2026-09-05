@@ -33,7 +33,7 @@ function openItemForge() {
   return itemForgeApp;
 }
 
-function addDirectoryButton(html, { markerClass, icon, label, onClick }) {
+function addDirectoryButton(html, { markerClass, icon, label, onClick, placement = "header" }) {
   const root = html instanceof HTMLElement ? html : html[0];
   if (!root || root.querySelector(`.${markerClass}`)) return;
 
@@ -42,6 +42,19 @@ function addDirectoryButton(html, { markerClass, icon, label, onClick }) {
   button.className = `spf-directory-button ${markerClass}`;
   button.innerHTML = `<i class="fa-solid ${icon}"></i> ${game.i18n.localize(label)}`;
   button.addEventListener("click", onClick);
+
+  if (placement === "below-header-actions") {
+    const header = root.querySelector(".directory-header");
+    const row = document.createElement("div");
+    row.className = "spf-directory-row";
+    row.appendChild(button);
+    if (header?.parentElement) {
+      header.parentElement.insertBefore(row, header.nextSibling);
+    } else {
+      root.appendChild(row);
+    }
+    return;
+  }
 
   const target = root.querySelector(".directory-header .header-actions")
     ?? root.querySelector(".directory-header")
@@ -93,7 +106,8 @@ Hooks.on("renderItemDirectory", (_directory, html) => {
     markerClass: "spf-itemforge-directory-button",
     icon: "fa-hammer",
     label: "SIMPLYPF2E.ItemForge.OpenButton",
-    onClick: openItemForge
+    onClick: openItemForge,
+    placement: "below-header-actions"
   });
 });
 

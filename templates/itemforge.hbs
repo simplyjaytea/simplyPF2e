@@ -39,14 +39,15 @@
 
   <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
     <legend>{{localize "SIMPLYPF2E.ItemForge.ConceptLegend"}}</legend>
-    {{! Same segmented switch as the generator's mode toggle: a radio group
-        named "kind" whose checked value is what #readForm submits. }}
-    <div class="spf-mode-toggle" role="radiogroup" aria-label="{{localize 'SIMPLYPF2E.ItemForge.Kind'}}">
+    <div class="spf-kind-choices" role="group" aria-label="{{localize 'SIMPLYPF2E.ItemForge.Kind'}}">
       {{#each kinds}}
-        <label class="{{#if (eq this.value @root.input.kind)}}spf-mode-active{{/if}}">
-          <input type="radio" name="kind" value="{{this.value}}" {{#if (eq this.value @root.input.kind)}}checked{{/if}}>
-          <i class="fa-solid {{this.icon}}"></i> {{localize this.label}}
-        </label>
+        <button type="button" class="spf-kind-choice {{#if this.selected}}spf-kind-selected{{/if}}" data-action="selectKind" data-kind="{{this.value}}" aria-pressed="{{this.selected}}" {{#if @root.busy}}disabled{{/if}}>
+          <i class="fa-solid {{this.icon}}" aria-hidden="true"></i>
+          <span class="spf-kind-choice-copy">
+            <strong>{{localize this.label}}</strong>
+            <small>{{localize this.hint}}</small>
+          </span>
+        </button>
       {{/each}}
     </div>
     <div class="form-group stacked">

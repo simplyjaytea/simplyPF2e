@@ -299,6 +299,9 @@ const busyAt = generator.indexOf("{{#if busy}}{{> simplypf2e-progress}}");
 const errorAt = generator.indexOf('{{#if error}}');
 assert.ok(busyAt >= 0 && errorAt > busyAt, "generation errors must remain below progress, not covered by it");
 
+assert.match(css, /\.spf-directory-row\s*\{/, "item forge directory entry needs its own row");
+assert.match(css, /\.spf-directory-row \.spf-directory-button\s*\{[^}]*width:\s*100%/s,
+  "item forge directory row must span below native controls");
 for (const rule of ["spf-card", "spf-icon-btn", "spf-empty"]) {
   assert.match(css, new RegExp(`\\.simplypf2e \\.${rule}\\s*\\{`), `shared kit class .${rule} must be defined`);
 }
@@ -313,32 +316,27 @@ assert.match(css, /\.application\.simplypf2e\s*\{[^}]*min-width/s,
   "resizable windows must clamp to a usable minimum size");
 
 // --- Cross-app uniformity (UI uniformity pass) --------------------------
-// The two apps must share one mental model: same segmented switch, same
-// preset slot, same sources gear, same title pattern, same options order.
-
-// 1. The forge's kind selector is the SAME segmented control as the
-//    generator's mode switch — a radio group whose name/value contract
-//    ("kind": wondrous|weapon|armor) the app reads back.
-assert.match(
-  itemForge,
-  /spf-mode-toggle" role="radiogroup" aria-label=/,
-  "item forge kind selector must use the shared segmented control"
-);
-assert.match(
-  itemForge,
-  /<input type="radio" name="kind" value="\{\{this\.value\}\}"/,
-  "the kind switch must stay a radio group named 'kind'"
-);
-assert.match(
-  itemForgeApp,
-  /\[name="kind"\]:checked/,
-  "the forge must read the CHECKED kind radio, not the first one"
-);
-assert.match(
-  itemForgeApp,
-  /querySelectorAll\('input\[name="kind"\]'\)/,
-  "the forge must re-render when the kind switch changes"
-);
+// The two apps share the same visual language while the forge gets a
+// purpose-built, accessible kind chooser.
+assert.match(itemForge, /class="spf-kind-choices" role="group" aria-label=/,
+  "item forge kind selector must be an accessible choice group");
+assert.match(itemForge, /class="spf-kind-choice \{\{#if this\.selected\}\}spf-kind-selected/,
+  "each kind tile must render selected state from context");
+assert.match(itemForge, /data-action="selectKind" data-kind="\{\{this\.value\}\}" aria-pressed="\{\{this\.selected\}\}"/,
+  "kind tiles must expose ApplicationV2 action and explicit pressed state");
+assert.match(itemForge, /this\.hint/,
+  "kind tiles must render localized concise hints from their context");
+assert.match(itemForgeApp, /selectKind: ItemForgeApp\.#onSelectKind/,
+  "kind selection must use an ApplicationV2 data-action callback");
+assert.match(itemForgeApp, /#input = \{ \.\.\.this\.#input, kind \}/,
+  "kind selection must preserve prompt, level, and rarity");
+for (const icon of ["fa-ring", "fa-sword", "fa-shield-halved"]) {
+  assert.match(itemForgeApp, new RegExp(`icon: "${icon}"`), `kind context must retain the ${icon} tile icon`);
+}
+assert.doesNotMatch(itemForgeApp, /querySelectorAll\('input\[name="kind"\]'/,
+  "kind selection must not rely on fragile per-render listeners");
+assert.match(css, /\.simplypf2e \.spf-kind-choices\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(/s,
+  "kind tiles must respond to the resizable app's intrinsic width without viewport media queries");
 
 // Dice: one control in the generate row for every mode. Encounter no longer
 // uses a separate action; Character is no longer gated off as creature-only.

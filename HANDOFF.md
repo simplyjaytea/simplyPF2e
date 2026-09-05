@@ -2,12 +2,19 @@
 
 Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved in HISTORY.md.
 
-## Current continuation — GitHub Actions Node 24 runtime upgrade
+## Current continuation — Item Forge UI refresh
 
-- Branch `chore/github-actions-node24` carries forward the committed post-v0.3.5.60 QA documentation from `docs/creature-feat-release-qa` and upgrades every `actions/checkout` and `actions/setup-node` use across all three workflows from v4 to v5. This addresses the runner annotation about the old actions' deprecated Node 20 runtime; the workflows still explicitly execute project checks with Node 22.
-- The change is limited to eight action-version strings: checkout in PR verification, auto-release verification/version calculation, and reusable release verification/build; setup-node in each verification job. Fetch depth, permissions, triggers, reusable-workflow wiring, release logic, and project runtime are unchanged.
-- Local verification passed all **67 regression files**, **102 script syntax checks**, Node-based module/localization JSON parsing, and `git diff --check`. `jq`, `actionlint`, Ruby, and PyYAML are unavailable locally, so JSON used the documented Node fallback and workflow YAML has not received a local parser/linter gate. Independent reviewer `640d1683-e045-4f31-96d5-2e3f4322463f` approved with no findings after checking action coverage, Node/runtime separation, hosted-runner compatibility, fetch depth, permissions, and reusable release wiring; its inspection was static and CI remains the authoritative runtime gate.
-- No push, PR, merge, release, browser operation, provider spend, or Foundry mutation occurred. Because every merge to `main` auto-publishes, do not merge this maintenance change without explicit user authorization.
+- Branch `feat/item-forge-ui`, based on the local post-v0.3.5.61 documentation commit. The Item Forge directory entry now occupies a full-width row immediately after the directory header and before item-list content, placing it below Foundry's native Create Item/Create Folder controls. Actor-directory behavior, GM/PF2e gating, duplicate prevention, and the forge singleton are unchanged.
+- Replaced the fragile manually wired radio selector with ApplicationV2 `data-action` item-kind tiles. Wondrous, Weapon, and Armor now derive exclusive visual/`aria-pressed` state from authoritative app input, preserve prompt/level/rarity across rerenders, include localized explanatory hints/icons, fail closed on invalid kinds, and use an intrinsic auto-fit grid that responds to the resizable app width rather than the browser viewport.
+- Added a production-class kind-selection regression and strengthened directory DOM-order and static UI contracts. All **68 regression files**, **103 script syntax checks**, module/localization JSON parsing, and whitespace checks pass. Initial independent review found responsive, missing-icon, fixture, CSS-variable, and duplicate-localization issues; all were corrected. Follow-up reviewer `6200e335-ec68-4bc7-9e66-5a613aa140d3` approved the final diff with no findings.
+- No provider call, Item creation, world mutation, GitHub write, module update, or live Foundry QA has occurred for this change. The user explicitly requested GitHub CLI publication followed by a module update and live QA once final review passes.
+
+## Prior continuation — post-release v0.3.5.61 Actions runtime maintenance
+
+- User authorized push and merge. Commit `f9b59d0` was pushed as `chore/github-actions-node24`; PR **#101** passed Pull Request Checks run `33944344962` and merged to `main` as `e03c4a1`.
+- Every `actions/checkout` and `actions/setup-node` use across all three workflows now uses v5, addressing the deprecated Node 20 action-runtime annotation while retaining Node 22 for project checks. Fetch depth, permissions, triggers, reusable-workflow wiring, release logic, and project runtime are unchanged.
+- Local verification passed all **67 regression files**, **102 script syntax checks**, Node-based module/localization JSON parsing, and `git diff --check`. Independent reviewer `640d1683-e045-4f31-96d5-2e3f4322463f` approved with no findings. `jq`, `actionlint`, Ruby, and PyYAML were unavailable locally, but the upgraded actions then executed successfully on GitHub-hosted CI.
+- Auto Release run `33944387562` completed successfully using the v5 actions and published **v0.3.5.61** with `module.json` and `module.zip`. No provider spend or Foundry mutation occurred, and the installed module was not updated. Current local branch `docs/actions-runtime-release` records this post-release state only; do not push it solely to trigger another release.
 
 ## Prior continuation — post-release v0.3.5.60 creature-feat QA
 
@@ -75,6 +82,6 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Next step
 
-The workflow maintenance and updated handoff are ready on `chore/github-actions-node24`. Do not push, open a PR, merge, or trigger a release without explicit user authorization. CI is the remaining authoritative workflow-syntax/runtime gate because no local Actions linter/parser is installed. Preserve BrowserOS page 17 and existing QA artifacts; do not perform another provider retry or Foundry mutation.
+Wait for the follow-up independent review and address any remaining findings. Then commit, use the GitHub CLI as explicitly requested to push/open/merge the feature PR, verify PR checks and the single auto-release, update only SimplyPF2e in Foundry, and live-test directory placement, idempotence/singleton behavior, all three exclusive kind highlights, preserved controls, and narrow-window layout. Do not spend provider tokens or create an Item unless a later acceptance step specifically requires it. Preserve existing QA artifacts and BrowserOS page 17.
 
 Previously: Obtain a fresh independent review of the Item Forge entry diff, commit and push `codex/item-forge-entry`, open and merge its PR, wait for the single auto-release, update SimplyPF2e in Foundry, and verify that the Items-directory button appears once and opens Item Forge. Preserve the successful QA artifacts until the user explicitly approves deletion. Afterward, triage the non-blocking `Scroll of undefined (Rank 2)` preview and no-activation armor flavor observations. Also note the non-blocking GitHub annotation that `actions/checkout@v4` and `actions/setup-node@v4` still target deprecated Node 20 internally and were forced onto Node 24 by the runner.
