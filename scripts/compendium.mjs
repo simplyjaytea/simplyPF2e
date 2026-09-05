@@ -170,7 +170,7 @@ async function getIndex(packId) {
     fields: [
       "name", "type", "system.slug", "system.level.value",
       "system.traits.value", "system.traits.traditions", "system.ritual",
-      "system.category", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
+      "system.category", "system.spell", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
     ]
   });
   const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
@@ -635,6 +635,11 @@ export async function getEquipmentCandidates(
     if (!entries) continue;
     for (const entry of entries) {
       if (!EQUIPMENT_TYPES.has(entry.type) || (!treasure && entry.type === "treasure")) continue;
+      // PF2e's published scroll consumables are blank rank templates: their
+      // category is "scroll" and system.spell is null/absent. They are only
+      // an internal builder source, not a selectable finished item. A scroll
+      // with an embedded spell remains eligible for packs that publish one.
+      if (entry.type === "consumable" && entry.system?.category === "scroll" && entry.system?.spell == null) continue;
       const itemLevel = entry.system?.level?.value ?? 0;
       if (itemLevel > maxLevel) continue;
       if (seen.has(entry.normalized)) continue;

@@ -4,17 +4,18 @@
    header badge, returning null when nothing was generated (hides the badge).
    The real method is private on a class extending SpfApp (Foundry
    Application API at class-definition time) and its `text` field needs a
-   live game.i18n — so the counting logic (flat/filter(Boolean)/null guard)
+   live game.i18n — so the counting logic (flat/filter(narrative)/null guard)
    is ported below WITHOUT the i18n text field. Copy kept in sync manually,
    update both if generator-app.mjs changes this logic.
    Run: node scripts/generator-app.matchSummary.test.mjs */
 import assert from "node:assert/strict";
 
-// Ported from generator-app.mjs:269-275, minus the game.i18n.format text.
+// Ported from generator-app.mjs:397-404, minus the game.i18n.format text.
 function matchSummary(...groups) {
-  const items = groups.flat().filter(Boolean);
+  const items = groups.flat().filter((item) => item && !item.narrative);
   const total = items.length;
-  if (!total) return null;  const matched = items.filter((i) => i.found).length;
+  if (!total) return null;
+  const matched = items.filter((i) => i.found).length;
   return { matched, total };
 }
 
@@ -47,6 +48,18 @@ assert.deepEqual(
   matchSummary([null], [{ found: true }, undefined, { found: false }]),
   { matched: 1, total: 2 },
   "null/undefined entries must be dropped from both counts"
+);
+
+// 6. Explicit narrative-only abilities stay visible in the preview but do
+// not count as failed compendium matches; unresolved non-narrative entries do.
+assert.deepEqual(
+  matchSummary([{ found: true, narrative: true }, { found: false, narrative: false }]),
+  { matched: 0, total: 1 },
+  "narrative-only abilities must be excluded while unresolved real picks remain"
+);
+assert.equal(
+  matchSummary([{ found: true, narrative: true }]), null,
+  "a narrative-only ability must not create a compendium-match denominator"
 );
 
 console.log("generator-app.matchSummary.test.mjs: all matchSummary aggregation assertions passed");
