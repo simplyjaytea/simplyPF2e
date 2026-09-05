@@ -2,6 +2,18 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-05 — Authorized cleanup publication and branch maintenance
+
+- The user requested pushing and merging the reviewed repository cleanup, followed by branch cleanup. Proceed through PR checks and the automatic release; do not push main directly. Local cleanup removes only merged references and clean, unused merged worktrees, preserving unique commits and user data. This request does not perform a Foundry update or consume provider tokens. Final deletion inventory is local git metadata (`.git/repo-cleanup-report.json`), avoiding a second release solely to record housekeeping.
+
+## 2026-09-05 — Repository cleanup and state reconciliation
+
+- Started from a stale local `main` at `62fb942`, fetched the remote, and created `codex/repo-cleanup` from `7f8558e`. Confirmed PR #102 is merged and release **v0.3.5.62** is published with `module.json` and `module.zip`; earlier handoff instructions to publish that feature are superseded. Its module-only update/live UI QA remains unrecorded. Last recorded installed version is v0.3.5.60.
+- Traced shared HTML escaping and reproduced two failures: absent Foundry globals threw, while missing `escapeHTML` returned raw markup. `text.mjs` now escapes all five HTML-sensitive characters without a Foundry dependency. Independent review identified the quoted-attribute boundary in preset dialogs, so the final helper guarantees quote escaping itself instead of relying on an unverified native-helper contract. Preset dialogs import this owner instead of maintaining a separate Handlebars wrapper. The new production-helper regression covers independence from Foundry globals/helpers, hostile text, nulls, and paragraph wrapping; it failed before the fix and passed afterward.
+- Removed unused `.spf-busy` and `.spf-itemforge-button i` styles after checking every template/app caller. Current shared progress and directory-button styles already own those paths. Added narrowly scoped ignore rules for user-owned `.claude/`, OS metadata, and release artifacts without modifying their contents.
+- Replaced accumulated current-state narratives with a concise capability/release snapshot and live baton. Corrected obsolete fuzzy-resolution, runed pricing, and PC spell-slot documentation; added dependency-free local verification commands to README. Historical release/QA entries remain intact. Existing live artifacts and unresolved acceptance are preserved in HANDOFF.md.
+- Baseline 68-regression run passed. Final checks passed all **69 regression files**, **104 script syntax checks**, module/localization JSON parsing, and whitespace checks on local Node **26.7.0** (CI targets Node 22). Independent reviewer `cleanup_final_review` approved with no correctness findings, including direct preset-dialog integration probes. Removed the obsolete macro-test escape stub at the reviewer's suggestion; its syntax and regression checks passed again. No GitHub write, provider spend, module update, or world mutation occurred.
+
 ## 2026-09-05 — Item Forge directory and kind-selector refresh
 
 - Started `feat/item-forge-ui` from the local post-v0.3.5.61 documentation. The Items-directory forge entry now inserts a dedicated full-width row directly after the directory header and before item-list content, below native Create Item/Create Folder controls. Actor-directory placement, access checks, duplicate guards, and singleton opening are unchanged.

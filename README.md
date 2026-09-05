@@ -136,7 +136,7 @@ Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rar
 
 **Activated items** add a 1/day ability — damage, heal, condition, or self-buff — as a companion **macro**, with a clickable Activate link in the description and the macros filed in a "SimplyPF2e Item Forge" folder (auto-deleted with the item). Target a token, click Activate; damage and healing post as normal PF2e chat cards so the built-in Apply buttons handle the rest. Each copy tracks its own charge and recharges on a night's rest.
 
-**Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string and the base armor category, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates; the final price and level are summed from the resolved documents. Runes whose published restriction depends on armor material are excluded because the compendium index cannot prove material compatibility.
+**Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string and the base armor category, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates. Preview estimates use the resolved rune documents; PF2e derives the created item's final price and level from the cloned source data. Runes whose published restriction depends on armor material are excluded because the compendium index cannot prove material compatibility.
 
 ### Presets
 
@@ -198,7 +198,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 - **Rogue and Investigator** complete-only creation, including racket/methodology grant chains on a live sheet.
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
 - **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend. Its eventual slots are wired to PF2e's distinct `archetype-<level>` group.
-- **Spontaneous spell-slot counts** for high-level PC casters are derived from the standard progression rather than copied from a verified table. Check a high-level caster's slots against Player Core before trusting them.
+- **PC spellcasting beyond complete-only classes.** Base-slot regressions cover all 140 rows of seven Remaster class tables, but native casting/expending, restricted class slots, and spellbook/familiar inventories still need live coverage. Complete one-click class selection remains limited to Fighter, Rogue, and Investigator.
 - **Item Forge coverage beyond the accepted paths.** A passive wondrous item, runed weapon/armor sheet parity, cancellation isolation, and generated healing/condition macro escaping have live evidence. The full passive-effect and activation matrix does not. Its rune path also has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
 - **Remaining activated-item macro paths** lean on PF2e system APIs that can change between versions. Damage, self-buff, and fallback branches still need live coverage. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.
 
@@ -215,7 +215,17 @@ Shipped features and their versions are in the [release notes](https://github.co
 
 Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](HISTORY.md).
 
-Standalone, dependency-free regression checks guard historical bugs and production-safe pure helpers — `node scripts/<name>.test.mjs`, no framework required. CI syntax-checks every module, runs every `*.test.mjs`, and validates the JSON manifests on pull requests; the release pipeline repeats syntax and regression verification before publishing. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
+Standalone, dependency-free regression checks guard historical bugs and production-safe pure helpers — `node scripts/<name>.test.mjs`, no framework required. Run all local checks from the repository root with Node 22 and Bash:
+
+```bash
+set -euo pipefail
+for f in scripts/*.mjs; do node --check "$f"; done
+for f in scripts/*.test.mjs; do node "$f"; done
+node --input-type=module -e 'import { readFileSync } from "node:fs"; for (const f of ["module.json", "lang/en.json"]) JSON.parse(readFileSync(f, "utf8"));'
+git diff --check
+```
+
+CI syntax-checks every module, runs every `*.test.mjs`, and validates the JSON manifests on pull requests; the release pipeline repeats syntax, regression, and JSON verification before publishing. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
 
 **Releases are automatic.** Every push to `main` triggers `auto-release.yml`, which bumps the last segment of the latest tag (`v0.3.5.1` → `v0.3.5.2`) and calls `release.yml` to build and publish. This means **merging to `main` is not a quiet, reversible action** — it ships a public release immediately, and every existing install is offered that update right away. Treat it with the care of a manual `gh release create`.
 

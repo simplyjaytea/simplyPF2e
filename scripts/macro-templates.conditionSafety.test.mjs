@@ -9,20 +9,6 @@ import assert from "node:assert/strict";
 import { buildActivationCommand } from "./macro-templates.mjs";
 import { normalizeMagicItemConcept } from "./item-builder.mjs";
 
-// text.mjs's esc() defers to foundry.utils.escapeHTML when present; stub the
-// real Foundry escaping behavior so normalizeMagicItemConcept's esc() calls
-// (via normalizeActivation) behave the same as they would in a live world.
-globalThis.foundry = {
-  utils: {
-    escapeHTML: (text) => String(text)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;")
-  }
-};
-
 const command = await buildActivationCommand({
   template: "condition",
   params: { conditionSlug: "frightened", value: 1, saveType: "fortitude", dc: 20 }

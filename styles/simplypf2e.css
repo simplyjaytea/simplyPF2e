@@ -656,12 +656,6 @@
   min-height: 1.2em;
 }
 
-.simplypf2e .spf-busy {
-  text-align: center;
-  padding: var(--spf-space-lg);
-  font-style: italic;
-}
-
 /* Per-step token usage shown under the finished preview */
 .simplypf2e .spf-token-report {
   margin-top: var(--spf-space-md);
@@ -1085,10 +1079,6 @@
 }
 
 .spf-directory-button i {
-  color: inherit;
-}
-
-.spf-itemforge-button i {
   color: inherit;
 }
 

@@ -1,7 +1,6 @@
 /**
  * Pure string helpers shared across every pipeline. No Foundry globals are
- * touched at import time (foundry.utils.escapeHTML is looked up lazily), so
- * this module is safe to import from a plain `node` self-check.
+ * used, so these helpers also run directly in Node regression checks.
  */
 
 /** "Ghost Touch" -> "ghost-touch". */
@@ -14,14 +13,20 @@ export function capitalized(text) {
 }
 
 /**
- * Escape AI-written text before it goes anywhere near an HTML string. Every
+ * Escape plain text for HTML content and quoted attributes. Every
  * description/notes/chat-message field in this module funnels through here —
  * a generated name or ability description is untrusted input, and it lands in
  * `system.description.value`, actor notes, and macro chat content, all of
  * which Foundry renders as HTML.
  */
-export const esc = (text) =>
-  (foundry.utils.escapeHTML ? foundry.utils.escapeHTML(String(text ?? "")) : String(text ?? ""));
+export function esc(text) {
+  const value = String(text ?? "");
+  return value.replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
 
 /**
  * Escape plain multi-paragraph AI text and wrap it in <p> tags (blank-line
