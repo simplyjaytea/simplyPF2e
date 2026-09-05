@@ -9,7 +9,7 @@ Read this first, then CLAUDE.md. Release/review history belongs in HISTORY.md; d
 - Final parent verification on **Node 22.23.2** passed **82 regression files**, **117 script syntax checks**, module/localization JSON (2), and whitespace checks. Full log is local `.git/audit-node22.log`. Existing test regressions were extended and 13 new regression files added. No runtime dependency was added to the project.
 - Independent reviewer `independent_audit_review` inspected the final diff and source evidence, ran all 82 regressions, and approved with **no remaining actionable findings**. Review-found catalog/investment/PC-cancellation issues were fixed and rechecked. No review remains in flight.
 - Actual forge template/CSS rendered with native Foundry CSS fits at **360, 480, and 720px** with no horizontal overflow. This is browser layout evidence, not an installed revised ApplicationV2 acceptance run.
-- Prepared PR text is local `.git/forge-generator-audit-pr.md`. **No authenticated GitHub write, push, PR, merge, or release has been performed or authorized in this audit request.** AGENTS.md requires asking before authenticated GitHub writes. A merge automatically publishes to every install; do not push main directly.
+- Prepared PR text is local `.git/forge-generator-audit-pr.md`. The user explicitly authorized **push and merge** of the reviewed audit. Publish through a PR after its required checks pass and verify the automatic release; do not push main directly. Code is committed as `1ee5b5b`; no revised-code installation or live acceptance has occurred.
 
 ## Live QA performed — installed baseline only
 
@@ -33,7 +33,7 @@ No new macros or tokens were created. GM character assignment and targets were p
 
 ## Exact next step
 
-Obtain authorization to push this reviewed branch, open/merge its PR after CI, and update **only SimplyPF2e** in the test world. Then finish native QA on the revised code: all three forge kinds; new companion activation/rest/multiple-copy cases; cancellation and failure boundaries; NPC/monster/encounter creation; no-gear/no-loot requests; Fighter/Rogue/Investigator native first-level/accelerated feat placement, grant chains, ammo and worn gear. Record CI/release/version and live results; preserve all QA artifacts.
+Complete the authorized branch push and PR merge after CI, then verify the automatic release. Revised-code live QA remains outstanding after updating **only SimplyPF2e** in the test world: all three forge kinds; new companion activation/rest/multiple-copy cases; cancellation and failure boundaries; NPC/monster/encounter creation; no-gear/no-loot requests; Fighter/Rogue/Investigator native first-level/accelerated feat placement, grant chains, ammo and worn gear. Record CI/release/version and live results; preserve all QA artifacts.
 
 ## Material limits
 

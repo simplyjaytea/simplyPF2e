@@ -2,6 +2,10 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-05 — Authorized audit publication
+
+- The user explicitly requested pushing and merging the independently reviewed audit commit `1ee5b5b`. Publish `codex/forge-generator-audit` through a PR after CI, then verify the automatic release. Runtime code is unchanged since the final review. Revised-code installation/native Foundry acceptance remains outstanding.
+
 ## 2026-09-05 — Item Forge and complete generator audit
 
 - Started clean from `b043a51` (PR #103, published **v0.3.5.63**) on `codex/forge-generator-audit`. Audited forge mechanics/UI, NPC/monster/encounter generation, supported PCs, provider/security boundaries, and existing tests in parallel. Full findings and evidence: [docs/audit-2026-09-05.md](docs/audit-2026-09-05.md).
