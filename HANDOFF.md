@@ -2,13 +2,25 @@
 
 Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved in HISTORY.md.
 
-## Current continuation — scroll preview labels
+## Current continuation — blank scroll candidates and narrative counts
+
+- Branch `fix/blank-scroll-candidates`, carrying forward the post-v0.3.5.58 QA documentation. Worker commit `27c5515` filters blank scroll consumables from ordinary equipment/loot candidate catalogs using indexed `system.category` and `system.spell`. Underlying template lookup remains available to the exact spell-grounded scroll builder; complete embedded-spell scrolls and other consumables stay eligible.
+- Parent verified the pre-fix live module actually offered blank rank-1/2 equipment scrolls and rank-1/2/3 loot scrolls. Real PF2e 8.5.0 documents had category `scroll`, type `consumable`, and `spell: null`. Source proof: fetched PF2e 8.4.1 `src/module/item/consumable/data.ts` declares `spell: SpellSource | null`; master `packs/equipment/scroll-of-1st-rank-spell.json` has no embedded spell and instructs creation by dragging a spell.
+- The courier's 12/13 display was twelve real matches plus a labeled narrative-only ability, not a demonstrated unresolved required item. Narrative-only rows are now excluded from the published-content match denominator without hiding the narrative itself or unresolved non-narrative items.
+- Independent review `178db8b0-255b-4548-8d7f-5ba19a410a8d` caught the worker dropping the narrative flag at the caller. Parent fixed that seam and replaced the copied-helper test with actual production-class execution using test-only private-seam renaming. The test reproduced 12/13 before the caller fix and verifies 12/12 afterward; unresolved real ability/equipment still count as misses.
+- All 66 regression files, all 101 script syntax checks, module/localization JSON parsing, and whitespace gates pass. Follow-up reviewer `d1945a5b-0faa-48e4-ae7d-870a86d4530b` approved the final correction with no findings. Publication and post-update live QA remain pending; no world documents changed.
+
+## Prior continuation — scroll preview labels
 
 - Checkout: `C:\Users\jtf\Documents\Projects\simplyPF2e`, branch `fix/scroll-preview-label`, based on `f1d1eb5` (PR #97 / v0.3.5.57). The prior entry's pending PR/publication steps are superseded: #97 already merged.
 - BrowserOS live QA found v0.3.5.57 active on Foundry 14.365 / PF2e 8.5.0. The actual Items-directory button appears once, opens Item Forge, and repeated clicks leave exactly one forge window. Switching Actors → Items retained one button. No module update was needed; existing QA artifacts were untouched.
 - Fixed preview-only `Scroll of undefined`: exact scroll references contain identity, not `name`. The shared gear mapper now rebuilds scroll names only for named entries; ref-only entries retain the selector's already-grounded loot label. Creation and reference validation remain unchanged. The closing parenthesis was already correct.
 - Added production-app regression covering ref-only scroll labels, stack suffixes, and legacy named entries. Observed the undefined-label failure before the fix. All 65 regression files, all 100 script syntax checks, module/localization JSON parsing, and whitespace checks passed afterward.
-- Independent reviewer `6217c769-98b3-4347-a584-38bb8b60aa79` approved with no findings. Commit/push/PR/merge, release verification, Foundry update, and post-update scroll-preview QA remain pending. User authorized those operations; preserve branch + PR release discipline.
+- Independent reviewer `6217c769-98b3-4347-a584-38bb8b60aa79` approved with no findings. Commit `1f640d5` merged as PR #98 / `8d777f5`; CI run `33939773183` and Auto Release `33939802058` succeeded, publishing v0.3.5.58 with both module assets. Installed v0.3.5.58 and post-update scroll-preview QA are now verified below. User authorized those operations; preserve branch + PR release discipline.
+- Foundry initially required administrator authentication. After the user continued, Setup showed v0.3.5.58 already installed; no reinstall was performed. Launched the `test` world, joined as GM, and confirmed v0.3.5.58 loaded on Foundry 14.365 / PF2e 8.5.0.
+- Post-release live scroll-label QA PASSED through the actual Generator UI and provider: level-4 goblin scroll-courier Preview Plan displayed `Scroll of Fear (Rank 2)` and `Scroll of Invisibility (Rank 2)` with no undefined label. The run reported 21,529 tokens. Preview only; Create Actor was not clicked and existing QA artifacts were preserved. BrowserOS page 6 retains the preview for inspection.
+- Separate observations: the provider expanded gear/loot beyond the requested scroll and coins, and the preview reported 12/13 compendium matches. Generic scroll-template equipment also appeared. This acceptance verifies displayed scroll labels, not complete actor creation or resolution of these separate content issues.
+- Current local branch is `docs/scroll-preview-release-qa`, based on released `8d777f5`, holding this post-release handoff. Keep these documentation updates for the next useful PR rather than merging solely to trigger another release.
 - Armor activation wording is model-generated description, not a runed-item activation path. No prose-stripping or mechanics change is included.
 
 ## Prior session — 2026-09-05
@@ -33,6 +45,6 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Next step
 
-Complete independent review of `fix/scroll-preview-label`, publish via PR if approved, verify the release, update the module in Foundry if needed, and test the actual released scroll preview. The older next-step paragraph below is historical and superseded by this continuation.
+Finish follow-up review of the narrative caller correction, publish the focused blank-scroll/narrative-count fixes via PR, verify the automatic release, update only SimplyPF2e in Foundry, and rerun the actual candidate APIs plus a courier preview. Then resume remaining Rogue/Investigator live grant-chain acceptance if desired. The older next-step paragraph below is historical and superseded by this continuation.
 
 Previously: Obtain a fresh independent review of the Item Forge entry diff, commit and push `codex/item-forge-entry`, open and merge its PR, wait for the single auto-release, update SimplyPF2e in Foundry, and verify that the Items-directory button appears once and opens Item Forge. Preserve the successful QA artifacts until the user explicitly approves deletion. Afterward, triage the non-blocking `Scroll of undefined (Rank 2)` preview and no-activation armor flavor observations. Also note the non-blocking GitHub annotation that `actions/checkout@v4` and `actions/setup-node@v4` still target deprecated Node 20 internally and were forced onto Node 24 by the runner.
