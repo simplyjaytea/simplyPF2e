@@ -374,7 +374,7 @@ export class GeneratorApp extends SpfApp {
       equipment,
       loot,
       matchSummary: this.#matchSummary(
-        abilities.map((a) => ({ found: a.fromGlossary })), spells, feats, equipment, loot
+        abilities.map((a) => ({ found: a.fromGlossary, narrative: a.narrative })), spells, feats, equipment, loot
       ),
       iwr: {
         immunities: concept.immunities.join(", "),

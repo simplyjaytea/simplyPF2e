@@ -2,7 +2,15 @@
 
 Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved in HISTORY.md.
 
-## Current continuation — scroll preview labels
+## Current continuation — blank scroll candidates and narrative counts
+
+- Branch `fix/blank-scroll-candidates`, carrying forward the post-v0.3.5.58 QA documentation. Worker commit `27c5515` filters blank scroll consumables from ordinary equipment/loot candidate catalogs using indexed `system.category` and `system.spell`. Underlying template lookup remains available to the exact spell-grounded scroll builder; complete embedded-spell scrolls and other consumables stay eligible.
+- Parent verified the pre-fix live module actually offered blank rank-1/2 equipment scrolls and rank-1/2/3 loot scrolls. Real PF2e 8.5.0 documents had category `scroll`, type `consumable`, and `spell: null`. Source proof: fetched PF2e 8.4.1 `src/module/item/consumable/data.ts` declares `spell: SpellSource | null`; master `packs/equipment/scroll-of-1st-rank-spell.json` has no embedded spell and instructs creation by dragging a spell.
+- The courier's 12/13 display was twelve real matches plus a labeled narrative-only ability, not a demonstrated unresolved required item. Narrative-only rows are now excluded from the published-content match denominator without hiding the narrative itself or unresolved non-narrative items.
+- Independent review `178db8b0-255b-4548-8d7f-5ba19a410a8d` caught the worker dropping the narrative flag at the caller. Parent fixed that seam and replaced the copied-helper test with actual production-class execution using test-only private-seam renaming. The test reproduced 12/13 before the caller fix and verifies 12/12 afterward; unresolved real ability/equipment still count as misses.
+- All 66 regression files, all 101 script syntax checks, module/localization JSON parsing, and whitespace gates pass. Follow-up reviewer `d1945a5b-0faa-48e4-ae7d-870a86d4530b` is checking the final correction. Publication and post-update live QA remain pending; no world documents changed.
+
+## Prior continuation — scroll preview labels
 
 - Checkout: `C:\Users\jtf\Documents\Projects\simplyPF2e`, branch `fix/scroll-preview-label`, based on `f1d1eb5` (PR #97 / v0.3.5.57). The prior entry's pending PR/publication steps are superseded: #97 already merged.
 - BrowserOS live QA found v0.3.5.57 active on Foundry 14.365 / PF2e 8.5.0. The actual Items-directory button appears once, opens Item Forge, and repeated clicks leave exactly one forge window. Switching Actors → Items retained one button. No module update was needed; existing QA artifacts were untouched.
@@ -37,6 +45,6 @@ Read this first, then CLAUDE.md. Historical audit and QA evidence is preserved i
 
 ## Next step
 
-Scroll-label release and live acceptance are complete. Next triage the courier preview's 12/13 match status and generic scroll-template equipment, or resume the remaining Rogue/Investigator live grant-chain acceptance. Do not claim these paths tested by the scroll-label check. The older next-step paragraph below is historical and superseded by this continuation.
+Finish follow-up review of the narrative caller correction, publish the focused blank-scroll/narrative-count fixes via PR, verify the automatic release, update only SimplyPF2e in Foundry, and rerun the actual candidate APIs plus a courier preview. Then resume remaining Rogue/Investigator live grant-chain acceptance if desired. The older next-step paragraph below is historical and superseded by this continuation.
 
 Previously: Obtain a fresh independent review of the Item Forge entry diff, commit and push `codex/item-forge-entry`, open and merge its PR, wait for the single auto-release, update SimplyPF2e in Foundry, and verify that the Items-directory button appears once and opens Item Forge. Preserve the successful QA artifacts until the user explicitly approves deletion. Afterward, triage the non-blocking `Scroll of undefined (Rank 2)` preview and no-activation armor flavor observations. Also note the non-blocking GitHub annotation that `actions/checkout@v4` and `actions/setup-node@v4` still target deprecated Node 20 internally and were forced onto Node 24 by the runner.

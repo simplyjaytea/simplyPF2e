@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## Continuation — blank scroll catalogs and narrative match counts
+
+- Live v0.3.5.58 catalogs returned published blank scroll templates as equipment/loot candidates. Actual PF2e 8.5.0 documents showed `system.category: scroll`, `system.spell: null`; fetched PF2e 8.4.1 consumable source confirmed `SpellSource | null`, and the master template explicitly directs creating a scroll by dragging a spell. Worker `8173acb7-700a-4477-8c4a-9344169fbded` added indexed spell data and a nullish-spell scroll filter, preserving the underlying index for spell-grounded building.
+- The courier's 12/13 badge counted its labeled narrative ability as a miss. The summary now excludes only explicit narrative rows. Independent reviewer found the caller lost that flag; parent fixed the mapping and replaced manually copied helper tests with actual production preview/summary code, observing red then green. Tests retain unresolved required-item and non-narrative-ability counting.
+- Full 66-regression/101-script syntax/JSON/whitespace gates pass. Follow-up review, PR/release and installed-module QA remain pending; see HANDOFF.md.
+
 ## Continuation — v0.3.5.57 acceptance and scroll preview correction
 
 - Reconciled the stale handoff against git: PR #97 already merged at `f1d1eb5` / v0.3.5.57. BrowserOS confirmed that installed version on Foundry 14.365 / PF2e 8.5.0. The real Items-directory button opens the forge, remains singular across tab switches, and repeated clicks retain one window. No update or world-document mutation was needed.
