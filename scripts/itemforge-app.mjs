@@ -264,6 +264,9 @@ export class ItemForgeApp extends SpfApp {
       else await this.#generateRuned(this.#kind, signal);
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
+      // Failed requests and rejected aliases can still consume tokens. Keep
+      // their reported usage in this Forge run.
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), err?.usage);
       outcome = err?.cancelled ? "cancelled" : "error";
       if (err?.cancelled) console.warn(`${MODULE_ID} | item generation cancelled`);
       else console.error(`${MODULE_ID} | item generation failed`, err);

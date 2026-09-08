@@ -59,3 +59,52 @@ export function resolveEncodedFeatPicks(encoded, picks) {
   }
   return resolved;
 }
+
+/**
+ * Short, request-local aliases for Forge component catalogs. Source candidate
+ * IDs and refs never leave this boundary: each returned alias is restored to
+ * the exact original issued ID before item normalization.
+ */
+export function encodeForgeCandidateGroups({
+  baseCandidates = [], potencyCandidates = [], secondaryCandidates = [], runeCandidates = []
+} = {}) {
+  const group = (prefix, candidates) => {
+    const entries = [];
+    const byAlias = new Map();
+    for (const [index, candidate] of (Array.isArray(candidates) ? candidates : []).entries()) {
+      const id = String(candidate?.id ?? "").trim();
+      if (!id) continue;
+      const alias = `${prefix}${index.toString(36).toUpperCase()}`;
+      const encoded = { ...candidate, alias };
+      entries.push(encoded);
+      byAlias.set(alias, id);
+    }
+    return { entries, byAlias };
+  };
+  return {
+    base: group("B", baseCandidates),
+    potency: group("P", potencyCandidates),
+    secondary: group("S", secondaryCandidates),
+    property: group("R", runeCandidates)
+  };
+}
+
+/** Restore only aliases issued in their own component group; no name or ID fallback. */
+export function resolveForgeCandidateAliases(encoded, raw) {
+  const pick = (group, alias, label) => {
+    const key = String(alias ?? "").trim();
+    const id = encoded?.[group]?.byAlias?.get(key);
+    if (!id) throw new Error(`The Forge response selected an unknown ${label} alias. Generate a new plan.`);
+    return id;
+  };
+  const propertyAliases = Array.isArray(raw?.propertyRuneIds) ? raw.propertyRuneIds : [];
+  return {
+    ...raw,
+    baseItemId: pick("base", raw?.baseItemId, "base item"),
+    potencyRuneId: pick("potency", raw?.potencyRuneId, "potency rune"),
+    secondaryRuneId: String(raw?.secondaryRuneId ?? "").trim() === "none"
+      ? "none"
+      : pick("secondary", raw?.secondaryRuneId, "secondary rune"),
+    propertyRuneIds: propertyAliases.map((alias) => pick("property", alias, "property rune"))
+  };
+}

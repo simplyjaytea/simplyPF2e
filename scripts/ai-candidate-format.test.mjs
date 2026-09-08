@@ -33,3 +33,25 @@ assert.deepEqual(
 );
 
 console.log("ai-candidate-format.test.mjs: all feat-catalog assertions passed");
+
+import { encodeForgeCandidateGroups, resolveForgeCandidateAliases } from "./ai-candidate-format.mjs";
+const forge = encodeForgeCandidateGroups({
+  baseCandidates: [{ id: "c-base-a", name: "Longsword" }, { id: "c-base-b", name: "Longsword" }],
+  potencyCandidates: [{ id: "c-potency", name: "Weapon Potency (+1)" }],
+  secondaryCandidates: [{ id: "c-secondary", name: "Striking" }],
+  runeCandidates: [{ id: "c-rune-a", name: "Ghost Touch" }, { id: "c-rune-b", name: "Ghost Touch" }]
+});
+assert.deepEqual(forge.base.entries.map(({ alias, id }) => [alias, id]), [["B0", "c-base-a"], ["B1", "c-base-b"]],
+  "same-name Forge bases retain distinct request aliases");
+assert.deepEqual(resolveForgeCandidateAliases(forge, {
+  baseItemId: "B1", potencyRuneId: "P0", secondaryRuneId: "none", propertyRuneIds: ["R1"], description: "Quiet steel."
+}), {
+  baseItemId: "c-base-b", potencyRuneId: "c-potency", secondaryRuneId: "none", propertyRuneIds: ["c-rune-b"], description: "Quiet steel."
+}, "Forge aliases restore the exact issued IDs before normalization");
+for (const raw of [
+  { baseItemId: "P0", potencyRuneId: "P0", secondaryRuneId: "none", propertyRuneIds: [] },
+  { baseItemId: "c-base-a", potencyRuneId: "P0", secondaryRuneId: "none", propertyRuneIds: [] },
+  { baseItemId: "B0", potencyRuneId: "P0", secondaryRuneId: "S0", propertyRuneIds: ["B0"] }
+]) assert.throws(() => resolveForgeCandidateAliases(forge, raw), /unknown .* alias/,
+  "wrong-group, original opaque, and unknown Forge aliases fail closed");
+console.log("ai-candidate-format.test.mjs: Forge aliases retain exact group identities");

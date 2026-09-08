@@ -1,30 +1,36 @@
 # HANDOFF.md — live session baton
 
-Read this first, then CLAUDE.md. Detailed current evidence and installed acceptance checklist: [docs/consumer-readiness-2026-09-08.md](docs/consumer-readiness-2026-09-08.md).
+Read this first, then CLAUDE.md. Detailed evidence and acceptance checklist: [docs/consumer-readiness-2026-09-08.md](docs/consumer-readiness-2026-09-08.md).
 
-## Current session — 2026-09-08 consumer UI
+## Current session — 2026-09-08 consumer UI and installed QA
 
-- Branch `codex/consumer-ui-release`, based on public `origin/main` `89f9a35` / PR #104 / **v0.3.5.64**. Local main is stale. Older unique branch `codex/consumer-readiness` is preserved; do not reset it.
-- Implemented shared refined fantasy light/dark UI, provider feedback, auxiliary apps, animated SVG rune loading card, continuous one-click run lifetime, accurate stage/terminal states, cancellation/close behavior, duplicate-run/write prevention, exact Forge source identities, and native prepared preview metadata. See the report for scope, native-source references, audit fixes, and retained limitations.
-- Luna handled UI; Terra handled Forge/app integration. Explicit **gpt-6-astra** reviewer independently approved core, application lifecycle and final UI slices with **no remaining actionable findings**. Final independent Node **22.23.2** gate passed **85 regressions, 120 script syntax checks, both JSON files, and whitespace**. All review findings and lost semantic-test coverage were fixed/rechecked.
-- Parent final Node22 gate also passed 85 regressions, 120 syntax checks, both JSON files (including duplicate-key detection), and whitespace. Candidate ZIP contains 47 release entries, including the new provider partial and no tests.
-- Parent browser fixture used actual templates and native CSS layers at 360/480/720px, light/dark, long labels, short height and keyboard navigation. Corrected nested outer scrolling, shrinking progress cards and reduced-motion CSS specificity. Forced reduced-motion stylesheet branch computes all decorative animations `none` and transition `0s`. Fixture evidence is not installed ApplicationV2 or PF2e acceptance.
-- The user instructed **push and merge, then update SimplyPF2e through Foundry**. This authorizes the branch/PR publication and module-only update. Do not push/merge directly to main. No revised-code installation or public release has occurred yet in this session. The previous question about manual candidate installation is superseded by the user-requested release/update route.
+- **Published/installed:** PR #105 merged as `ee584e2f3ac54d5044c9363689f4e5991fa03720`, source `23bb97a72d1fde579ec89373ace15588c65bddee`. PR CI 34231115320 and Auto Release 34231202994 succeeded. Release **v0.3.5.65** has both assets. Foundry Setup updated only SimplyPF2e from .64 to **.65**, then relaunched the existing `test` world on Foundry **14.365 / PF2e 8.5.0**.
+- **Working branch:** `codex/consumer-live-qa`, created from merged `origin/main` `ee584e2`. Local main is stale; preserve unique `codex/consumer-readiness`. Git is authoritative.
+- Shared refined fantasy UI, SVG rune progress, continuous generation/create lifetime, cancellation/busy guards, exact Forge source identities and native prepared previews shipped in #105. Luna/Terra implemented bounded slices; explicit **gpt-6-astra** approved every completed slice. Parent and Astra gates passed **85 regressions / 120 syntax checks** on Node22, JSON and whitespace. Native-template browser fixtures covered widths/themes/reduced-motion cascade; not a substitute for installed mechanics QA.
+- The user explicitly requested **push/merge, then update SimplyPF2e through Foundry**. Authorization persists for the follow-up fixes. Always branch + PR and wait for CI/automatic release; never direct main writes. Update only this module; preserve provider configuration, core/system versions and world data.
+
+## Live evidence and active follow-up
+
+- Installed provider probe passed (705 tokens). Prompt text typed during the pending probe and focus were retained. Closing/reopening Generator during a request retained run identity, elapsed time and expanded details.
+- NPC1 no-gear/no-loot Lantern Keeper request failed closed before actor creation on five ungrounded equipment names (17,990 tokens), at80%. Original brief reaches selector; explicit empty selection is supported. Raw response was not captured, so precise provider failure is unknown. Luna clarified conditional gear guidance/issued IDs; Astra approved prompt/test slice with no findings. Runtime decoding remains fail closed.
+- Weapon4 Ghost Touch Longsword plan failed closed at77% (17,837 tokens). Warning names unoffered base ID `c-cGYyZS5lcXVpcG1lbnQtc3JkAE1kY0xKb0VabG9IWE1XbVI`. Terra traced correct current schema and exact-catalog check; no name fallback or reference loss. Terra implemented short AI-only Forge aliases with exact local reverse mapping, following the existing feat encoder pattern. Unknown/wrong-group/old opaque IDs fail closed. Rejected response usage is retained and recorded once. Astra approved the final alias/accounting slice with no remaining findings.
+- Three localization corrections (Generator/Forge empty hints and shared creation-stage wording) are implemented; Astra approved with no findings.
+- Provider usage so far **36,532 tokens**; no new actor/item/macro was created by these checks. Both failed results preserved prompts and reenabled controls. This is not successful generation acceptance.
 
 ## Exact next step
 
-Finish the parent verification gate, commit the complete branch, push it, create the PR with explicit outstanding live-QA limits, wait for required CI, merge the PR, and verify automatic release assets/version. Then return the test Foundry server to Setup and update **only SimplyPF2e** through its manifest; relaunch the same world and run the installed checklist. If Setup requests administrator authentication that is not available, ask the user to complete that login and continue. Record exact PR/release/installed versions and live evidence at session end.
+All follow-up slices are complete and Astra-approved. Parent final Node22 gate passed 85 regressions, 120 syntax checks, both JSON files including duplicate keys, and whitespace. Commit/push the follow-up PR, wait for CI and merge. Verify automatic release, update only SimplyPF2e in Setup, relaunch `test`, and retry focused NPC/Forge acceptance. Record results honestly; do not claim full public readiness while required native checks fail or remain untested.
 
-## Test world and preserved data
+## Browser and preserved data
 
-- Existing logged-in GM world: `https://foundry-test.gigaserver.xyz/game`. The server module manifest currently reports **SimplyPF2e 0.3.5.64**; last recorded native baseline evidence was **0.3.5.63** on **Foundry 14.365 / PF2e 8.5.0**. No world/core/system update or provider call occurred during current local QA.
-- Existing connection `omniroute / auto/best-free` may be used for the authorized QA. Do not expose or replace keys/settings.
-- Preserve all previous actors/items/macros/tokens/chat, including `QA <b>Actor</b>`, `QA Caster`, both Clockwork Moth Scouts, earlier forged items and companion macros.
-- Prior audit artifacts: `Item.4zojkUhnP0mA7hWm` **QA Audit — Ghost Touch Longsword**; `Item.OcXYMsSWCyKluKdn` **QA Audit — Slick Chain Shirt**; `Actor.VsI4lYxCL0DbvVRq` **QA Audit — Dock Watchman**. No new native documents have been created in this session so far.
-- Temporary local fixture: `/tmp/simplypf2e-ui-qa/server.cjs` on port8765; it contains no credentials or module runtime dependency. Temporary browser viewport must be reset at completion.
+- GM browser: `https://foundry-test.gigaserver.xyz/game`, in-app browser1/tab2. Server administrator authentication previously worked. All browser interaction through CUA.
+- Temporary viewport override1280×960 must be reset before completion. Fixture server stopped, fixture tab closed. Failed temporary tab3 cannot be selected/closed through Browser Use URL policy; do not keep retrying it.
+- Existing connection `omniroute / auto/best-free` is authorized for QA; do not expose or replace credentials/settings.
+- Preserve all actors/items/macros/tokens/chat, including `QA <b>Actor</b>`, QA Caster, both Clockwork Moth Scouts, prior QA Audit items and Dock Watchman. No deletion of QA artifacts.
+- `.git/consumer-release-results.json` holds exact release data; `.git/consumer-node22.log` holds previous final checks. Ignored local `module.zip` is a stale prerelease .64.1 verification archive, not official .65; never install it.
 
 ## Material limits
 
-- Revised-code live acceptance is outstanding: all three Forge kinds, new activation/rest/copy cases, cancellation isolation/close-reopen, creature/encounter no-gear/no-loot, Fighter/Rogue/Investigator native grants/feats/gear.
-- Existing companion commands/mechanics are not migrated. Same-client charge guards do not provide cross-client atomicity. Passive screening remains conservative and custom activation benchmarks are module defaults, not official custom-item balance.
-- Unsupported classes and level2+ Free Archetype remain gated. Rune prerequisites/exclusivity are not a general engine; material-restricted armor, shields and ammunition forging remain excluded. Spell sources are still needed for scroll loot and bestiary sources for scaffolding.
+- Installed acceptance remains incomplete: successful NPC/encounter/no-gear/no-loot, all Forge kinds/native price parity, activation/rest/copies, supported Fighter/Rogue/Investigator grants/feats/loadout, and revised cancellation isolation.
+- Existing companion commands are not migrated. Same-client charges are not cross-client atomic. Source screening and custom activation balance are conservative module defaults.
+- Unsupported classes and level2+ Free Archetype stay gated. No general rune prerequisite engine; material-restricted armor/shields/ammunition forging remain excluded. Scroll loot requires spell sources and scaffolding requires bestiary sources.
