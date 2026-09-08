@@ -3,6 +3,7 @@ import {
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
 import { generateMagicItemConcept, generateRunedItemConcept } from "./ai.mjs";
+import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import { getForgeEffectCatalog, EFFECT_KINDS } from "./rule-templates.mjs";
 import {
   normalizeMagicItemConcept, buildMagicItemData, priceForLevel, getUsageOptions, describeEffect,
@@ -42,7 +43,9 @@ export class ItemForgeApp extends SpfApp {
       cancelGeneration: ItemForgeApp.#onCancelGeneration,
       levelUp: ItemForgeApp.#onLevelUp,
       levelDown: ItemForgeApp.#onLevelDown,
-      selectKind: ItemForgeApp.#onSelectKind
+      selectKind: ItemForgeApp.#onSelectKind,
+      openCreatedItem: ItemForgeApp.#onOpenCreatedItem,
+      forgeAnother: ItemForgeApp.#onForgeAnother
     }
   };
 
@@ -64,6 +67,8 @@ export class ItemForgeApp extends SpfApp {
   #itemData = null;
   /** PF2e-derived runed values for preview only; never persisted to source. */
   #runedPreview = null;
+  /** Successful creation result, retained for the post-create actions. */
+  #created = null;
   /** Effect kinds with no real exemplar in this world (set after first scan). */
   #unavailableKinds = null;
 
@@ -74,6 +79,8 @@ export class ItemForgeApp extends SpfApp {
       input: this.#input,
       busy: this.#busy,
       canCancel: this._canCancel,
+      providerTested: this._providerTested,
+      providerFeedback: this._providerFeedback,
       lastRunCost: this._formatLastRunCost(),
       error: this.#error,
       progress: this._progress,
@@ -105,9 +112,11 @@ export class ItemForgeApp extends SpfApp {
         ? game.i18n.format("SIMPLYPF2E.ItemForge.KindsUnavailable", { kinds: this.#unavailableKinds.join(", ") })
         : null,
       preview: this.#kind === "wondrous" ? this.#buildPreviewContext() : this.#buildRunedPreviewContext(),
+      hasPreview: Boolean(this.#kind === "wondrous" ? this.#concept : this.#itemData),
+      created: this.#created,
       tokenReport: this._buildTokenReport(),
       // Presentation only: getting-started panel when there is no result yet.
-      showEmptyState: !this.#busy && !this.#error
+      showEmptyState: !this.#busy && !this.#error && !this.#created
         && !(this.#kind === "wondrous" ? this.#concept : this.#itemData)
     };
   }
@@ -157,7 +166,7 @@ export class ItemForgeApp extends SpfApp {
     const secondaryTier = runes[secondaryField] ?? 0;
     return {
       concept: { name: data.name, level: this.#runedPreview.level, description: this.#concept?.description ?? "" },
-      traits: [data.system.traits.rarity !== "common" ? data.system.traits.rarity : null, ...data.system.traits.value].filter(Boolean),
+      traits: [this.#runedPreview.rarity !== "common" ? this.#runedPreview.rarity : null, ...data.system.traits.value].filter(Boolean),
       price: `${this.#runedPreview.priceGp.toLocaleString()} gp`,
       runed: true,
       potency: runes.potency ?? 0,
@@ -191,7 +200,7 @@ export class ItemForgeApp extends SpfApp {
   /** Open the shared Compendium Sources settings app (same as the generator's gear). */
   static #onConfigureSources() {
     this.#readForm();
-    new SourcesConfigApp().render(true);
+    new SourcesConfigApp(() => this._refreshPreservingForm()).render(true);
   }
 
   static async #onTestProvider(_event, target) {
@@ -225,27 +234,49 @@ export class ItemForgeApp extends SpfApp {
   static async #onGenerate() {
     if (this.#busy) return;
     this.#readForm();
+    const providerWarning = getProviderAuthWarningKey(getProviderRequestConfig());
+    if (providerWarning) {
+      ui.notifications.warn(game.i18n.localize(providerWarning));
+      return;
+    }
     if (!this.#input.prompt.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.NoPrompt"));
       return;
     }
     this.#busy = true;
     this.#error = null;
+    this.#created = null;
     this._tokenUsage = [];
     this.#kind = this.#input.kind;
     this.#clearPreview();
     this.#unavailableKinds = null;
-    if (this.#kind === "wondrous") await this.#generateWondrous();
-    else await this.#generateRuned(this.#kind);
+    const signal = this._beginProgress([
+      ["templates", game.i18n.localize(this.#kind === "wondrous"
+        ? "SIMPLYPF2E.ItemForge.ProgressTemplates" : "SIMPLYPF2E.ItemForge.ProgressCandidates"), 900],
+      ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), taskMaxTokens(
+        this.#kind === "wondrous" ? AI_TASK.MAGIC_ITEM_CONCEPT : AI_TASK.RUNED_ITEM_CONCEPT
+      )],
+      ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble"), 900]
+    ]);
+    let outcome = "success";
+    try {
+      if (this.#kind === "wondrous") await this.#generateWondrous(signal);
+      else await this.#generateRuned(this.#kind, signal);
+      console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
+    } catch (err) {
+      outcome = err?.cancelled ? "cancelled" : "error";
+      if (err?.cancelled) console.warn(`${MODULE_ID} | item generation cancelled`);
+      else console.error(`${MODULE_ID} | item generation failed`, err);
+      this.#error = err?.cancelled ? null : err.message;
+      this.#clearPreview();
+    } finally {
+      this.#busy = false;
+      this._finishRun(outcome);
+      await this.render();
+    }
   }
 
-  async #generateWondrous() {
-    const signal = this._beginProgress([
-      ["templates", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressTemplates")],
-      ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")],
-      ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble")]
-    ]);
-    try {
+  async #generateWondrous(signal) {
       // 1. Ground truth first: which effect kinds have real rule exemplars
       // in this world's compendiums? Only those are offered to the AI.
       await this._setStep("templates");
@@ -263,7 +294,7 @@ export class ItemForgeApp extends SpfApp {
         availableKinds,
         effectCatalog,
         usageOptions,
-        onProgress: (p) => this._onAIProgress(p), signal
+        onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
 
@@ -280,17 +311,6 @@ export class ItemForgeApp extends SpfApp {
       });
       this.#price = await priceForLevel(this.#concept.level, this.#concept.rarity);
       this._throwIfCancelled();
-      console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
-    } catch (err) {
-      if (err?.cancelled) console.warn(`${MODULE_ID} | item generation cancelled`);
-      else console.error(`${MODULE_ID} | item generation failed`, err);
-      this.#error = err.message;
-      this.#concept = null;
-    } finally {
-      this.#busy = false;
-      this._finishRun();
-      await this.render();
-    }
   }
 
   /**
@@ -299,13 +319,7 @@ export class ItemForgeApp extends SpfApp {
    * the final name/price/level are all resolved from those real component
    * documents at generation time — see item-builder.mjs's buildRunedItem.
    */
-  async #generateRuned(kind) {
-    const signal = this._beginProgress([
-      ["templates", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressCandidates")],
-      ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")],
-      ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble")]
-    ]);
-    try {
+  async #generateRuned(kind, signal) {
       // 1. Ground truth first: real base items, real property runes, and
       // which fundamental rune tiers actually fit under the target level.
       await this._setStep("templates");
@@ -333,9 +347,9 @@ export class ItemForgeApp extends SpfApp {
         kind,
         baseCandidates,
         runeCandidates,
-        potencyTiers: tiers.potencyTiers,
-        secondaryTiers: tiers.secondaryTiers,
-        onProgress: (p) => this._onAIProgress(p), signal
+        potencyCandidates: tiers.potencyCandidates,
+        secondaryCandidates: tiers.secondaryCandidates,
+        onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
 
@@ -344,26 +358,14 @@ export class ItemForgeApp extends SpfApp {
       // item's preview IS its final data, there is no separate build step.
       await this._setStep("assemble");
       this.#concept = normalizeRunedItemConcept(raw, {
-        kind, rarity: this.#input.rarity, baseCandidates, runeCandidates,
-        potencyTiers: tiers.potencyTiers, secondaryTiers: tiers.secondaryTiers
+        kind, rarity: this.#input.rarity, maxLevel: this.#input.level, baseCandidates, runeCandidates,
+        potencyCandidates: tiers.potencyCandidates, secondaryCandidates: tiers.secondaryCandidates
       });
       const built = await buildRunedItem(this.#concept);
       this._throwIfCancelled();
       this.#itemData = built.itemData;
       this.#runedPreview = built.preview;
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
-    } catch (err) {
-      if (err?.cancelled) console.warn(`${MODULE_ID} | runed item generation cancelled`);
-      else console.error(`${MODULE_ID} | runed item generation failed`, err);
-      this.#error = err.message;
-      this.#concept = null;
-      this.#itemData = null;
-      this.#runedPreview = null;
-    } finally {
-      this.#busy = false;
-      this._finishRun();
-      await this.render();
-    }
   }
 
   static async #onCreateItem() {
@@ -371,25 +373,40 @@ export class ItemForgeApp extends SpfApp {
     if (this.#kind === "wondrous" ? !this.#concept : !this.#itemData) return;
     this.#busy = true;
     this.#error = null;
+    const applyLabel = game.i18n.localize("SIMPLYPF2E.Progress.Apply");
+    this._beginProgress([["apply", applyLabel, 1800]], { cancellable: true });
+    let outcome = "success";
+    let committed = false;
     try {
+      await this._setStep("apply");
       await this.render();
       const concept = this.#concept;
+      const built = this.#kind === "wondrous" ? null : await buildRunedItem(concept);
       const data = this.#kind === "wondrous"
         ? await buildMagicItemData(concept)
-        : this.#itemData;
+        : built.itemData;
+      this._lockCreation();
       const item = await Item.create(data);
       if (!item?.id) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.CreateFailed"));
 
       // The item is committed. Consume the draft before any companion or
       // presentation work so a display failure cannot enable duplicate writes.
       this.#clearPreview();
+      committed = true;
+      // Preserve the committed result before any notification or sheet work:
+      // presentation failures must leave the item reachable, never look like
+      // a retryable failed write.
+      this.#created = { name: item.name, itemId: item.id, warning: false, macroId: null };
+      let warning = false;
+      let macroId = null;
       try {
         if (this.#kind === "wondrous" && concept.activation) {
           try {
-            await createActivationMacro({ item, concept });
+            macroId = (await createActivationMacro({ item, concept }))?.id ?? null;
           } catch (err) {
             console.error(`${MODULE_ID} | activation macro creation failed`, err);
             ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.MacroFailed"));
+            warning = true;
           }
         }
         ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Created", { name: item.name }));
@@ -397,20 +414,48 @@ export class ItemForgeApp extends SpfApp {
       } catch (err) {
         console.error(`${MODULE_ID} | created item presentation failed`, err);
         ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.CreatedPresentationFailed"));
+        warning = true;
       }
+      this.#created = { name: item.name, itemId: item.id, warning, macroId };
+      outcome = warning ? "warning" : "success";
     } catch (err) {
-      console.error(`${MODULE_ID} | item creation failed`, err);
-      this.#error = err.message;
+      if (committed) {
+        outcome = "warning";
+        this.#error = null;
+        console.warn(`${MODULE_ID} | item committed, but completion presentation failed`, err);
+      } else {
+        outcome = err?.cancelled ? "cancelled" : "error";
+        if (err?.cancelled) console.warn(`${MODULE_ID} | item creation cancelled`);
+        else console.error(`${MODULE_ID} | item creation failed`, err);
+        this.#error = err?.cancelled ? null : err.message;
+      }
     } finally {
       this.#busy = false;
+      this._finishRun(outcome);
       await this.render();
     }
+  }
+
+  static async #onOpenCreatedItem() {
+    const item = game.items.get(this.#created?.itemId);
+    if (!item) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.CreateFailed"));
+      return;
+    }
+    await item.sheet.render(true);
+  }
+
+  static async #onForgeAnother() {
+    this.#created = null;
+    this.#error = null;
+    await this.render();
   }
 
   static async #onDiscard() {
     if (this.#busy) return;
     this.#readForm();
     this.#clearPreview();
+    this.#created = null;
     this.#error = null;
     this._tokenUsage = [];
     await this.render();

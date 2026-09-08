@@ -40,17 +40,21 @@ class MockSpfApp {
   _formatLastRunCost() { return null; }
   _buildTokenReport() { return null; }
   _recordTokens() {}
+  get _canCancel() { return Boolean(this.abort && !this.abort.signal.aborted); }
   async render() {}
   _beginProgress() { this.abort = new AbortController(); return this.abort.signal; }
   _throwIfCancelled() {
     if (this.abort?.signal.aborted) throw Object.assign(new Error("cancelled"), { cancelled: true });
   }
   async _setStep() { this._throwIfCancelled(); }
+  _progressCallback() { return () => {}; }
+  _lockCreation() { this._throwIfCancelled(); }
   _cancelGeneration() { this.abort.abort(); }
   _finishRun() { this.abort = null; }
 }
 const mocks = {
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
+  AI_TASK: { MAGIC_ITEM_CONCEPT: "magic", RUNED_ITEM_CONCEPT: "runed" }, taskMaxTokens: () => 100,
   RUNED_ITEM_KINDS: new Set(["weapon", "armor"]), MIN_ITEM_LEVEL: 0, MAX_ITEM_LEVEL: 20,
   getProviderRequestConfig: () => ({ provider: {}, connections: [] }),
   getProviderAuthWarningKey: () => null,

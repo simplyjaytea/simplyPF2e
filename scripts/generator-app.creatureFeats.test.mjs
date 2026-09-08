@@ -25,7 +25,10 @@ let query;
 let receivedSignal;
 const tokens = [];
 const mocks = {
-  SpfApp: class { _recordTokens(label, usage) { tokens.push({ label, usage }); } },
+  SpfApp: class {
+    _recordTokens(label, usage) { tokens.push({ label, usage }); }
+    _progressCallback() { return () => {}; }
+  },
   MODULE_ID: "simplypf2e",
   getFeatCandidates: async (args) => { query = args; return candidates; },
   selectCreatureFeats: async ({ signal }) => {

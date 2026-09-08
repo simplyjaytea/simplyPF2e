@@ -8,9 +8,12 @@ import {
   applyStep,
   classifyRequestAbort,
   createProgress,
+  elapsedTime,
+  finishProgress,
   progressPercent,
   progressPhaseClass,
   resetStreamPhase,
+  settleStep,
   stepWeight,
   streamFraction
 } from "./progress.mjs";
@@ -142,3 +145,28 @@ for (let i = 1; i < percents.length; i++) {
 }
 
 console.log("progress.test.mjs: weighted monotonic progress assertions passed");
+
+// Calling a later stage does not falsely claim omitted/failed work succeeded.
+const outcomes = createProgress([["a", "A", 2000], ["b", "B", 1000], ["c", "C", 500]]);
+applyStep(outcomes.steps, "a");
+applyStep(outcomes.steps, "c");
+assert.equal(outcomes.steps[0].state, "done");
+assert.equal(outcomes.steps[1].state, "pending");
+assert.equal(settleStep(outcomes.steps, "b", "skipped"), true);
+assert.equal(outcomes.steps[1].state, "skipped");
+assert.equal(outcomes.steps[0].weight, 2000, "callers can supply the actual mode/task weight");
+outcomes.percent = 86;
+assert.equal(finishProgress(outcomes, "error"), true);
+assert.equal(outcomes.percent, 86, "failure never fills the bar");
+assert.equal(outcomes.steps[2].state, "error");
+assert.equal(finishProgress(outcomes, "success"), false, "terminal outcome is immutable");
+assert.equal(elapsedTime(1000, 62000), "1:01");
+assert.equal(elapsedTime(1000, 3662000), "1:01:01");
+assert.equal(elapsedTime(2000, 1000), "0:00");
+
+const repeated = createProgress([["apply", "Create"]]);
+applyStep(repeated.steps, "apply");
+settleStep(repeated.steps, "apply", "warning");
+applyStep(repeated.steps, "apply");
+finishProgress(repeated, "success");
+assert.equal(repeated.steps[0].state, "warning", "a repeated native substatus retains an earlier warning");

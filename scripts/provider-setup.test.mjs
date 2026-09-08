@@ -137,8 +137,8 @@ assert.equal(
   "an explicitly entered replacement key must bind only to the displayed new endpoint"
 );
 
-// Save & Test uses the production Chat Completions path, closes only on
-// success, and leaves the saved dialog open for correction after a failure.
+// Save & Test uses the production Chat Completions path and keeps the saved
+// dialog open so its inline result remains available for the user to inspect.
 const originalFetch = globalThis.fetch;
 const originalError = console.error;
 const makeTestButton = () => {
@@ -207,11 +207,21 @@ try {
   };
   await ProviderSetupApp.DEFAULT_OPTIONS.actions.saveAndTest.call(success.app, null, success.target);
   assert.equal(success.getSaved(), 1, "save-and-test must refresh the calling generator after saving");
-  assert.equal(success.getClosed(), 1, "a successful connection test closes setup");
+  assert.equal(success.getClosed(), 0, "a successful connection test keeps setup open for its inline result");
   assert.equal(success.target.disabled, false, "the test action restores its button state");
   assert.ok(success.controls.every((control) => control.disabled === false), "save-and-test restores every setup control");
   assert.equal(success.getAttribute("aria-busy"), undefined, "save-and-test clears its busy state");
   assert.ok(notices.info.some((message) => message.includes("SIMPLYPF2E.ProviderSetup.TestSuccess")));
+  assert.deepEqual(
+    (await success.app._prepareContext()).feedback,
+    {
+      kind: "success",
+      role: "status",
+      icon: "fa-circle-check",
+      text: notices.info.at(-1)
+    },
+    "successful tests expose the same escaped-ready result to the inline setup feedback"
+  );
 
   setCurrent({ baseUrl: "http://localhost:11434/v1", model: "", apiKey: "", bound: "" });
   const discovery = makeSaveTestApp({ baseUrl: "http://localhost:11434/v1", model: "" });
@@ -231,6 +241,8 @@ try {
     ["gemma3:4b", "qwen3:8b"],
     "discovered identifiers become editable datalist suggestions"
   );
+  assert.equal((await discovery.app._prepareContext()).feedback.kind, "success",
+    "model discovery exposes an inline success result");
   assert.ok(notices.info.some((message) => message.includes("SIMPLYPF2E.ProviderSetup.ModelsLoaded")));
   discovery.app._onRender();
   discovery.changeBaseUrl("http://localhost:1234/v1");
@@ -247,6 +259,9 @@ try {
   assert.equal(failure.getSaved(), 1, "a failed test must not roll back valid saved settings");
   assert.equal(failure.getClosed(), 0, "a failed test keeps setup open for correction");
   assert.ok(notices.error.some((message) => message.includes("provider offline")));
+  const failureFeedback = (await failure.app._prepareContext()).feedback;
+  assert.equal(failureFeedback.kind, "error", "failed tests expose an inline error result");
+  assert.match(failureFeedback.text, /provider offline/);
 } finally {
   globalThis.fetch = originalFetch;
   console.error = originalError;

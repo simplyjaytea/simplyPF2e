@@ -209,6 +209,12 @@ function throwIfGenerationCancelled(signal) {
  * @returns {Promise<{data: object, usage: object}>} parsed JSON plus token usage
  */
 async function requestJSON(args) {
+  // Presentation must never change the provider/validation outcome.
+  const observer = args.onProgress;
+  args = { ...args, onProgress: (event) => {
+    try { observer?.(event); }
+    catch (err) { console.warn("simplypf2e | progress display failed", err); }
+  } };
   let lastError = null;
   // Tokens spent by failed attempts are still spent — sum usage across every
   // attempt that returned one, so the report reflects the real total.
@@ -222,6 +228,7 @@ async function requestJSON(args) {
   };
   for (let attempt = 0; attempt < 2; attempt++) {
     throwIfGenerationCancelled(args.signal);
+    if (attempt > 0) args.onProgress({ phase: "retrying" });
     try {
       const requestArgs = attempt === 0 ? args : {
         ...args,
@@ -230,6 +237,7 @@ async function requestJSON(args) {
       };
       const { content, usage, finishReason, reasoningChars } = await requestCompletion(requestArgs);
       addUsage(usage);
+      args.onProgress({ phase: "validating" });
       let data;
       try {
         data = parseConceptJSON(content);
@@ -1090,21 +1098,19 @@ Design guidance:
  * model never invents rune data.
  * @param {object} args
  * @param {"weapon"|"armor"} args.kind
- * @param {{name: string, level: number}[]} args.baseCandidates
- * @param {{name: string, level: number}[]} args.runeCandidates
- * @param {number[]} args.potencyTiers      available potency tiers (1-3)
- * @param {number[]} args.secondaryTiers    available striking/resilient tiers (1-3)
+ * @param {{id: string, name: string, level: number}[]} args.baseCandidates
+ * @param {{id: string, name: string, level: number}[]} args.runeCandidates
+ * @param {{id: string, name: string, tier: number}[]} args.potencyCandidates
+ * @param {{id: string, name: string, tier: number}[]} args.secondaryCandidates
  * @returns {Promise<{concept: object, usage: object}>} raw concept JSON + token usage
  */
 export async function generateRunedItemConcept({
-  prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyTiers, secondaryTiers, onProgress, signal
+  prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyCandidates, secondaryCandidates, onProgress, signal
 }) {
   const secondaryLabel = kind === "weapon" ? "striking" : "resilient";
-  const potencyChoices = potencyTiers.map((tier) => ({ 1: "single", 2: "double", 3: "triple" })[tier]).filter(Boolean);
-  const secondaryChoices = ["none", ...secondaryTiers.map((tier) => ({ 1: "standard", 2: "greater", 3: "major" })[tier]).filter(Boolean)];
   const baseList = baseCandidates.map((c) => {
     const category = kind === "armor" && c.category ? `${c.category} armor, ` : "";
-    return c.level > 0 || category ? `${c.name} (${category}L${c.level})` : c.name;
+    return `${c.id} | ${c.name}${c.level > 0 || category ? ` (${category}L${c.level})` : ""}`;
   }).join("; ");
   // Category-restricted armor runes are annotated ("light armor only") so the
   // AI picks runes that fit its base; normalizeRunedItemConcept still drops a
@@ -1112,9 +1118,11 @@ export async function generateRunedItemConcept({
   const runeList = runeCandidates.length
     ? runeCandidates.map((c) => {
       const note = propertyRuneRestrictionNote(c.usage);
-      return `${c.name} (L${c.level}${note ? `, ${note}` : ""})`;
+      return `${c.id} | ${c.name} (L${c.level}${note ? `, ${note}` : ""})`;
     }).join("; ")
     : "(none available at this level)";
+  const potencyList = potencyCandidates.map((c) => `${c.id} | ${c.name}`).join("; ");
+  const secondaryList = secondaryCandidates.map((c) => `${c.id} | ${c.name}`).join("; ");
 
   const system = `You are an expert Pathfinder 2e (remaster) magic ${kind} designer. You choose real components; the system computes the mechanical name, price and item level from whatever you pick.
 
@@ -1122,24 +1130,30 @@ Respond with a SINGLE JSON object only. No markdown fences, no commentary.
 
 JSON schema:
 {
-  "baseItemName": string, // EXACTLY one name from the base ${kind} list below, copied exactly
-  "potency": string, // EXACTLY one enum: ${potencyChoices.join(", ")}; single/double/triple are the ordered potency tiers
-  "secondaryTier": string, // EXACTLY one enum: ${secondaryChoices.join(", ")}; none means no ${secondaryLabel} rune
-  "propertyRunes": string[], // 0 to ${Math.max(...potencyTiers)} names copied EXACTLY from the property rune list below — never more than the chosen "potency" value
+  "baseItemId": string, // EXACTLY one opaque ID from the base ${kind} list below
+  "potencyRuneId": string, // EXACTLY one opaque ID from the potency rune list below
+  "secondaryRuneId": string, // EXACTLY one opaque ID from the ${secondaryLabel} rune list below, or literal "none"
+  "propertyRuneIds": string[], // opaque IDs from the property rune list below; choose no more than the selected potency rune's slots
   "description": string // 2-4 sentences of evocative flavor: appearance, history, feel. Plain text. Do NOT restate the mechanical runes — a mechanical summary is appended automatically.
 }
 
-Base ${kind}s available (name (item level)):
+Base ${kind}s available (opaque ID | name (item level)):
 ${baseList}
 
-Property runes available (name (rune level)):
+Potency runes available (opaque ID | name):
+${potencyList}
+
+${secondaryLabel[0].toUpperCase() + secondaryLabel.slice(1)} runes available (opaque ID | name; or "none"):
+${secondaryList}
+
+Property runes available (opaque ID | name (rune level)):
 ${runeList}
 
 Design guidance:
-- Never emit numeric fields, dice formulas, or code. Copy names and choose the offered tier enums; the module supplies all values.
+- Never emit numeric fields, dice formulas, or code. Copy only the offered opaque IDs; the module supplies all values.
 - Pick a base ${kind} and runes that together tell a clear, thematic story for the GM's concept.
 - Avoid combining runes that are thematically opposed (e.g. never pick both Holy and Unholy, or both Anarchic and Axiomatic) unless the concept explicitly wants that tension.
-- "propertyRunes" length must never exceed "potency" (potency N grants N property rune slots) — prefer fewer, more thematic runes over maxing out every slot.${kind === "armor" ? `
+- "propertyRuneIds" length must never exceed the selected potency rune's slots — prefer fewer, more thematic runes over maxing out every slot.${kind === "armor" ? `
 - A property rune marked "light armor only" / "heavy armor only" / "medium/heavy armor only" may ONLY be picked when the chosen base armor's category matches — a mismatched rune is dropped.` : ""}`;
 
   const user = [
@@ -1262,6 +1276,7 @@ async function requestCompletion({ task, system, user, onProgress, signal, retry
 
   try {
     resetIdle();
+    onProgress?.({ phase: "waiting" });
     let response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
     const rejectedParameters = new Set();
     // Some OpenAI-compatible providers reject stream_options, response_format
@@ -1284,6 +1299,7 @@ async function requestCompletion({ task, system, user, onProgress, signal, retry
         body.messages[0].role = "system";
         rejectedParameters.add("developer_role");
         resetIdle();
+        onProgress?.({ phase: "compatibility" });
         response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
         continue;
       }
@@ -1305,11 +1321,14 @@ async function requestCompletion({ task, system, user, onProgress, signal, retry
         if (!rejectedParameters.has(alternate)) body[alternate] = value;
       }
       resetIdle();
+      onProgress?.({ phase: "compatibility" });
       response = await postChatCompletion(baseUrl, apiKey, body, controller.signal);
     }
     if (!response.ok) {
       throw await providerApiError(response);
     }
+
+    onProgress?.({ phase: "receiving" });
 
     const contentType = response.headers.get("content-type") ?? "";
     let content;

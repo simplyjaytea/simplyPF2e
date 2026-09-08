@@ -11,13 +11,13 @@
  */
 
 import {
-  getPacksFor, EQUIPMENT_TYPES, findEntry, getDocument, toItemData, getEquipmentIndex,
+  getPacksFor, EQUIPMENT_TYPES, getCandidateDocument, toItemData, getEquipmentIndex,
   priceToGp, RARITY_RANK
 } from "./compendium.mjs";
 import { slugify, capitalized, esc } from "./text.mjs";
 import {
   RUNED_ITEM_KINDS, SECONDARY_ADJECTIVE, SECONDARY_RUNE_FIELD, propertyRuneKey, propertyRuneFitsBase,
-  findFundamentalRune, getBaseItemCandidates, getPropertyRuneCandidates, getFundamentalRuneTiers
+  getBaseItemCandidates, getPropertyRuneCandidates, getFundamentalRuneTiers, prunePropertyRuneCandidates
 } from "./runes.mjs";
 
 /* Re-exported: the item forge UI imports its whole surface from this module. */
@@ -47,9 +47,6 @@ export const ACTIVATION_TEMPLATES = new Set(["damage", "heal", "condition", "sel
 const ACTION_COSTS = { single: 1, two: 2, three: 3, reaction: "reaction", free: "free" };
 const ACTIVATION_DURATIONS = { round: { rounds: 1, label: "1 round" }, minute: { minutes: 1, label: "1 minute" }, "ten-minutes": { minutes: 10, label: "10 minutes" } };
 const BULK_VALUES = { negligible: 0, light: 0.1, one: 1, two: 2 };
-const POTENCY_CHOICES = { single: 1, double: 2, triple: 3 };
-const SECONDARY_CHOICES = { none: 0, standard: 1, greater: 2, major: 3 };
-
 /* The three PF2e saving throws an activation may call for. */
 export const SAVE_TYPES = new Set(["fortitude", "reflex", "will"]);
 
@@ -171,41 +168,51 @@ export async function priceForLevel(level, rarity = "common") {
 /* -------------------- runed weapons/armor (Phase 3) -------------------- */
 
 /**
- * Coerce a raw AI runed-item concept into a safe shape. Every name is
- * matched back against the real candidate lists the AI was shown — an
- * unmatched property rune is dropped (with a warning), never invented.
+ * Coerce a raw AI runed-item concept into a safe shape. Every component ID is
+ * matched back to the exact candidate object issued for this Forge run. Names
+ * are presentation only: neither normalization nor assembly resolves a name.
  */
-export function normalizeRunedItemConcept(raw, { kind, rarity, baseCandidates, runeCandidates, potencyTiers, secondaryTiers }) {
+export function normalizeRunedItemConcept(raw, {
+  kind, rarity, baseCandidates, runeCandidates, potencyCandidates, secondaryCandidates, maxLevel = MAX_ITEM_LEVEL
+}) {
   const c = typeof raw === "object" && raw !== null ? raw : {};
-  const findByName = (list, name) => list.find((x) => slugify(x.name) === slugify(name)) ?? null;
+  const findById = (list, id) => {
+    const key = String(id ?? "").trim();
+    return key ? list.find((candidate) => candidate.id === key) ?? null : null;
+  };
 
-  const base = findByName(baseCandidates, c.baseItemName);
+  const base = findById(baseCandidates, c.baseItemId);
   if (!base) {
-    console.warn(`simplypf2e | itemforge: unresolved base ${kind} "${c.baseItemName}"`);
-    throw new Error(`The selected base ${kind} could not be matched to the offered compendium items. Generate a new plan.`);
+    console.warn(`simplypf2e | itemforge: unresolved base ${kind} candidate "${c.baseItemId}"`);
+    throw new Error(`The selected base ${kind} is not one of this Forge run's offered compendium items. Generate a new plan.`);
   }
 
-  const rawPotency = POTENCY_CHOICES[c.potency];
-  if (!potencyTiers.includes(rawPotency)) {
-    console.warn(`simplypf2e | itemforge: unresolved potency tier "${c.potency}"`);
-    throw new Error("The selected potency rune is not one of the offered tiers. Generate a new plan.");
+  const potencyRune = findById(potencyCandidates, c.potencyRuneId);
+  if (!potencyRune) {
+    console.warn(`simplypf2e | itemforge: unresolved potency rune candidate "${c.potencyRuneId}"`);
+    throw new Error("The selected potency rune is not one of this Forge run's offered runes. Generate a new plan.");
   }
-  const potency = rawPotency;
+  const potency = potencyRune.tier;
 
-  const rawSecondary = SECONDARY_CHOICES[c.secondaryTier];
-  const secondaryTier = secondaryTiers.includes(rawSecondary) ? rawSecondary : 0;
-  if (rawSecondary !== 0 && !secondaryTiers.includes(rawSecondary)) {
-    console.warn(`simplypf2e | itemforge: dropped unavailable secondary rune tier "${c.secondaryTier}"`);
+  const secondaryId = String(c.secondaryRuneId ?? "").trim();
+  const secondaryRune = secondaryId === "none" ? null : findById(secondaryCandidates, secondaryId);
+  if (secondaryId !== "none" && !secondaryRune) {
+    console.warn(`simplypf2e | itemforge: unresolved secondary rune candidate "${c.secondaryRuneId}"`);
+    throw new Error("The selected secondary rune is not one of this Forge run's offered runes. Generate a new plan.");
   }
+  const secondaryTier = secondaryRune?.tier ?? 0;
 
-  const propertyRunes = [];
-  const seen = new Set();
-  for (const name of Array.isArray(c.propertyRunes) ? c.propertyRunes : []) {
-    if (propertyRunes.length >= potency) break;
-    const match = findByName(runeCandidates, name);
+  // PF2e itself calls prunePropertyRunes() before determining valuation: it
+  // removes duplicate/lower grades when greater, major, or true shares the
+  // same rune family (8.5.0 runes.ts lines 37–48). Do that before the potency
+  // slot cap, so e.g. Flaming + Flaming (Greater) consumes one slot and keeps
+  // the exact issued greater candidate for both assembly and preview price.
+  const selectedProperties = [];
+  for (const id of Array.isArray(c.propertyRuneIds) ? c.propertyRuneIds : []) {
+    const match = findById(runeCandidates, id);
     if (!match) {
-      if (name) console.warn(`simplypf2e | itemforge: dropped unmatched property rune "${name}"`);
-      continue;
+      console.warn(`simplypf2e | itemforge: unresolved property rune candidate "${id}"`);
+      throw new Error("A selected property rune is not one of this Forge run's offered runes. Generate a new plan.");
     }
     // Category-restricted armor runes (e.g. "etched-onto-light-armor") must
     // fit the chosen base armor's real system.category — a mismatch is
@@ -214,54 +221,70 @@ export function normalizeRunedItemConcept(raw, { kind, rarity, baseCandidates, r
       console.warn(`simplypf2e | itemforge: dropped property rune "${match.name}" (${match.usage}) — not etchable onto ${base?.category ?? "unknown-category"} ${kind} "${base?.name}"`);
       continue;
     }
-    const key = slugify(match.name);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    propertyRunes.push(match.name);
+    selectedProperties.push(match);
   }
+  const propertyRuneCandidates = prunePropertyRuneCandidates(selectedProperties).slice(0, potency);
 
   return {
     kind,
-    baseItemName: base?.name ?? null,
+    // Keep display names for stable UI/template compatibility. Build paths use
+    // the issued candidate objects exclusively.
+    maxLevel,
+    baseItemName: base.name,
+    baseItemCandidate: base,
+    potencyRuneCandidate: potencyRune,
+    secondaryRuneCandidate: secondaryRune,
     potency,
     secondaryTier,
-    propertyRunes,
+    propertyRunes: propertyRuneCandidates.map((candidate) => candidate.name),
+    propertyRuneCandidates,
     rarity: RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common",
     description: String(c.description ?? "").slice(0, 800)
   };
 }
 
 /**
- * Assemble the Foundry item data for a normalized runed-item concept: the
- * REAL base item document, with system.runes set from the chosen tiers, a
- * transient preview price from its real rune components, a transient preview
- * level that is the max level among base/rune documents, and
- * a name built from the standard PF2e
- * "+N [secondary] [property runes] [base name]" convention.
- * @returns {Promise<{itemData: object, preview: {priceGp: number, level: number}}>}
- * source data for Item.create() plus derived preview metadata
+ * Resolve every selected component only through its exact issued candidate
+ * reference. A preview can outlive a pack reload or source deletion, so this
+ * is deliberately reusable by the Create path as a final preflight gate.
+ */
+export async function preflightRunedItem(concept) {
+  const packs = getPacksFor("equipment");
+  const resolve = async (candidate, label, type) => {
+    const doc = await getCandidateDocument(candidate, packs);
+    if (!doc || (type && doc.type !== type) || (candidate?.name && doc.name !== candidate.name)
+      || (Number.isFinite(candidate?.level) && doc.system?.level?.value !== candidate.level)) {
+      console.warn(`simplypf2e | itemforge: selected ${label} source is unavailable or changed`, candidate?.ref);
+      throw new Error(`The selected ${label} is no longer available from its original compendium source. Generate a new plan.`);
+    }
+    return doc;
+  };
+  const baseDoc = await resolve(concept?.baseItemCandidate, `base ${concept?.kind ?? "item"}`, concept?.kind);
+  if (baseDoc.system?.specific != null) {
+    throw new Error("The selected base item became a specific magic item. Generate a new plan.");
+  }
+  const potencyDoc = await resolve(concept?.potencyRuneCandidate, "potency rune", "equipment");
+  const secondaryDoc = concept?.secondaryRuneCandidate
+    ? await resolve(concept.secondaryRuneCandidate, "secondary rune", "equipment") : null;
+  const propertyDocs = [];
+  for (const candidate of concept?.propertyRuneCandidates ?? []) {
+    const doc = await resolve(candidate, `property rune "${candidate?.name ?? "unknown"}"`, "equipment");
+    if (!propertyRuneFitsBase(concept?.kind, doc.system?.usage?.value, baseDoc.system?.category ?? null)) {
+      console.warn(`simplypf2e | itemforge: selected property rune "${doc.name}" no longer fits its base source`);
+      throw new Error(`The selected property rune "${doc.name}" is no longer compatible with its original base item. Generate a new plan.`);
+    }
+    propertyDocs.push(doc);
+  }
+  return { baseDoc, potencyDoc, secondaryDoc, propertyDocs };
+}
+
+/**
+ * Assemble cloned source data and ask an unpersisted native PF2e item to
+ * prepare its preview. Keep derived values separate from the creation source.
+ * @returns {Promise<{itemData: object, preview: {priceGp: number, level: number, rarity: string}}>}
  */
 export async function buildRunedItem(concept) {
-  const packs = getPacksFor("equipment");
-
-  const baseEntry = await findEntry(packs, concept.baseItemName, (e) => e.type === concept.kind);
-  const baseDoc = await getDocument(baseEntry);
-  if (!baseDoc) {
-    throw new Error(`Base ${concept.kind} "${concept.baseItemName}" could not be resolved against the compendium.`);
-  }
-
-  const potencyDoc = await getDocument(await findFundamentalRune(concept.kind, "potency", concept.potency));
-  const secondaryDoc = concept.secondaryTier
-    ? await getDocument(await findFundamentalRune(concept.kind, "secondary", concept.secondaryTier))
-    : null;
-
-  const propertyDocs = [];
-  for (const name of concept.propertyRunes) {
-    const entry = await findEntry(packs, name, (e) => e.type === "equipment");
-    const doc = await getDocument(entry);
-    if (doc) propertyDocs.push(doc);
-    else console.warn(`simplypf2e | itemforge: property rune "${name}" could not be resolved — dropped`);
-  }
+  const { baseDoc, propertyDocs } = await preflightRunedItem(concept);
 
   const data = toItemData(baseDoc);
   data.system.runes = {
@@ -270,24 +293,6 @@ export async function buildRunedItem(concept) {
     [SECONDARY_RUNE_FIELD[concept.kind]]: concept.secondaryTier,
     property: propertyDocs.map((d) => propertyRuneKey(d.name))
   };
-
-  // PF2e 8.4.1 computePrice() omits an ordinary nonspecific base item's
-  // price whenever it has rune value. Keep its cloned source price untouched
-  // for system preparation, but preview only the resolved rune components.
-  const gp = Math.round(
-    (potencyDoc ? priceToGp(potencyDoc.system.price?.value) : 0)
-    + (secondaryDoc ? priceToGp(secondaryDoc.system.price?.value) : 0)
-    + propertyDocs.reduce((sum, d) => sum + priceToGp(d.system.price?.value), 0)
-  );
-  const level = Math.max(
-    data.system.level?.value ?? 0,
-    potencyDoc?.system.level?.value ?? 0,
-    secondaryDoc?.system.level?.value ?? 0,
-    ...propertyDocs.map((d) => d.system.level?.value ?? 0)
-  );
-  // Preserve the cloned base source values. PF2e physical-item preparation
-  // derives the runed totals, so the module must never overwrite these with
-  // its transient preview values.
 
   const nameParts = [`+${concept.potency}`];
   if (concept.secondaryTier) nameParts.push(SECONDARY_ADJECTIVE[concept.kind][concept.secondaryTier]);
@@ -311,7 +316,30 @@ export async function buildRunedItem(concept) {
   paragraphs.push(`<hr /><p><strong>${game.i18n.localize("SIMPLYPF2E.ItemForge.RunesHeading")}</strong> ${runeSummary}.</p>`);
   data.system.description = { value: paragraphs.join("\n") };
 
-  return { itemData: data, preview: { priceGp: gp, level } };
+  // PF2e values rune keys from its own RUNE_DATA, not arbitrary prices on
+  // similarly-named compendium variants. Its Item proxy prepares derived data
+  // during construction (8.5.0 physical/document.ts:333,355–358). This temporary
+  // document has no parent/pack and never calls create/update or writes a world.
+  const NativeItem = globalThis.CONFIG?.Item?.documentClass;
+  if (typeof NativeItem !== "function") throw new Error("Native PF2e item preparation is unavailable. Reopen Item Forge in a PF2e world.");
+  const prepared = new NativeItem(foundry.utils.deepClone(data));
+  const level = prepared.level;
+  const price = prepared.price?.value;
+  const preparedRarity = prepared.rarity;
+  const requested = data.system.runes.property;
+  const applied = prepared.system?.runes?.property;
+  if (!Number.isFinite(level) || !price || !RARITIES.has(preparedRarity)
+    || !Array.isArray(applied) || applied.length !== requested.length
+    || requested.some((key, i) => applied[i] !== key)
+    || prepared.system.runes.potency !== concept.potency
+    || prepared.system.runes[SECONDARY_RUNE_FIELD[concept.kind]] !== concept.secondaryTier) {
+    throw new Error("PF2e could not prepare every selected rune. Generate a new plan with supported components.");
+  }
+  const gp = priceToGp(price);
+  if (!Number.isFinite(gp) || gp < 0 || level > (concept.maxLevel ?? MAX_ITEM_LEVEL)) {
+    throw new Error("The prepared item exceeds the requested level or has invalid native pricing. Generate a new plan.");
+  }
+  return { itemData: data, preview: { priceGp: gp, level, rarity: preparedRarity } };
 }
 
 /* -------------------- grounded usage strings -------------------- */

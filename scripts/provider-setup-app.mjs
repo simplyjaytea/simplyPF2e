@@ -25,6 +25,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
   #availableModels = [];
   #modelsBaseUrl = "";
   #busy = false;
+  #feedback = null;
 
   constructor(options = {}, onSaved = null) {
     if (typeof options === "function") {
@@ -87,6 +88,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
       model: state.model,
       availableModels: this.#availableModels,
       hasApiKey: state.hasConfiguredApiKey,
+      feedback: this.#feedback,
       localServerHint: game.i18n.format("SIMPLYPF2E.ProviderSetup.LocalServerHint", {
         origin: globalThis.location?.origin ?? "Foundry"
       })
@@ -152,6 +154,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     this.#selectedPreset = null;
     this.#availableModels = [];
     this.#modelsBaseUrl = "";
+    this.#feedback = null;
     await this.render();
   }
 
@@ -169,6 +172,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     this.#selectedPreset = preset.id;
     this.#availableModels = [];
     this.#modelsBaseUrl = "";
+    this.#feedback = null;
     await this.render();
   }
 
@@ -197,6 +201,7 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
     const preset = PROVIDER_PRESETS.find((entry) => entry.id === target.dataset.provider);
     if (!preset) return;
     this.#selectedPreset = preset.id;
+    this.#feedback = null;
     for (const button of this.element.querySelectorAll("[data-action='chooseProvider']")) {
       const active = button === target;
       button.classList.toggle("spf-provider-preset-active", active);
@@ -288,17 +293,27 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
       if (warningKey) throw new Error(game.i18n.localize(warningKey));
       this.#availableModels = await listProviderModels();
       this.#modelsBaseUrl = state.baseUrl;
-      await this.render();
+      this.#feedback = {
+        kind: "success",
+        role: "status",
+        icon: "fa-list-check",
+        text: game.i18n.format("SIMPLYPF2E.ProviderSetup.ModelsLoaded", {
+          count: this.#availableModels.length
+        })
+      };
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.ProviderSetup.ModelsLoaded", {
         count: this.#availableModels.length
       }));
     } catch (err) {
       console.error("simplypf2e | provider model discovery failed", err);
-      ui.notifications.error(game.i18n.format("SIMPLYPF2E.ProviderSetup.ModelsFailed", {
+      const text = game.i18n.format("SIMPLYPF2E.ProviderSetup.ModelsFailed", {
         message: err?.message ?? String(err)
-      }));
+      });
+      this.#feedback = { kind: "error", role: "alert", icon: "fa-circle-exclamation", text };
+      ui.notifications.error(text);
     } finally {
       this.#endBusy(busy);
+      await this.render();
     }
   }
 
@@ -311,19 +326,23 @@ export class ProviderSetupApp extends HandlebarsApplicationMixin(ApplicationV2) 
       const warningKey = getProviderAuthWarningKey(state);
       if (warningKey) throw new Error(game.i18n.localize(warningKey));
       const usage = await testProviderConnection();
-      ui.notifications.info(game.i18n.format("SIMPLYPF2E.ProviderSetup.TestSuccess", {
+      const text = game.i18n.format("SIMPLYPF2E.ProviderSetup.TestSuccess", {
         provider: provider.name,
         model,
         total: usage.total.toLocaleString()
-      }));
-      await this.close();
+      });
+      this.#feedback = { kind: "success", role: "status", icon: "fa-circle-check", text };
+      ui.notifications.info(text);
     } catch (err) {
       console.error("simplypf2e | provider save-and-test failed", err);
-      ui.notifications.error(game.i18n.format("SIMPLYPF2E.ProviderSetup.TestFailed", {
+      const text = game.i18n.format("SIMPLYPF2E.ProviderSetup.TestFailed", {
         message: err?.message ?? String(err)
-      }));
+      });
+      this.#feedback = { kind: "error", role: "alert", icon: "fa-circle-exclamation", text };
+      ui.notifications.error(text);
     } finally {
       this.#endBusy(busy);
+      await this.render();
     }
   }
 

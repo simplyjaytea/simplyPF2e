@@ -54,7 +54,7 @@ Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.mod
 | **Encounter** | Theme plus party level/size/threat → XP budget, roster, and a full creature pipeline per member. |
 | **Character** | Real Ancestry/Background/Class items and feat slots. The pf2e system computes AC/HP/saves. |
 
-**Generate** validates and creates in one pass. **Preview Plan** runs the same no-write plan first. The **dice** button sits beside Generate in every mode: it ignores the typed prompt, rolls a local surprise brief, and runs Preview Plan. Cancel aborts an in-flight generation (not a Foundry write already in progress). Mode-by-mode depth is under [Mode details](#mode-details).
+**Generate & Create** validates and creates in one pass. **Preview Plan** runs the same plan without creating documents. The **dice** button sits beside Generate in every mode: it ignores the typed prompt, rolls a local surprise brief, and runs Preview Plan. Cancel aborts an in-flight generation (not a Foundry write already in progress). Mode-by-mode depth is under [Mode details](#mode-details).
 
 Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity. The preset menu is **— No preset —**, then **Standard classes** (the 23 Remaster PF2e classes as flavor guides), then **Custom presets** only when this world has saved any. Picking Magus or Witch there does not make those classes complete-only.
 
@@ -71,7 +71,8 @@ Open **Advanced options** for a preset, rarity, treasure amount, and spellcastin
 ## What's new
 
 - Advanced presets list the 23 Remaster classes under **Standard**, with world-saved **Custom** presets in their own group when any exist. Magus, Witch, and the rest are flavor guides; complete-only Character is still Fighter, Rogue, and Investigator.
-- Smoother progress (fills within each step) with Cancel, thinking vs writing, and a compact last-run token cost that keeps **≈** when the provider did not report usage.
+- Refreshed light and dark interfaces, clearer primary actions, and an animated rune loading card. Progress stays in one run through creation, shows elapsed time and stage outcomes, and respects reduced-motion preferences.
+- Provider headers distinguish configured connections from connections tested in this window; saved profiles remain local to your browser.
 - Loot coins clone published PF2e currency items, so gold lands in the sheet's Currency section.
 - The dice button is on all four generator modes.
 - Named connection bank: save more than one provider profile in this browser and switch from the generator header.
@@ -126,7 +127,7 @@ After creation, the generator shows a dismissible snapshot of resulting skill ra
 
 GMs can open the forge from the **Item Forge** button in the Items directory. The same GM-only entry point is available from the browser console with `game.modules.get("simplypf2e").api.openItemForge()`; player calls are rejected.
 
-Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rarity, and **Generate**.
+Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rarity, and choose **Generate Item Plan**. Review the result, then choose **Create Item**. The completion card retains an **Open Item** action and lets you **Forge Another**.
 
 **Wondrous items** get passive effects — item bonuses (AC, perception, saves, skills), resistances, weaknesses, immunities, senses, and speed grants — that *actually work* on a sheet, because:
 
@@ -136,7 +137,7 @@ Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rar
 
 **Activated items** add a 1/day ability — damage, heal, condition, or self-buff — as a companion **macro**, with a clickable Activate link in the description and the macros filed in a "SimplyPF2e Item Forge" folder (auto-deleted with the item). Target a token, click Activate; damage and healing post as normal PF2e chat cards so the built-in Apply buttons handle the rest. Each copy tracks its own charge and recharges through Rest for the Night, including player-owned rests. The charge must save before an effect runs; repeated clicks on the same client cannot activate the same copy concurrently. Companion macros remain while another world, actor, or token copy still references them. Activation dice and DCs use module-owned GM Core benchmarks; these are custom-item defaults, not published magic-item balance values.
 
-**Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string and the base armor category, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates. Preview estimates use the resolved rune documents; PF2e derives the created item's final price and level from the cloned source data. Runes whose published restriction depends on armor material are excluded because the compendium index cannot prove material compatibility.
+**Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string and the base armor category, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates. Selections retain their exact compendium references, even when packs contain identically named items. A temporary native PF2e item prepares the preview price, level, and rarity without saving anything. Create checks the selected sources again and preserves the cloned base source values for native preparation. Runes whose published restriction depends on armor material are excluded because the compendium index cannot prove material compatibility.
 
 ### Presets
 
@@ -160,7 +161,9 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 **Slow or stuck generations**
 
-- Generation is **streamed** — you'll see one animated progress bar with a live percentage and token ticker. Reasoning models show "The model is thinking…" first; that's normal and can take a while. **Cancel** stops the in-flight request; it does not undo a sheet Foundry has already written.
+- The rune loading card shows **estimated progress**, the current stage, and elapsed time. It follows provider waiting, thinking, writing, retry, and validation activity; the percentage is a progress estimate, not a promise of time remaining. Expand **Generation details** for stage outcomes.
+- **Cancel** stops an in-flight request before native creation starts. Closing the window hides it while work continues; reopen it from the directory to see the same run or result. Failures and cancellations retain their last progress instead of showing 100%.
+- The rune animation and bar movement stop when your browser or operating system requests reduced motion.
 - The **request timeout** aborts only on total silence from the provider, so slow-but-alive generations are never cut off. If you get timeouts, check the provider's status page and your model name.
 - A large Ollama or LM Studio model may be silent while it loads, or while another request owns its only generation slot. Load/warm the model in the server first, wait for other work to finish, or temporarily raise **Request timeout**; a warm retry should start streaming much sooner.
 - Check **Model** is the exact API identifier from your provider's docs. A wrong id normally returns an immediate error rather than hanging.
@@ -171,7 +174,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 - **Missing an ability you expected** (Attack of Opportunity on a soldier, say) — the AI decides case by case; nudging the prompt usually gets it.
 - **An unfamiliar item name** — the module targets current Remaster terminology. If it is not in an enabled source, the complete plan stops before creation; widen sources or choose a supported concept.
-- **A plan reports unresolved content** — one or more required published picks was absent from the enabled sources. Use **Compendium Sources** to include the appropriate pack, then generate again.
+- **A plan reports unresolved content** — one or more required published picks was absent from the enabled sources. Use **Compendium Sources** to include the appropriate pack, then generate again. Spell sources also support scroll loot, so they remain required for noncasters; bestiary sources provide creature art and token scaffolding.
 
 ## Limitations
 
@@ -200,7 +203,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
 - **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend. Its eventual slots are wired to PF2e's distinct `archetype-<level>` group.
 - **PC spellcasting beyond complete-only classes.** Base-slot regressions cover all 140 rows of seven Remaster class tables, but native casting/expending, restricted class slots, and spellbook/familiar inventories still need live coverage. Complete one-click class selection remains limited to Fighter, Rogue, and Investigator.
-- **Item Forge coverage beyond the accepted paths.** A passive wondrous item, runed weapon/armor sheet parity, cancellation isolation, and generated healing/condition macro escaping have live evidence. The full passive-effect and activation matrix does not. Its rune path also has known gaps: no rune prerequisite or exclusivity validation (nothing stops Holy + Unholy), material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
+- **Item Forge coverage beyond the accepted paths.** A passive wondrous item, runed weapon/armor sheet parity, cancellation isolation, and generated healing/condition macro escaping have live evidence. The full passive-effect and activation matrix does not. Its rune path also has known gaps: no general rune prerequisite or exclusivity engine, material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
 - **Remaining activated-item macro paths** lean on PF2e system APIs that can change between versions. Damage, self-buff, and fallback branches still need live coverage. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.
 
 ## Roadmap

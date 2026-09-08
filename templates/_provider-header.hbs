@@ -1,0 +1,60 @@
+<header class="spf-provider-header" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.ProviderHeader'}}">
+  <div class="spf-provider-summary {{#if providerReady}}spf-provider-ready{{else}}spf-provider-attention{{/if}}" data-tooltip="{{providerBaseUrl}}">
+    <span class="spf-provider-name">
+      <i class="fa-solid {{#if provider.local}}fa-server{{else}}fa-cloud{{/if}}" aria-hidden="true"></i>
+      <span class="spf-provider-copy">
+        <span class="spf-eyebrow">{{localize "SIMPLYPF2E.ProviderSetup.ProviderLabel"}}</span>
+        {{#if canSwitchConnection}}
+          <label for="{{#if itemForgeMode}}spf-itemforge-connection{{else}}spf-generator-connection{{/if}}" class="spf-sr-only">{{localize "SIMPLYPF2E.ProviderSetup.ActiveConnection"}}</label>
+          <select id="{{#if itemForgeMode}}spf-itemforge-connection{{else}}spf-generator-connection{{/if}}" name="activeConnection" {{#if busy}}disabled{{/if}} aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.ActiveConnection'}}">
+            {{#each connections}}
+              <option value="{{this.id}}" {{#if this.active}}selected{{/if}}>{{this.name}}</option>
+            {{/each}}
+          </select>
+        {{else}}
+          <strong>{{#if connectionName}}{{connectionName}}{{else}}{{provider.name}}{{/if}}</strong>
+        {{/if}}
+      </span>
+    </span>
+    <span class="spf-provider-meta">
+      <code class="spf-provider-model">{{#if provider.model}}{{provider.model}}{{else}}{{localize "SIMPLYPF2E.Generator.NoModelShort"}}{{/if}}</code>
+      <span class="spf-provider-status" role="status" aria-live="polite">
+        <span class="spf-status-pill {{#if providerReady}}spf-status-good{{else}}spf-status-warn{{/if}}">
+          <i class="fa-solid {{#if providerReady}}fa-check{{else}}fa-triangle-exclamation{{/if}}" aria-hidden="true"></i>
+          {{#if providerReady}}{{localize "SIMPLYPF2E.ProviderSetup.Configured"}}{{else}}{{localize "SIMPLYPF2E.ProviderSetup.NeedsSetup"}}{{/if}}
+        </span>
+        <span class="spf-status-pill {{#if providerTested}}spf-status-good{{else}}spf-status-muted{{/if}}">
+          <i class="fa-solid {{#if providerTested}}fa-circle-check{{else}}fa-circle-question{{/if}}" aria-hidden="true"></i>
+          {{#if providerTested}}{{localize "SIMPLYPF2E.ProviderSetup.Tested"}}{{else}}{{localize "SIMPLYPF2E.ProviderSetup.NotTested"}}{{/if}}
+        </span>
+      </span>
+      {{#if lastRunCost}}<span class="spf-last-run">{{lastRunCost}}</span>{{/if}}
+    </span>
+    <span class="spf-provider-actions">
+      {{#if providerReady}}
+        <button type="button" data-action="testProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" {{#if busy}}disabled{{/if}}>
+          <i class="fa-solid fa-signal" aria-hidden="true"></i>
+        </button>
+      {{/if}}
+      <button type="button" data-action="configureProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-gear" aria-hidden="true"></i>
+      </button>
+      <i class="fa-solid {{#if providerReady}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}} spf-provider-state" role="img" aria-label="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}" data-tooltip="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}"></i>
+    </span>
+  </div>
+  {{#if providerFeedback}}
+    <p class="notification spf-feedback spf-feedback-{{providerFeedback.kind}}" role="{{#if providerFeedback.role}}{{providerFeedback.role}}{{else if (eq providerFeedback.kind 'error')}}alert{{else}}status{{/if}}" aria-live="{{#if (eq providerFeedback.kind 'error')}}assertive{{else}}polite{{/if}}">
+      <i class="fa-solid {{#if providerFeedback.icon}}{{providerFeedback.icon}}{{else if (eq providerFeedback.kind 'error')}}fa-circle-exclamation{{else}}fa-circle-check{{/if}}" aria-hidden="true"></i>
+      <span>{{providerFeedback.text}}</span>
+    </p>
+  {{/if}}
+  {{#if apiKeyWarning}}
+    <p class="notification warning spf-provider-warning" role="status">
+      <span>{{apiKeyWarning}}</span>
+      {{#if canAuthorizeApiKey}}
+        <span class="spf-provider-endpoint"><strong>{{localize "SIMPLYPF2E.Generator.ApiKeyEndpoint"}}</strong> <code>{{providerBaseUrl}}</code></span>
+        <button type="button" data-action="authorizeApiKey" data-base-url="{{providerBaseUrl}}" {{#if busy}}disabled{{/if}}>{{localize "SIMPLYPF2E.Generator.AuthorizeApiKey"}}</button>
+      {{/if}}
+    </p>
+  {{/if}}
+</header>

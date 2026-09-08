@@ -71,7 +71,8 @@ Hooks.once("init", () => {
   // registered once here so both HandlebarsApplicationMixin apps can
   // {{> simplypf2e-progress}} instead of duplicating the block.
   foundry.applications.handlebars.loadTemplates({
-    "simplypf2e-progress": `modules/${MODULE_ID}/templates/_progress.hbs`
+    "simplypf2e-progress": `modules/${MODULE_ID}/templates/_progress.hbs`,
+    "simplypf2e-provider-header": `modules/${MODULE_ID}/templates/_provider-header.hbs`
   });
 });
 

@@ -116,6 +116,7 @@ export class ManagePresetsApp extends HandlebarsApplicationMixin(ApplicationV2) 
   /** The generator app that opened this dialog, re-rendered after changes so
    * its preset <select> stays in sync. */
   #generator;
+  #feedback = null;
 
   constructor(options = {}) {
     super(options);
@@ -123,7 +124,7 @@ export class ManagePresetsApp extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   async _prepareContext() {
-    return { presets: getCustomPresets() };
+    return { presets: getCustomPresets(), feedback: this.#feedback };
   }
 
   async #refresh() {
@@ -132,79 +133,147 @@ export class ManagePresetsApp extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   static async #onNew() {
-    const result = await promptPresetDialog();
-    if (!result) return;
-    const created = await addCustomPreset(result.name, result.prompt, result);
-    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: created.name }));
-    await this.#refresh();
+    try {
+      const result = await promptPresetDialog();
+      if (!result) return;
+      const created = await addCustomPreset(result.name, result.prompt, result);
+      const text = game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: created.name });
+      this.#feedback = { kind: "success", role: "status", icon: "fa-circle-check", text };
+      ui.notifications.info(text);
+      await this.#refresh();
+    } catch (err) {
+      await ManagePresetsApp.#showError.call(this, err);
+    }
   }
 
   static async #onEdit(_event, target) {
-    const preset = findPreset(target.dataset.id);
-    if (!preset?.custom) return;
-    const result = await promptPresetDialog({
-      title: "SIMPLYPF2E.Presets.DialogEditTitle",
-      ...preset
-    });
-    if (!result) return;
-    const updated = await updateCustomPreset(preset.id, result);
-    if (!updated) return;
-    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: updated.name }));
-    await this.#refresh();
+    try {
+      const preset = findPreset(target.dataset.id);
+      if (!preset?.custom) return;
+      const result = await promptPresetDialog({
+        title: "SIMPLYPF2E.Presets.DialogEditTitle",
+        ...preset
+      });
+      if (!result) return;
+      const updated = await updateCustomPreset(preset.id, result);
+      if (!updated) return;
+      const text = game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: updated.name });
+      this.#feedback = { kind: "success", role: "status", icon: "fa-circle-check", text };
+      ui.notifications.info(text);
+      await this.#refresh();
+    } catch (err) {
+      await ManagePresetsApp.#showError.call(this, err);
+    }
   }
 
   static async #onDuplicate(_event, target) {
-    const preset = findPreset(target.dataset.id);
-    if (!preset?.custom) return;
-    const result = await promptPresetDialog({
-      ...preset,
-      title: "SIMPLYPF2E.Presets.DialogTitle",
-      name: game.i18n.format("SIMPLYPF2E.Presets.CopyName", { name: preset.name })
-    });
-    if (!result) return;
-    const created = await addCustomPreset(result.name, result.prompt, result);
-    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: created.name }));
-    await this.#refresh();
+    try {
+      const preset = findPreset(target.dataset.id);
+      if (!preset?.custom) return;
+      const result = await promptPresetDialog({
+        ...preset,
+        title: "SIMPLYPF2E.Presets.DialogTitle",
+        name: game.i18n.format("SIMPLYPF2E.Presets.CopyName", { name: preset.name })
+      });
+      if (!result) return;
+      const created = await addCustomPreset(result.name, result.prompt, result);
+      const text = game.i18n.format("SIMPLYPF2E.Presets.Saved", { name: created.name });
+      this.#feedback = { kind: "success", role: "status", icon: "fa-circle-check", text };
+      ui.notifications.info(text);
+      await this.#refresh();
+    } catch (err) {
+      await ManagePresetsApp.#showError.call(this, err);
+    }
   }
 
   static async #onDelete(_event, target) {
-    const preset = findPreset(target.dataset.id);
-    if (!preset?.custom) return;
-    if (await confirmDeletePreset(preset)) await this.#refresh();
+    try {
+      const preset = findPreset(target.dataset.id);
+      if (!preset?.custom) return;
+      if (await confirmDeletePreset(preset)) {
+        this.#feedback = {
+          kind: "success",
+          role: "status",
+          icon: "fa-trash",
+          text: game.i18n.format("SIMPLYPF2E.Presets.Deleted", { name: preset.name })
+        };
+        await this.#refresh();
+      }
+    } catch (err) {
+      await ManagePresetsApp.#showError.call(this, err);
+    }
   }
 
-  static #onExport(_event, target) {
-    const preset = findPreset(target.dataset.id);
-    if (!preset?.custom) return;
-    const save = foundry.utils.saveDataToFile ?? globalThis.saveDataToFile;
-    save(exportPresets([preset.id]), "text/json", `simplypf2e-preset-${preset.id}.json`);
+  static async #onExport(_event, target) {
+    try {
+      const preset = findPreset(target.dataset.id);
+      if (!preset?.custom) return;
+      const save = foundry.utils.saveDataToFile ?? globalThis.saveDataToFile;
+      save(exportPresets([preset.id]), "text/json", `simplypf2e-preset-${preset.id}.json`);
+      this.#feedback = {
+        kind: "success",
+        role: "status",
+        icon: "fa-file-export",
+        text: game.i18n.format("SIMPLYPF2E.Presets.Exported", { name: preset.name })
+      };
+      await this.#refresh();
+    } catch (err) {
+      await ManagePresetsApp.#showError.call(this, err);
+    }
   }
 
-  static #onExportAll() {
-    if (!getCustomPresets().length) return;
-    const save = foundry.utils.saveDataToFile ?? globalThis.saveDataToFile;
-    save(exportPresets(), "text/json", "simplypf2e-presets.json");
+  static async #onExportAll() {
+    try {
+      if (!getCustomPresets().length) return;
+      const save = foundry.utils.saveDataToFile ?? globalThis.saveDataToFile;
+      save(exportPresets(), "text/json", "simplypf2e-presets.json");
+      this.#feedback = {
+        kind: "success",
+        role: "status",
+        icon: "fa-file-export",
+        text: game.i18n.localize("SIMPLYPF2E.Presets.ExportedAll")
+      };
+      await this.#refresh();
+    } catch (err) {
+      await ManagePresetsApp.#showError.call(this, err);
+    }
   }
 
   static async #onImport() {
-    const json = await DialogV2.prompt({
-      window: { title: "SIMPLYPF2E.Presets.ImportTitle", icon: "fa-solid fa-file-import" },
-      position: { width: 480 },
-      content: `
-        <div class="form-group stacked">
-          <label>${game.i18n.localize("SIMPLYPF2E.Presets.ImportHint")}</label>
-          <textarea name="presetJson" rows="10" placeholder='[{ "name": "...", "prompt": "..." }]'></textarea>
-        </div>`,
-      ok: {
-        label: "SIMPLYPF2E.Presets.Import",
-        icon: "fa-solid fa-file-import",
-        callback: (_event, button) => button.form.elements.presetJson.value.trim()
-      },
-      rejectClose: false
+    try {
+      const json = await DialogV2.prompt({
+        window: { title: "SIMPLYPF2E.Presets.ImportTitle", icon: "fa-solid fa-file-import" },
+        position: { width: 480 },
+        content: `
+          <div class="form-group stacked">
+            <label>${game.i18n.localize("SIMPLYPF2E.Presets.ImportHint")}</label>
+            <textarea name="presetJson" rows="10" placeholder='[{ "name": "...", "prompt": "..." }]'></textarea>
+          </div>`,
+        ok: {
+          label: "SIMPLYPF2E.Presets.Import",
+          icon: "fa-solid fa-file-import",
+          callback: (_event, button) => button.form.elements.presetJson.value.trim()
+        },
+        rejectClose: false
+      });
+      if (!json) return;
+      const { added, skipped } = await importPresets(json);
+      const text = game.i18n.format("SIMPLYPF2E.Presets.ImportDone", { added, skipped });
+      this.#feedback = { kind: "success", role: "status", icon: "fa-file-import", text };
+      ui.notifications.info(text);
+      await this.#refresh();
+    } catch (err) {
+      await ManagePresetsApp.#showError.call(this, err);
+    }
+  }
+
+  static async #showError(err) {
+    const text = game.i18n.format("SIMPLYPF2E.Presets.ActionFailed", {
+      message: err?.message ?? String(err)
     });
-    if (!json) return;
-    const { added, skipped } = await importPresets(json);
-    ui.notifications.info(game.i18n.format("SIMPLYPF2E.Presets.ImportDone", { added, skipped }));
+    this.#feedback = { kind: "error", role: "alert", icon: "fa-circle-exclamation", text };
+    console.error("simplypf2e | preset action failed", err);
+    ui.notifications.error(text);
     await this.#refresh();
   }
 }

@@ -3,11 +3,13 @@
 // Run: node scripts/item-builder.runedDerived.test.mjs
 import assert from "node:assert/strict";
 import { SETTINGS } from "./settings.mjs";
+import { issueCandidate } from "./compendium.mjs";
 
 const docs = new Map();
 const entry = (id, name, type) => ({ _id: id, name, type });
 const makeDoc = (id, name, type, system) => ({
   name,
+  type,
   uuid: `Compendium.pf2e.equipment-srd.Item.${id}`,
   system,
   toObject: () => ({ _id: id, name, type, system: structuredClone(system) })
@@ -39,20 +41,32 @@ globalThis.game = {
     getDocument: async (id) => docs.get(id)
   }]])
 };
-globalThis.foundry = { utils: { escapeHTML: (value) => String(value) } };
+globalThis.foundry = { utils: { escapeHTML: (value) => String(value), deepClone: structuredClone } };
 
+globalThis.CONFIG = { Item: { documentClass: class {
+  constructor(data) {
+    this.system = data.system;
+    this.system.price.value = { gp: 100 };
+    this.system.level.value = 4;
+    this.level = 4; this.rarity = "common"; this.price = this.system.price;
+  }
+} } };
 const { buildRunedItem } = await import("./item-builder.mjs");
+const candidate = (id, name, type, fields = {}) => issueCandidate({ packId: "pf2e.equipment-srd", _id: id }, { name, type, ...fields });
 const { itemData, preview } = await buildRunedItem({
   kind: "weapon", baseItemName: "Longsword", potency: 1, secondaryTier: 1,
-  propertyRunes: [], rarity: "common", description: "A test blade."
+  baseItemCandidate: candidate("longsword", "Longsword", "weapon"),
+  potencyRuneCandidate: candidate("potency1", "Weapon Potency (+1)", "equipment"),
+  secondaryRuneCandidate: candidate("striking", "Striking", "equipment"),
+  propertyRuneCandidates: [], propertyRunes: [], rarity: "common", description: "A test blade."
 });
 
 assert.deepEqual(itemData.system.price, { value: { gp: 1 } },
   "persisted source must preserve the base item's system.price");
 assert.deepEqual(itemData.system.level, { value: 0 },
   "persisted source must preserve the base item's system.level");
-assert.deepEqual(preview, { priceGp: 100, level: 4 },
-  "ordinary runed preview uses rune-only price and maximum component level");
+assert.deepEqual(preview, { priceGp: 100, level: 4, rarity: "common" },
+  "runed preview uses the native temporary item while preserving cloned source values");
 assert.equal(itemData.name, "+1 Striking Longsword");
 assert.deepEqual(itemData.system.runes, { potency: 1, striking: 1, property: [] });
 

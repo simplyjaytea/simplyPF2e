@@ -29,10 +29,15 @@ let abortDuringResolve = false;
 const ref = { packId: "test.equipment", _id: "potion" };
 const mocks = {
   MODULE_ID: "simplypf2e",
+  getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
+  AI_TASK: {}, taskMaxTokens: () => 100,
   SpfApp: class {
     _beginProgress() { abortController = new AbortController(); return abortController.signal; }
     async _setStep() {}
+    _skipStep() {}
+    _warnStep() {}
     _recordTokens() {}
+    _progressCallback() { return () => {}; }
     _finishRun() {}
     _throwIfCancelled() {
       if (abortController.signal.aborted) throw Object.assign(new Error("cancelled"), { cancelled: true });
@@ -99,7 +104,8 @@ for (const failure of [new Error("provider unavailable"), Object.assign(new Erro
   providerFailure = failure;
   await App.DEFAULT_OPTIONS.actions.rerollLoot.call(app);
   assertRetained(app, before);
-  assert.equal(app._test_error, failure.message);
+  assert.equal(app._test_error, failure.cancelled ? null : failure.message,
+    "cancellation is neutral while ordinary errors remain visible");
 }
 providerFailure = null;
 {
@@ -130,7 +136,7 @@ providerFailure = null;
   abortDuringResolve = true;
   await App.DEFAULT_OPTIONS.actions.rerollLoot.call(app);
   assertRetained(app, before);
-  assert.equal(app._test_error, "cancelled", "cancelling during local resolution also preserves the old plan");
+  assert.equal(app._test_error, null, "cancelling during local resolution is neutral and preserves the old plan");
   abortDuringResolve = false;
 }
 {
@@ -161,7 +167,8 @@ for (const omitted of [false, true]) {
 {
   const app = new App();
   Object.assign(app._test_input, { mode: "encounter", level: 1, partySize: 1, threat: "trivial" });
-  await app._test_generateEncounter();
+  app.element = { querySelector: () => null };
+  await app._test_runGeneration(false, { create: false });
   assert.match(app._test_error, /budget is too small/,
     "an unsupported tiny encounter is reported before any provider request");
   assert.equal(app._test_busy, false, "early composition failure must unlock the app");

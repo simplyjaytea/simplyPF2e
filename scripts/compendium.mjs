@@ -81,7 +81,10 @@ export function getPacksFor(category) {
   return DEFAULT_PACKS[category].filter((id) => game.packs.get(id));
 }
 
-/** Report the enabled packs required before a generation may spend tokens. */
+/**
+ * Report packs required before spending tokens. Spell sources remain necessary
+ * when casting is disabled: all actor modes can still ground scroll loot.
+ */
 export function sourceReadiness(mode, { allowSpellcasting = true } = {}) {
   const character = mode === "character";
   const required = character
@@ -303,14 +306,18 @@ export function candidateId(entry) {
 const issuedCandidateRefs = new WeakSet();
 
 function candidateRecord(entry, fields = {}) {
-  const ref = { packId: entry.packId, _id: entry._id };
+  if (!candidateId(entry)) throw new TypeError("A candidate needs an exact pack and document identity");
+  const ref = Object.freeze({ packId: entry.packId, _id: entry._id });
   issuedCandidateRefs.add(ref);
   return {
+    ...fields,
     id: candidateId(entry),
-    ref,
-    ...fields
+    ref
   };
 }
+
+/** Issue a catalog candidate without exposing the private reference registry. */
+export { candidateRecord as issueCandidate };
 
 /** True only for the in-memory reference produced by this run's candidate catalog. */
 export function isIssuedCandidate(ref, packIds = null) {

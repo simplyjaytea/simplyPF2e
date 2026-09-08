@@ -1,31 +1,46 @@
 {{#if progress}}
-  <div class="spf-progress spf-card spf-progress-{{progress.phase}}" data-phase="{{progress.phase}}">
-    <ol class="spf-progress-steps">
-      {{#each progress.steps}}
-        <li class="spf-step-{{this.state}}">
-          {{#if (eq this.state "done")}}<i class="fa-solid fa-circle-check"></i>
-          {{else if (eq this.state "active")}}<i class="fa-solid fa-spinner fa-spin"></i>
-          {{else}}<i class="fa-regular fa-circle"></i>{{/if}}
-          {{this.label}}
-        </li>
-      {{/each}}
-    </ol>
-    <div class="spf-progress-bar" role="progressbar" aria-label="{{localize 'SIMPLYPF2E.Progress.Label'}}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{progress.percent}}">
-      <div class="spf-progress-fill" style="width: {{progress.percent}}%"></div>
+  <section class="spf-progress spf-card spf-progress-{{progress.phase}}" data-phase="{{progress.phase}}" data-status="{{progress.status}}" aria-label="{{localize 'SIMPLYPF2E.Progress.Label'}}">
+    <div class="spf-progress-announcement spf-sr-only" role="status" aria-live="polite" aria-atomic="true">{{progress.activeLabel}}</div>
+    <svg class="spf-sigil" viewBox="0 0 80 80" aria-hidden="true" focusable="false">
+      <g class="spf-sigil-ring" fill="none" stroke="currentColor" stroke-width="1.25">
+        <circle cx="40" cy="40" r="34" stroke-dasharray="22 5 2 5"/>
+        <path d="M40 2v8M78 40h-8M40 78v-8M2 40h8M13 13l6 6M67 13l-6 6M67 67l-6-6M13 67l6-6"/>
+      </g>
+      <g class="spf-sigil-core" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+        <path d="m40 16 22 13v23L40 65 18 52V29Z M40 16 29 46h22Zm-22 13 11 17-11 6m44-23L51 46l11 6M29 46l11 19 11-19Z"/>
+      </g>
+    </svg>
+    <h3 class="spf-progress-heading" tabindex="-1">{{#if progress.activeLabel}}{{progress.activeLabel}}{{else}}{{localize "SIMPLYPF2E.Progress.Working"}}{{/if}}</h3>
+    <div class="spf-progress-track">
+      <div class="spf-progress-bar" role="progressbar" aria-label="{{localize 'SIMPLYPF2E.Progress.Estimated'}}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{progress.percent}}" aria-valuetext="{{progress.activeLabel}}: {{progress.percent}}%">
+        <div class="spf-progress-fill" style="width: {{progress.percent}}%"></div>
+      </div>
+      <p class="spf-progress-percent">{{progress.percent}}%</p>
     </div>
-    <p class="spf-progress-percent">{{progress.percent}}%</p>
+    <div class="spf-progress-meta"><span>{{localize "SIMPLYPF2E.Progress.Estimated"}}</span><span class="spf-progress-elapsed">{{localize "SIMPLYPF2E.Progress.Elapsed" time=progress.elapsed}}</span></div>
     <p class="spf-progress-detail">{{#if busyMessage}}{{busyMessage}}{{else}}{{progress.detail}}{{/if}}</p>
-    <p class="spf-model">{{model}}</p>
-    {{#if canCancel}}
-      <button type="button" class="spf-secondary spf-cancel" data-action="cancelGeneration">
-        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-        {{localize "SIMPLYPF2E.Progress.Cancel"}}
+    <details class="spf-progress-activity" data-state-key="generation-activity">
+      <summary>{{localize "SIMPLYPF2E.Progress.Activity"}}</summary>
+      <ol class="spf-progress-steps">
+        {{#each progress.steps}}
+          <li class="spf-step-{{this.state}}" {{#if (eq this.state "active")}}aria-current="step"{{/if}}>
+            <i class="fa-solid {{#if (eq this.state 'done')}}fa-circle-check{{else if (eq this.state 'active')}}fa-circle-dot{{else if (eq this.state 'skipped')}}fa-minus{{else if (eq this.state 'warning')}}fa-triangle-exclamation{{else if (eq this.state 'error')}}fa-circle-exclamation{{else if (eq this.state 'cancelled')}}fa-ban{{else}}fa-circle{{/if}}" aria-hidden="true"></i>
+            <span class="spf-progress-step-label">{{this.label}}</span>
+            <span class="spf-step-outcome {{#unless (eq this.state 'skipped')}}{{#unless (eq this.state 'warning')}}spf-sr-only{{/unless}}{{/unless}}">{{#if (eq this.state "done")}}{{localize "SIMPLYPF2E.Progress.Done"}}{{else if (eq this.state "active")}}{{localize "SIMPLYPF2E.Progress.Active"}}{{else if (eq this.state "skipped")}}{{localize "SIMPLYPF2E.Progress.Skipped"}}{{else if (eq this.state "warning")}}{{localize "SIMPLYPF2E.Progress.Warning"}}{{else if (eq this.state "error")}}{{localize "SIMPLYPF2E.Progress.Failed"}}{{else if (eq this.state "cancelled")}}{{localize "SIMPLYPF2E.Progress.Cancelled"}}{{else}}{{localize "SIMPLYPF2E.Progress.Pending"}}{{/if}}</span>
+          </li>
+        {{/each}}
+      </ol>
+      <p class="spf-model">{{model}}</p>
+    </details>
+    {{#if (eq progress.status "running")}}
+      <p class="spf-hint">{{localize "SIMPLYPF2E.Progress.Continues"}}</p>
+      <button type="button" class="spf-secondary spf-cancel" data-action="cancelGeneration" {{#unless canCancel}}hidden disabled{{/unless}}>
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>{{localize "SIMPLYPF2E.Progress.Cancel"}}
       </button>
     {{/if}}
-  </div>
+  </section>
 {{else}}
   <div class="spf-progress spf-card" role="status" aria-live="polite">
     <p class="spf-progress-detail">{{#if busyMessage}}{{busyMessage}}{{else}}{{localize "SIMPLYPF2E.Generator.Busy"}}{{/if}}</p>
-    <p class="spf-model">({{model}})</p>
   </div>
 {{/if}}

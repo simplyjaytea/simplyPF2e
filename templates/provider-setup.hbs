@@ -1,8 +1,14 @@
 <div class="simplypf2e-provider-setup">
-  <p class="spf-hint">{{localize "SIMPLYPF2E.ProviderSetup.Intro"}}</p>
+  <header class="spf-app-intro">
+    <span class="spf-app-sigil" aria-hidden="true"><i class="fa-solid fa-plug-circle-check" aria-hidden="true"></i></span>
+    <div>
+      <p class="spf-eyebrow">{{localize "SIMPLYPF2E.ProviderSetup.ProviderLabel"}}</p>
+      <p class="spf-hint">{{localize "SIMPLYPF2E.ProviderSetup.Intro"}}</p>
+    </div>
+  </header>
 
-  <div class="spf-connection-bank">
-    <label for="spf-active-connection">{{localize "SIMPLYPF2E.ProviderSetup.Connections"}}</label>
+  <section class="spf-connection-bank spf-card" aria-labelledby="spf-active-connection-heading">
+    <h2 id="spf-active-connection-heading">{{localize "SIMPLYPF2E.ProviderSetup.Connections"}}</h2>
     <div class="spf-connection-row">
       <select id="spf-active-connection" name="activeConnection" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.ActiveConnection'}}">
         {{#each connections}}
@@ -10,29 +16,32 @@
         {{/each}}
       </select>
       <button type="button" data-action="createConnection" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.NewConnection'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.NewConnection'}}">
-        <i class="fa-solid fa-plus"></i>
+        <i class="fa-solid fa-plus" aria-hidden="true"></i>
       </button>
       <button type="button" data-action="deleteConnection" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.DeleteConnection'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.DeleteConnection'}}" {{#unless canDeleteConnection}}disabled{{/unless}}>
-        <i class="fa-solid fa-trash"></i>
+        <i class="fa-solid fa-trash" aria-hidden="true"></i>
       </button>
     </div>
     <p class="hint">{{localize "SIMPLYPF2E.ProviderSetup.ConnectionsHint"}}</p>
-  </div>
+  </section>
 
-  <div class="form-group stacked">
+  <div class="form-group stacked spf-form-card">
     <label for="spf-connection-name">{{localize "SIMPLYPF2E.ProviderSetup.ConnectionName"}}</label>
     <input id="spf-connection-name" type="text" name="connectionName" value="{{connectionName}}" required spellcheck="false" autocomplete="off" placeholder="{{localize 'SIMPLYPF2E.ProviderSetup.ConnectionNamePlaceholder'}}">
   </div>
 
-  <div class="spf-provider-presets" role="group" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.ChooseProvider'}}">
+  <fieldset class="spf-provider-choice spf-card">
+    <legend>{{localize "SIMPLYPF2E.ProviderSetup.ChooseProvider"}}</legend>
+    <div class="spf-provider-presets" role="group" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.ChooseProvider'}}">
     {{#each providers}}
       <button type="button" data-action="chooseProvider" data-provider="{{this.id}}" class="{{#if this.selected}}spf-provider-preset-active{{/if}}" aria-pressed="{{#if this.selected}}true{{else}}false{{/if}}">
-        <i class="fa-solid {{this.icon}}"></i>
+        <i class="fa-solid {{this.icon}}" aria-hidden="true"></i>
         <span>{{this.label}}</span>
       </button>
     {{/each}}
-  </div>
-  <p class="spf-hint spf-provider-local-hint"><i class="fa-solid fa-server"></i> {{localServerHint}}</p>
+    </div>
+  </fieldset>
+  <p class="spf-hint spf-provider-local-hint"><i class="fa-solid fa-server" aria-hidden="true"></i> {{localServerHint}}</p>
 
   <div class="form-group stacked">
     <label for="spf-provider-base-url">{{localize "SIMPLYPF2E.Settings.ApiBaseUrl.Name"}}</label>
@@ -44,7 +53,7 @@
     <label for="spf-provider-model">{{localize "SIMPLYPF2E.Settings.Model.Name"}}</label>
     <div class="spf-model-picker">
       <input id="spf-provider-model" type="text" name="model" value="{{model}}" list="spf-provider-model-list" required spellcheck="false" autocomplete="off" placeholder="{{localize 'SIMPLYPF2E.ProviderSetup.ModelPlaceholder'}}">
-      <button type="button" data-action="loadModels"><i class="fa-solid fa-rotate"></i> {{localize "SIMPLYPF2E.ProviderSetup.LoadModels"}}</button>
+      <button type="button" class="spf-secondary" data-action="loadModels"><i class="fa-solid fa-rotate" aria-hidden="true"></i> {{localize "SIMPLYPF2E.ProviderSetup.LoadModels"}}</button>
     </div>
     <datalist id="spf-provider-model-list">
       {{#each availableModels}}<option value="{{this}}"></option>{{/each}}
@@ -65,17 +74,24 @@
     </label>
   {{/if}}
 
-  <p class="notification info spf-provider-privacy"><i class="fa-solid fa-shield-halved"></i> {{localize "SIMPLYPF2E.ProviderSetup.Privacy"}}</p>
+  <p class="notification info spf-provider-privacy"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> {{localize "SIMPLYPF2E.ProviderSetup.Privacy"}}</p>
+
+  {{#if feedback}}
+    <p class="notification spf-feedback spf-feedback-{{feedback.kind}}" role="{{#if feedback.role}}{{feedback.role}}{{else}}status{{/if}}" aria-live="{{#if (eq feedback.kind 'error')}}assertive{{else}}polite{{/if}}">
+      <i class="fa-solid {{#if feedback.icon}}{{feedback.icon}}{{else}}fa-circle-info{{/if}}" aria-hidden="true"></i>
+      <span>{{feedback.text}}</span>
+    </p>
+  {{/if}}
 
   <footer class="spf-actions">
     <button type="button" class="spf-primary" data-action="saveAndTest">
-      <i class="fa-solid fa-signal"></i> {{localize "SIMPLYPF2E.ProviderSetup.SaveTest"}}
+      <i class="fa-solid fa-signal" aria-hidden="true"></i> {{localize "SIMPLYPF2E.ProviderSetup.SaveTest"}}
     </button>
     <button type="submit">
-      <i class="fa-solid fa-floppy-disk"></i> {{localize "SIMPLYPF2E.ProviderSetup.SaveAuthorize"}}
+      <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> {{localize "SIMPLYPF2E.ProviderSetup.SaveAuthorize"}}
     </button>
     <button type="button" data-action="cancel">
-      <i class="fa-solid fa-xmark"></i> {{localize "SIMPLYPF2E.ProviderSetup.Cancel"}}
+      <i class="fa-solid fa-xmark" aria-hidden="true"></i> {{localize "SIMPLYPF2E.ProviderSetup.Cancel"}}
     </button>
   </footer>
 </div>

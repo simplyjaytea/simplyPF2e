@@ -63,6 +63,7 @@ globalThis.fetch = async (url, options) => {
 
 try {
   const { chooseSpellFocus, listProviderModels, testProviderConnection } = await import("./ai.mjs");
+  const activity = [];
   const result = await chooseSpellFocus({
     concept: {
       name: "Ember Adept",
@@ -71,10 +72,13 @@ try {
       description: "Shapes flame to divide enemies.",
       traits: ["fire", "humanoid"]
     },
-    tradition: "arcane"
+    tradition: "arcane",
+    onProgress: (event) => activity.push(event.phase)
   });
 
   assert.deepEqual(result.keywords, ["fire", "control"]);
+  assert.deepEqual(activity, ["waiting", "receiving", "retrying", "waiting", "receiving", "validating"],
+    "non-streaming waits, bounded retry and validation report real transport stages");
   assert.deepEqual(
     result.usage,
     { prompt: 21, completion: 25, total: 46, estimated: false },
@@ -106,6 +110,7 @@ try {
     }
   );
   const compatibilityStart = requestBodies.length;
+  const compatibilityActivity = [];
   const compatibilityResult = await chooseSpellFocus({
     concept: {
       name: "Frost Adept",
@@ -114,9 +119,12 @@ try {
       description: "Shapes ice to divide enemies.",
       traits: ["cold", "humanoid"]
     },
-    tradition: "arcane"
+    tradition: "arcane",
+    onProgress: (event) => { compatibilityActivity.push(event.phase); if (event.phase === "receiving") throw new Error("broken progress UI"); }
   });
   assert.deepEqual(compatibilityResult.keywords, ["frost", "control"]);
+  assert.deepEqual(compatibilityActivity, ["waiting", "compatibility", "receiving", "validating"],
+    "compatibility adjustments report activity and a broken observer cannot fail generation");
   const compatibilityBodies = requestBodies.slice(compatibilityStart);
   const compatibilityHeaders = requestHeaders.slice(compatibilityStart);
   assert.equal(compatibilityBodies.length, 2, "named unsupported parameters must retry in-place once");

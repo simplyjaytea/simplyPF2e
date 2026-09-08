@@ -1,44 +1,30 @@
 # HANDOFF.md — live session baton
 
-Read this first, then CLAUDE.md. Release/review history belongs in HISTORY.md; detailed audit evidence is in [docs/audit-2026-09-05.md](docs/audit-2026-09-05.md).
+Read this first, then CLAUDE.md. Detailed current evidence and installed acceptance checklist: [docs/consumer-readiness-2026-09-08.md](docs/consumer-readiness-2026-09-08.md).
 
-## Current session — 2026-09-05 Item Forge and generator audit
+## Current session — 2026-09-08 consumer UI
 
-- Branch: `codex/forge-generator-audit`, based on clean `b043a51` (PR #103). GitHub's public API confirms **v0.3.5.63**; main was still `b043a51` at the final read. The previous cleanup/publication task is complete. This audit's fixes are **local, unpublished, and not installed**.
-- Fixed forge UI clipping; overlapping generation and final cancellation; committed item/actor retry boundaries; AI numeric forge mechanics; restricted/unsupported passive catalogs; charge persistence/copy selection/click guards; shared macro deletion and owner-local rest. Fixed creature loot reroll atomicity/exact grounding, original-brief fidelity, empty-loot preservation, ammo/quantities/unit pricing, vanished-source preflight, encounter budgets, and duplicate Perception. Fixed PC worn gear, native feat schedules/earned-level prerequisites, and restricted Investigator skill-slot proof.
-- Final parent verification on **Node 22.23.2** passed **82 regression files**, **117 script syntax checks**, module/localization JSON (2), and whitespace checks. Full log is local `.git/audit-node22.log`. Existing test regressions were extended and 13 new regression files added. No runtime dependency was added to the project.
-- Independent reviewer `independent_audit_review` inspected the final diff and source evidence, ran all 82 regressions, and approved with **no remaining actionable findings**. Review-found catalog/investment/PC-cancellation issues were fixed and rechecked. No review remains in flight.
-- Actual forge template/CSS rendered with native Foundry CSS fits at **360, 480, and 720px** with no horizontal overflow. This is browser layout evidence, not an installed revised ApplicationV2 acceptance run.
-- Prepared PR text is local `.git/forge-generator-audit-pr.md`. The user explicitly authorized **push and merge** of the reviewed audit. Publish through a PR after its required checks pass and verify the automatic release; do not push main directly. Code is committed as `1ee5b5b`; no revised-code installation or live acceptance has occurred.
-
-## Live QA performed — installed baseline only
-
-- Verified installed **SimplyPF2e 0.3.5.63**, Foundry **14.365**, PF2e **8.5.0**, existing GM session at `https://foundry-test.gigaserver.xyz/game`. No module/core/system update performed.
-- Directory Forge row, singleton reopening, exclusive kind selection and prompt/level/rarity retention passed. Live tile overflow reproduced and fixed locally.
-- Generated/created Ghost Touch longsword: preview/native **level 4, 110 gp**. Slick chain shirt: preview/native **level 5, 205 gp**, passive-only description. NPC Dock Watchman: one-click completion and native sheet, **level 2, AC17, HP30/30**, no spells with Allow spellcasting disabled.
-- NPC had duplicate Perception and two leather armors; duplicate Perception is fixed locally. Duplicate gear is a prompt-fidelity observation, not proof of the new fidelity fix. Original constraints now reach refinements; deliberate spare gear is preserved.
-- Total displayed provider usage **32,172 tokens** (3,242 weapon + 1,909 armor + 27,021 NPC). Existing `omniroute / auto/best-free` connection used; no keys/settings changed. No captured SimplyPF2e error logs in the browser's checked buffer.
-
-## Preserve QA artifacts
-
-Preserve every earlier actor/item/macro/token listed in prior HISTORY: `QA <b>Actor</b>`, `QA Caster`, both Clockwork Moth Scouts, earlier forged items/macros, and chat evidence. No earlier QA artifact was deleted or changed.
-
-New this session (created, then named through their sheets):
-
-- `Item.4zojkUhnP0mA7hWm` — **QA Audit — Ghost Touch Longsword**.
-- `Item.OcXYMsSWCyKluKdn` — **QA Audit — Slick Chain Shirt**.
-- `Actor.VsI4lYxCL0DbvVRq` — **QA Audit — Dock Watchman**.
-
-No new macros or tokens were created. GM character assignment and targets were preserved. Browser ends on Items directory; temporary QA viewport is reset. No reliance on old BrowserOS page17 state.
+- Branch `codex/consumer-ui-release`, based on public `origin/main` `89f9a35` / PR #104 / **v0.3.5.64**. Local main is stale. Older unique branch `codex/consumer-readiness` is preserved; do not reset it.
+- Implemented shared refined fantasy light/dark UI, provider feedback, auxiliary apps, animated SVG rune loading card, continuous one-click run lifetime, accurate stage/terminal states, cancellation/close behavior, duplicate-run/write prevention, exact Forge source identities, and native prepared preview metadata. See the report for scope, native-source references, audit fixes, and retained limitations.
+- Luna handled UI; Terra handled Forge/app integration. Explicit **gpt-6-astra** reviewer independently approved core, application lifecycle and final UI slices with **no remaining actionable findings**. Final independent Node **22.23.2** gate passed **85 regressions, 120 script syntax checks, both JSON files, and whitespace**. All review findings and lost semantic-test coverage were fixed/rechecked.
+- Parent final Node22 gate also passed 85 regressions, 120 syntax checks, both JSON files (including duplicate-key detection), and whitespace. Candidate ZIP contains 47 release entries, including the new provider partial and no tests.
+- Parent browser fixture used actual templates and native CSS layers at 360/480/720px, light/dark, long labels, short height and keyboard navigation. Corrected nested outer scrolling, shrinking progress cards and reduced-motion CSS specificity. Forced reduced-motion stylesheet branch computes all decorative animations `none` and transition `0s`. Fixture evidence is not installed ApplicationV2 or PF2e acceptance.
+- The user instructed **push and merge, then update SimplyPF2e through Foundry**. This authorizes the branch/PR publication and module-only update. Do not push/merge directly to main. No revised-code installation or public release has occurred yet in this session. The previous question about manual candidate installation is superseded by the user-requested release/update route.
 
 ## Exact next step
 
-Complete the authorized branch push and PR merge after CI, then verify the automatic release. Revised-code live QA remains outstanding after updating **only SimplyPF2e** in the test world: all three forge kinds; new companion activation/rest/multiple-copy cases; cancellation and failure boundaries; NPC/monster/encounter creation; no-gear/no-loot requests; Fighter/Rogue/Investigator native first-level/accelerated feat placement, grant chains, ammo and worn gear. Record CI/release/version and live results; preserve all QA artifacts.
+Finish the parent verification gate, commit the complete branch, push it, create the PR with explicit outstanding live-QA limits, wait for required CI, merge the PR, and verify automatic release assets/version. Then return the test Foundry server to Setup and update **only SimplyPF2e** through its manifest; relaunch the same world and run the installed checklist. If Setup requests administrator authentication that is not available, ask the user to complete that login and continue. Record exact PR/release/installed versions and live evidence at session end.
+
+## Test world and preserved data
+
+- Existing logged-in GM world: `https://foundry-test.gigaserver.xyz/game`. The server module manifest currently reports **SimplyPF2e 0.3.5.64**; last recorded native baseline evidence was **0.3.5.63** on **Foundry 14.365 / PF2e 8.5.0**. No world/core/system update or provider call occurred during current local QA.
+- Existing connection `omniroute / auto/best-free` may be used for the authorized QA. Do not expose or replace keys/settings.
+- Preserve all previous actors/items/macros/tokens/chat, including `QA <b>Actor</b>`, `QA Caster`, both Clockwork Moth Scouts, earlier forged items and companion macros.
+- Prior audit artifacts: `Item.4zojkUhnP0mA7hWm` **QA Audit — Ghost Touch Longsword**; `Item.OcXYMsSWCyKluKdn` **QA Audit — Slick Chain Shirt**; `Actor.VsI4lYxCL0DbvVRq` **QA Audit — Dock Watchman**. No new native documents have been created in this session so far.
+- Temporary local fixture: `/tmp/simplypf2e-ui-qa/server.cjs` on port8765; it contains no credentials or module runtime dependency. Temporary browser viewport must be reset at completion.
 
 ## Material limits
 
-- Old companions save command snapshots. A module update fixes global rest/cleanup hooks but **does not rewrite old macro commands or forged mechanics**. Test new companions; do not silently migrate old macros.
-- Charge locking covers one client. Foundry updates do not offer atomic cross-client compare-and-swap.
-- Passive source screening is conservative (including detected prose restrictions), not a full rule-interaction/balance proof. Activation dice/DCs remain module-defined GM Core defaults, not published magic-item balance. Condition durations need manual adjudication.
-- Investigator restricted odd-level feats require explicit proven mental-skill/Lore rank prerequisites; generic or unmodeled methodology exceptions remain excluded. Complete-only classes remain Fighter/Rogue/Investigator. Level2+ Free Archetype stays gated.
-- Existing known gaps remain: rune prerequisites/exclusivity, material-constrained armor runes, shield/ammo forging, broader focus/casting/loadout acceptance, local-provider actor flow, and unsupported classes. See CLAUDE.md and audit report.
+- Revised-code live acceptance is outstanding: all three Forge kinds, new activation/rest/copy cases, cancellation isolation/close-reopen, creature/encounter no-gear/no-loot, Fighter/Rogue/Investigator native grants/feats/gear.
+- Existing companion commands/mechanics are not migrated. Same-client charge guards do not provide cross-client atomicity. Passive screening remains conservative and custom activation benchmarks are module defaults, not official custom-item balance.
+- Unsupported classes and level2+ Free Archetype remain gated. Rune prerequisites/exclusivity are not a general engine; material-restricted armor, shields and ammunition forging remain excluded. Spell sources are still needed for scroll loot and bestiary sources for scaffolding.

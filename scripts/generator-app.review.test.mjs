@@ -27,7 +27,11 @@ class App {
   async render() { this.context = await this._prepareContext(); }
   _beginProgress() { this.abort = new AbortController(); return this.abort.signal; }
   async _setStep() {}
+  _skipStep() {}
+  _warnStep() {}
   _recordTokens() {}
+  _progressCallback() { return () => {}; }
+  _lockCreation() { this._throwIfCancelled(); }
   _buildTokenReport() { return null; }
   _formatLastRunCost() { return null; }
   _finishRun() { this._progress = null; }
@@ -49,6 +53,7 @@ const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fig
   backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [], equipment: [], loot: previewLoot });
 const mocks = {
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
+  AI_TASK: {}, taskMaxTokens: () => 100,
   assertComplete, completionManifest, completionSummary,
   verifyCreatedActor: () => { if (verifyFailure) throw verifyFailure; },
   freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates,
@@ -258,7 +263,7 @@ releaseBudget();
 await cancelledRun;
 assert.equal(creates, createsBeforeCancel, "a late cancelled one-click PC run must not create an actor");
 assert.equal(cancelledApp.context.pcPreview, null);
-assert.equal(cancelledApp.context.error, "cancelled");
+assert.equal(cancelledApp.context.error, null, "cancellation is a neutral outcome");
 budgetPending = budgetStarted = null;
 
 // Re-entrant Generate is also rejected while a previous request owns the app.
