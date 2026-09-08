@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-09 — NPC feat matching and native compatibility investigation
+
+- User reported level15 martial-arts tavern-keeper NPC failure at Compendium matching: Crane Stance, Deflect Arrow, Stunning Blows. These feats were AI additions, not explicitly named in the prompt. Investigated and proposed a solution without runtime/provider/Foundry changes.
+- NPCs already select PC class feats across enabled packs and prioritize exact draft names. The reported error means no accepted source refs survived for the retained draft entries; missing catalog, request failure and all-invalid selection remain possible without the raw response. Avoid assuming that NPC sheet item restrictions caused this pre-creation error.
+- Real PF2e8.5.0/master sources establish Crane Stance level1, Stunning Blows level2 and Deflect Projectile level4; NPC15 is not level-barred. Raw feats are forbidden on NPCs, and current featToAction conversion already exists. It preserves some rules/effects but loses feat actor preparation and roll-option semantics; GrantItem granting a feat remains invalid. Stunning Blows depends on Flurry of Blows. Full feat automation cannot be inferred from a source match or an action displayed on the sheet.
+- Proposal and exact citations: [NPC feat plan](docs/npc-feat-plan-2026-09-09.md). Luna traced catalogs/selection, Terra fetched native sources and parent spot-checked them. Astra reviewed the plan and required NPC-scoped same-name source preservation at catalog admission, atomic mixed-invalid reply handling, and a compatibility/recovery release gate. These are incorporated; no Monk-specific patch, class whitelist expansion, silent narrative fallback, or hand-authored Rule Elements proposed.
+
 ## 2026-09-09 — v0.3.5.69 publication and installed smoke check
 
 - PR #109 final source `165d25e551408af8e1a40910d18ea2a97396c586` passed CI 34245166276 and merged as `dcd19fdd816ccaa6ca04efb0b3655127c654178e`. Auto Release 34245250286 succeeded; both .69 assets were verified.

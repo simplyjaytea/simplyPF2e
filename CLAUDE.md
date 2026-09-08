@@ -122,6 +122,8 @@ Claude-side orchestration (when running as Fable/Opus with subagent tools):
 
 ## Known gaps
 
+- **NPC feat compatibility:** NPC selection already uses PC class-feat sources and converts matched feats to action items. This is source grounding, not complete automation compatibility: action conversion loses feat-only actor preparation/roll-option semantics, and a retained GrantItem granting a feat is invalid on NPCs. Source dependencies, class resources/DCs, and native effects require review. The level15 Monk-flavored NPC failure is an earlier selection/grounding failure whose raw reply is unavailable. See [NPC feat plan](docs/npc-feat-plan-2026-09-09.md) for the investigated distinction and proposed general solution.
+
 - **Skill completion limits:** unknown grant timing, non-floor native rank transformations, and missing class data are warned rather than inferred. Duplicate native feat grants and arbitrary new Lore replacements remain manual; this is not full feat-prerequisite validation or a historical level-up simulator. The latest native-clone/skill-write workflow has only bounded native evidence and is not a full rules validation.
 
 - **Native acceptance limits:** .68 live QA covers one Fighter flat-kit/currency path, one Investigator grant path reached from a Rogue request, and one single-member Moderate encounter. The focused Rogue retry failed closed, so complete supported-PC acceptance is not established. Nested backpack quantities/container links, multi-member encounter behavior, duplicate-copy activation, and full screen-reader behavior remain unverified.
