@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-09 — Automatic NPC prerequisite completion design
+
+- User explicitly prefers eliminating manual consumer handling and permits granting prerequisite feats automatically. Revised the NPC plan to build complete, verified supporting-ability packages before selection/creation, with bounded compatible reselection for AI suggestions. Manual-reference fallback is removed from the proposed normal flow. Exact user requirements remain protected by fail-closed validation.
+- Terra fetched installed8.5/master Flurry sources; parent independently fetched both. Standalone Flurry (`nbfNETdpee8CVM17`) is an NPC-valid action; Monk class feature (`NLHHHiAcdnZ5ohc2`) is a PC-only feat. Both have empty rules arrays. Adding the action is a source-backed prerequisite starting point, not proof of two-strike/save/DC/stun execution.
+- Astra reviewed the revised design and both Flurry sources; its requested automatic-recovery wording and explicit clone-only Rule Element invariant are incorporated. Existing PC prerequisite code is an evaluator over supplied context, not a dependency-grant planner. The revised design preserves exact identities, native source boundaries, recursive dependency validation, shared-dependency deduplication, cycle/expansion guards, and whole-package balance review. No runtime/provider/Foundry/publication change in this discussion.
+
 ## 2026-09-09 — NPC feat matching and native compatibility investigation
 
 - User reported level15 martial-arts tavern-keeper NPC failure at Compendium matching: Crane Stance, Deflect Arrow, Stunning Blows. These feats were AI additions, not explicitly named in the prompt. Investigated and proposed a solution without runtime/provider/Foundry changes.
