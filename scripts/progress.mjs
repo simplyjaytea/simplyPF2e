@@ -42,20 +42,23 @@ export function stepWeight(key) {
 
 export function createProgress(defs) {
   return {
-    steps: (defs ?? []).map(([key, label]) => ({
+    steps: (defs ?? []).map(([key, label, weight]) => ({
       key,
       label,
       state: "pending",
-      weight: stepWeight(key)
+      weight: Number.isFinite(weight) && weight > 0 ? weight : stepWeight(key)
     })),
     detail: "",
     percent: 0,
     streamFrac: 0,
-    phase: "local"
+    phase: "local",
+    status: "running",
+    elapsed: "0:00",
+    activeLabel: ""
   };
 }
 
-const PROGRESS_PHASES = new Set(["thinking", "writing", "local", "cancelling"]);
+const PROGRESS_PHASES = new Set(["thinking", "writing", "local", "cancelling", "waiting", "receiving", "retrying", "compatibility", "validating"]);
 
 /** CSS/data-phase token for the progress card. Unknown values stay "local". */
 export function progressPhaseClass(phase) {
@@ -76,16 +79,43 @@ export function classifyRequestAbort({ userAborted = false, aborted = false } = 
 export function applyStep(steps, key) {
   const list = Array.isArray(steps) ? steps : [];
   if (!list.some((step) => step.key === key)) return false;
-  let reached = false;
   for (const step of list) {
     if (step.key === key) {
       step.state = "active";
-      reached = true;
-    } else {
-      step.state = reached ? "pending" : "done";
+    } else if (step.state === "active") {
+      step.state = step.warning ? "warning" : "done";
     }
   }
   return true;
+}
+
+/** A skipped step is an explicit pipeline decision, not inferred from order. */
+export function settleStep(steps, key, state = "done") {
+  if (!["done", "skipped", "warning", "error", "cancelled"].includes(state)) return false;
+  const step = steps?.find((candidate) => candidate.key === key);
+  if (!step) return false;
+  if (state === "warning") step.warning = true;
+  step.state = state;
+  return true;
+}
+
+export function finishProgress(progress, outcome = "success") {
+  if (!progress || progress.status !== "running") return false;
+  if (!["success", "warning", "cancelled", "error"].includes(outcome)) return false;
+  progress.status = outcome;
+  for (const step of progress.steps) {
+    if (step.state === "active") step.state = outcome === "success" ? (step.warning ? "warning" : "done") : outcome;
+  }
+  if (outcome === "success" || outcome === "warning") progress.percent = 100;
+  return true;
+}
+
+/** Wall-clock duration; background throttling never changes the elapsed time. */
+export function elapsedTime(start, end = Date.now()) {
+  const seconds = Math.max(0, Math.floor((end - start) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes}:${String(seconds % 60).padStart(2, "0")}`
+    : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 export function resetStreamPhase(progress) {
@@ -116,7 +146,8 @@ export function progressPercent({ steps, activeKey, streamFrac = 0, floor = 0 })
   const idx = list.findIndex((step) => step.key === activeKey);
   if (idx < 0) return floorClamped;
   const totalWeight = list.reduce((sum, step) => sum + (Number(step.weight) || 0), 0) || 1;
-  const doneWeight = list.slice(0, idx).reduce((sum, step) => sum + (Number(step.weight) || 0), 0);
+  const doneWeight = list.reduce((sum, step) => sum
+    + (["done", "skipped", "warning"].includes(step.state) && step.key !== activeKey ? Number(step.weight) || 0 : 0), 0);
   const frac = Math.min(0.92, Math.max(PHASE_FILL.start, Number(streamFrac) || 0));
   const raw = ((doneWeight + frac * (Number(list[idx].weight) || 0)) / totalWeight) * 100;
   const next = Math.round(Math.max(0, Math.min(99, raw)));

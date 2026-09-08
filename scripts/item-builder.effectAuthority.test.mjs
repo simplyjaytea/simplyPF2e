@@ -6,6 +6,7 @@ import {
   damageDiceForLevel, saveDcForLevel
 } from "./item-builder.mjs";
 import { SETTINGS } from "./settings.mjs";
+import { issueCandidate } from "./compendium.mjs";
 
 const bonus = (value) => ({ key: "FlatModifier", selector: "stealth", type: "item", value });
 const entry = (id, level, rule, type = "equipment") => ({
@@ -76,8 +77,18 @@ const buff = make({ activation: { template: "selfBuff", params: {
 assert.equal(buff.params.durationRounds, null);
 assert.equal(buff.params.durationMinutes, 1, "a self-buff has a finite module-owned default");
 assert.equal(buff.params.ruleEffectKinds[0].value, 1);
-const runeArgs = { kind: "weapon", rarity: "common", baseCandidates: [{ name: "Sword" }], runeCandidates: [], potencyTiers: [1, 2, 3], secondaryTiers: [1, 2, 3] };
-assert.throws(() => normalizeRunedItemConcept({ baseItemName: "Sword", potency: 3, secondaryTier: 3 }, runeArgs),
+const runeCandidate = (id, name, fields = {}) => issueCandidate({ packId: "qa.equipment", _id: id }, { name, ...fields });
+const runeArgs = {
+  kind: "weapon", rarity: "common", baseCandidates: [runeCandidate("sword", "Sword")], runeCandidates: [],
+  potencyCandidates: [runeCandidate("potency-two", "Weapon Potency (+2)", { tier: 2 })],
+  secondaryCandidates: [runeCandidate("striking-greater", "Striking (Greater)", { tier: 2 })]
+};
+assert.throws(() => normalizeRunedItemConcept({
+  baseItemId: runeArgs.baseCandidates[0].id, potencyRuneId: 3, secondaryRuneId: runeArgs.secondaryCandidates[0].id, propertyRuneIds: []
+}, runeArgs),
   /potency rune/, "numeric rune choices cannot authorize a required tier");
-assert.equal(normalizeRunedItemConcept({ baseItemName: "Sword", potency: "double", secondaryTier: "greater" }, runeArgs).secondaryTier, 2);
+assert.equal(normalizeRunedItemConcept({
+  baseItemId: runeArgs.baseCandidates[0].id, potencyRuneId: runeArgs.potencyCandidates[0].id,
+  secondaryRuneId: runeArgs.secondaryCandidates[0].id, propertyRuneIds: []
+}, runeArgs).secondaryTier, 2);
 console.log("forge published-effect and enum-only mechanics authority passed");

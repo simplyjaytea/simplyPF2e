@@ -16,7 +16,7 @@
  *     real component documents chosen by the AI.
  */
 
-import { getPacksFor, getAllEquipmentEntries, findEntry } from "./compendium.mjs";
+import { getPacksFor, getAllEquipmentEntries, getEquipmentIndex, findEntry, issueCandidate } from "./compendium.mjs";
 import { slugify, capitalized } from "./text.mjs";
 
 /* Catalog names of the fundamental rune items, exactly as published. */
@@ -57,6 +57,34 @@ const ARMOR_RUNE_USAGE_CATEGORIES = new Map([
   ["etched-onto-med-heavy-armor", ["medium", "heavy"]]
 ]);
 const ARMOR_RUNE_USAGE = new Set(ARMOR_RUNE_USAGE_CATEGORIES.keys());
+
+/**
+ * Forge candidates must preserve an issued compendium identity. The shared
+ * lightweight equipment scan intentionally coalesces duplicate names for
+ * legacy name-based consumers, so it cannot underpin Forge selection: two
+ * enabled packs may both contain a valid "Flaming" rune. Read the indexed
+ * records here and retain both identities for the model's opaque IDs.
+ */
+async function getForgeEquipmentEntries() {
+  const entries = [];
+  for (const packId of getPacksFor("equipment")) {
+    for (const entry of await getEquipmentIndex(packId)) {
+      if (!entry?._id || !entry?.name) continue;
+      entries.push({
+        packId,
+        _id: entry._id,
+        name: entry.name,
+        type: entry.type,
+        level: entry.system?.level?.value ?? 0,
+        gp: entry.system?.price?.value,
+        usage: entry.system?.usage?.value ?? null,
+        category: entry.system?.category ?? null,
+        specific: entry.system?.specific != null
+      });
+    }
+  }
+  return entries;
+}
 
 /**
  * Whether a property rune (by its real usage string) may be etched onto a
@@ -200,11 +228,24 @@ export async function fundamentalRunes(kind) {
  * @returns {Promise<{potencyTiers: number[], secondaryTiers: number[], minPotencyLevel: number}>}
  */
 export async function getFundamentalRuneTiers(kind, maxLevel) {
-  const { potency, secondary } = await fundamentalRunes(kind);
+  const potencyNames = new Map([1, 2, 3].map((tier) => [slugify(POTENCY_CATALOG_NAME[kind](tier)), tier]));
+  const secondaryNames = new Map([1, 2, 3].map((tier) => [slugify(SECONDARY_CATALOG_NAME[kind][tier]), tier]));
+  const all = await getForgeEquipmentEntries();
+  const makeCandidates = (names, slot) => all
+    .map((entry) => ({ entry, tier: names.get(slugify(entry.name)) }))
+    .filter(({ entry, tier }) => entry.type === "equipment" && tier && entry.level <= maxLevel)
+    .sort(({ entry: a }, { entry: b }) => a.level - b.level || a.name.localeCompare(b.name) || a.packId.localeCompare(b.packId) || a._id.localeCompare(b._id))
+    .map(({ entry, tier }) => issueCandidate(entry, { name: entry.name, level: entry.level, tier, slot }));
+  const potencyCandidates = makeCandidates(potencyNames, "potency");
+  const secondaryCandidates = makeCandidates(secondaryNames, "secondary");
   return {
-    potencyTiers: potency.filter((r) => r.level <= maxLevel).map((r) => r.tier),
-    secondaryTiers: secondary.filter((r) => r.level <= maxLevel).map((r) => r.tier),
-    minPotencyLevel: potency.find((r) => r.tier === 1)?.level ?? Infinity
+    // Preserve this public numeric surface for existing UI callers. Forge
+    // selection itself uses the candidates below, never these numbers.
+    potencyTiers: [...new Set(potencyCandidates.map((candidate) => candidate.tier))],
+    secondaryTiers: [...new Set(secondaryCandidates.map((candidate) => candidate.tier))],
+    minPotencyLevel: (await fundamentalRunes(kind)).potency.find((r) => r.tier === 1)?.level ?? Infinity,
+    potencyCandidates,
+    secondaryCandidates
   };
 }
 
@@ -258,11 +299,11 @@ export async function runeGp(runes, kind) {
  * @returns {Promise<{name: string, level: number, category: string|null}[]>}
  */
 export async function getBaseItemCandidates(kind, maxLevel) {
-  const entries = await getAllEquipmentEntries();
+  const entries = await getForgeEquipmentEntries();
   return entries
     .filter((e) => e.type === kind && !e.specific && e.level <= maxLevel)
-    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-    .map((e) => ({ name: e.name, level: e.level, category: e.category ?? null }));
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name) || a.packId.localeCompare(b.packId) || a._id.localeCompare(b._id))
+    .map((e) => issueCandidate(e, { name: e.name, level: e.level, category: e.category ?? null }));
 }
 
 /* Fundamental rune items share the same "etched onto a weapon/armor" usage
@@ -285,12 +326,12 @@ function fundamentalRuneNames(kind) {
 export async function getPropertyRuneCandidates(kind, maxLevel) {
   const usageSet = kind === "weapon" ? WEAPON_RUNE_USAGE : ARMOR_RUNE_USAGE;
   const excluded = fundamentalRuneNames(kind);
-  const entries = await getAllEquipmentEntries();
+  const entries = await getForgeEquipmentEntries();
   return entries
     .filter((e) => e.type === "equipment" && usageSet.has(e.usage) && e.level <= maxLevel
       && !excluded.has(slugify(e.name)))
-    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-    .map((e) => ({ name: e.name, level: e.level, usage: e.usage }));
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name) || a.packId.localeCompare(b.packId) || a._id.localeCompare(b._id))
+    .map((e) => issueCandidate(e, { name: e.name, level: e.level, usage: e.usage }));
 }
 
 /* -------------------- property rune keys -------------------- */
@@ -319,6 +360,25 @@ export function propertyRuneKey(name) {
   const grade = match[2].toLowerCase();
   const base = kebabToCamel(slugify(match[1]));
   return grade + base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+/**
+ * Mirror native prunePropertyRunes (PF2e 8.5.0 physical/runes.ts:37–48),
+ * retaining candidate identity and surviving order before a caller caps slots.
+ * Lesser/moderate are distinct native keys, not guessed family relations.
+ */
+export function prunePropertyRuneCandidates(candidates) {
+  const byKey = new Map();
+  for (const candidate of candidates) {
+    const key = propertyRuneKey(candidate.name);
+    if (!byKey.has(key)) byKey.set(key, candidate);
+  }
+  const title = (key) => key.charAt(0).toUpperCase() + key.slice(1);
+  return [...byKey].filter(([key]) =>
+    !byKey.has(`greater${title(key)}`)
+    && !byKey.has(`major${title(key.replace(/^greater/, ""))}`)
+    && !byKey.has(`true${title(key.replace(/^greater|^major/, ""))}`)
+  ).map(([, candidate]) => candidate);
 }
 
 /**

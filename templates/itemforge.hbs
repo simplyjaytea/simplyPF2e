@@ -1,41 +1,6 @@
 <div class="simplypf2e-generator">
-  <div class="spf-provider-summary {{#if providerReady}}spf-provider-ready{{else}}spf-provider-attention{{/if}}" data-tooltip="{{providerBaseUrl}}">
-    <span class="spf-provider-name">
-      <i class="fa-solid {{#if provider.local}}fa-server{{else}}fa-cloud{{/if}}"></i>
-      {{#if canSwitchConnection}}
-        <label for="spf-itemforge-connection" class="spf-sr-only">{{localize "SIMPLYPF2E.ProviderSetup.ActiveConnection"}}</label>
-        <select id="spf-itemforge-connection" name="activeConnection" {{#if busy}}disabled{{/if}} aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.ActiveConnection'}}">
-          {{#each connections}}
-            <option value="{{this.id}}" {{#if this.active}}selected{{/if}}>{{this.name}}</option>
-          {{/each}}
-        </select>
-      {{else}}
-        <strong>{{#if connectionName}}{{connectionName}}{{else}}{{provider.name}}{{/if}}</strong>
-      {{/if}}
-    </span>
-    <code class="spf-provider-model">{{#if provider.model}}{{provider.model}}{{else}}{{localize "SIMPLYPF2E.Generator.NoModelShort"}}{{/if}}</code>
-    {{#if lastRunCost}}<span class="spf-last-run">{{lastRunCost}}</span>{{/if}}
-    <span class="spf-provider-actions">
-      {{#if providerReady}}
-        <button type="button" data-action="testProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.TestConnection'}}" {{#if busy}}disabled{{/if}}>
-          <i class="fa-solid fa-signal"></i>
-        </button>
-      {{/if}}
-      <button type="button" data-action="configureProvider" data-tooltip="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" aria-label="{{localize 'SIMPLYPF2E.ProviderSetup.Configure'}}" {{#if busy}}disabled{{/if}}>
-        <i class="fa-solid fa-gear"></i>
-      </button>
-      <i class="fa-solid {{#if providerReady}}fa-circle-check{{else}}fa-triangle-exclamation{{/if}} spf-provider-state" role="img" aria-label="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}" data-tooltip="{{#if providerReady}}{{localize 'SIMPLYPF2E.Generator.ProviderReady'}}{{else}}{{apiKeyWarning}}{{/if}}"></i>
-    </span>
-  </div>
-  {{#if apiKeyWarning}}
-    <p class="notification warning spf-provider-warning" role="status">
-      <span>{{apiKeyWarning}}</span>
-      {{#if canAuthorizeApiKey}}
-        <span class="spf-provider-endpoint"><strong>{{localize "SIMPLYPF2E.Generator.ApiKeyEndpoint"}}</strong> <code>{{providerBaseUrl}}</code></span>
-        <button type="button" data-action="authorizeApiKey" data-base-url="{{providerBaseUrl}}" {{#if busy}}disabled{{/if}}>{{localize "SIMPLYPF2E.Generator.AuthorizeApiKey"}}</button>
-      {{/if}}
-    </p>
-  {{/if}}
+  {{! The parent registers this shared partial once during module startup. }}
+  {{> simplypf2e-provider-header itemForgeMode=true}}
 
   <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
     <legend>{{localize "SIMPLYPF2E.ItemForge.ConceptLegend"}}</legend>
@@ -59,11 +24,11 @@
         <label for="spf-itemforge-level">{{localize "SIMPLYPF2E.ItemForge.Level"}}</label>
         <div class="spf-level-controls">
           <button type="button" class="spf-icon-btn" data-action="levelDown" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelDown'}}">
-            <i class="fa-solid fa-minus"></i>
+            <i class="fa-solid fa-minus" aria-hidden="true"></i>
           </button>
           <input id="spf-itemforge-level" type="number" name="level" min="{{minLevel}}" max="{{maxLevel}}" step="1" value="{{input.level}}">
           <button type="button" class="spf-icon-btn" data-action="levelUp" data-tooltip="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.LevelUp'}}">
-            <i class="fa-solid fa-plus"></i>
+            <i class="fa-solid fa-plus" aria-hidden="true"></i>
           </button>
         </div>
       </div>
@@ -77,12 +42,13 @@
       </div>
     </div>
     <div class="spf-generate-row">
-      <button type="button" class="spf-primary" data-action="generate" {{#if busy}}disabled{{/if}}>
-        <i class="fa-solid fa-wand-sparkles"></i>
-        {{#if preview}}{{localize "SIMPLYPF2E.Generator.Regenerate"}}{{else}}{{localize "SIMPLYPF2E.Generator.Generate"}}{{/if}}
+      <button type="button" class="{{#unless hasPreview}}{{#unless created}}spf-primary{{/unless}}{{/unless}} spf-generate-action" data-action="generate" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-wand-sparkles" aria-hidden="true"></i>
+        {{localize "SIMPLYPF2E.ItemForge.GeneratePlan"}}
       </button>
-      <button type="button" class="spf-random-button" data-action="configureSources" data-tooltip="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" {{#if busy}}disabled{{/if}}>
-        <i class="fa-solid fa-gear"></i>
+      <button type="button" class="spf-secondary spf-source-button" data-action="configureSources" data-tooltip="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-book-atlas" aria-hidden="true"></i>
+        <span class="spf-button-label">{{localize "SIMPLYPF2E.Generator.ConfigureSourcesShort"}}</span>
       </button>
     </div>
   </fieldset>
@@ -91,10 +57,35 @@
     <p class="notification warning" role="status">{{unavailableNote}}</p>
   {{/if}}
 
-  {{#if busy}}{{> simplypf2e-progress}}{{/if}}
+  {{#if progress}}{{> simplypf2e-progress}}{{else if busy}}{{> simplypf2e-progress}}{{/if}}
 
   {{#if error}}
     <p class="notification error" role="alert">{{error}}</p>
+  {{/if}}
+
+  {{#if created}}
+  <section class="spf-complete spf-card" aria-label="{{localize 'SIMPLYPF2E.ItemForge.CreatedTitle'}}">
+    <div class="spf-complete-heading">
+      <span class="spf-complete-sigil" aria-hidden="true"><i class="fa-solid fa-check" aria-hidden="true"></i></span>
+      <div>
+        <h2>{{localize "SIMPLYPF2E.ItemForge.CreatedTitle"}}</h2>
+        <p>{{localize "SIMPLYPF2E.ItemForge.CreatedSummary" name=created.name}}</p>
+      </div>
+    </div>
+    {{#if created.warning}}
+      <p class="notification warning" role="status">{{localize "SIMPLYPF2E.ItemForge.CreatedWarning"}}</p>
+    {{/if}}
+    <footer class="spf-actions">
+      {{#if created.itemId}}
+        <button type="button" class="spf-primary" data-action="openCreatedItem">
+          <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> {{localize "SIMPLYPF2E.ItemForge.OpenItem"}}
+        </button>
+      {{/if}}
+      <button type="button" class="{{#unless created.itemId}}spf-primary{{/unless}}" data-action="forgeAnother">
+        <i class="fa-solid fa-hammer" aria-hidden="true"></i> {{localize "SIMPLYPF2E.ItemForge.ForgeAnother"}}
+      </button>
+    </footer>
+  </section>
   {{/if}}
 
   {{#if showEmptyState}}
@@ -163,23 +154,22 @@
     {{/if}}
 
     {{#if tokenReport}}
-      <div class="spf-token-report">
-        <h3>{{localize "SIMPLYPF2E.Tokens.Heading"}}</h3>
+      <details class="spf-token-report">
+        <summary><span>{{localize "SIMPLYPF2E.Tokens.Heading"}}</span><strong>{{tokenReport.totalText}}</strong></summary>
         <ul>
           {{#each tokenReport.steps}}
             <li><strong>{{this.label}}</strong> — {{this.text}}</li>
           {{/each}}
         </ul>
-        <p class="spf-token-total">{{tokenReport.totalText}}</p>
-      </div>
+      </details>
     {{/if}}
 
     <footer class="spf-actions">
       <button type="button" class="spf-primary" data-action="createItem" {{#if busy}}disabled{{/if}}>
-        <i class="fa-solid fa-box-open"></i> {{localize "SIMPLYPF2E.ItemForge.CreateItem"}}
+        <i class="fa-solid fa-box-open" aria-hidden="true"></i> {{localize "SIMPLYPF2E.ItemForge.CreateItem"}}
       </button>
       <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>
-        <i class="fa-solid fa-trash"></i> {{localize "SIMPLYPF2E.Generator.Discard"}}
+        <i class="fa-solid fa-trash" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Generator.Discard"}}
       </button>
     </footer>
   </section>

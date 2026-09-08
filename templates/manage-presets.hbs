@@ -1,21 +1,40 @@
 <div class="simplypf2e-manage-presets">
+  <header class="spf-app-intro">
+    <span class="spf-app-sigil" aria-hidden="true"><i class="fa-solid fa-bookmark" aria-hidden="true"></i></span>
+    <div>
+      <p class="spf-eyebrow">{{localize "SIMPLYPF2E.Presets.ManageTitle"}}</p>
+      <p class="spf-hint">{{localize "SIMPLYPF2E.Presets.ManageHint"}}</p>
+    </div>
+  </header>
+
+  {{#if feedback}}
+    <p class="notification spf-feedback spf-feedback-{{feedback.kind}}" role="{{#if feedback.role}}{{feedback.role}}{{else}}status{{/if}}" aria-live="{{#if (eq feedback.kind 'error')}}assertive{{else}}polite{{/if}}">
+      <i class="fa-solid {{#if feedback.icon}}{{feedback.icon}}{{else}}fa-circle-info{{/if}}" aria-hidden="true"></i>
+      <span>{{feedback.text}}</span>
+    </p>
+  {{/if}}
+
   {{#if presets.length}}
     <ul class="spf-manage-list">
       {{#each presets}}
         <li>
-          <span class="spf-manage-name">{{this.name}}</span>
+          <span class="spf-manage-name" title="{{this.name}}">{{this.name}}</span>
           <span class="spf-manage-buttons">
-            <button type="button" class="spf-icon-btn" data-action="editPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.EditTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.EditTooltip'}}">
-              <i class="fa-solid fa-pen"></i>
+            <button type="button" class="spf-icon-btn" data-action="editPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.EditLabel' name=this.name}}" aria-label="{{localize 'SIMPLYPF2E.Presets.EditLabel' name=this.name}}">
+              <i class="fa-solid fa-pen" aria-hidden="true"></i>
+              <span class="spf-sr-only">{{localize "SIMPLYPF2E.Presets.EditLabel" name=this.name}}</span>
             </button>
-            <button type="button" class="spf-icon-btn" data-action="duplicatePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DuplicateTooltip'}}">
-              <i class="fa-solid fa-copy"></i>
+            <button type="button" class="spf-icon-btn" data-action="duplicatePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DuplicateLabel' name=this.name}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DuplicateLabel' name=this.name}}">
+              <i class="fa-solid fa-copy" aria-hidden="true"></i>
+              <span class="spf-sr-only">{{localize "SIMPLYPF2E.Presets.DuplicateLabel" name=this.name}}</span>
             </button>
-            <button type="button" class="spf-icon-btn" data-action="exportPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ExportTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.ExportTooltip'}}">
-              <i class="fa-solid fa-file-export"></i>
+            <button type="button" class="spf-icon-btn" data-action="exportPreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.ExportLabel' name=this.name}}" aria-label="{{localize 'SIMPLYPF2E.Presets.ExportLabel' name=this.name}}">
+              <i class="fa-solid fa-file-export" aria-hidden="true"></i>
+              <span class="spf-sr-only">{{localize "SIMPLYPF2E.Presets.ExportLabel" name=this.name}}</span>
             </button>
-            <button type="button" class="spf-icon-btn" data-action="deletePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DeleteTooltip'}}">
-              <i class="fa-solid fa-trash"></i>
+            <button type="button" class="spf-icon-btn" data-action="deletePreset" data-id="{{this.id}}" data-tooltip="{{localize 'SIMPLYPF2E.Presets.DeleteLabel' name=this.name}}" aria-label="{{localize 'SIMPLYPF2E.Presets.DeleteLabel' name=this.name}}">
+              <i class="fa-solid fa-trash" aria-hidden="true"></i>
+              <span class="spf-sr-only">{{localize "SIMPLYPF2E.Presets.DeleteLabel" name=this.name}}</span>
             </button>
           </span>
         </li>
@@ -27,13 +46,13 @@
 
   <footer class="spf-actions">
     <button type="button" class="spf-primary" data-action="newPreset">
-      <i class="fa-solid fa-plus"></i> {{localize "SIMPLYPF2E.Presets.New"}}
+      <i class="fa-solid fa-plus" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Presets.New"}}
     </button>
     <button type="button" data-action="exportAll" {{#unless presets.length}}disabled{{/unless}}>
-      <i class="fa-solid fa-file-export"></i> {{localize "SIMPLYPF2E.Presets.ExportAll"}}
+      <i class="fa-solid fa-file-export" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Presets.ExportAll"}}
     </button>
     <button type="button" data-action="importPresets">
-      <i class="fa-solid fa-file-import"></i> {{localize "SIMPLYPF2E.Presets.Import"}}
+      <i class="fa-solid fa-file-import" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Presets.Import"}}
     </button>
   </footer>
 </div>

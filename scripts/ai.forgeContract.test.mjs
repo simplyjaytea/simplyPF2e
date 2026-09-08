@@ -18,7 +18,7 @@ globalThis.fetch = async (_url, options) => {
   requests.push(JSON.parse(options.body));
   const reply = requests.length === 1
     ? { name: "QA Charm", description: "A quiet charm.", rarity: "common", usage: "worn", traits: ["magical"], bulk: "light", invested: true, effects: [] }
-    : { baseItemName: "Longsword", potency: "double", secondaryTier: "greater", propertyRunes: [], description: "A quiet blade." };
+    : { baseItemId: "c-base", potencyRuneId: "c-potency", secondaryRuneId: "c-secondary", propertyRuneIds: [], description: "A quiet blade." };
   return new Response(JSON.stringify({
     choices: [{ message: { content: JSON.stringify(reply) }, finish_reason: "stop" }],
     usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 }
@@ -38,17 +38,20 @@ assert.doesNotMatch(magicPrompt, /"(?:level|value|range|dc|durationRounds|durati
 assert.doesNotMatch(magicPrompt, /"(?:damageDice|healDice)":/);
 await generateRunedItemConcept({
   prompt: "Quiet blade", level: 12, rarity: "common", kind: "weapon",
-  baseCandidates: [{ name: "Longsword", level: 0 }], runeCandidates: [],
-  potencyTiers: [1, 2], secondaryTiers: [1, 2]
+  baseCandidates: [{ id: "c-base", name: "Longsword", level: 0 }], runeCandidates: [],
+  potencyCandidates: [{ id: "c-potency", name: "Weapon Potency (+2)", tier: 2 }],
+  secondaryCandidates: [{ id: "c-secondary", name: "Striking (Greater)", tier: 2 }]
 });
 const runedPrompt = requests[1].messages[0].content;
-assert.match(runedPrompt, /enum: single, double/);
-assert.match(runedPrompt, /enum: none, standard, greater/);
+assert.match(runedPrompt, /"baseItemId": string/);
+assert.match(runedPrompt, /c-base \| Longsword/);
+assert.match(runedPrompt, /c-potency \| Weapon Potency \(\+2\)/);
+assert.match(runedPrompt, /c-secondary \| Striking \(Greater\)/);
 assert.doesNotMatch(runedPrompt, /"(?:potency|secondaryTier)":\s*number/);
 assert.equal(requests.length, 2, "both forge schemas work through the normal bounded request path");
 assert.match(taskResponseProblem(AI_TASK.RUNED_ITEM_CONCEPT, {
-  baseItemName: "Longsword", potency: 3, secondaryTier: 1, propertyRunes: [], description: "A sword."
-}), /enum slugs/, "numeric rune fields trigger the existing bounded retry");
+  baseItemId: "c-base", potencyRuneId: 3, secondaryRuneId: "none", propertyRuneIds: [], description: "A sword."
+}), /fields must be non-empty strings/, "numeric opaque rune IDs trigger the bounded retry");
 assert.match(taskResponseProblem(AI_TASK.MAGIC_ITEM_CONCEPT, {
   name: "QA Charm", description: "A charm.", rarity: "common", usage: "worn", traits: [], bulk: 100, invested: true, effects: []
 }), /enum slugs/, "numeric bulk cannot pass the provider contract");

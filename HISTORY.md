@@ -2,6 +2,15 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-08 — Consumer UI, continuous progress, and Forge source integrity
+
+- Implemented the approved refined fantasy UI on `codex/consumer-ui-release` from public v0.3.5.64 / `89f9a35`. Delegated bounded UI work to Luna, Forge/app orchestration to Terra, and independently audited every finished slice with explicitly selected Astra. No actionable findings remain after re-review. Full evidence: [consumer-readiness report](docs/consumer-readiness-2026-09-08.md).
+- Added shared provider chrome, clearer Generate & Create/Preview actions, Forge completion, opaque light/dark surfaces, container-responsive controls, SVG rune animation, estimated progress, elapsed time, and persistent accessible stage outcomes. Saved live form drafts through asynchronous probes/settings callbacks, preserved inner scrolling/details, and fixed reduced-motion specificity and shrinking progress cards discovered during QA.
+- One-click generation and creation share one run identity and busy lifetime. Review reproduced two duplicate-run/write races, then verified deferred-readiness reservation, explicit private continuation, public Create guards, failure cleanup, skipped/warning stages, and retained committed outcomes. New tests load production GeneratorApp with actual SpfApp/progress.
+- Forge uses opaque issued candidate IDs and exact pack/document references; changed/disappeared sources fail preflight. Native PF2e preparation supplies preview price/level/rarity without world writes or source-value overwrites. Review corrected custom-pack valuation and native rune-grade order/semantics. Spell sources remain required for scroll loot, even for noncasters.
+- Independent Astra verification passed 85 regressions, 120 syntax checks, JSON and whitespace on Node 22.23.2. Actual template/native-CSS fixtures covered 360/480/720px, themes, long labels, keyboard scrolling and the reduced-motion stylesheet branch. These are layout/local logic checks; revised installed Foundry acceptance remains pending.
+- The user requested pushing/merging then updating only SimplyPF2e through Foundry. Publish through a PR after CI and verify the automatic release; preserve core/system versions, provider settings and all earlier QA artifacts. No GitHub write or installed-module update has occurred at this record's creation.
+
 ## 2026-09-05 — Authorized audit publication
 
 - The user explicitly requested pushing and merging the independently reviewed audit commit `1ee5b5b`. Publish `codex/forge-generator-audit` through a PR after CI, then verify the automatic release. Runtime code is unchanged since the final review. Revised-code installation/native Foundry acceptance remains outstanding.

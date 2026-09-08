@@ -50,10 +50,9 @@ const RULES = Object.freeze({
     enums: { bulk: ["negligible", "light", "one", "two"] }
   },
   [AI_TASK.RUNED_ITEM_CONCEPT]: {
-    required: ["baseItemName", "potency", "secondaryTier", "propertyRunes", "description"],
-    arrays: ["propertyRunes"],
-    nonEmptyStrings: ["baseItemName", "description"],
-    enums: { potency: ["single", "double", "triple"], secondaryTier: ["none", "standard", "greater", "major"] }
+    required: ["baseItemId", "potencyRuneId", "secondaryRuneId", "propertyRuneIds", "description"],
+    arrays: ["propertyRuneIds"],
+    nonEmptyStrings: ["baseItemId", "potencyRuneId", "secondaryRuneId", "description"]
   },
   [AI_TASK.ENCOUNTER_DESIGN]: {
     required: ["name", "briefs"],

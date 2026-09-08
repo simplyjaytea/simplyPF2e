@@ -22,6 +22,9 @@ const CATEGORY_LABELS = {
  * from. Empty selection for a category falls back to the system defaults.
  */
 export class SourcesConfigApp extends HandlebarsApplicationMixin(ApplicationV2) {
+  #onSave;
+  #feedback = null;
+
   static DEFAULT_OPTIONS = {
     id: "simplypf2e-sources",
     tag: "form",
@@ -35,12 +38,23 @@ export class SourcesConfigApp extends HandlebarsApplicationMixin(ApplicationV2) 
     form: {
       handler: SourcesConfigApp.#onSubmit,
       submitOnChange: false,
-      closeOnSubmit: true
+      // Keep the panel open so save/reset results and a callback failure are
+      // visible in the same surface instead of disappearing into a toast.
+      closeOnSubmit: false
     },
     actions: {
       reset: SourcesConfigApp.#onReset
     }
   };
+
+  constructor(options = {}, onSave = null) {
+    if (typeof options === "function") {
+      onSave = options;
+      options = {};
+    }
+    super(options);
+    this.#onSave = typeof onSave === "function" ? onSave : null;
+  }
 
   static PARTS = {
     body: { template: `modules/${MODULE_ID}/templates/sources.hbs` }
@@ -63,23 +77,64 @@ export class SourcesConfigApp extends HandlebarsApplicationMixin(ApplicationV2) 
         }))
       };
     });
-    return { categories };
+    return { categories, feedback: this.#feedback };
   }
 
   static async #onSubmit() {
-    const selection = {};
-    for (const category of CATEGORIES) {
-      selection[category] = [
-        ...this.element.querySelectorAll(`input[data-category="${category}"]:checked`)
-      ].map((el) => el.dataset.pack);
+    try {
+      const selection = {};
+      for (const category of CATEGORIES) {
+        selection[category] = [
+          ...this.element.querySelectorAll(`input[data-category="${category}"]:checked`)
+        ].map((el) => el.dataset.pack);
+      }
+      await game.settings.set(MODULE_ID, SETTINGS.sourcePacks, selection);
+      await this.#onSave?.();
+      this.#feedback = {
+        kind: "success",
+        role: "status",
+        icon: "fa-circle-check",
+        text: game.i18n.localize("SIMPLYPF2E.Sources.Saved")
+      };
+      ui.notifications.info(this.#feedback.text);
+    } catch (err) {
+      console.error("simplypf2e | compendium sources save failed", err);
+      this.#feedback = {
+        kind: "error",
+        role: "alert",
+        icon: "fa-circle-exclamation",
+        text: game.i18n.format("SIMPLYPF2E.Sources.SaveFailed", {
+          message: err?.message ?? String(err)
+        })
+      };
+      ui.notifications.error(this.#feedback.text);
     }
-    await game.settings.set(MODULE_ID, SETTINGS.sourcePacks, selection);
-    ui.notifications.info(game.i18n.localize("SIMPLYPF2E.Sources.Saved"));
+    await this.render();
   }
 
   static async #onReset() {
-    await game.settings.set(MODULE_ID, SETTINGS.sourcePacks, {});
-    ui.notifications.info(game.i18n.localize("SIMPLYPF2E.Sources.ResetDone"));
+    try {
+      await game.settings.set(MODULE_ID, SETTINGS.sourcePacks, {});
+      await this.#onSave?.();
+      this.#feedback = {
+        kind: "success",
+        role: "status",
+        icon: "fa-rotate-left",
+        text: game.i18n.localize("SIMPLYPF2E.Sources.ResetDone")
+      };
+      ui.notifications.info(this.#feedback.text);
+    } catch (err) {
+      console.error("simplypf2e | compendium sources reset failed", err);
+      this.#feedback = {
+        kind: "error",
+        role: "alert",
+        icon: "fa-circle-exclamation",
+        text: game.i18n.format("SIMPLYPF2E.Sources.SaveFailed", {
+          message: err?.message ?? String(err)
+        })
+      };
+      ui.notifications.error(this.#feedback.text);
+    }
     await this.render();
   }
 }
