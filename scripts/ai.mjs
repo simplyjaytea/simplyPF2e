@@ -844,6 +844,15 @@ export async function selectAncestryBackgroundClass({
   const heritage = candidateForPick(heritageCandidates, { id: parsed.heritageId, name: parsed.heritage });
   const background = candidateForPick(backgroundCandidates, { id: parsed.backgroundId, name: parsed.background });
   const pcClass = candidateForPick(classCandidates, { id: parsed.classId, name: parsed.class });
+  const unresolved = [
+    ["ancestry", ancestry], ["background", background], ["class", pcClass]
+  ].filter(([, candidate]) => !candidate).map(([field]) => field);
+  if (unresolved.length) {
+    throw new AIRequestError(
+      game.i18n.format("SIMPLYPF2E.Errors.ABCSelectionUnresolved", { fields: unresolved.join(", ") }),
+      { usage, details: { fields: unresolved } }
+    );
+  }
   return {
     ancestry: ancestry?.name ?? concept.ancestry,
     ancestryCandidate: ancestry?.ref ?? null,

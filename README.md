@@ -65,7 +65,7 @@ Open **Advanced options** for a preset, rarity, treasure amount, and spellcastin
 | **NPCs & monsters** | Stable. The oldest, most battle-tested path. |
 | **Encounter mode** | Stable. |
 | **Presets** | **Standard** lists the 23 Remaster PF2e classes as flavor guides. **Custom** appears only when this world has saved presets. Magus, Witch, and the other Standard classes do not finish complete-only Characters. |
-| **Player Character mode** | Released. Complete-only still finishes **Fighter**, **Rogue**, and **Investigator** (Rogue/Investigator grant-chain live QA pending). Standard Magus/Witch/etc. presets are flavor only. Sanity-check a generated character's numbers on its sheet before play. |
+| **Player Character mode** | Released for GM-reviewed use with **Fighter**, **Rogue**, and **Investigator** offered. Native Fighter and Investigator paths have bounded live coverage; Rogue acceptance remains incomplete. Standard presets guide flavor only. Review the class, heritage, choices, equipment, and numbers before play. |
 | **Item forge** | Core flows live-verified on Foundry 14 / PF2e 8.5: cancellation isolation, runed sheet parity, and generated-macro escaping. GMs open it from the Items directory; the v0.3.5.57 entry point passed live click and singleton-window checks. |
 
 ## What's new
@@ -114,6 +114,8 @@ Describe a concept ("a grizzled dwarf ranger who hunts undead") and set a level 
 Nothing here is scale-word math. A PC is assembled from real Ancestry, Background and Class items plus feats at every level slot (ancestry/class/skill/general from the real class schedules, including first-level class feats, accelerated Rogue/Investigator skill feats, and any feat the background itself grants — like Acolyte's *Student of the Canon*), ability boosts, and skill increases past Trained. The PF2e system then computes AC, HP, saves and proficiencies exactly as it would for a character built by hand.
 
 Complete one-click selection currently offers Fighter, Rogue, and Investigator. Rogue rackets and Investigator methodologies are chosen from enabled Class Features sources before the actor exists. A **Standard** Magus or Witch preset only guides flavor and fighting style; it does not make those classes complete-only. Other classes are not widened just to produce a dialog-dependent or approximate build.
+
+**Review the character concept before play.** The provider can choose a different offered class or omit heritage even when the prompt requests one. Use **Preview Plan** when those details must be checked before creation, and complete any native PF2e choice dialogs. Compendium match counts establish source grounding; they do not verify that every requested detail was followed.
 
 Starting wealth buys real gear rather than turning into raw coin, and fundamental runes on weapons and armor are capped to what the character's level actually allows. Single-class builds only — no multiclass archetypes, and no pre-create screen for swapping individual picks (regenerate instead).
 
@@ -199,7 +201,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 **Remaining live-acceptance gaps** (built, reviewed, and source-verified; the cases below still need actual-game coverage)
 
-- **Rogue and Investigator** complete-only creation, including racket/methodology grant chains on a live sheet.
+- **Rogue** native creation and racket grants remain unaccepted after a failed live retry. One **Investigator** methodology/grant path passed on a live sheet, but broader class, feat, and level coverage remains open.
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
 - **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend. Its eventual slots are wired to PF2e's distinct `archetype-<level>` group.
 - **PC spellcasting beyond complete-only classes.** Base-slot regressions cover all 140 rows of seven Remaster class tables, but native casting/expending, restricted class slots, and spellbook/familiar inventories still need live coverage. Complete one-click class selection remains limited to Fighter, Rogue, and Investigator.
