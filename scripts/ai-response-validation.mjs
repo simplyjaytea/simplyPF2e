@@ -38,8 +38,10 @@ const RULES = Object.freeze({
   [AI_TASK.ABILITY_SELECTION]: { required: ["abilityIds"], arrays: ["abilityIds"] },
   [AI_TASK.CREATURE_FEAT_SELECTION]: { required: ["featIds"], arrays: ["featIds"] },
   [AI_TASK.ABC_SELECTION]: {
-    required: ["ancestry", "heritage", "background", "class", "keyAbility"],
-    nonEmptyStrings: ["ancestry", "background", "class", "keyAbility"]
+    required: ["ancestryId", "heritageId", "backgroundId", "classId", "keyAbility"],
+    nonEmptyStrings: ["ancestryId", "backgroundId", "classId", "keyAbility"],
+    nullableNonEmptyStrings: ["heritageId"],
+    enums: { keyAbility: ["str", "dex", "con", "int", "wis", "cha"] }
   },
   [AI_TASK.FEAT_SELECTION]: { required: ["picks"], arrays: ["picks"] },
   [AI_TASK.CHARACTER_CHOICES]: { required: ["picks"], arrays: ["picks"] },
@@ -81,6 +83,11 @@ export function taskResponseProblem(task, data) {
   const emptyStrings = (rule.nonEmptyStrings ?? [])
     .filter((key) => typeof data[key] !== "string" || !data[key].trim());
   if (emptyStrings.length) return `fields must be non-empty strings: ${emptyStrings.join(", ")}`;
+  const nullableEmptyStrings = (rule.nullableNonEmptyStrings ?? [])
+    .filter((key) => data[key] !== null && (typeof data[key] !== "string" || !data[key].trim()));
+  if (nullableEmptyStrings.length) {
+    return `fields must be non-empty strings or null: ${nullableEmptyStrings.join(", ")}`;
+  }
   const wrongEnums = Object.entries(rule.enums ?? {})
     .filter(([key, allowed]) => !allowed.includes(data[key]))
     .map(([key]) => key);

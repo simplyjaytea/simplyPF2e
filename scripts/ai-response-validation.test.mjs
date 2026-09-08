@@ -19,9 +19,30 @@ assert.match(
 );
 assert.equal(
   taskResponseProblem(AI_TASK.ABC_SELECTION, {
-    ancestry: "Dwarf", heritage: null, background: "Guard", class: "Fighter", keyAbility: "str"
+    ancestryId: "A0", heritageId: null, backgroundId: "B0", classId: "C0", keyAbility: "str"
   }),
   null
+);
+assert.match(
+  taskResponseProblem(AI_TASK.ABC_SELECTION, {
+    ancestry: "Dwarf", heritage: null, background: "Guard", class: "Fighter", keyAbility: "str"
+  }),
+  /missing required fields: ancestryId, heritageId, backgroundId, classId/,
+  "the old name-shaped ABC response must not satisfy the ID contract"
+);
+assert.match(
+  taskResponseProblem(AI_TASK.ABC_SELECTION, {
+    ancestryId: "A0", heritageId: 7, backgroundId: "B0", classId: "C0", keyAbility: "str"
+  }),
+  /fields must be non-empty strings or null: heritageId/,
+  "heritageId may be null or a non-empty string only"
+);
+assert.match(
+  taskResponseProblem(AI_TASK.ABC_SELECTION, {
+    ancestryId: "A0", heritageId: null, backgroundId: "B0", classId: "C0", keyAbility: "strength"
+  }),
+  /fields must use offered enum slugs: keyAbility/,
+  "ABC keyAbility must use the emitted enum slugs"
 );
 assert.match(taskResponseProblem("unknown", {}), /unknown task/);
 assert.equal(taskResponseProblem(AI_TASK.CHARACTER_CHOICES, { picks: [] }), null);

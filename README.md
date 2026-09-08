@@ -56,7 +56,7 @@ Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.mod
 
 **Generate & Create** validates and creates in one pass. **Preview Plan** runs the same plan without creating documents. The **dice** button sits beside Generate in every mode: it ignores the typed prompt, rolls a local surprise brief, and runs Preview Plan. Cancel aborts an in-flight generation (not a Foundry write already in progress). Mode-by-mode depth is under [Mode details](#mode-details).
 
-Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Character mode can also cap ancestry/background/heritage rarity. The preset menu is **— No preset —**, then **Standard classes** (the 23 Remaster PF2e classes as flavor guides), then **Custom presets** only when this world has saved any. Picking Magus or Witch there does not make those classes complete-only.
+Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Monster, NPC, and Encounter also offer **Include equipment** and **Include treasure**. Turn either off to enforce an empty category regardless of the AI response; turning off treasure also prevents coin padding. These switches do not change Character starting equipment or wealth. Character mode can also cap ancestry/background/heritage rarity. The preset menu is **— No preset —**, then **Standard classes** (the 23 Remaster PF2e classes as flavor guides), then **Custom presets** only when this world has saved any. Picking Magus or Witch there does not make those classes complete-only.
 
 ## Status
 

@@ -44,6 +44,12 @@ await generateConcept({ prompt: gmPrompt, level: 4, rarity: "common", allowSpell
 assertPrompt();
 assertPriority();
 assert.match(requests.at(-1).messages[1].content, /suggestions only; the GM's explicit concept takes priority/);
+await generateConcept({ prompt: gmPrompt, level: 4, rarity: "common", allowSpellcasting: true,
+  includeEquipment: false, includeLoot: false, preset: "Wizard" });
+assert.match(requests.at(-1).messages[1].content, /Equipment included: NO - return equipment: \[\]/,
+  "module-owned no-equipment control is stated directly in the concept request");
+assert.match(requests.at(-1).messages[1].content, /Treasure included: NO - return loot: \[\]/,
+  "module-owned no-treasure control is stated directly in the concept request");
 reply = { keywords: [] };
 await chooseSpellFocus({ concept, tradition: "occult" });
 assertPrompt();

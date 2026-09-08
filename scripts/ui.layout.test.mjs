@@ -163,6 +163,28 @@ assert.match(generator, /spf-preset-trust/);
 assert.match(generator, /aria-describedby="spf-generator-preset-trust"/);
 assert.doesNotMatch(generator, /\{\{#each presets\}\}/);
 assert.doesNotMatch(generator, /data-action="savePreset"|data-action="duplicatePreset"|data-action="deletePreset"/);
+const holdingsControls = generator.slice(generator.indexOf('class="spf-advanced"'), generator.indexOf('class="spf-generate-row"'));
+assert.match(generator, /<fieldset class="spf-inputs spf-card" \{\{#if busy\}\}disabled\{\{\/if\}\}/,
+  "advanced creature controls must inherit the form's busy disabled state");
+assert.match(holdingsControls, /\{\{#unless characterMode\}\}[\s\S]*name="includeEquipment"[\s\S]*\{\{\/unless\}\}/,
+  "equipment switch must be limited to creature modes");
+assert.match(holdingsControls, /\{\{#unless characterMode\}\}[\s\S]*name="includeLoot"[\s\S]*\{\{\/unless\}\}/,
+  "treasure switch must be limited to creature modes");
+for (const [name, id, label] of [
+  ["includeEquipment", "spf-generator-include-equipment", "IncludeEquipment"],
+  ["includeLoot", "spf-generator-include-loot", "IncludeTreasure"]
+]) {
+  assert.match(holdingsControls, new RegExp(`name="${name}"[^>]*`));
+  assert.match(holdingsControls, new RegExp(`name="${name}"[^>]*\\{\\{#if input\\.${name}\\}\\}checked`),
+    `${name} must follow Terra's context/input default and retained value`);
+  assert.match(holdingsControls, new RegExp(`id="${id}"`));
+  assert.match(holdingsControls, new RegExp(`for="${id}"`), `${label} label must target its checkbox`);
+  assert.match(holdingsControls, new RegExp(`SIMPLYPF2E\\.Generator\\.${label}`));
+}
+assert.match(holdingsControls, /id="spf-generator-holdings-note"[^>]*role="note"/);
+assert.match(holdingsControls, /aria-describedby="spf-generator-holdings-note"/);
+assert.match(messages.Generator.HoldingsHint, /off.*category.*none.*type/i);
+assert.match(messages.Generator.HoldingsHint, /describe.*gear or treasure.*prompt/i);
 assert.match(generatorApp, /#modePrompts = \{ monster: "", npc: "", encounter: "", character: "" \}/);
 assert.match(generatorApp, /showEmptyState:/);
 
