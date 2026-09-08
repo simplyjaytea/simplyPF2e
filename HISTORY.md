@@ -2,27 +2,39 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-09 — Final native QA and early character-selection rejection
+
+- .68 live QA completed with bounded Fighter, native Investigator-path and one-member encounter passes. Exact Rogue/class/name/key-ability fidelity failed, and a focused Rogue retry stopped before creation. All artifacts were preserved; known provider-spend lower bound is 294,271 tokens.
+- Terra traced the focused failure: permissive preliminary resolution found Rogue, but the final exact-source resolver had no accepted class reference. No raw ABC response remains. The proven issue is delayed required-candidate membership validation, which allowed extra feat/equipment/loot spend before rejection.
+- Luna added early required ancestry/background/class checks and localized feedback; root completed the production selector regression. The error retains request usage and does not introduce retries. Optional heritage remains optional and offered-class substitution remains a prompt-fidelity limitation. Astra approved this bounded slice with no blocking findings after independently running the selector and production Generator lifecycle checks. Parent Node22 gate passed all86regressions/121syntax plus JSON/whitespace.
+
+## 2026-09-08 — v0.3.5.68 publication and installation
+
+- PR #108 source `ee52c91471fe87fa3ca80e11246ec161b9d1649e` merged as `425e9339faf0a6b52099fa63c42fb2600b9986ee` after CI 34241316182 succeeded; Auto Release 34241400856 succeeded and published **v0.3.5.68** with both assets.
+- Setup installed the exact .68 release, and the existing `test` world was rejoined as GM. Foundry 14.365, PF2e 8.5.0, provider settings, and world data were preserved.
+- Native .68 QA passed a Fighter with flat-kit expansion and zero currency, an Investigator grant path reached from a Rogue request, and a small single-member encounter. Requested class/name/heritage fidelity and the focused Rogue retry did not pass; detailed limits are in the readiness report.
+
 ## 2026-09-08 — v0.3.5.67 publication and installation
 
 - PR #107 source `bfd698d4733ee45ff414049b0ee74acf58a2aef` merged as `16f9745282c44f306071e0b81e43ba05186830e9` after CI 34238059322 succeeded; Auto Release 34238176018 succeeded and published **v0.3.5.67** with both assets.
 - Setup installed the exact .67 release, and the existing `test` world was rejoined as GM. Foundry 14.365, PF2e 8.5.0, provider settings, and world data were preserved.
-- No .67 generation acceptance is claimed yet. The .65 failures and .66 successes remain recorded under their respective installed-release sections; no behavioral result is inferred from the .67 installation alone.
+- At publication time no .67 generation acceptance was claimed. Subsequent .67 acceptance results, including the kit and currency failures that drove the .68 fixes, are recorded below; no behavioral result is inferred from installation alone.
 
 ## 2026-09-08 — Native kit verification and zero-budget currency
 
 - Installed .67 passed enforced empty creature holdings and ABC selection/new-run rendering. Fighter reached native creation then rolled back because PF2e expands Adventurer's Pack into physical contents rather than retaining the kit. Terra replaced only kit persistence expectations with exact published physical-leaf sources, computed before actor writes. Astra independently verified master/8.5.0 semantics, nested kits, backpacks, duplicate/missing/cyclic sources and approved.
 - The same Fighter preview retained 60 gp currency despite 18.9 gp equipment against a 15 gp starting target. Luna traced coin rows entering the loot catalog, being appended to preserved currency, and escaping trimming at zero remaining budget. The bounded fix excludes current/legacy coinage from selector catalogs, filters stale selected currency, strips coins at zero/negative budget and skips the extra zero-budget purchase pass. Astra approved; existing equipment-alone overspend policy remains unchanged.
 - Native charm activation/depletion/rest passed on a new isolated blank QA character, with the GM's prior blank character assignment restored. Duplicate-copy activation remains incomplete; all QA documents and chat are preserved. Exact evidence/IDs are in the consumer readiness report.
-- Final Node22 parent gate passes 86 regressions, 121 syntax checks, JSON/duplicate keys and whitespace. Publish through the authorized PR/CI/release/module-only Setup update route, then verify native Fighter completion and kit contents.
+- Final Node22 parent gate passes 86 regressions, 121 syntax checks, JSON/duplicate keys and whitespace. The fixes were published through PR #108 and installed as .68; verify native Fighter completion and kit contents in the current .68 QA pass.
 
 ## 2026-09-08 — Installed generation acceptance and enforced creature options
 
-- PR #106 merged as `6f82c30` after CI 34233281229; Auto Release 34233487888 published **v0.3.5.66**. Setup updated only SimplyPF2e and relaunched `test`; core/system/provider settings were preserved. This remains the latest installed baseline; the reviewed follow-up awaits publication.
+- PR #106 merged as `6f82c30` after CI 34233281229; Auto Release 34233487888 published **v0.3.5.66**. Setup updated only SimplyPF2e and relaunched `test`; core/system/provider settings were preserved. This was the latest installed baseline at that point; later .67 and .68 publication and acceptance records supersede it.
 - Native .66 checks passed runed weapon and armor preview/create parity and healing-charm creation. NPC one-click creation completed with full HP, but the provider added gear and coins despite the no-gear/no-loot brief. Added authoritative Include equipment / Include treasure switches for creature/encounter modes, keeping PC starting wealth/loadout separate. Disabled categories bypass selectors and coin padding; disabled-loot reroll avoids provider spend. Astra caught and verified fixes for stale resolved gear and error text in the early reroll path.
 - Fighter live QA exposed deterministic response-contract drift: ABC prompt and decoder use ancestryId/heritageId/backgroundId/classId, but validation still required old name fields. Luna aligned the validator (including nullable heritage and key-ability enums) and added a production request test proving one-call exact-ID mapping and bounded rejection of legacy replies. No name fallback was introduced. Astra audited the other validated task contracts and found no further concrete mismatches.
 - A fresh PC run over a completed NPC card with the same stage count could repaint only progress, leaving stale enabled controls and completion content. SpfApp now forces a full shell render at the first stage of every run; subsequent stages keep incremental painting. A production lifecycle regression reproduces the same-row-count case. Astra independently approved UI, holdings, shared-render, ABC, and final Generator error-accounting slices after fixes. Parent Node22 gate passed **86 regressions, 121 syntax checks**, JSON/duplicate keys and whitespace.
 - Generator error accounting now retains usage attached to rejected AI responses in the outer and tolerated Generator catches, using the active/originating stage label and `_recordTokens` deduplication. The production lifecycle regression proves concept usage 5 plus failed ABC usage 17 yields one 22-token run. Astra approved this final accounting slice.
-- Exact native artifacts, provider usage, failed acceptance boundaries, and the unpublished follow-up's pending installed rechecks are retained in the readiness report and HANDOFF.md. Nothing was deleted.
+- Exact native artifacts, provider usage, failed acceptance boundaries, and the later .67/.68 installed rechecks are retained in the readiness report and HANDOFF.md. Nothing was deleted.
 
 ## 2026-09-08 — Consumer UI, continuous progress, and Forge source integrity
 

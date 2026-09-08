@@ -10,7 +10,7 @@ const settings = new Map([
 ]);
 globalThis.game = {
   settings: { get: (_module, key) => settings.get(key) },
-  i18n: { localize: (key) => key, format: (key, data) => `${key}: ${data?.detail ?? ""}` }
+  i18n: { localize: (key) => key, format: (key, data) => `${key}: ${data?.detail ?? data?.fields ?? ""}` }
 };
 
 const requests = [];
@@ -82,20 +82,39 @@ await assert.rejects(
 );
 assert.equal(requests.length, 3, "a malformed ABC response gets exactly one bounded retry");
 
-// An unoffered ID never falls back to the first candidate. The existing
-// caller mapping leaves its name fallback and source reference absent so the
-// downstream exact-content resolver can fail closed.
-replies.push({ ancestryId: "A-UNOFFERED", heritageId: null, backgroundId: "B0", classId: "C0", keyAbility: "str" });
-const unresolved = await selectAncestryBackgroundClass({
+// Required picks must resolve at this request boundary: a display name must
+// not rescue an unoffered ID or permit downstream feat/equipment requests.
+const selectorArgs = {
   concept,
   ancestryCandidates: candidates.ancestries,
   heritageCandidates: candidates.heritages,
   backgroundCandidates: candidates.backgrounds,
   classCandidates: candidates.classes
-});
-assert.equal(unresolved.ancestry, concept.ancestry);
-assert.equal(unresolved.ancestryCandidate, null, "unoffered ancestry IDs must not gain an issued ref");
-assert.equal(unresolved.backgroundCandidate, refs.background, "valid IDs in the same response remain exact");
-assert.equal(requests.length, 4, "an otherwise structurally valid unoffered ID does not retry");
+};
+const validReply = { ancestryId: "A0", heritageId: null, backgroundId: "B0", classId: "C0", keyAbility: "str" };
+for (const [field, name] of [["ancestry", "Human"], ["background", "Guard"], ["class", "Fighter"]]) {
+  const before = requests.length;
+  replies.push({ ...validReply, [`${field}Id`]: "UNOFFERED", [field]: name });
+  await assert.rejects(selectAncestryBackgroundClass(selectorArgs), (error) => {
+    assert.match(error.message, /ABCSelectionUnresolved/);
+    assert.deepEqual(error.details, { fields: [field] });
+    assert.equal(error.usage.total, 18, "rejected issued-ID mapping retains the spent request usage");
+    assert.equal(error.retryable, false, "membership rejection does not add another provider call");
+    assert.equal(error.message.includes("UNOFFERED"), false, "raw provider IDs do not enter feedback");
+    return true;
+  });
+  assert.equal(requests.length, before + 1, "invalid required IDs fail immediately after one request");
+}
 
-console.log("ai.abcSelection.test.mjs: ABC ID validation, exact mapping, retry and fail-closed cases passed");
+// Null/unknown heritage remains optional under the established contract.
+for (const heritageId of [null, "H-UNOFFERED"]) {
+  replies.push({ ...validReply, heritageId });
+  const result = await selectAncestryBackgroundClass(selectorArgs);
+  assert.equal(result.heritage, null);
+  assert.equal(result.heritageCandidate, null);
+  assert.equal(result.ancestryCandidate, refs.ancestry);
+  assert.equal(result.backgroundCandidate, refs.background);
+  assert.equal(result.classCandidate, refs.class);
+}
+
+console.log("ai.abcSelection.test.mjs: ABC exact mapping, early required-ID rejection, usage and optional heritage passed");
