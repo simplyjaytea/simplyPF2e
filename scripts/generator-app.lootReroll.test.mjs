@@ -22,6 +22,8 @@ let selectedLoot = [];
 let omittedLoot = false;
 let equipmentSelection = { equipment: [], omitted: false };
 let budgetTarget;
+let budgetCalls = 0;
+let lootCalls = 0;
 let resolveOptions;
 let writes = 0;
 let abortController;
@@ -45,6 +47,7 @@ const mocks = {
     async render() {}
   },
   generateLoot: async () => {
+    lootCalls++;
     if (providerFailure) throw providerFailure;
     return { loot: [{ name: "Healing Potion", quantity: 1 }] };
   },
@@ -64,7 +67,7 @@ const mocks = {
       entry: item.candidate === ref || !options?.exactContent ? ref : null
     }));
   },
-  applyTreasureBudget: async (loot, target) => { budgetTarget = target; return loot; },
+  applyTreasureBudget: async (loot, target) => { budgetCalls++; budgetTarget = target; return loot; },
   treasureBudget: () => 10,
   findBestiaryScaffold: async () => ({ img: "test.webp" }),
   createActor: async () => { writes++; throw new Error("native create must not run"); }
@@ -82,8 +85,9 @@ await module.evaluate();
 const App = module.namespace.GeneratorApp;
 function preview() {
   const app = new App();
-  app._test_concept = { name: "Courier", level: 4, rarity: "common", loot: [{ name: "Gold Pieces", quantity: 5 }] };
-  app._test_resolved = { loot: [{ name: "Gold Pieces", quantity: 5, entry: ref }] };
+  app._test_concept = { name: "Courier", level: 4, rarity: "common",
+    equipment: [{ name: "Lantern" }], loot: [{ name: "Gold Pieces", quantity: 5 }] };
+  app._test_resolved = { equipment: [{ name: "Lantern", entry: ref }], loot: [{ name: "Gold Pieces", quantity: 5, entry: ref }] };
   app._test_manifest = completionManifest({ mode: "npc", concept: app._test_concept, resolved: app._test_resolved });
   return app;
 }
@@ -108,6 +112,27 @@ for (const failure of [new Error("provider unavailable"), Object.assign(new Erro
     "cancellation is neutral while ordinary errors remain visible");
 }
 providerFailure = null;
+{
+  const app = preview();
+  app._test_input.includeEquipment = false;
+  app._test_input.includeLoot = false;
+  app._test_error = "previous reroll failure";
+  const beforeLootCalls = lootCalls;
+  const beforeBudgetCalls = budgetCalls;
+  await App.DEFAULT_OPTIONS.actions.rerollLoot.call(app);
+  assert.equal(lootCalls, beforeLootCalls,
+    "a disabled creature loot category never makes a reroll provider request");
+  assert.equal(budgetCalls, beforeBudgetCalls,
+    "a disabled creature loot category never receives coin-budget padding");
+  assert.equal(app._test_concept.loot.length, 0);
+  assert.equal(app._test_concept.equipment.length, 0,
+    "disabled equipment cannot remain in the canonical reroll concept");
+  assert.equal(app._test_resolved.loot.length, 0);
+  assert.equal(app._test_resolved.equipment.length, 0,
+    "disabled equipment cannot remain in resolved reroll content");
+  assert.equal(app._test_manifest.complete, true);
+  assert.equal(app._test_error, null, "a successful local disabled-category commit clears stale errors");
+}
 {
   const app = preview();
   const before = retained(app);
@@ -176,10 +201,16 @@ for (const omitted of [false, true]) {
 {
   const app = new App();
   const fields = { '[name="mode"]:checked': "encounter", '[name="level"]': "3.7", '[name="partySize"]': "2.4" };
+  app._test_input.includeEquipment = false;
+  app._test_input.includeLoot = false;
   app.element = { querySelector: (selector) => selector in fields ? { value: fields[selector] } : null };
   app._test_readForm();
   assert.equal(app._test_input.level, 4);
   assert.equal(app._test_input.partySize, 2, "encounter math accepts whole creatures and whole PC levels");
+  assert.equal(app._test_input.includeEquipment, false,
+    "a mode without the equipment checkbox preserves the draft's explicit choice");
+  assert.equal(app._test_input.includeLoot, false,
+    "a mode without the loot checkbox preserves the draft's explicit choice");
 }
 {
   const app = new App();

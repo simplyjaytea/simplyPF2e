@@ -34,6 +34,11 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
   _runStartedAt = 0;
   _runEndedAt = null;
   _clock = null;
+  // A new run replaces context-owned state (busy, previews, completion
+  // panels) as well as its progress rows. The first stage must therefore
+  // render the whole shell once, even if its row count happens to match the
+  // previous run and incremental progress painting is otherwise possible.
+  _progressShellPending = false;
   _runHidden = false;
   _uiState = null;
   _recordedUsage = new WeakSet();
@@ -316,6 +321,7 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
     this._runStartedAt = Date.now();
     this._runEndedAt = null;
     this._progress = createProgress(defs);
+    this._progressShellPending = true;
     this._recordedUsage = new WeakSet();
     this._startClock();
     return cancellable ? this._armCancel() : null;
@@ -351,7 +357,10 @@ export class SpfApp extends HandlebarsApplicationMixin(ApplicationV2) {
     progress.activeLabel = progress.steps.find((step) => step.key === key).label;
     progress.percent = progressPercent({ steps: progress.steps, activeKey: key,
       streamFrac: progress.streamFrac, floor: progress.percent });
-    if (this._paintStepList()) this._paintProgress();
+    if (this._progressShellPending) {
+      this._progressShellPending = false;
+      await this.render();
+    } else if (this._paintStepList()) this._paintProgress();
     else await this.render();
   }
 

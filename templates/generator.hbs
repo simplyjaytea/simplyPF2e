@@ -161,7 +161,24 @@
           {{localize "SIMPLYPF2E.Generator.AllowSpellcasting"}}
         </label>
       </div>
+      {{#unless characterMode}}
+        <div class="form-group spf-checkbox">
+          <label for="spf-generator-include-equipment">
+            <input id="spf-generator-include-equipment" type="checkbox" name="includeEquipment" aria-describedby="spf-generator-holdings-note" {{#if input.includeEquipment}}checked{{/if}}>
+            {{localize "SIMPLYPF2E.Generator.IncludeEquipment"}}
+          </label>
         </div>
+        <div class="form-group spf-checkbox">
+          <label for="spf-generator-include-loot">
+            <input id="spf-generator-include-loot" type="checkbox" name="includeLoot" aria-describedby="spf-generator-holdings-note" {{#if input.includeLoot}}checked{{/if}}>
+            {{localize "SIMPLYPF2E.Generator.IncludeTreasure"}}
+          </label>
+        </div>
+      {{/unless}}
+        </div>
+      {{#unless characterMode}}
+        <p id="spf-generator-holdings-note" class="spf-field-note" role="note">{{localize "SIMPLYPF2E.Generator.HoldingsHint"}}</p>
+      {{/unless}}
       </div>
     </details>
     <div class="spf-generate-row">

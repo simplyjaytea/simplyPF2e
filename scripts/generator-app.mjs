@@ -91,8 +91,8 @@ export class GeneratorApp extends SpfApp {
   /** Form values, kept across re-renders. */
   #input = {
     mode: "monster", prompt: "", level: 1, rarity: "common",
-    allowSpellcasting: true, preset: "", partySize: 4, threat: "moderate",
-    treasureAmount: "standard", rarityCap: "unique"
+    allowSpellcasting: true, includeEquipment: true, includeLoot: true,
+    preset: "", partySize: 4, threat: "moderate", treasureAmount: "standard", rarityCap: "unique"
   };
   #modePrompts = { monster: "", npc: "", encounter: "", character: "" };
   #busy = false;
@@ -126,6 +126,8 @@ export class GeneratorApp extends SpfApp {
     this.#input.preset = presetGroups.selectedId;
     return {
       input: this.#input,
+      includeEquipment: this.#input.includeEquipment,
+      includeLoot: this.#input.includeLoot,
       busy: this.#busy,
       busyMessage: this.#busyMessage,
       canCancel: this._canCancel,
@@ -432,6 +434,8 @@ export class GeneratorApp extends SpfApp {
     const level = Math.min(levelMax, Math.max(levelMin, Number.isNaN(rawLevel) ? 1 : Math.round(rawLevel)));
     const rarity = form.querySelector('[name="rarity"]')?.value ?? this.#input.rarity;
     const allowSpellcasting = form.querySelector('[name="allowSpellcasting"]')?.checked ?? true;
+    const includeEquipment = form.querySelector('[name="includeEquipment"]')?.checked ?? this.#input.includeEquipment;
+    const includeLoot = form.querySelector('[name="includeLoot"]')?.checked ?? this.#input.includeLoot;
     const preset = form.querySelector('[name="preset"]')?.value ?? this.#input.preset;
     // partySize is only rendered in Encounter mode ({{#if encounterMode}} in
     // generator.hbs) — outside that mode the selector is null, so fall back
@@ -445,7 +449,8 @@ export class GeneratorApp extends SpfApp {
     const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
     const treasureAmount = form.querySelector('[name="treasureAmount"]')?.value ?? this.#input.treasureAmount;
     const rarityCap = form.querySelector('[name="rarityCap"]')?.value ?? this.#input.rarityCap;
-    this.#input = { mode, prompt, level, rarity, allowSpellcasting, preset, partySize, threat, treasureAmount, rarityCap };
+    this.#input = { mode, prompt, level, rarity, allowSpellcasting, includeEquipment, includeLoot,
+      preset, partySize, threat, treasureAmount, rarityCap };
   }
 
   _preserveForm() {
@@ -654,6 +659,15 @@ export class GeneratorApp extends SpfApp {
     return true;
   }
 
+  /** Module-owned creature category controls: never let an AI draft, selector,
+   * or treasure budget reintroduce a category the GM disabled. */
+  #enforceCreatureCategoryOptions(concept, mode = this.#input.mode) {
+    if (!concept || !["monster", "npc", "encounter"].includes(mode)) return concept;
+    if (!this.#input.includeEquipment) concept.equipment = [];
+    if (!this.#input.includeLoot) concept.loot = [];
+    return concept;
+  }
+
   #resetGenerationState() {
     this.#busy = true;
     this.#error = null;
@@ -701,6 +715,10 @@ export class GeneratorApp extends SpfApp {
       await this.#generatePC(isRandom, { signal });
       if (create && this.#pcConcept) outcome = await this.#createCharacterActor({ reuseRunId: runId });
     } catch (err) {
+      this._recordTokens(
+        this._progress?.steps.find((step) => step.state === "active")?.label
+          ?? game.i18n.localize("SIMPLYPF2E.Progress.PCConcept"), err?.usage
+      );
       this.#noteGenerationFailure(err, "character generation");
       this.#pcConcept = null;
       this.#pcResolved = null;
@@ -731,6 +749,10 @@ export class GeneratorApp extends SpfApp {
       await this.#generateEncounter(isRandom, { signal, composition });
       if (create && this.#encounter) outcome = await this.#createEncounterActors({ reuseRunId: runId });
     } catch (err) {
+      this._recordTokens(
+        this._progress?.steps.find((step) => step.state === "active")?.label
+          ?? game.i18n.localize("SIMPLYPF2E.Progress.Design"), err?.usage
+      );
       this.#noteGenerationFailure(err, "encounter generation");
       this.#encounter = null;
       outcome = err?.cancelled ? "cancelled" : "error";
@@ -805,13 +827,17 @@ export class GeneratorApp extends SpfApp {
         level: this.#input.level,
         rarity: this.#input.rarity,
         allowSpellcasting: this.#input.allowSpellcasting,
+        includeEquipment: this.#input.includeEquipment,
+        includeLoot: this.#input.includeLoot,
         preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
         amount: this.#input.treasureAmount,
         intent: this.#input.mode,
         onProgress: this._progressCallback(), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Concept"), usage);
-      this.#concept = { ...normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity }), gmPrompt };
+      this.#concept = this.#enforceCreatureCategoryOptions(
+        { ...normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity }), gmPrompt }
+      );
       // Defensive filter: allowSpellcasting is only enforced in the AI prompt,
       // so a non-compliant model output can still return a valid tradition.
       // Strip it here (focus spells ride on it — normalizeConcept already
@@ -861,6 +887,10 @@ export class GeneratorApp extends SpfApp {
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
       if (create && this.#concept && !this.#error) outcome = await GeneratorApp.#onCreateActor.call(this, { reuseRunId: runId });
     } catch (err) {
+      this._recordTokens(
+        this._progress?.steps.find((step) => step.state === "active")?.label
+          ?? game.i18n.localize("SIMPLYPF2E.Progress.Concept"), err?.usage
+      );
       this.#noteGenerationFailure(err, "generation");
       this.#concept = null;
       this.#resolved = null;
@@ -905,6 +935,8 @@ export class GeneratorApp extends SpfApp {
           level: slot.level,
           rarity,
           allowSpellcasting: this.#input.allowSpellcasting,
+          includeEquipment: this.#input.includeEquipment,
+          includeLoot: this.#input.includeLoot,
           // The preset row is now a stable slot in every mode: a selected
           // preset shapes each member the same way it shapes a single
           // creature (and, matching the Single dice button, Random ignores it).
@@ -914,7 +946,9 @@ export class GeneratorApp extends SpfApp {
           onProgress: this._progressCallback(), signal
         });
         this._recordTokens(memberLabel(i), usage);
-        const concept = { ...normalizeConcept(raw, { level: slot.level, rarity }), gmPrompt: theme };
+        const concept = this.#enforceCreatureCategoryOptions(
+          { ...normalizeConcept(raw, { level: slot.level, rarity }), gmPrompt: theme }, "encounter"
+        );
         // Same defensive filter as the single-creature pipeline: the prompt
         // asks for no spellcasting, but a non-compliant model can still
         // return a valid tradition.
@@ -1142,6 +1176,7 @@ export class GeneratorApp extends SpfApp {
           resolved.loot = await applyTreasureBudget(resolved.loot, lootBudget);
         } catch (err) {
           if (err?.cancelled) throw err;
+          this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), err?.usage);
           console.warn(`${MODULE_ID} | extra PC purchase pass failed, leaving remaining wealth as coin`, err);
           this.#warnToleratedStage("loot");
         }
@@ -1184,6 +1219,7 @@ export class GeneratorApp extends SpfApp {
         this._recordTokens(focusLabel, focus.usage);
       } catch (err) {
         if (err?.cancelled) throw err;
+        this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.SpellFocus"), err?.usage);
         console.warn(`${MODULE_ID} | spell focus selection failed, using first-draft spell names only`, err);
         this.#warnToleratedStage("spells");
       }
@@ -1217,6 +1253,7 @@ export class GeneratorApp extends SpfApp {
       }
     } catch (err) {
       if (err?.cancelled) throw err;
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), err?.usage);
       console.warn(`${MODULE_ID} | grounded spell selection failed, dropping spellcasting (unconstrained first-draft spells discarded)`, err);
       this.#warnToleratedStage("spells");
       spellcasting.spells = [];
@@ -1249,6 +1286,7 @@ export class GeneratorApp extends SpfApp {
       concept.specialAbilities = [...abilities, ...narratives].slice(0, 6);
     } catch (err) {
       if (err?.cancelled) throw err;
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Abilities"), err?.usage);
       console.warn(`${MODULE_ID} | grounded creature ability selection failed; unresolved glossary abilities will block creation`, err);
       concept.specialAbilities = [...draft.filter((ability) => ability.glossary), ...narratives].slice(0, 6);
     }
@@ -1272,6 +1310,7 @@ export class GeneratorApp extends SpfApp {
       if (feats.length || omitted === true) concept.feats = feats;
     } catch (err) {
       if (err?.cancelled) throw err;
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), err?.usage);
       console.warn(`${MODULE_ID} | grounded creature feat selection failed; unresolved draft feats will block creation`, err);
     }
   }
@@ -1304,6 +1343,7 @@ export class GeneratorApp extends SpfApp {
       if (equipment.length || omitted === true) concept.equipment = equipment;
     } catch (err) {
       if (err?.cancelled) throw err;
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Equipment"), err?.usage);
       console.warn(`${MODULE_ID} | grounded equipment selection failed; unresolved draft equipment will block creation`, err);
     }
   }
@@ -1349,6 +1389,7 @@ export class GeneratorApp extends SpfApp {
       }
     } catch (err) {
       if (err?.cancelled) throw err;
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), err?.usage);
       console.warn(`${MODULE_ID} | grounded loot selection failed; unresolved draft loot will block creation`, err);
     }
   }
@@ -1375,6 +1416,7 @@ export class GeneratorApp extends SpfApp {
       await this.#refineLoot(concept, signal);
     } catch (err) {
       if (err?.cancelled) throw err;
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), err?.usage);
       console.warn(`${MODULE_ID} | PC starting-wealth item drafting failed, wealth will be all coin`, err);
       this.#warnToleratedStage("loot");
     }
@@ -1705,6 +1747,23 @@ export class GeneratorApp extends SpfApp {
 
   static async #onRerollLoot() {
     if (this.#busy || !this.#concept) return;
+    if (this.element?.querySelector) this.#readForm();
+    const planMode = this.#manifest?.mode ?? this.#input.mode;
+    if (this.#input.includeLoot === false && ["monster", "npc", "encounter"].includes(planMode)) {
+      // Reroll must not ask the provider or coin-pad a category disabled by
+      // the module-owned controls; preserve only categories still enabled.
+      this.#concept = this.#enforceCreatureCategoryOptions(this.#concept, planMode);
+      this.#resolved = {
+        ...this.#resolved,
+        equipment: this.#input.includeEquipment ? this.#resolved?.equipment ?? [] : [],
+        loot: []
+      };
+      this.#manifest = completionManifest({ mode: planMode,
+        concept: this.#concept, resolved: this.#resolved });
+      this.#error = null;
+      await this.render();
+      return;
+    }
     this.#busy = true;
     this.#error = null;
     const signal = this._beginProgress([["loot", game.i18n.localize("SIMPLYPF2E.Progress.LootReroll")]]);
@@ -1735,6 +1794,10 @@ export class GeneratorApp extends SpfApp {
       this.#resolved = resolved;
       this.#manifest = manifest;
     } catch (err) {
+      this._recordTokens(
+        this._progress?.steps.find((step) => step.state === "active")?.label
+          ?? game.i18n.localize("SIMPLYPF2E.Progress.LootReroll"), err?.usage
+      );
       this.#noteGenerationFailure(err, "loot reroll");
       outcome = err?.cancelled ? "cancelled" : "error";
     } finally {
