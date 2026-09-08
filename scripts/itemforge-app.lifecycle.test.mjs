@@ -22,7 +22,7 @@ let pricePending;
 let sheetFailure;
 let createFailure;
 let macroFailure;
-let activation = null;
+let activation = null, runedFailure = null, forgeKind = "wondrous";
 const warnings = [];
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
@@ -39,7 +39,7 @@ class MockSpfApp {
   _progress = null;
   _formatLastRunCost() { return null; }
   _buildTokenReport() { return null; }
-  _recordTokens() {}
+  _recordTokens(label, usage) { if (usage) this._tokenUsage.push({ label, usage }); }
   get _canCancel() { return Boolean(this.abort && !this.abort.signal.aborted); }
   async render() {}
   _beginProgress() { this.abort = new AbortController(); return this.abort.signal; }
@@ -61,6 +61,10 @@ const mocks = {
   EFFECT_KINDS: ["itemBonus"], getForgeEffectCatalog: async () => [{ kind: "itemBonus" }],
   getUsageOptions: async () => ["worn"],
   generateMagicItemConcept: async () => { generationCalls++; return { concept: {} }; },
+  getBaseItemCandidates: async () => [{ id: "base", name: "Longsword", level: 0 }],
+  getPropertyRuneCandidates: async () => [],
+  getFundamentalRuneTiers: async () => ({ potencyTiers: [1], minPotencyLevel: 2, potencyCandidates: [{ id: "potency" }], secondaryCandidates: [] }),
+  generateRunedItemConcept: async () => { throw runedFailure; },
   normalizeMagicItemConcept: () => ({ name: "QA charm", level: 4, rarity: "common", traits: [], effects: [], bulk: 0, activation }),
   priceForLevel: async () => { priceStarted?.resolve(); if (pricePending) await pricePending.promise; return 100; },
   describeActivation: () => "Activation",
@@ -81,7 +85,7 @@ const App = module.namespace.ItemForgeApp;
 const actions = App.DEFAULT_OPTIONS.actions;
 function app() {
   const instance = new App();
-  const controls = { prompt: { value: "QA charm" }, level: { value: "4" }, rarity: { value: "common" } };
+  const controls = { prompt: { value: "QA charm" }, level: { value: "4" }, rarity: { value: "common" }, kind: { value: forgeKind } };
   instance.element = { querySelector: (selector) => controls[selector.match(/name="(\w+)"/)?.[1]] ?? null };
   return instance;
 }
@@ -128,4 +132,17 @@ await actions.createItem.call(forge);
 assert.equal((await forge._prepareContext()).preview, null);
 assert.equal((await forge._prepareContext()).error, null);
 assert.ok(warnings.some((text) => text.includes("MacroFailed")));
+// A provider response that fails only at local Forge alias validation still
+// contributes to the run's token report before the error reaches the UI.
+forgeKind = "weapon";
+runedFailure = Object.assign(new Error("unknown Forge alias"), { usage: { total: 37 } });
+forge = app();
+await actions.generate.call(forge);
+assert.equal(forge._tokenUsage.length, 1, "locally rejected runed response records usage once");
+assert.equal(forge._tokenUsage[0].label, "SIMPLYPF2E.ItemForge.ProgressConcept");
+assert.equal(forge._tokenUsage[0].usage.total, 37,
+  "locally rejected runed response usage remains visible in the Forge run");
+runedFailure = null;
+forgeKind = "wondrous";
+
 console.log("itemforge-app.lifecycle.test.mjs: reentry, final-step cancellation, commit and retry passed");

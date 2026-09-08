@@ -5,7 +5,10 @@ import {
 import { hasRunes, parseRunes, propertyRuneRestrictionNote } from "./runes.mjs";
 import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
 import { estimateTokens, normalizeUsage } from "./tokens.mjs";
-import { encodeFeatCandidateSlots, resolveEncodedFeatPicks } from "./ai-candidate-format.mjs";
+import {
+  encodeFeatCandidateSlots, resolveEncodedFeatPicks,
+  encodeForgeCandidateGroups, resolveForgeCandidateAliases
+} from "./ai-candidate-format.mjs";
 import { taskResponseProblem } from "./ai-response-validation.mjs";
 import { validateChoicePicks } from "./choice-set.mjs";
 import { CORE_SKILLS } from "./pc-skills.mjs";
@@ -689,10 +692,10 @@ export async function selectEquipment({ concept, candidates, onProgress, signal 
     .map(([type, names]) => `${type}: ${names.join("; ")}`)
     .join("\n");
 
-  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting carried equipment for a Pathfinder 2e creature. Choose ONLY from the provided list, copying each name EXACTLY as written. Respond with a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting carried equipment for a Pathfinder 2e creature. The Original GM request below is authoritative. If it explicitly prohibits equipment, gear, or carried items, return exactly {"equipment":[]} even when the first draft or available candidates suggest items; ignore all positive selection guidance in that case. Otherwise, select only issued candidate IDs from the provided list. Each catalog entry is "id | displayed name"; put the issued ID in the "id" field, not a guessed name or pack/document reference. The only name text allowed is an existing compatible fundamental-rune decoration when relevant to the original request; keep the offered base name exact and do not invent any other variation. Respond with a single JSON object and nothing else:
 { "equipment": [ { "id": string, "quantity": number } ] }
 ${RUNE_PREFIX_NOTE}
-Pick the logical items the creature would carry: the weapons it wields (match its strikes), sensible consumables (healing potions, elixirs, bombs, talismans, poisons it applies), and everyday adventuring gear it would plausibly use (rope, torches, rations, tools). Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its role and level. Pick each DISTINCT item at most once — a smaller focused set is fine; never repeat an item or add filler to reach a count. NO coins or currency. "quantity" is usually 1; use 2-5 only for ammunition and stackable consumables.`;
+When the Original GM request permits carried equipment, pick the logical items the creature would carry: the weapons it wields (match its strikes), sensible consumables (healing potions, elixirs, bombs, talismans, poisons it applies), and everyday adventuring gear it would plausibly use (rope, torches, rations, tools). Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its role and level. Pick each DISTINCT item at most once — a smaller focused set is fine; never repeat an item or add filler to reach a count. NO coins or currency. "quantity" is usually 1; use 2-5 only for ammunition and stackable consumables.`;
 
   const user = [
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
@@ -1108,21 +1111,22 @@ export async function generateRunedItemConcept({
   prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyCandidates, secondaryCandidates, onProgress, signal
 }) {
   const secondaryLabel = kind === "weapon" ? "striking" : "resilient";
-  const baseList = baseCandidates.map((c) => {
+  const encoded = encodeForgeCandidateGroups({ baseCandidates, potencyCandidates, secondaryCandidates, runeCandidates });
+  const baseList = encoded.base.entries.map((c) => {
     const category = kind === "armor" && c.category ? `${c.category} armor, ` : "";
-    return `${c.id} | ${c.name}${c.level > 0 || category ? ` (${category}L${c.level})` : ""}`;
+    return `${c.alias} | ${c.name}${c.level > 0 || category ? ` (${category}L${c.level})` : ""}`;
   }).join("; ");
   // Category-restricted armor runes are annotated ("light armor only") so the
   // AI picks runes that fit its base; normalizeRunedItemConcept still drops a
   // mismatch, this just spends the pick on something that survives.
-  const runeList = runeCandidates.length
-    ? runeCandidates.map((c) => {
+  const runeList = encoded.property.entries.length
+    ? encoded.property.entries.map((c) => {
       const note = propertyRuneRestrictionNote(c.usage);
-      return `${c.id} | ${c.name} (L${c.level}${note ? `, ${note}` : ""})`;
+      return `${c.alias} | ${c.name} (L${c.level}${note ? `, ${note}` : ""})`;
     }).join("; ")
     : "(none available at this level)";
-  const potencyList = potencyCandidates.map((c) => `${c.id} | ${c.name}`).join("; ");
-  const secondaryList = secondaryCandidates.map((c) => `${c.id} | ${c.name}`).join("; ");
+  const potencyList = encoded.potency.entries.map((c) => `${c.alias} | ${c.name}`).join("; ");
+  const secondaryList = encoded.secondary.entries.map((c) => `${c.alias} | ${c.name}`).join("; ");
 
   const system = `You are an expert Pathfinder 2e (remaster) magic ${kind} designer. You choose real components; the system computes the mechanical name, price and item level from whatever you pick.
 
@@ -1130,27 +1134,27 @@ Respond with a SINGLE JSON object only. No markdown fences, no commentary.
 
 JSON schema:
 {
-  "baseItemId": string, // EXACTLY one opaque ID from the base ${kind} list below
-  "potencyRuneId": string, // EXACTLY one opaque ID from the potency rune list below
-  "secondaryRuneId": string, // EXACTLY one opaque ID from the ${secondaryLabel} rune list below, or literal "none"
-  "propertyRuneIds": string[], // opaque IDs from the property rune list below; choose no more than the selected potency rune's slots
+  "baseItemId": string, // EXACTLY one short alias from the base ${kind} list below
+  "potencyRuneId": string, // EXACTLY one short alias from the potency rune list below
+  "secondaryRuneId": string, // EXACTLY one short alias from the ${secondaryLabel} rune list below, or literal "none"
+  "propertyRuneIds": string[], // short aliases from the property rune list below; choose no more than the selected potency rune's slots
   "description": string // 2-4 sentences of evocative flavor: appearance, history, feel. Plain text. Do NOT restate the mechanical runes — a mechanical summary is appended automatically.
 }
 
-Base ${kind}s available (opaque ID | name (item level)):
+Base ${kind}s available (short alias | name (item level)):
 ${baseList}
 
-Potency runes available (opaque ID | name):
+Potency runes available (short alias | name):
 ${potencyList}
 
-${secondaryLabel[0].toUpperCase() + secondaryLabel.slice(1)} runes available (opaque ID | name; or "none"):
+${secondaryLabel[0].toUpperCase() + secondaryLabel.slice(1)} runes available (short alias | name; or "none"):
 ${secondaryList}
 
-Property runes available (opaque ID | name (rune level)):
+Property runes available (short alias | name (rune level)):
 ${runeList}
 
 Design guidance:
-- Never emit numeric fields, dice formulas, or code. Copy only the offered opaque IDs; the module supplies all values.
+- Never emit numeric fields, dice formulas, or code. Copy only the offered short aliases; the module supplies all values.
 - Pick a base ${kind} and runes that together tell a clear, thematic story for the GM's concept.
 - Avoid combining runes that are thematically opposed (e.g. never pick both Holy and Unholy, or both Anarchic and Axiomatic) unless the concept explicitly wants that tension.
 - "propertyRuneIds" length must never exceed the selected potency rune's slots — prefer fewer, more thematic runes over maxing out every slot.${kind === "armor" ? `
@@ -1166,7 +1170,14 @@ Design guidance:
   const { data, usage } = await requestJSON({
     task: AI_TASK.RUNED_ITEM_CONCEPT, system, user, onProgress, signal
   });
-  return { concept: data, usage };
+  try {
+    return { concept: resolveForgeCandidateAliases(encoded, data), usage };
+  } catch (err) {
+    // The provider request completed and spent tokens; alias validation is a
+    // local fail-closed boundary, so retain its usage for the caller's report.
+    if (err && !err.usage) err.usage = usage;
+    throw err;
+  }
 }
 
 /**

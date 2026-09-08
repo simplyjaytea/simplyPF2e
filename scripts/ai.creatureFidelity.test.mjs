@@ -24,6 +24,17 @@ const candidate = { id: "E0", name: "Potion", type: "consumable", level: 1, ref:
 const assertPrompt = () => assert.ok(requests.at(-1).messages[1].content.includes(gmPrompt),
   "every refinement must retain the exact original GM request");
 const assertPriority = () => assert.match(requests.at(-1).messages[0].content, /explicit concept constraints override/);
+const assertEquipmentContract = () => {
+  const system = requests.at(-1).messages[0].content;
+  assert.match(system, /original GM request[\s\S]*?prohibits equipment, gear, or carried items[\s\S]*?return exactly \{"equipment":\[\]\}/i,
+    "equipment selection must make an explicit no-equipment request an empty selection");
+  assert.match(system, /select only issued candidate IDs[\s\S]*?put the issued ID in the "id" field/i,
+    "equipment selection must lead with the issued ID schema");
+  assert.match(system, /existing compatible fundamental-rune decoration when relevant/i,
+    "equipment selection must limit name text to the compatible rune exception");
+  assert.match(system, /When the Original GM request permits carried equipment, pick the logical items/i,
+    "positive equipment guidance must be conditional on the original request");
+};
 
 reply = { name: "Courier", description: "A courier", abilityScales: {}, saveScales: {},
   blurb: "", readAloud: "", recallKnowledge: "", size: "med", acScale: "moderate", hpScale: "moderate", perceptionScale: "moderate",
@@ -50,6 +61,7 @@ for (const [call, field] of [[selectEquipment, "equipment"], [selectLoot, "loot"
   assert.equal(omitted.omitted, true, "only an explicit empty validated array declines an optional wishlist");
   assertPrompt();
   assertPriority();
+  if (field === "equipment") assertEquipmentContract();
   reply = { [field]: [{ id: "invented" }] };
   const invalid = await call({ concept, candidates: [candidate] });
   assert.equal(invalid[field].length, 0);
