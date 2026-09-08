@@ -73,6 +73,7 @@ const {
   assert.deepEqual(parseCoins("Silver Coins"), { name: "Silver Pieces", count: null });
   assert.deepEqual(parseCoins("5 sp"), { name: "Silver Pieces", count: 5 });
   assert.deepEqual(parseCoins("Copper Pieces"), { name: "Copper Pieces", count: null });
+  assert.deepEqual(parseCoins("Platinum Pieces"), { name: "Platinum Pieces", count: null });
   assert.deepEqual(parseCoins("pp"), { name: "Platinum Pieces", count: null });
   assert.equal(parseCoins("Electrum Coins"), null, "unknown denomination is not currency");
   assert.equal(parseCoins("adamantine pieces"), null, "non-PF2e metal is not currency");
@@ -199,6 +200,22 @@ assert.equal(isCoinageDocument({ type: "treasure", system: { price: { value: { g
   assert.equal(padded[0].quantity, 50, "an existing gold line is increased to close the gap");
   const trimmed = await applyTreasureBudget(structuredClone(loot), 4);
   assert.equal(trimmed[0].quantity, 4, "over-budget coin lines shrink, largest denomination first");
+}
+
+{
+  // A zero remainder is the PC case where starting equipment already exceeds
+  // the wealth target. Currency cannot survive as an additional asset, while
+  // named loot remains for the PC-only policy to decide.
+  const zero = await applyTreasureBudget([
+    { name: "Gold Pieces", quantity: 20, resolvedValue: 1 },
+    { name: "Silver Pieces", quantity: 10, resolvedValue: 0.1 },
+    { name: "Unmatched Gem", quantity: 1, resolvedValue: 0 }
+  ], 0);
+  assert.deepEqual(zero.map(({ name }) => name), ["Unmatched Gem"],
+    "zero budget removes every coin row but preserves named loot for caller policy");
+  assert.deepEqual(await applyTreasureBudget([
+    { name: "Gold Pieces", quantity: 1, resolvedValue: 1 }
+  ], -1), [], "negative budget follows the same closed currency policy");
 }
 
 console.log("builder.coins.test.mjs: parseCoins, exactContent coinage clones, and budget padding passed");

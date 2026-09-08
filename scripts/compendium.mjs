@@ -173,7 +173,7 @@ async function getIndex(packId) {
     fields: [
       "name", "type", "system.slug", "system.level.value",
       "system.traits.value", "system.traits.traditions", "system.ritual",
-      "system.category", "system.spell", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
+      "system.category", "system.stackGroup", "system.spell", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
     ]
   });
   const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
@@ -628,11 +628,12 @@ export async function getFocusSpellCandidates(maxRank, keywords = []) {
  * cannot make the prompt grow without bound.
  * @param {number} level creature level
  * @param {string[]} [keywords]
- * @param {{treasure?: boolean, limit?: number}} [options] treasure inclusion and hard result cap
+ * @param {{treasure?: boolean, includeCoins?: boolean, limit?: number}} [options]
+ * treasure inclusion, optional coin inclusion, and hard result cap
  * @returns {Promise<{name: string, type: string, level: number}[]>} sorted by level then name
  */
 export async function getEquipmentCandidates(
-  level, keywords = [], { treasure = false, limit = EQUIPMENT_CANDIDATE_LIMIT } = {}
+  level, keywords = [], { treasure = false, includeCoins = true, limit = EQUIPMENT_CANDIDATE_LIMIT } = {}
 ) {
   const maxLevel = Math.max(level, 0);
   const candidates = [];
@@ -642,6 +643,12 @@ export async function getEquipmentCandidates(
     if (!entries) continue;
     for (const entry of entries) {
       if (!EQUIPMENT_TYPES.has(entry.type) || (!treasure && entry.type === "treasure")) continue;
+      // PF2e coins are published as treasure, but they are module-built
+      // currency in loot and must not be offered as ordinary selector picks.
+      // Callers that need the full treasure catalog can leave includeCoins at
+      // its default; getLootCandidates() deliberately leaves coins out.
+      if (!includeCoins && entry.type === "treasure"
+        && (entry.system?.category === "coin" || entry.system?.stackGroup === "coins")) continue;
       // PF2e's published scroll consumables are blank rank templates: their
       // category is "scroll" and system.spell is null/absent. They are only
       // an internal builder source, not a selectable finished item. A scroll
@@ -665,12 +672,16 @@ export async function getEquipmentCandidates(
 }
 
 /**
- * Loot counterpart of getEquipmentCandidates(): treasure INCLUDED (valuables
- * belong in loot), item level capped at creature level + 2, matching
- * resolveLoot()'s filter exactly so every candidate offered can resolve.
+ * Loot counterpart of getEquipmentCandidates(): non-coin treasure INCLUDED
+ * (valuables belong in loot), item level capped at creature level + 2,
+ * matching resolveLoot()'s filter exactly so every candidate offered can
+ * resolve. Coins are preserved from the first draft and resolved as sheet
+ * currency, so they are intentionally absent from this selector catalog.
  */
 export function getLootCandidates(level, keywords = []) {
-  return getEquipmentCandidates(level + 2, keywords, { treasure: true, limit: LOOT_CANDIDATE_LIMIT });
+  return getEquipmentCandidates(level + 2, keywords, {
+    treasure: true, includeCoins: false, limit: LOOT_CANDIDATE_LIMIT
+  });
 }
 
 /**

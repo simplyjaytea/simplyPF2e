@@ -50,6 +50,39 @@ const entries = [
     name: "Longsword",
     type: "weapon",
     system: { level: { value: 0 }, traits: { value: [] } }
+  },
+  {
+    _id: "gold",
+    name: "Gold Pieces",
+    type: "treasure",
+    system: { level: { value: 0 }, category: "coin", price: { value: { gp: 1 } } }
+  },
+  {
+    _id: "silver",
+    name: "Silver Pieces",
+    type: "treasure",
+    system: { level: { value: 0 }, category: "coin", price: { value: { sp: 1 } } }
+  },
+  {
+    _id: "copper",
+    name: "Copper Pieces",
+    type: "treasure",
+    // Pre-8.4.1 source data used stackGroup; PF2e migration turns this into
+    // category: coin, but the candidate gate must remain safe if migration has
+    // not run yet.
+    system: { level: { value: 0 }, stackGroup: "coins", price: { value: { cp: 1 } } }
+  },
+  {
+    _id: "platinum",
+    name: "Platinum Pieces",
+    type: "treasure",
+    system: { level: { value: 0 }, category: "coin", price: { value: { pp: 1 } } }
+  },
+  {
+    _id: "gem",
+    name: "Gem",
+    type: "treasure",
+    system: { level: { value: 0 }, category: "gem", price: { value: { gp: 10 } } }
   }
 ];
 
@@ -84,6 +117,10 @@ assert.ok(equipmentNames.includes("Healing Potion") && equipmentNames.includes("
   "ordinary consumables and equipment remain eligible");
 assert.ok(lootNames.includes("Healing Potion") && lootNames.includes("Longsword"),
   "ordinary consumables and equipment remain eligible as loot");
+assert.ok(lootNames.includes("Gem"), "non-coin treasure remains eligible as loot");
+for (const name of ["Gold Pieces", "Silver Pieces", "Copper Pieces", "Platinum Pieces"]) {
+  assert.ok(!lootNames.includes(name), `${name} must stay out of the loot selector catalog and remain module-built currency`);
+}
 
 // Candidate filtering must not poison the shared index used by the grounded
 // scroll builder's findScrollTemplate() path.

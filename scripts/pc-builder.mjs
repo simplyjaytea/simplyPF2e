@@ -13,6 +13,7 @@ import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTr
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
 import { stageClassPaths } from "./class-paths.mjs";
 import { stagedActorContext } from "./pc-prerequisites.mjs";
+import { persistedExpectedItems } from "./post-create.mjs";
 
 /**
  * Player-character counterpart of builder.mjs. PCs get their AC/HP/saves/
@@ -907,6 +908,9 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // still prompt, because a dialog beats a silently invalid item. See
   // choice-set.mjs for the fail-open selection policy.
   await preresolveChoiceSets(safeItems, concept, resolved, keyAbility, selectChoices);
+  // Native PF2e consumes equipment kits and creates their exact physical
+  // leaves. Build the transaction's survival contract before any actor write.
+  const expectedItems = await persistedExpectedItems([...safeItems, ...stagedClassPaths.expectedPaths]);
 
   // -----------------------------------------------------------------------
   // SCHEMA NOTE — the actor `system.*` field names below were VERIFIED against
@@ -1163,7 +1167,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   } catch { skillWarnings.push("native-data"); }
   const warnings = [...new Set([...skillWarnings, ...(skillPlan?.warnings ?? [])])];
   for (const warning of warnings) console.warn(`simplypf2e | character skill review: ${warning}`);
-  return { actor, expectedItems: [...safeItems, ...stagedClassPaths.expectedPaths], skillReport: { rows, warnings, loadoutWarnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
+  return { actor, expectedItems, skillReport: { rows, warnings, loadoutWarnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
     trainingBudget: skillPlan?.trainingBudget ?? null, unspentTraining: skillPlan?.unspentTraining ?? null,
     unspentIncreases: skillPlan?.unspentIncreases ?? null } };
 }

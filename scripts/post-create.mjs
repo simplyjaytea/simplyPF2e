@@ -41,6 +41,66 @@ function locationValue(item) {
 }
 
 /**
+ * PF2e expands a `kit` into its physical contents during native item
+ * creation, so the kit's own compendium source cannot survive on the actor.
+ * Convert that transaction-local kit expectation into the exact published
+ * leaf sources that PF2e will persist. This mirrors only the system's
+ * documented KitPF2e#createGrantedItems tree: backpacks persist alongside
+ * their nested entries, nested kits expand again, and every other expected
+ * leaf must prove it is a physical PF2e item.
+ */
+async function kitLeafExpectations(kit, loadUuid, ancestors = new Set(), { allowEmpty = false } = {}) {
+  const entries = Object.values(sourceData(kit)?.system?.items ?? {});
+  if (!entries.length) {
+    if (allowEmpty) return [];
+    throw new Error(`Post-create verification cannot expand empty kit "${itemField(kit, "name")}"`);
+  }
+  const leaves = [];
+  for (const entry of entries) {
+    const uuid = typeof entry?.uuid === "string" ? entry.uuid : null;
+    if (!uuid) throw new Error(`Post-create verification found a kit entry without an exact source in "${itemField(kit, "name")}"`);
+    const doc = await loadUuid(uuid);
+    if (!doc || doc.uuid !== uuid || typeof doc.isOfType !== "function") {
+      throw new Error(`Post-create verification could not load exact kit entry ${uuid}`);
+    }
+    if (doc.isOfType("kit")) {
+      if (ancestors.has(uuid)) throw new Error(`Post-create verification found a cyclic kit source ${uuid}`);
+      leaves.push(...await kitLeafExpectations(doc, loadUuid, new Set([...ancestors, uuid])));
+      continue;
+    }
+    if (!doc.isOfType("physical")) {
+      throw new Error(`Post-create verification found nonphysical kit entry ${uuid}`);
+    }
+    leaves.push({ name: doc.name, type: doc.type, _stats: { compendiumSource: uuid } });
+    if (doc.isOfType("backpack") && entry.items && typeof entry.items === "object") {
+      leaves.push(...await kitLeafExpectations({
+        name: `${itemField(kit, "name")} contents`, type: "kit", system: { items: entry.items }
+      }, loadUuid, ancestors, { allowEmpty: true }));
+    }
+  }
+  return leaves;
+}
+
+/**
+ * Produce the exact persisted-item contract for a native transaction. PF2e
+ * consumes kits, so their physical leaves replace the non-persisted kit
+ * source; all other expected items retain their original identity checks.
+ */
+export async function persistedExpectedItems(items, loadUuid = globalThis.fromUuid) {
+  if (!Array.isArray(items)) throw new Error("Post-create verification requires the transaction item list");
+  const expected = [];
+  for (const item of items) {
+    if (itemField(item, "type") !== "kit") {
+      expected.push(item);
+      continue;
+    }
+    if (typeof loadUuid !== "function") throw new Error("Post-create verification cannot load kit contents");
+    expected.push(...await kitLeafExpectations(item, loadUuid));
+  }
+  return expected;
+}
+
+/**
  * Throw unless every item supplied to the native create path survives. Exact
  * compendium clones are matched by their persisted `compendiumSource`, never
  * by an ambiguous display name. Module-built and narrative items have no
