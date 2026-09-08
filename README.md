@@ -65,7 +65,7 @@ Open **Advanced options** for a preset, rarity, treasure amount, and spellcastin
 | **NPCs & monsters** | Stable. The oldest, most battle-tested path. |
 | **Encounter mode** | Stable. |
 | **Presets** | **Standard** lists the 23 Remaster PF2e classes as flavor guides. **Custom** appears only when this world has saved presets. Magus, Witch, and the other Standard classes do not finish complete-only Characters. |
-| **Player Character mode** | Released for GM-reviewed use with **Fighter**, **Rogue**, and **Investigator** offered. Native Fighter and Investigator paths have bounded live coverage; Rogue acceptance remains incomplete. Standard presets guide flavor. Review the class, heritage, choices, equipment, and numbers before play. |
+| **Player Character mode** | Released for GM-reviewed use with **Fighter**, **Rogue**, and **Investigator** offered. Native Fighter and Investigator paths have bounded live coverage; Rogue acceptance remains incomplete. Standard presets guide flavor only. Review the class, heritage, choices, equipment, and numbers before play. |
 | **Item forge** | Core flows live-verified on Foundry 14 / PF2e 8.5: cancellation isolation, runed sheet parity, and generated-macro escaping. GMs open it from the Items directory; the v0.3.5.57 entry point passed live click and singleton-window checks. |
 
 ## What's new

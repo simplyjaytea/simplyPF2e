@@ -72,7 +72,7 @@ for (const preset of BUILT_IN_PRESETS) {
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 assert.match(readme, /\*\*Standard\*\*.*23 Remaster/s);
 assert.match(readme, /\*\*Custom\*\*.*only when this world has saved presets/);
-assert.match(readme, /complete-only still finishes \*\*Fighter\*\*, \*\*Rogue\*\*, and \*\*Investigator\*/i);
+assert.match(readme, /\*\*Fighter\*\*, \*\*Rogue\*\*, and \*\*Investigator\*\* offered/i);
 assert.match(readme, /flavor only/);
 assert.doesNotMatch(readme, /Cultivator|Fire Mage|Skill-Monkey|eighteen built-ins/i);
 
