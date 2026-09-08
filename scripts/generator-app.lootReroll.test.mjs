@@ -12,7 +12,7 @@ if (!vm.SourceTextModule) {
   process.exit(run.status ?? 1);
 }
 const source = (await readFile(new URL("./generator-app.mjs", import.meta.url), "utf8"))
-  .replace(/#(input|concept|resolved|manifest|error|busy|generateEncounter|readForm|runGeneration|assertGenerationReady|refineEquipment)\b/g, "_test_$1");
+  .replace(/#(input|concept|resolved|manifest|error|busy|generateEncounter|readForm|runGeneration|assertGenerationReady|refineEquipment|refineLoot)\b/g, "_test_$1");
 const context = vm.createContext({
   console: { warn() {}, error() {}, log() {} },
   game: { i18n: { localize: (key) => key } }
@@ -112,6 +112,24 @@ for (const failure of [new Error("provider unavailable"), Object.assign(new Erro
     "cancellation is neutral while ordinary errors remain visible");
 }
 providerFailure = null;
+{
+  // A selector result that tries to return a coin must not duplicate the
+  // draft's preserved currency row. Production catalogs exclude coins, but
+  // this exercises the refinement defense against stale/malformed responses.
+  const app = new App();
+  const concept = {
+    name: "Courier", level: 4, rarity: "common", traits: [], blurb: "",
+    equipment: [], loot: [
+      { name: "Gold Pieces", quantity: 5 },
+      { name: "Healing Potion", quantity: 1 }
+    ]
+  };
+  selectedLoot = [{ name: "Gold Pieces", quantity: 9, candidate: ref }];
+  await app._test_refineLoot(concept);
+  const goldRows = concept.loot.filter((item) => parseCoins(item.name)?.name === "Gold Pieces");
+  assert.equal(goldRows.length, 1, "grounded loot refinement must retain one preserved coin denomination row");
+  assert.equal(goldRows[0].quantity, 5, "a malformed selected coin must not replace or add to the draft quantity");
+}
 {
   const app = preview();
   app._test_input.includeEquipment = false;

@@ -2,6 +2,7 @@ import * as T from "./tables.mjs";
 import { getPacksFor, findEntry, getDocument, toItemData, priceToGp, isIssuedCandidate } from "./compendium.mjs";
 import { slugify, capitalized, esc, toHtml } from "./text.mjs";
 import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
+import { persistedExpectedItems } from "./post-create.mjs";
 
 /* Re-exported so the rest of the module keeps importing its shared helpers
    from one place; the definitions live in text.mjs / runes.mjs / compendium.mjs. */
@@ -633,7 +634,12 @@ const coinUnitGp = (line) => {
  */
 export async function applyTreasureBudget(loot, targetGp) {
   try {
-    if (!Array.isArray(loot) || !Number.isFinite(targetGp) || targetGp <= 0) return loot;
+    if (!Array.isArray(loot) || !Number.isFinite(targetGp)) return loot;
+    // A zero PC remainder means the starting equipment already consumed all
+    // available wealth. Keep any named entries for the caller's policy, but
+    // never leave fungible currency rows behind to be counted as spendable
+    // wealth or to trigger another purchase pass.
+    if (targetGp <= 0) return loot.filter((line) => !parseCoins(line?.name));
     const total = lootValueGp(loot);
     if (total >= targetGp * 0.8 && total <= targetGp * 1.2) return loot;
 
@@ -1491,6 +1497,7 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
   items.push(...await buildLootItems(resolved.loot));
 
   const safeItems = filterItemTypes(items, NPC_ITEM_TYPES, "NPC");
+  const expectedItems = await persistedExpectedItems(safeItems);
 
   const notesParts = [];
   if (concept.readAloud) {
@@ -1573,5 +1580,5 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
   const actor = await Actor.create(actorData);
   // Transient creation data gives post-create verification exact source
   // identity without persisting module metadata onto the actor.
-  return { actor, expectedItems: safeItems };
+  return { actor, expectedItems };
 }

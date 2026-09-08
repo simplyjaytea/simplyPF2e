@@ -23,7 +23,24 @@ const LONGSWORD = { _id: "longsword001", name: "Longsword", type: "weapon", syst
 const POTENCY_1 = { name: "Weapon Potency (+1)", type: "equipment", system: { level: { value: 2 }, price: { value: { gp: 35 } } } };
 const STRIKING_1 = { name: "Striking", type: "equipment", system: { level: { value: 4 }, price: { value: { gp: 65 } } } };
 
-const docsById = { [LONGSWORD._id]: LONGSWORD };
+// The live level-1 Fighter preview that exposed the duplicate-coin bug. These
+// are the published per-unit prices shown in the preview: 2 + 6 + 1.5 + 5 +
+// 0.4 + 4 = 18.9 gp, already above the 15 gp level-1 wealth target.
+const STARTING_EQUIPMENT = [
+  ["steel-shield", "Steel Shield", 2],
+  ["chain-mail", "Chain Mail", 6],
+  ["adventurers-pack", "Adventurer's Pack", 1.5],
+  ["healers-toolkit", "Healer's Toolkit", 5],
+  ["rations", "Rations", 0.4],
+  ["minor-healing-potion", "Minor Healing Potion", 4]
+].map(([_id, name, gp]) => ({
+  _id, name, type: "equipment", system: { price: { value: { gp } } }
+}));
+
+const docsById = {
+  [LONGSWORD._id]: LONGSWORD,
+  ...Object.fromEntries(STARTING_EQUIPMENT.map((doc) => [doc._id, doc]))
+};
 
 const equipmentPack = {
   getIndex: async () => [POTENCY_1, STRIKING_1].map((e) => ({ ...e })),
@@ -49,6 +66,15 @@ assert.equal(await equipmentValueGp(runed), 101, "a runed item must value at rea
 // An unmatched name (no compendium entry) falls back to the AI's own gp estimate.
 const unmatched = [{ name: "Bespoke Trinket", quantity: 3, value: 10, runes: { potency: 0, striking: 0, resilient: 0 }, entry: null }];
 assert.equal(await equipmentValueGp(unmatched), 30, "an unresolved item must fall back to value x quantity, same as resolveLoot");
+
+const startingEquipment = STARTING_EQUIPMENT.map(({ _id, name }) => ({
+  name, quantity: 1, value: 0, runes: null,
+  entry: { packId: PACK_ID, _id }
+}));
+assert.equal(await equipmentValueGp(startingEquipment), 18.9,
+  "the six-item level-1 Fighter equipment set must value to 18.9 gp");
+assert.equal(Math.max(15 - await equipmentValueGp(startingEquipment), 0), 0,
+  "the six-item set leaves a zero PC loot budget against 15 gp starting wealth");
 
 // Multiple lines sum together; empty/missing input is 0.
 assert.equal(await equipmentValueGp([...plain, ...unmatched]), 32, "equipmentValueGp must sum every line");

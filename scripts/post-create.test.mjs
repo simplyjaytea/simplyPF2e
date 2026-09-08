@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { verifyCreatedActor } from "./post-create.mjs";
+import { persistedExpectedItems, verifyCreatedActor } from "./post-create.mjs";
 
 const source = (uuid, data = {}) => ({ ...data, _stats: { ...(data._stats ?? {}), compendiumSource: uuid } });
 const actor = (items) => ({ id: "created", items: { contents: items } });
@@ -57,5 +57,48 @@ assert.throws(
   () => verifyCreatedActor({ id: "created" }, manifest(), expected), /items are unavailable/);
 assert.throws(
   () => verifyCreatedActor(actor([]), manifest()), /transaction item list/);
+
+// PF2e consumes a kit and writes the trusted physical leaves instead. The
+// post-create contract must verify those exact sources, including backpack
+// contents, rather than expecting the non-persisted kit document.
+const kitUuid = "Compendium.pf2e.equipment-srd.Item.adventurers-pack";
+const backpackUuid = "Compendium.pf2e.equipment-srd.Item.backpack";
+const ropeUuid = "Compendium.pf2e.equipment-srd.Item.rope";
+const chalkUuid = "Compendium.pf2e.equipment-srd.Item.chalk";
+const kit = source(kitUuid, {
+  name: "Adventurer's Pack", type: "kit", system: { items: {
+    backpack: { uuid: backpackUuid, items: {
+      rope: { uuid: ropeUuid, items: {} }, chalk: { uuid: chalkUuid, items: {} }
+    } }
+  } }
+});
+const kitDocument = (uuid, type, name) => ({
+  uuid, type, name, isOfType: (query) => query === type || (query === "physical" && type !== "kit")
+});
+const kitDocuments = new Map([
+  [backpackUuid, kitDocument(backpackUuid, "backpack", "Backpack")],
+  [ropeUuid, kitDocument(ropeUuid, "equipment", "Rope")],
+  [chalkUuid, kitDocument(chalkUuid, "equipment", "Chalk")]
+]);
+const kitExpected = await persistedExpectedItems([kit], async (uuid) => kitDocuments.get(uuid) ?? null);
+assert.deepEqual(kitExpected.map((item) => item._stats.compendiumSource), [backpackUuid, ropeUuid, chalkUuid],
+  "a kit's persisted contract is its exact backpack and nested leaf sources");
+assert.deepEqual(verifyCreatedActor(actor([
+  source(backpackUuid, { name: "Backpack", type: "backpack" }),
+  source(ropeUuid, { name: "Rope", type: "equipment" }),
+  source(chalkUuid, { name: "Chalk", type: "equipment" })
+]), manifest(), kitExpected), { checked: 3 },
+  "native kit expansion satisfies exact leaf verification without accepting the kit itself");
+assert.throws(() => verifyCreatedActor(actor([
+  source(backpackUuid, { name: "Backpack", type: "backpack" }),
+  source(ropeUuid, { name: "Rope", type: "equipment" })
+]), manifest(), kitExpected), /chalk/,
+  "a dropped kit leaf remains a blocking persistence failure");
+const emptyBackpackKit = source(kitUuid, {
+  name: "Empty Backpack Kit", type: "kit", system: { items: { backpack: { uuid: backpackUuid, items: {} } } }
+});
+assert.deepEqual((await persistedExpectedItems([emptyBackpackKit], async (uuid) => kitDocuments.get(uuid) ?? null))
+  .map((item) => item._stats.compendiumSource), [backpackUuid],
+"a kit's empty backpack persists without inventing a nested leaf expectation");
 
 console.log("post-create verification: exact source and relationship checks passed");

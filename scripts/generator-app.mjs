@@ -1160,7 +1160,7 @@ export class GeneratorApp extends SpfApp {
       // real items (issue #64 item 6: PCs were leaving too much unspent
       // gold). Bounded to a single retry.
       const coinGp = lootValueGp(resolved.loot.filter((l) => parseCoins(l.name)));
-      if (coinGp > lootBudget * 0.25) {
+      if (lootBudget > 0 && coinGp > lootBudget * 0.25) {
         try {
           const { loot: draft, usage: extraUsage } = await generatePCLoot({
             concept, amount: this.#input.treasureAmount, onProgress: this._progressCallback(), signal
@@ -1385,7 +1385,10 @@ export class GeneratorApp extends SpfApp {
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), usage);
       if (loot.length || omitted === true) {
         const coins = concept.loot.filter((item) => parseCoins(item.name));
-        concept.loot = normalizeLoot([...coins, ...loot]);
+        // Coins are preserved from the first draft and resolved as sheet
+        // currency. The catalog excludes them, but filter defensively here so
+        // a malformed/stale selector result cannot duplicate a denomination.
+        concept.loot = normalizeLoot([...coins, ...loot.filter((item) => !parseCoins(item?.name))]);
       }
     } catch (err) {
       if (err?.cancelled) throw err;

@@ -130,6 +130,37 @@ reset();
     "ammunition remains covered by the post-create survival contract");
 }
 
+// PF2e consumes an equipment kit and creates its physical leaves. Exercise
+// the production PC transaction's expectedItems output so later post-create
+// verification checks the real backpack/content sources, never the vanished
+// kit source itself.
+const kitUuid = "Compendium.test.equipment.Item.adventurers-pack";
+const backpackUuid = "Compendium.test.equipment.Item.backpack";
+const ropeUuid = "Compendium.test.equipment.Item.rope";
+const kitSource = { name: "Adventurer's Pack", type: "kit", system: { items: {
+  backpack: { uuid: backpackUuid, items: { rope: { uuid: ropeUuid, items: {} } } }
+} } };
+const kitDocument = {
+  uuid: kitUuid, type: "kit", system: kitSource.system,
+  toObject: () => structuredClone(kitSource)
+};
+const physicalDocument = (uuid, type, name) => ({
+  uuid, type, name, isOfType: (query) => query === type || query === "physical"
+});
+game.packs.set("test.kits", { getDocument: async () => kitDocument });
+globalThis.fromUuid = async (uuid) => new Map([
+  [backpackUuid, physicalDocument(backpackUuid, "backpack", "Backpack")],
+  [ropeUuid, physicalDocument(ropeUuid, "equipment", "Rope")]
+]).get(uuid) ?? null;
+reset();
+{
+  const { concept, resolved } = input();
+  resolved.equipment = [{ name: "Adventurer's Pack", quantity: 1, entry: { packId: "test.kits", _id: "adventurers-pack" } }];
+  const created = await createCharacterActor(concept, resolved);
+  assert.deepEqual(created.expectedItems.map((item) => item._stats?.compendiumSource).filter(Boolean),
+    [backpackUuid, ropeUuid], "PC kit verification expects exact native leaves rather than the consumed kit");
+}
+
 reset({ system: { attributes: { hp: { value: 11, max: 22 } }, abilities: { int: { mod: 0 } } } });
 {
   const { concept, resolved } = input();

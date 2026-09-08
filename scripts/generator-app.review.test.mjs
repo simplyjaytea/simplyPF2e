@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import vm from "node:vm";
+import { parseCoins } from "./builder.mjs";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
@@ -17,7 +18,8 @@ if (!vm.SourceTextModule) {
 let actor, createFailure, verifyFailure, deleteFailure, skillReport, creates = 0, deleted = 0, sheetCalls = 0;
 let conceptCalls = 0, generatorLevel = 1, freeArchetype = false;
 let previewLoot = [];
-let budgetPending = null, budgetStarted = null;
+let pcEquipmentOverride = null, pcWealthTarget = 0, pcEquipmentValue = 0, pcPurchaseCalls = 0;
+let lastBudgetTarget = null, budgetPending = null, budgetStarted = null;
 const notices = [];
 class App {
   element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
@@ -49,8 +51,10 @@ const context = vm.createContext({
   },
   ui: { notifications: Object.fromEntries(["info", "warn"].map((kind) => [kind, (text) => notices.push([kind, text])])) }
 });
+const pcEquipment = () => pcEquipmentOverride ?? [];
 const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fighter" },
-  backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [], equipment: [], loot: previewLoot });
+  backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [],
+  equipment: pcEquipment().map((item) => ({ ...item, entry: {} })), loot: previewLoot });
 const mocks = {
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   AI_TASK: {}, taskMaxTokens: () => 100,
@@ -61,15 +65,24 @@ const mocks = {
   BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
   presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),
   THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, randomBrief: () => "A dwarf",
-  generatePCConcept: async () => { conceptCalls++; return { concept: { name: "Test", level: 1, equipment: [], loot: [] } }; },
+  generatePCConcept: async () => { conceptCalls++; return { concept: { name: "Test", level: 1, equipment: pcEquipment(), loot: [] } }; },
   normalizePCConcept: (raw) => raw,
   getAncestryCandidates: () => [], getBackgroundCandidates: () => [], getClassCandidates: () => [{ name: "Fighter" }], getHeritageCandidates: () => [],
   selectAncestryBackgroundClass: async () => ({ ancestry: "Dwarf", background: "Warrior", class: "Fighter" }),
   resolvePCConcept: async () => resolved(), pcSpellcastingProfile: () => null, slugify: (name) => name.toLowerCase(),
-  generatePCLoot: async () => ({ loot: [] }), normalizeLoot: (loot) => loot,
+  generatePCLoot: async () => { pcPurchaseCalls++; return { loot: [] }; }, normalizeLoot: (loot) => loot,
+  getEquipmentCandidates: async () => [],
   dedupeLootAgainstEquipment: (loot) => loot, enforceNamedLootBudget: (loot) => loot,
-  applyTreasureBudget: async (loot) => { budgetStarted?.(); if (budgetPending) await budgetPending; return loot; },
-  pcStartingWealthGp: () => 0, equipmentValueGp: () => 0, lootValueGp: () => 0, parseCoins: () => null,
+  applyTreasureBudget: async (loot, target) => {
+    lastBudgetTarget = target;
+    budgetStarted?.();
+    if (budgetPending) await budgetPending;
+    return target <= 0 ? loot.filter((item) => !parseCoins(item?.name)) : loot;
+  },
+  pcStartingWealthGp: () => pcWealthTarget, equipmentValueGp: () => pcEquipmentValue,
+  lootValueGp: (loot) => (Array.isArray(loot) ? loot : []).reduce((sum, item) =>
+    sum + (parseCoins(item?.name) ? (Number(item?.resolvedValue ?? item?.value) || 1) * (Number(item?.quantity) || 1) : 0), 0),
+  parseCoins,
   createCharacterActor: async () => { creates++; if (createFailure) throw createFailure; return { actor, skillReport }; }
 };
 const source = await readFile(new URL("./generator-app.mjs", import.meta.url), "utf8");
@@ -127,6 +140,35 @@ assert.deepEqual(Array.from(scrollPreview.context.pcPreview.loot, ({ name, found
   { name: "Scroll of Fear (Rank 2) ×2", found: true },
   { name: "Scroll of Heal (Rank 1)", found: true }
 ]);
+previewLoot = [];
+
+// The installed .67 Fighter preview that exposed the duplicate coin rows had
+// six ordinary equipment lines worth 18.9 gp against 15 gp starting wealth.
+// Exercise the real GeneratorApp PC path: the initial wishlist request is
+// allowed, but its zero remainder must not launch the bounded extra purchase
+// request. The builder regression separately checks the real budget helper's
+// currency stripping.
+pcEquipmentOverride = [
+  { name: "Steel Shield", value: 2 },
+  { name: "Chain Mail", value: 6 },
+  { name: "Adventurer's Pack", value: 1.5 },
+  { name: "Healer's Toolkit", value: 5 },
+  { name: "Rations", value: 0.4 },
+  { name: "Minor Healing Potion", value: 4 }
+];
+pcWealthTarget = 15;
+pcEquipmentValue = 18.9;
+previewLoot = [{ name: "Gold Pieces", quantity: 20, value: 1, resolvedValue: 1 }];
+const beforeZeroBudgetPurchases = pcPurchaseCalls;
+const zeroBudgetPreview = await generate();
+assert.equal(lastBudgetTarget, 0, "the over-budget six-item PC equipment set must leave a zero loot budget");
+assert.equal(pcPurchaseCalls, beforeZeroBudgetPurchases + 1,
+  "zero PC loot budget must make only the initial wishlist request, never an extra purchase request");
+assert.equal(zeroBudgetPreview.context.pcPreview.loot.length, 0,
+  "zero PC loot budget must strip the preserved coin row before preview");
+pcEquipmentOverride = null;
+pcWealthTarget = 0;
+pcEquipmentValue = 0;
 previewLoot = [];
 
 // Free Archetype begins adding feats at level 2. Until its published text
