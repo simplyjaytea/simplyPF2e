@@ -2,6 +2,11 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-09 — v0.3.5.70 publication
+
+- PR #110 source `55bbccd68c8eeec7ebf1408d7fadc86760e774bb` passed CI 34257060796 and merged as `d17a2b507070ed5f403a7bb70176b335f139f7fc`. Auto Release 34257313518 succeeded and published **v0.3.5.70**. Both assets passed SHA-256 verification; all 48 archive files match the merge apart from expected manifest stamping, and tests/fixtures are excluded.
+- User's existing PR/merge/module-update authorization was reused. Luna owns the module-only Setup update and one focused level-15 Stunning Blows generation to limit provider spend; installation/native results remain pending. Documentation is recorded on a named QA branch without triggering another public release.
+
 ## 2026-09-09 — Automatic NPC ability implementation and audit
 
 - User authorized implementing the reviewed plan and explicitly selected Astra for implementation. Three Astra workers implemented source selection, dependency/execution packages and generator integration on `codex/npc-automatic-abilities`; independent Astra reviews cover each slice. Publication and native QA are tracked in [the implementation record](docs/npc-automatic-abilities-2026-09-09.md).
