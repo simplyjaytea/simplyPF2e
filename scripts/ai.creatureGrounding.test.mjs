@@ -42,23 +42,24 @@ try {
   }]);
 
   const featCandidates = [
-    { id: "F0", name: "Reactive Shield", ref: { packId: "pf2e.feats-srd", _id: "shield" } },
-    { id: "F1", name: "Sudden Charge", ref: { packId: "pf2e.feats-srd", _id: "charge" } }
+    { id: "private-issued-shield", name: "Reactive Shield", ref: { packId: "pf2e.feats-srd", _id: "shield" } },
+    { id: "private-issued-charge", name: "Sudden Charge", ref: { packId: "pf2e.feats-srd", _id: "charge" } }
   ];
-  replies.push({ featIds: ["F0", "invented", "F0"] });
+  replies.push({ featIds: ["F0"] });
   const feats = await selectCreatureFeats({ concept, candidates: featCandidates });
   assert.deepEqual(feats.feats, [{
     name: "Reactive Shield", candidate: { packId: "pf2e.feats-srd", _id: "shield" }
   }]);
 
-  // A provider can obey the JSON field shape but put an exact displayed name
-  // into `id`. That must still resolve through the issued catalog, without a
-  // fuzzy lookup or a model-supplied compendium reference.
-  replies.push({ featIds: ["Sudden Charge"] });
-  const namedFeat = await selectCreatureFeats({ concept, candidates: featCandidates });
-  assert.deepEqual(namedFeat.feats, [{
-    name: "Sudden Charge", candidate: { packId: "pf2e.feats-srd", _id: "charge" }
-  }]);
+  // Short aliases restore the exact private source; full IDs and names are
+  // never accepted as an alternate identifier on the NPC feat boundary.
+  replies.push({ featIds: ["F1"] });
+  const secondFeat = await selectCreatureFeats({ concept, candidates: featCandidates });
+  assert.equal(secondFeat.feats[0].candidate, featCandidates[1].ref);
+  assert.equal(secondFeat.feats[0].name, "Sudden Charge");
+  assert.equal(secondFeat.status, "selected");
+  assert.ok(!requests[1].messages[1].content.includes("private-issued"));
+  assert.ok(!requests[1].messages[1].content.includes("pf2e.feats-srd"));
 
   const equipmentCandidates = [
     { id: "E0", name: "Repeating Heavy Crossbow", type: "weapon", level: 1,
@@ -95,22 +96,45 @@ try {
   assert.deepEqual(omitted.feats, []);
   assert.equal(omitted.omitted, true, "an explicit empty reply declines the optional wishlist");
   assert.equal(omitted.usage.total, 30, "omission retains provider token accounting");
-  assert.equal(feats.omitted, false, "mixed valid/invalid picks preserve existing grounded selection behavior");
-  assert.equal(namedFeat.omitted, false);
-  for (const featIds of [["invented"], [null], [{ packId: "pf2e.feats-srd", _id: "shield" }]]) {
+  assert.equal(feats.omitted, false);
+  assert.equal(omitted.status, "empty");
+  for (const featIds of [["invented"], [null], [{ packId: "pf2e.feats-srd", _id: "shield" }],
+    ["F0", "invented"], ["F0", "F0"], ["F0", "F1"], ["Sudden Charge"], ["private-issued-shield"]]) {
     replies.push({ featIds });
-    const invalid = await selectCreatureFeats({ concept, candidates: featCandidates });
-    assert.deepEqual(invalid.feats, []);
-    assert.equal(invalid.omitted, false, "unresolvable nonempty replies are not intentional omission");
+    await assert.rejects(selectCreatureFeats({ concept, candidates: featCandidates }), (error) => {
+      assert.equal(error.code, "NPC_FEAT_SELECTION_INVALID");
+      assert.equal(error.usage.total, 30, "atomic validation failure retains spent usage");
+      assert.equal(error.diagnostics.candidateCount, 2);
+      return true;
+    });
   }
   const beforeSkip = requests.length;
-  const unavailable = await selectCreatureFeats({ concept, candidates: [] });
-  assert.equal(unavailable.omitted, false, "an unavailable catalog does not decline draft requirements");
-  assert.equal(requests.length, beforeSkip);
+  await assert.rejects(selectCreatureFeats({ concept, candidates: [] }),
+    (error) => error.code === "NPC_FEAT_CATALOG_UNAVAILABLE");
+  assert.equal(requests.length, beforeSkip, "an unavailable catalog cannot spend or decline the draft");
+  const skipped = await selectCreatureFeats({ concept: { ...concept, feats: [] }, candidates: [] });
+  assert.equal(skipped.status, "skipped");
+  assert.equal(skipped.omitted, false);
   replies.push({ picks: [] }, { picks: [] });
-  await assert.rejects(selectCreatureFeats({ concept, candidates: featCandidates }),
-    "malformed replies still fail after the bounded retry");
+  await assert.rejects(selectCreatureFeats({ concept, candidates: featCandidates }), (error) => {
+    assert.equal(error.code, "NPC_FEAT_REQUEST_FAILED");
+    assert.equal(error.usage.total, 60, "both failed schema attempts preserve usage");
+    return true;
+  });
   assert.equal(requests.length, beforeSkip + 2);
+  const { issueCandidate, isIssuedCandidate } = await import("./compendium.mjs");
+  const allClassCandidates = [
+    issueCandidate({ packId: "custom.feats", _id: "crane-custom" }, { name: "Crane Stance", traits: ["monk"] }),
+    issueCandidate({ packId: "pf2e.feats-srd", _id: "crane-real" }, { name: "Crane Stance", traits: ["monk"] }),
+    issueCandidate({ packId: "pf2e.feats-srd", _id: "nimble" }, { name: "Nimble Dodge", traits: ["rogue"] }),
+    issueCandidate({ packId: "pf2e.feats-srd", _id: "spell" }, { name: "Spell Substitution", traits: ["wizard"] })
+  ];
+  const multiDraft = { ...concept, feats: ["Crane Stance", "Nimble Dodge", "Spell Substitution"] };
+  replies.push({ featIds: ["F1", "F2", "F3"] });
+  const multi = await selectCreatureFeats({ concept: multiDraft, candidates: allClassCandidates });
+  assert.deepEqual(multi.feats.map((feat) => feat.name), multiDraft.feats);
+  assert.equal(multi.feats[0].candidate, allClassCandidates[1].ref, "same-name aliases restore the selected pack identity");
+  assert.ok(multi.feats.every((feat) => isIssuedCandidate(feat.candidate)), "multiple classes retain locally issued exact refs");
   assert.equal(replies.length, 0);
 } finally {
   globalThis.fetch = originalFetch;

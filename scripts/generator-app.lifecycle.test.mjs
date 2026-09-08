@@ -12,8 +12,10 @@ if (!vm.SourceTextModule) {
   process.exit(run.status ?? 1);
 }
 let writes = 0, creates = 0, starts = 0, finishes = 0, locked = 0, providerCalls = 0, classCalls = 0, equipmentSelections = 0, lootSelections = 0;
-let releaseWrite = null, writePending = null, failWrite = null, conceptPending = null, pcConceptPending = null, readinessPending = null, readinessFailure = null;
+let creationAttempts = 0, actorDeletes = 0, folderDeletes = 0, folderCreates = 0;
+let releaseWrite = null, writePending = null, failWrite = null, failWriteOnAttempt = null, conceptPending = null, pcConceptPending = null, readinessPending = null, readinessFailure = null;
 let pcConceptUsage = { total: 1 }, abcFailure = null;
+let npcFeats = [], npcFeatFailure = null, gmPrompt = "test brief", encounterDesigns = 0, encounterMemberCount = 1;
 class Application {
   render() { return this; }
   async close() {}
@@ -28,7 +30,7 @@ const context = vm.createContext({
     actors: { get: () => null }
   },
   ui: { notifications: { info() {}, warn() {}, error() {} } },
-  Folder: { create: async () => ({ id: "folder", name: "Encounter", async delete() {} }) }
+  Folder: { create: async () => ({ id: `folder-${++folderCreates}`, name: "Encounter", async delete() { folderDeletes++; } }) }
 });
 const baseSource = await readFile(new URL("./app-base.mjs", import.meta.url), "utf8");
 const base = new vm.SourceTextModule(baseSource, { context });
@@ -55,7 +57,7 @@ let progressRows = null;
 const form = {
   querySelector(selector) {
     if (selector.includes('mode')) return { value: mode };
-    if (selector.includes('prompt')) return { value: "test brief" };
+    if (selector.includes('prompt')) return { value: gmPrompt };
     if (selector.includes('level')) return { value: "1" };
     if (selector.includes('partySize')) return { value: "4" };
     if (selector.includes('threat')) return { value: "moderate" };
@@ -63,17 +65,33 @@ const form = {
     return null;
   }, querySelectorAll: (selector) => selector === ".spf-progress-steps li" ? (progressRows ?? []) : [], contains: () => false
 };
-const concept = () => ({ name: "Test", level: 1, rarity: "common", spellcasting: null, focusSpells: [], specialAbilities: [], feats: [], equipment: [{ name: "Lantern" }], loot: [{ name: "Silver Ring", quantity: 1 }], strikes: [] });
-const actor = () => ({ id: `actor-${++creates}`, name: "Test", items: { contents: [] }, sheet: { render: async () => {} }, update: async () => {}, delete: async () => {} });
+const concept = () => ({ name: "Test", level: 1, rarity: "common", spellcasting: null, focusSpells: [], specialAbilities: [], feats: [...npcFeats], equipment: [{ name: "Lantern" }], loot: [{ name: "Silver Ring", quantity: 1 }], strikes: [] });
+const actor = () => {
+  const value = { id: `actor-${++creates}`, name: "Test", deleteCalls: 0,
+    items: { contents: [] }, sheet: { render: async () => {} }, update: async () => {} };
+  value.delete = async () => { actorDeletes++; value.deleteCalls++; };
+  return value;
+};
 const create = async () => {
   assert.equal(appUnderTest._test_busy, true, "busy remains true through generation into native creation");
   assert.equal(appUnderTest._canCancel, false, "native write locks cancellation");
   if (writePending) await writePending;
-  if (failWrite) throw failWrite;
+  creationAttempts++;
+  if (failWrite && (failWriteOnAttempt === null || failWriteOnAttempt === creationAttempts)) {
+    // Model builder-owned package rollback. A successful cleanup throws the
+    // original error without a marker; failed cleanup leaves the marker so
+    // the outer transaction can report it without deleting twice.
+    if (failWrite.cleanedActor) await failWrite.cleanedActor.delete();
+    throw failWrite;
+  }
   writes++;
   return { actor: actor(), expectedItems: [] };
 };
 const mocks = {
+  getCreatureFeatCandidates: async () => [{ id: "charge", name: "Sudden Charge", level: 1, ref: { packId: "pf2e.feats-srd", _id: "charge" } }],
+  normalizeCreatureFeatName: (name) => String(name ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim(),
+  filterNpcAbilityCandidates: async (candidates) => ({ candidates, unavailable: [] }),
+  resolveNpcAbilityPackages: async () => ({ cost: 0 }),
   SpfApp: RealSpfApp, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "free" }, AI_TASK: {}, taskMaxTokens: () => 100,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "", presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),
@@ -88,8 +106,8 @@ const mocks = {
   completionManifest: () => ({}), assertComplete: () => {}, verifyCreatedActor: () => {},
   findBestiaryScaffold: async () => ({ img: null }), createActor: create,
   applyTreasureBudget: async (x) => x, treasureBudget: () => 0, lootValueGp: () => 0,
-  composeEncounter: () => ({ budget: 80, spent: 80, members: [{ level: 1, count: 1 }] }),
-  designEncounter: async () => ({ name: "Encounter", briefs: ["brief"], usage: { total: 1 } }),
+  composeEncounter: () => ({ budget: 80, spent: 80, members: Array.from({ length: encounterMemberCount }, () => ({ level: 1, count: 1 })) }),
+  designEncounter: async () => { encounterDesigns++; return { name: "Encounter", briefs: ["brief"], usage: { total: 1 } }; },
   // PC path: all choice/refinement catalogs are empty, but the real app still
   // crosses the same generate → validated plan → locked create boundary.
   generatePCConcept: async () => { providerCalls++; if (pcConceptPending) await pcConceptPending; return { concept: concept(), usage: pcConceptUsage }; }, normalizePCConcept: (x) => x,
@@ -103,7 +121,7 @@ const mocks = {
   normalizeSkillPriorities: () => [], skillPriorityOrder: () => [], slugify: (x) => x.toLowerCase(),
   getEquipmentCandidates: async () => [{ id: "equipment", name: "Lantern", ref: {} }], getLootCandidates: async () => [{ id: "loot", name: "Silver Ring", ref: {} }], getSpellCandidates: async () => [], getScrollSpellCandidates: async () => [], getFocusSpellCandidates: async () => [], getFeatCandidates: async () => [], getAbilityCandidates: async () => [],
   selectEquipment: async () => { equipmentSelections++; return { equipment: [], omitted: true }; },
-  selectLoot: async () => { lootSelections++; return { loot: [], omitted: true }; }, selectSpells: async () => ({ spells: [] }), chooseSpellFocus: async () => ({ keywords: [] }), selectFeats: async () => ({ picks: [] }), resolveFeatPicks: async () => [], selectCreatureFeats: async () => ({ feats: [], omitted: true }), selectCreatureAbilities: async () => ({ abilities: [] }),
+  selectLoot: async () => { lootSelections++; return { loot: [], omitted: true }; }, selectSpells: async () => ({ spells: [] }), chooseSpellFocus: async () => ({ keywords: [] }), selectFeats: async () => ({ picks: [] }), resolveFeatPicks: async () => [], selectCreatureFeats: async () => { if (npcFeatFailure) throw npcFeatFailure; return { feats: [], omitted: true }; }, selectCreatureAbilities: async () => ({ abilities: [] }),
   parseCoins: () => null, parseScroll: () => null, normalizeSkillPriorities: () => [], skillPriorityOrder: () => [],
   THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, ManagePresetsApp: class {}, SourcesConfigApp: class {},
   computeStats: () => ({}), completionSummary: () => ({}), pcSpellPlan: () => ({ picks: [], slots: {} }),
@@ -267,4 +285,90 @@ let releaseConcept; conceptPending = new Promise((resolve) => { releaseConcept =
 appUnderTest = app(); const running = actions.previewPlan.call(appUnderTest);
 await new Promise((resolve) => setImmediate(resolve)); actions.cancelGeneration.call(appUnderTest); releaseConcept(); await running; conceptPending = null;
 assert.equal(appUnderTest._progress.status, "cancelled"); assert.ok(appUnderTest._progress.percent < 100); assert.equal(appUnderTest._test_error, null);
+// A package builder that successfully removes its partial actor rethrows the
+// original error without a marker. The app preserves the draft for a retry and
+// does not attempt a second cleanup of the already-removed actor.
+mode = "npc"; appUnderTest = app(); await actions.previewPlan.call(appUnderTest);
+const npcDraft = appUnderTest._test_concept;
+const npcManifest = appUnderTest._test_manifest;
+const cleanedNpc = actor();
+const npcDeletesBefore = actorDeletes;
+failWrite = Object.assign(new Error("native package embedding failed"), { cleanedActor: cleanedNpc });
+await actions.createActor.call(appUnderTest);
+assert.equal(actorDeletes, npcDeletesBefore + 1, "NPC builder-owned cleanup runs once");
+assert.equal(appUnderTest._test_concept, npcDraft, "NPC draft remains available after successful builder cleanup");
+assert.equal(appUnderTest._test_manifest, npcManifest, "NPC manifest remains available after successful builder cleanup");
+failWrite = null;
+
+// A failed builder cleanup marks the stranded actor. The app reports it,
+// discards the retry state, and leaves the marker actor untouched.
+appUnderTest = app(); await actions.previewPlan.call(appUnderTest);
+const strandedNpc = actor();
+failWrite = Object.assign(new Error("native package embedding failed"), { simplyPF2eRollbackActor: strandedNpc });
+await actions.createActor.call(appUnderTest);
+assert.equal(strandedNpc.deleteCalls, 0, "NPC marker actor is not deleted twice");
+assert.equal(appUnderTest._test_concept, null, "NPC draft is discarded when cleanup leaves a survivor");
+assert.equal(appUnderTest._test_manifest, null, "NPC manifest is discarded when cleanup leaves a survivor");
+assert.match(appUnderTest._test_error, /incomplete actor/);
+failWrite = null;
+
+// Encounter cleanup follows the same builder contract. With no survivor, the
+// encounter draft remains retryable after all folder/actor cleanup succeeds.
+mode = "encounter"; encounterMemberCount = 1; appUnderTest = app(); await actions.previewPlan.call(appUnderTest);
+const encounterDraft = appUnderTest._test_encounter;
+const cleanedEncounter = actor();
+const encounterDeletesBefore = actorDeletes;
+const foldersDeletedBefore = folderDeletes;
+failWrite = Object.assign(new Error("native package embedding failed"), { cleanedActor: cleanedEncounter });
+await actions.createActor.call(appUnderTest);
+assert.equal(actorDeletes, encounterDeletesBefore + 1, "encounter builder-owned cleanup runs once");
+assert.equal(folderDeletes, foldersDeletedBefore + 1, "encounter folder is removed after successful member cleanup");
+assert.equal(appUnderTest._test_encounter, encounterDraft, "encounter draft remains available after successful cleanup");
+failWrite = null;
+
+// If a later member strands an actor, earlier newly-created members are still
+// rolled back, while the marked actor is reported without a redundant delete.
+encounterMemberCount = 2; appUnderTest = app(); await actions.previewPlan.call(appUnderTest);
+const strandedEncounter = actor();
+const encounterPriorDeletes = actorDeletes;
+failWrite = Object.assign(new Error("native package embedding failed"), { simplyPF2eRollbackActor: strandedEncounter });
+failWriteOnAttempt = creationAttempts + 2;
+await actions.createActor.call(appUnderTest);
+assert.equal(actorDeletes, encounterPriorDeletes + 1, "earlier encounter member is rolled back");
+assert.equal(strandedEncounter.deleteCalls, 0, "stranded encounter member is not deleted twice");
+assert.equal(appUnderTest._test_encounter, null, "encounter draft is discarded when a member survives cleanup");
+assert.match(appUnderTest._test_error, /incomplete actor/);
+failWrite = null; failWriteOnAttempt = null; encounterMemberCount = 1;
+// Invalid grounded NPC selection is reported at its own stage, retaining
+// spent tokens exactly once and stopping before equipment, loot or writes.
+for (const failureMode of ["npc", "encounter"]) {
+  mode = failureMode; appUnderTest = app(); npcFeats = [{ name: "Sudden Charge" }];
+  npcFeatFailure = Object.assign(new Error("NPC ability selection returned an unoffered ID"), {
+    code: "NPC_FEAT_SELECTION_INVALID", usage: { total: 17 }
+  });
+  const before = { writes, equipmentSelections, lootSelections };
+  await actions.generate.call(appUnderTest);
+  assert.equal(writes, before.writes);
+  assert.equal(equipmentSelections, before.equipmentSelections);
+  assert.equal(lootSelections, before.lootSelections);
+  assert.equal(appUnderTest._test_error, npcFeatFailure.message);
+  assert.equal(appUnderTest._progress.status, "error");
+  assert.equal(appUnderTest._progress.steps.find((step) => step.key === (mode === "npc" ? "feats" : "member0")).state, "error");
+  assert.equal(appUnderTest._tokenUsage.reduce((sum, row) => sum + row.usage.total, 0), mode === "npc" ? 18 : 19);
+  assert.equal(appUnderTest._test_busy, false);
+}
+npcFeats = []; npcFeatFailure = null;
+// Group-scoped named powers cannot be copied onto every AI-authored member.
+// The authoritative theme guard runs before design and member provider spend.
+mode = "encounter"; appUnderTest = app();
+gmPrompt = "A captain with Sudden Charge, accompanied by an apprentice healer.";
+const beforeNamedEncounter = { writes, providerCalls, encounterDesigns };
+await actions.generate.call(appUnderTest);
+assert.equal(writes, beforeNamedEncounter.writes);
+assert.equal(providerCalls, beforeNamedEncounter.providerCalls);
+assert.equal(encounterDesigns, beforeNamedEncounter.encounterDesigns);
+assert.match(appUnderTest._test_error, /member assignment cannot be verified/);
+assert.equal(appUnderTest._progress.steps.find((step) => step.key === "design").state, "error");
+assert.equal(appUnderTest._tokenUsage.length, 0);
+gmPrompt = "test brief";
 console.log("generator-app.lifecycle.test.mjs: real SpfApp one-click, preview, duplicate, error and cancellation lifecycles passed");

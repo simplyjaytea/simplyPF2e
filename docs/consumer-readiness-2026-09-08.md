@@ -41,7 +41,7 @@ The existing spell-source readiness requirement is retained: noncasters can rece
 
 ## Installed Foundry checklist
 
-The module-only updates to **0.3.5.65**, **0.3.5.66**, **0.3.5.67**, and **0.3.5.68** are verified in Setup; **.68 is the latest installed baseline**. Setup installed the exact .68 release and the existing `test` world was rejoined as GM. Foundry remains **14.365**, PF2e remains **8.5.0**, and the existing world and provider settings are preserved. The .67 acceptance results and bounded .68 native results are recorded below; multi-member encounter, nested-kit, duplicate-copy, and full screen-reader checks remain open.
+The module-only updates to **0.3.5.65**, **0.3.5.66**, **0.3.5.67**, and **0.3.5.68** are verified in Setup; **.68 native results are recorded below; .69 is now installed, as recorded at the end**. Setup installed the exact .68 release and the existing `test` world was rejoined as GM. Foundry remains **14.365**, PF2e remains **8.5.0**, and the existing world and provider settings are preserved. The .67 acceptance results and bounded .68 native results are recorded below; multi-member encounter, nested-kit, duplicate-copy, and full screen-reader checks remain open.
 
 ### Installed v0.3.5.65 results
 
@@ -124,3 +124,9 @@ Luna traced the 60 gp preview to currency entering the loot-selector catalog, be
 The required ancestry/background/class membership check now runs immediately after the ABC response maps to offered candidates. An unoffered required ID throws a localized, nonretryable AIRequestError carrying the completed request’s usage and stable field names, before feat/equipment/loot calls. Optional heritage and exact source mapping retain their existing contracts. Production selector cases cover each required field, valid display names accompanying wrong IDs, retained usage, optional heritage, and successful references. This reduces wasted requests and explains invalid selections; it does not enforce a typed class request when the provider chooses another offered class.
 
 Astra approved this final slice with no blocking findings, independently running the selector and production Generator lifecycle checks. Parent Node22 gate passed all 86 regressions, 121 syntax checks, module/localization JSON with duplicate-key detection, and whitespace; log `.git/consumer-abc-final-node22.log`.
+
+### Final publication and installation — v0.3.5.69
+
+PR #109 final source `165d25e551408af8e1a40910d18ea2a97396c586` passed CI 34245166276 and merged as `dcd19fdd816ccaa6ca04efb0b3655127c654178e`. Auto Release 34245250286 succeeded, publishing .69 with module.json and module.zip. Setup updated only SimplyPF2e and verified **0.3.5.69**; the existing test world was relaunched/rejoined as GM. The installed Generator entry point, controls and existing configured provider rendered successfully. No further provider request was made. Foundry 14.365/PF2e 8.5.0, all QA artifacts and world/provider settings were preserved; the temporary viewport was reset.
+
+Astra approved the early ABC boundary, the public README qualification, and the existing preset-doc test adjustment. The README-only push initially failed an assertion expecting old marketing wording; the assertion now checks the same offered class list and retains the flavor-only guard. Final full local gate and final CI both passed. Native .68 evidence is not relabeled as a .69 full-PC test; no Rogue acceptance is claimed. Final QA records are committed locally on the named branch without another public release solely for records.

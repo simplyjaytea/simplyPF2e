@@ -3,12 +3,17 @@ import { getPacksFor, findEntry, getDocument, toItemData, priceToGp, isIssuedCan
 import { slugify, capitalized, esc, toHtml } from "./text.mjs";
 import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
 import { persistedExpectedItems } from "./post-create.mjs";
+import {
+  resolveNpcAbilityPackages, revalidateNpcAbilityPackages, npcPackageUnarmedStrike,
+  registerNpcAbilityExpectations
+} from "./npc-ability-packages.mjs";
 
 /* Re-exported so the rest of the module keeps importing its shared helpers
    from one place; the definitions live in text.mjs / runes.mjs / compendium.mjs. */
 export { slugify, capitalized, esc, toHtml } from "./text.mjs";
 export { parseRunes, applyRunes } from "./runes.mjs";
 export { priceToGp } from "./compendium.mjs";
+export { featToAction } from "./npc-ability-packages.mjs";
 
 const SIZES = new Set(["tiny", "sm", "med", "lg", "huge", "grg"]);
 const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
@@ -837,7 +842,9 @@ export async function resolveConcept(concept, { exactContent = false } = {}) {
   const equipment = await resolveEquipment(concept, { exactContent });
   const loot = await resolveLoot(concept, { exactContent });
 
-  return { abilities, spells, feats, focusSpells, equipment, loot };
+  const abilityPackages = feats.length && feats.every((feat) => feat.entry)
+    ? await resolveNpcAbilityPackages(feats, { concept }) : null;
+  return { abilities, spells, feats, focusSpells, equipment, loot, abilityPackages };
 }
 
 /**
@@ -1302,35 +1309,6 @@ const NPC_ITEM_TYPES = new Set([
   "condition", "effect"
 ]);
 
-/**
- * NPCs may not embed feat items (the system forbids the type and the sheet
- * fails to render), so a matched feat becomes an NPC action item carrying the
- * feat's cost, rules text and automation — the same way bestiary statblocks
- * present feat-based abilities like Goblin Scuttle or Attack of Opportunity.
- */
-export function featToAction(feat, compendiumSource = null) {
-  const actionType = feat.system?.actionType?.value ?? "passive";
-  const data = {
-    name: feat.name,
-    type: "action",
-    img: feat.img ?? actionIcon(actionType),
-    system: {
-      actionType: { value: actionType },
-      actions: { value: actionType === "action" ? (feat.system?.actions?.value ?? 1) : null },
-      category: "offensive",
-      description: { value: feat.system?.description?.value ?? "" },
-      traits: { value: feat.system?.traits?.value ?? [] },
-      rules: feat.system?.rules ?? [],
-      slug: feat.system?.slug ?? null,
-      selfEffect: feat.system?.selfEffect ?? null
-    }
-  };
-  // NPC feats must be action items, but this remains a faithful conversion of
-  // an exact compendium document. Preserve that source for transaction checks.
-  if (compendiumSource) data._stats = { compendiumSource };
-  return data;
-}
-
 function actionIcon(actionType) {
   return {
     action: "systems/pf2e/icons/actions/OneAction.webp",
@@ -1349,6 +1327,16 @@ function actionIcon(actionType) {
 export async function createActor(concept, resolved, { img = null, scaffold = null } = {}) {
   const stats = computeStats(concept);
   const items = [];
+  const packageItems = [];
+  const abilityPackages = resolved.feats?.length
+    ? (resolved.abilityPackages ?? await resolveNpcAbilityPackages(resolved.feats, { concept, fresh: true }))
+    : null;
+  // A source-backed special ability may also be an active package item (or a
+  // native GrantItem target). Let the package own that exact source identity;
+  // dormant assets and equivalent sources are intentionally not included.
+  const activePackageSources = new Set([
+    ...(abilityPackages?.items ?? []), ...(abilityPackages?.expectedItems ?? [])
+  ].map((item) => item?._stats?.compendiumSource).filter(Boolean));
 
   // Skills → lore items (the PF2e NPC skill representation)
   for (const skill of stats.skills) {
@@ -1390,6 +1378,7 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
   for (const { ability, entry } of resolved.abilities) {
     const doc = await getSelectedDocument(entry);
     if (doc) {
+      if (activePackageSources.has(doc.uuid)) continue;
       items.push(toItemData(doc));
       continue;
     }
@@ -1411,11 +1400,12 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
     });
   }
 
-  // Feats (class-like trained techniques) become NPC action items
-  for (const { entry } of resolved.feats) {
-    const doc = await getSelectedDocument(entry);
-    if (!doc) continue;
-    items.push(featToAction(doc.toObject(), doc.uuid));
+  // Only complete, freshly revalidated packages can convert PC feats. Linked
+  // self effects remain inactive source assets; native grants own their items.
+  if (abilityPackages) {
+    packageItems.push(...structuredClone(abilityPackages.items));
+    items.push(...packageItems);
+    if (abilityPackages.needsUnarmed) items.push(npcPackageUnarmedStrike(concept));
   }
 
   // Spellcasting entry + spells (skipped when no spell resolved to a document)
@@ -1498,6 +1488,10 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
 
   const safeItems = filterItemTypes(items, NPC_ITEM_TYPES, "NPC");
   const expectedItems = await persistedExpectedItems(safeItems);
+  if (abilityPackages) {
+    expectedItems.push(...structuredClone(abilityPackages.expectedItems));
+    registerNpcAbilityExpectations(expectedItems, abilityPackages);
+  }
 
   const notesParts = [];
   if (concept.readAloud) {
@@ -1518,7 +1512,10 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
   const actorData = {
     name: concept.name,
     type: "npc",
-    items: safeItems,
+    // Native ItemPF2e.createDocuments owns GrantItem preCreate. Initial actor
+    // source items do not provide that lifecycle, so stage package parents
+    // separately after the baseline actor exists.
+    items: safeItems.filter((item) => !packageItems.includes(item)),
     system: {
       abilities: Object.fromEntries(
         Object.entries(stats.abilities).map(([k, mod]) => [k, { mod }])
@@ -1577,7 +1574,20 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
     actorData.prototypeToken.texture = { src: img };
   }
 
+  if (abilityPackages) await revalidateNpcAbilityPackages(abilityPackages, resolved.feats, { concept });
   const actor = await Actor.create(actorData);
+  try {
+    // Each parent sees grants already persisted by earlier parents. Native
+    // allowDuplicate:false does not inspect a shared pending item batch.
+    for (const item of packageItems) await actor.createEmbeddedDocuments("Item", [item]);
+  } catch (error) {
+    try { await actor.delete(); }
+    catch (cleanupError) {
+      console.error("simplypf2e | failed to roll back NPC ability package creation", cleanupError);
+      error.simplyPF2eRollbackActor = actor;
+    }
+    throw error;
+  }
   // Transient creation data gives post-create verification exact source
   // identity without persisting module metadata onto the actor.
   return { actor, expectedItems };

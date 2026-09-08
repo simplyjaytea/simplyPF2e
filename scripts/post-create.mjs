@@ -3,6 +3,7 @@
  * in-flight transaction. This is a survival check, not a second PF2e rules
  * engine: PF2e remains responsible for derived data, grants, and rules.
  */
+import { verifyNpcAbilityMechanics } from "./npc-ability-packages.mjs";
 
 function normalized(value) {
   return String(value ?? "").trim().toLocaleLowerCase();
@@ -143,5 +144,6 @@ export function verifyCreatedActor(actor, manifest, expectedItems) {
   if (brokenLinks.length) {
     throw new Error(`Post-create verification failed: ${brokenLinks.length} spell location${brokenLinks.length === 1 ? "" : "s"} did not resolve to a casting entry`);
   }
+  verifyNpcAbilityMechanics(actor, matched);
   return { checked: matched.length };
 }

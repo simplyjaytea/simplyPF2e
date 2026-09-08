@@ -60,6 +60,47 @@ export function resolveEncodedFeatPicks(encoded, picks) {
   return resolved;
 }
 
+/** One creature list uses the same short aliases as PC slots, with private refs. */
+export function encodeCreatureFeatCandidates(candidates) {
+  // Require source identity: same-named documents from different packs remain
+  // distinct, and malformed catalog entries cannot become name-only picks.
+  const sources = (Array.isArray(candidates) ? candidates : []).filter((candidate) =>
+    typeof candidate?.id === "string" && candidate.id
+    && candidate.ref?.packId && candidate.ref?._id);
+  return encodeFeatCandidateSlots([{ candidates: sources }]);
+}
+
+/** Atomic list validation. Names, foreign IDs and partial valid subsets fail. */
+export function resolveCreatureFeatAliases(encoded, picks, maximum = 3) {
+  const byId = new Map(encoded.catalog.map((entry) => [entry.id, entry]));
+  const seen = new Set();
+  const resolved = [];
+  let invalidPickCount = 0;
+  let reason = Array.isArray(picks) ? null : "malformed-list";
+  for (const pick of Array.isArray(picks) ? picks : []) {
+    const entry = typeof pick === "string" ? byId.get(pick) : null;
+    if (!entry || seen.has(pick)) {
+      invalidPickCount++;
+      reason ??= entry ? "duplicate-id" : "unknown-or-malformed-id";
+      continue;
+    }
+    seen.add(pick);
+    resolved.push({ name: entry.name, candidate: entry.candidate });
+  }
+  if (Array.isArray(picks) && picks.length > maximum) reason ??= "too-many-picks";
+  if (reason) {
+    const error = new Error("Creature feat selection returned invalid IDs. Generate a new plan.");
+    error.code = "NPC_FEAT_SELECTION_INVALID";
+    error.diagnostics = {
+      stage: "selection", reason, candidateCount: byId.size,
+      validPickCount: resolved.length, invalidPickCount,
+      maximum
+    };
+    throw error;
+  }
+  return resolved;
+}
+
 /**
  * Short, request-local aliases for Forge component catalogs. Source candidate
  * IDs and refs never leave this boundary: each returned alias is restored to
