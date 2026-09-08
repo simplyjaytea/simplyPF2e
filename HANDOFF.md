@@ -8,15 +8,16 @@ Read this first, then CLAUDE.md. Detailed evidence: [docs/consumer-readiness-202
 - PR #106 Forge aliases/copy: source `6abf2ac`, merge `6f82c30`, v0.3.5.66.
 - PR #107 generation controls, ABC validation, initial busy rendering and failed-token accounting: source `bfd698d`, merge `16f9745`, CI34238059322 / release34238176018 successful, v0.3.5.67.
 - PR #108 native kit expectations / zero-budget currency: source `ee52c91471fe87fa3ca80e11246ec161b9d1649e`, merge `425e9339faf0a6b52099fa63c42fb2600b9986ee`, CI34241316182 / release34241400856 successful, **v0.3.5.68**, both release assets verified.
-- Setup updated **only SimplyPF2e** after every release and relaunched the existing `test` world. Current installed **0.3.5.68**; Foundry **14.365**, PF2e **8.5.0**, provider settings preserved.
+- PR #109 early ABC rejection and public readiness documentation: source `165d25e551408af8e1a40910d18ea2a97396c586`, merge `dcd19fdd816ccaa6ca04efb0b3655127c654178e`, CI34245166276 / release34245250286 successful, **v0.3.5.69**, both assets verified.
+- Setup updated **only SimplyPF2e** after every release and relaunched the existing `test` world. Current installed **0.3.5.69**; Foundry **14.365**, PF2e **8.5.0**, provider settings preserved.
 - User authorization persists: **push/merge through PR after checks, then update SimplyPF2e through Foundry**. Never direct main writes; do not ask again for the already authorized route.
 
 ## Current work and exact next step
 
-- Branch `codex/consumer-final-qa`, based on `origin/main` `425e933`; local main stale, unique older `codex/consumer-readiness` preserved. Git is authoritative.
-- All runtime slices are published and independently Astra-approved. Luna handled bounded UI, ABC, currency and accounting; Terra handled lifecycle, Forge identity and native kits. Final parent Node22 gate: **86 regressions / 121 syntax checks**, JSON/duplicate keys and whitespace; `.git/consumer-native-final-node22.log`.
-- .68 Fighter passed native creation, full HP, flat-kit expansion and zero currency. Requested Rogue instead yielded a valid native Investigator: class/name/key-ability fidelity failed. A focused Rogue retry failed closed late at83%; required ABC membership is not checked until after downstream spend. Luna implemented the early selector-boundary rejection/localization; root completed the production regression. Parent gate passes86regressions/121syntax/JSON/whitespace; Astra approved the final slice with no blocking findings. Next: follow-up PR/CI/release/Foundry update. A small .68 single-member encounter passed native creation and empty holdings/spells; no provider run is active.
-- Root integrated Luna’s docs/runtime changes and owns final verification/publication and browser QA. All agents are read-only or stopped and Astra has approved the final audit. Keep .68 live passes version-specific. Reset temporary viewport at completion.
+- Publication and installed smoke are complete. Branch `codex/consumer-final-qa` was fast-forwarded to merged `origin/main` `dcd19fd`; final factual QA records are committed locally on this named branch. Do not create another public release merely for the records. Git is authoritative.
+- Luna implemented bounded UI/ABC/currency/docs work; Terra handled lifecycle/Forge/native kits and traced live failures; root integrated, completed final tests and publication. **Astra approved every finished implementation and public-doc slice, with no remaining blocking code-review findings.** Final parent Node22 gate: **86 regressions / 121 syntax checks**, module/localization JSON with duplicate-key detection and whitespace; `.git/consumer-abc-final-node22.log`. Final CI passed.
+- No provider run, PR, release, or audit is active. Installed .69 Generator controls and existing provider configuration rendered after reopening the world; no .69 generation replay was made. Temporary viewport reset.
+- Task outcome is a published UI/generation overhaul with bounded native passes and explicit GM-review limits. Next focused work, if requested: authoritative PC intent controls/heritage completeness and a successful native Rogue run, then nested kits, multi-member encounter and duplicate-copy activation. Do not call the current result blanket complete-PC/public acceptance.
 
 ## Installed evidence and preserved artifacts
 
@@ -39,7 +40,7 @@ Read this first, then CLAUDE.md. Detailed evidence: [docs/consumer-readiness-202
 ## Browser/environment
 
 - CUA only for browser interaction. Browser1/tab2, `https://foundry-test.gigaserver.xyz/game`, GM signed in. Provider `omniroute / auto/best-free` authorized for QA; never expose/replace credentials.
-- Temporary viewport1280×960 currently active. Default viewport378×982 is below Foundry’s1024×768 requirement; it was briefly restored, then overridden again to finish native actions. **Reset at completion.**
+- Temporary viewport1280×960 was reset at completion. Default viewport378×982 is below Foundry’s1024×768 requirement; retain that context when assessing the narrow embedded browser.
 - Failed temporary tab3 is policy-blocked to select/close; do not retry. Fixture server/tab stopped.
 - Node22 `/home/jtf/.local/share/mise/installs/node/22.23.2/bin/node`. `gh` hangs; gitpush/GitHub connectors work.
 - Ignored local `module.zip` is stale .64.1 verification archive, not current official release; never install it.

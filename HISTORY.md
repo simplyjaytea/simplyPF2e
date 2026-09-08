@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-09 — v0.3.5.69 publication and installed smoke check
+
+- PR #109 final source `165d25e551408af8e1a40910d18ea2a97396c586` passed CI 34245166276 and merged as `dcd19fdd816ccaa6ca04efb0b3655127c654178e`. Auto Release 34245250286 succeeded; both .69 assets were verified.
+- Setup updated only SimplyPF2e to **0.3.5.69**, relaunched `test`, and rejoined GM. Generator controls and the existing configured provider rendered; no additional provider request was made. Foundry14.365/PF2e8.5.0 and all world/provider/QA data were preserved. Temporary viewport restored.
+- Astra approved the final selector, public README qualifications and existing preset-doc test adjustment. One intermediate CI failed on the old README wording assertion; final full local86/121 gate and final CI passed after alignment. Preserve .68 native results as version-specific and do not claim complete Rogue/request-fidelity acceptance. Final release records committed locally without a documentation-only public release.
+
 ## 2026-09-09 — Final native QA and early character-selection rejection
 
 - .68 live QA completed with bounded Fighter, native Investigator-path and one-member encounter passes. Exact Rogue/class/name/key-ability fidelity failed, and a focused Rogue retry stopped before creation. All artifacts were preserved; known provider-spend lower bound is 294,271 tokens.
