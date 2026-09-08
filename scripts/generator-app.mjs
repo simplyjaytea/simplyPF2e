@@ -9,7 +9,7 @@ import {
 import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import {
   getSpellCandidates, getEquipmentCandidates, getLootCandidates, getScrollSpellCandidates,
-  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, getFeatCandidates, getAbilityCandidates, sourceReadiness
+  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, getFeatCandidates, getCreatureFeatCandidates, normalizeCreatureFeatName, getAbilityCandidates, sourceReadiness
 } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
@@ -32,6 +32,44 @@ import { assertComplete, completionManifest, completionSummary } from "./complet
 import { verifyCreatedActor } from "./post-create.mjs";
 import { freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
+import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-ability-packages.mjs";
+
+const creatureFeatRefKey = (ref) => `${ref?.packId ?? ""}:${ref?._id ?? ""}`;
+
+/** Bind named requirements to local source names, never provider required/optional labels.
+ * Unrecognized prose is not an executable requirement parser. A draft name that
+ * occurs verbatim in the original brief still binds when its source is missing.
+ */
+export function creatureFeatRequirements(prompt, draft, candidates) {
+  const text = ` ${normalizeCreatureFeatName(prompt)} `;
+  const names = new Map();
+  for (const item of [...candidates, ...draft]) {
+    const name = typeof item === "string" ? item : item?.name;
+    const normalized = normalizeCreatureFeatName(name);
+    if (!normalized || !text.includes(` ${normalized} `) || names.has(normalized)) continue;
+    const clauses = String(prompt ?? "").split(/[.!?;,\n]/).map((clause) => ` ${normalizeCreatureFeatName(clause)} `);
+    const mentions = clauses.filter((clause) => clause.includes(` ${normalized} `));
+    const ambiguous = mentions.some((clause) => {
+      // A name/title or negative statement is not permission to add mechanics.
+      if (/\b(?:no|not|never|without|neither|nor|avoid|exclude|excluded|excluding|except|forbidden|prohibited|unwanted|omit|remove|instead of|rather than|(?:don|doesn|didn|won|wouldn|shouldn|mustn|can|couldn) t|named|called|titled|nickname|title|sign|story|tale|song|known as)\b/.test(clause)) return true;
+      const at = clause.indexOf(` ${normalized} `);
+      const before = clause.slice(0, at + 1);
+      const after = clause.slice(at + normalized.length + 1);
+      // Recognize only a small positive mechanical request grammar. Arbitrary
+      // prose mentions stay ambiguous, even when the AI proposes the same feat.
+      const requested = /\b(?:with|has|have|having|use|uses|using|give|grant|include|requires?)(?: (?:this|the|an?|npc|creature|character|feat|ability|action|power)){0,4} $/.test(before)
+        || /\b(?:required )?(?:feat|ability|action|power) $/.test(before)
+        || /^ (?:feat|ability|action|power)\b/.test(after);
+      return !requested;
+    });
+    names.set(normalized, { name, normalized, ambiguous });
+  }
+  return [...names.values()];
+}
+
+function creatureFeatError(message, code, diagnostics = {}) {
+  return Object.assign(new Error(`NPC ability selection: ${message}`), { code, diagnostics });
+}
 
 async function rollbackActor(actor, label) {
   if (!actor) return null;
@@ -857,8 +895,8 @@ export class GeneratorApp extends SpfApp {
       if (this.#concept.specialAbilities.length) await this._setStep("abilities");
       else this._skipStep("abilities");
       await this.#refineCreatureAbilities(this.#concept, signal);
-      if (this.#concept.feats.length) await this._setStep("feats");
-      else this._skipStep("feats");
+      // Named requirements in the original brief may be missing from the AI draft.
+      await this._setStep("feats");
       await this.#refineCreatureFeats(this.#concept, signal);
       if (this.#concept.equipment.length) await this._setStep("equipment");
       else this._skipStep("equipment");
@@ -918,6 +956,16 @@ export class GeneratorApp extends SpfApp {
       // Random mode always rolls a fresh theme, even over a typed prompt —
       // same contract as the other modes' dice button (#onGenerateRandom).
       const theme = isRandom ? randomBrief(this.#input.mode) : (this.#input.prompt.trim() || randomBrief(this.#input.mode));
+      // The theme describes a group. An AI-authored brief cannot prove which
+      // member owns an explicit power, so stop before provider spend rather
+      // than assigning every mentioned feat to every creature.
+      const requirementCatalog = await getCreatureFeatCandidates({ level: 24, limit: null, prompt: theme });
+      this._throwIfCancelled();
+      const named = creatureFeatRequirements(theme, [], requirementCatalog);
+      if (named.length) throw creatureFeatError(
+        `the encounter names "${String(named[0].name).slice(0, 100)}", but its member assignment cannot be verified automatically. Generate the creature with that ability separately.`,
+        "NPC_ABILITY_ENCOUNTER_REQUIREMENT_AMBIGUOUS"
+      );
       const design = await designEncounter({
         theme,
         partyLevel,
@@ -958,7 +1006,7 @@ export class GeneratorApp extends SpfApp {
         }
         await this.#refineSpells(concept, signal);
         await this.#refineCreatureAbilities(concept, signal);
-        await this.#refineCreatureFeats(concept, signal);
+        await this.#refineCreatureFeats(concept, signal, { encounter: true });
         await this.#refineEquipment(concept, signal);
         await this.#refineLoot(concept, signal);
         members.push({ ...slot, concept });
@@ -1292,26 +1340,107 @@ export class GeneratorApp extends SpfApp {
     }
   }
 
-  /** Ground a creature's class-like feats against an issued, level-capped list. */
-  async #refineCreatureFeats(concept, signal) {
-    if (!concept?.feats?.length) return;
+  /** Select only complete source-backed packages. Unsupported AI suggestions
+   * are replaced in the existing single grounded request, with no repair loop.
+   */
+  async #refineCreatureFeats(concept, signal, { encounter = false } = {}) {
+    if (!concept) return;
+    const draft = concept.feats ?? [];
     try {
-      const candidates = await getFeatCandidates({
-        level: Math.max(concept.level, 1), category: "class",
-        preferredNames: concept.feats.map((feat) => typeof feat === "string" ? feat : feat.name)
+      const catalog = await getCreatureFeatCandidates({
+        level: 24, limit: null,
+        preferredNames: draft.map((feat) => typeof feat === "string" ? feat : feat.name),
+        prompt: concept.gmPrompt ?? ""
       });
-      if (!candidates.length) return;
-      const { feats, omitted, usage } = await selectCreatureFeats({
-        concept, candidates, onProgress: this._progressCallback(), signal
+      this._throwIfCancelled();
+      const required = creatureFeatRequirements(concept.gmPrompt, draft, catalog);
+      if (!draft.length && !required.length) {
+        this._skipStep("feats");
+        return;
+      }
+      if (encounter && required.length) throw creatureFeatError(
+        `the encounter names "${String(required[0].name).slice(0, 100)}", but its member assignment cannot be verified automatically. Generate the creature with that ability separately.`,
+        "NPC_ABILITY_ENCOUNTER_REQUIREMENT_AMBIGUOUS"
+      );
+      const ambiguous = required.find((item) => item.ambiguous);
+      if (ambiguous) throw creatureFeatError(
+        `the request mentions "${String(ambiguous.name).slice(0, 100)}" without an unambiguous positive mechanical requirement. Please state the desired feat or ability explicitly.`,
+        "NPC_ABILITY_REQUIREMENT_AMBIGUOUS"
+      );
+      if (!catalog.length) throw creatureFeatError(
+        "no enabled class-feat sources are available for this level.", "NPC_FEAT_CATALOG_UNAVAILABLE",
+        { candidateCount: 0 }
+      );
+      // Reserve requested names ahead of the bounded offer. Duplicate names
+      // retain distinct source identities, and only verified packages survive.
+      const requiredNames = new Set(required.map((item) => item.normalized));
+      const eligible = catalog.filter((item) => Number.isFinite(item.level) && item.level <= concept.level);
+      const ordered = [
+        ...eligible.filter((item) => requiredNames.has(normalizeCreatureFeatName(item.name))),
+        ...eligible.filter((item) => !requiredNames.has(normalizeCreatureFeatName(item.name)))
+      ];
+      const { candidates, unavailable } = await filterNpcAbilityCandidates(ordered, { concept, limit: 16, signal });
+      this._throwIfCancelled();
+      for (const requirement of required) {
+        if (candidates.some((item) => normalizeCreatureFeatName(item.name) === requirement.normalized)) continue;
+        const rejected = unavailable.find(({ candidate }) => normalizeCreatureFeatName(candidate.name) === requirement.normalized);
+        const aboveLevel = catalog.some((item) => normalizeCreatureFeatName(item.name) === requirement.normalized && item.level > concept.level);
+        throw creatureFeatError(
+          `required ability "${String(requirement.name).slice(0, 100)}" cannot be completed automatically: ${rejected?.reason ?? (aboveLevel ? "its source level exceeds the creature level" : "no eligible exact source was available")}.`,
+          "NPC_ABILITY_REQUIRED_UNSUPPORTED", { candidateCount: catalog.length, supportedCount: candidates.length }
+        );
+      }
+      if (!candidates.length) throw creatureFeatError(
+        "none of the available signature abilities can be completed automatically with the enabled sources.",
+        "NPC_ABILITY_CATALOG_UNAVAILABLE", { candidateCount: catalog.length, supportedCount: 0 }
+      );
+      const requestConcept = { ...concept, feats: [
+        ...required.map(({ name }) => ({ name })),
+        ...draft.filter((feat) => !requiredNames.has(normalizeCreatureFeatName(typeof feat === "string" ? feat : feat.name)))
+      ] };
+      const { feats, omitted, status, usage } = await selectCreatureFeats({
+        concept: requestConcept, candidates, onProgress: this._progressCallback(), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), usage);
-      // An explicit empty selection is allowed for this optional wishlist;
-      // invalid picks/provider failures must not silently erase requirements.
-      if (feats.length || omitted === true) concept.feats = feats;
+      this._throwIfCancelled();
+      if (!Array.isArray(feats) || (!feats.length && omitted !== true && status !== "empty")) {
+        throw creatureFeatError("the provider did not return a valid ability selection.", "NPC_FEAT_SELECTION_INVALID");
+      }
+      // Requirements come from the GM's original text. Even a valid empty
+      // provider response cannot authorize removing a specifically named power.
+      const selected = [...feats];
+      const protectedKeys = new Set();
+      for (const requirement of required) {
+        const offered = candidates.filter((item) => normalizeCreatureFeatName(item.name) === requirement.normalized);
+        const choice = offered.find((item) => selected.some((feat) => creatureFeatRefKey(feat.candidate) === creatureFeatRefKey(item.ref))) ?? offered[0];
+        const key = creatureFeatRefKey(choice.ref);
+        protectedKeys.add(key);
+        if (!selected.some((feat) => creatureFeatRefKey(feat.candidate) === key)) {
+          selected.push({ name: choice.name, candidate: choice.ref });
+        }
+      }
+      // Charge supporting powers to the same package budget. Drop optional
+      // suggestions only; an over-budget required set fails before any writes.
+      while (true) {
+        try {
+          await resolveNpcAbilityPackages(selected, { concept, signal });
+          break;
+        } catch (err) {
+          if (err?.code !== "NPC_ABILITY_BUDGET_EXCEEDED") throw err;
+          const removable = selected.findLastIndex((feat) => !protectedKeys.has(creatureFeatRefKey(feat.candidate)));
+          if (removable < 0) throw err;
+          selected.splice(removable, 1);
+        }
+      }
+      this._throwIfCancelled();
+      concept.feats = selected;
     } catch (err) {
       if (err?.cancelled) throw err;
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), err?.usage);
-      console.warn(`${MODULE_ID} | grounded creature feat selection failed; unresolved draft feats will block creation`, err);
+      console.warn(`${MODULE_ID} | NPC ability selection stopped before creation`, {
+        code: err?.code ?? "NPC_ABILITY_SELECTION_FAILED", ...err?.diagnostics
+      });
+      throw err;
     }
   }
 
@@ -1477,7 +1606,16 @@ export class GeneratorApp extends SpfApp {
     } catch (err) {
       outcome = err?.cancelled ? "cancelled" : "error";
       if (!committed) {
-        const survivor = await rollbackActor(actor, "unverified actor");
+        // createActor owns the native package transaction. If its cleanup of
+        // a stranded actor failed, it marks that actor on the original error;
+        // it has already attempted deletion, so never delete it a second time.
+        let survivor = null;
+        if (err?.simplyPF2eRollbackActor) {
+          const stranded = err.simplyPF2eRollbackActor;
+          survivor = `incomplete actor "${stranded.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+        } else {
+          survivor = await rollbackActor(actor, "unverified actor");
+        }
         if (survivor) {
           this.#concept = null;
           this.#resolved = null;
@@ -1718,25 +1856,34 @@ export class GeneratorApp extends SpfApp {
         outcome = "warning";
         console.warn(`${MODULE_ID} | encounter committed, but completion presentation failed`, err);
       } else {
-      outcome = err?.cancelled ? "cancelled" : "error";
-      console.error(`${MODULE_ID} | encounter creation failed`, err);
-      // An encounter is all-or-nothing. Best-effort cleanup preserves the
-      // original error while ensuring a retry cannot duplicate a partial roster.
-      const survivors = [];
-      for (const actor of actors.reverse()) {
-        const survivor = await rollbackActor(actor, "encounter actor");
-        if (survivor) survivors.push(survivor);
-      }
-      if (folder) {
-        try { await folder.delete(); } catch (cleanupErr) {
-          console.warn(`${MODULE_ID} | failed to roll back encounter folder "${folder.name}"`, cleanupErr);
-          survivors.push(`encounter folder "${folder.name}" still exists`);
+        outcome = err?.cancelled ? "cancelled" : "error";
+        console.error(`${MODULE_ID} | encounter creation failed`, err);
+        // An encounter is all-or-nothing. Best-effort cleanup preserves the
+        // original error while ensuring a retry cannot duplicate a partial roster.
+        const survivors = [];
+        const stranded = err?.simplyPF2eRollbackActor ?? null;
+        if (stranded) {
+          survivors.push(`incomplete actor "${stranded.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`);
         }
-      }
-      if (survivors.length) {
-        this.#encounter = null;
-        this.#error = `${err.message} ${survivors.join(" ")} The plan was discarded to prevent a duplicate.`;
-      } else this.#error = err.message;
+        for (const actor of actors.reverse()) {
+          // The package builder already attempted this actor's deletion and
+          // identified it on the error. It never reaches the actors list in
+          // the normal path, but identity checking keeps this catch robust.
+          if (stranded && (actor === stranded || (actor.id && actor.id === stranded.id))) continue;
+          const survivor = await rollbackActor(actor, "encounter actor");
+          if (survivor) survivors.push(survivor);
+        }
+        if (folder) {
+          try { await folder.delete(); } catch (cleanupErr) {
+            console.warn(`${MODULE_ID} | failed to roll back encounter folder "${folder.name}"`, cleanupErr);
+            survivors.push(`encounter folder "${folder.name}" still exists`);
+          }
+        }
+        if (survivors.length) {
+          this.#encounter = null;
+          this.#manifest = null;
+          this.#error = `${err.message} ${survivors.join(" ")} The plan was discarded to prevent a duplicate.`;
+        } else this.#error = err.message;
       }
     } finally {
       if (!reuseRun) {

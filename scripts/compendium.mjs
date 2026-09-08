@@ -843,6 +843,84 @@ export async function getFeatCandidates({
   return limitFeatCandidates(candidates, FEAT_CANDIDATE_LIMIT, preferredNames);
 }
 
+/** Exact normalization for NPC requirement binding; this does not fuzzy-match. */
+export function normalizeCreatureFeatName(name) {
+  return normalize(String(name ?? ""));
+}
+
+/**
+ * Rank a source-preserving NPC catalog. Relevance only controls which real
+ * candidates are offered; selection still requires an issued request alias.
+ * `limit: null` lets package admission run before the provider shortlist cap.
+ */
+export function rankCreatureFeatCandidates(candidates, {
+  preferredNames = [], prompt = "", preferredTraits = [], classTraits = [], limit = FEAT_CANDIDATE_LIMIT
+} = {}) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const exactNames = new Set(normalizedKeywords(preferredNames));
+  const tokens = (text) => normalizeCreatureFeatName(text).split(" ").filter((word) => word.length > 2 && !STOPWORDS.has(word));
+  const draftTerms = new Set(preferredNames.flatMap(tokens));
+  const promptTerms = new Set(tokens(prompt));
+  const knownClassTraits = new Set(classTraits);
+  const relatedTraits = new Set(preferredTraits);
+  for (const candidate of list) {
+    for (const trait of candidate.traits ?? []) {
+      if (knownClassTraits.has(trait) && (exactNames.has(normalize(candidate.name)) || promptTerms.has(trait))) {
+        relatedTraits.add(trait);
+      }
+    }
+  }
+  const score = (candidate) => {
+    const name = normalize(candidate.name);
+    const words = new Set(tokens(name));
+    return [
+      Number(exactNames.has(name)),
+      [...words].filter((word) => draftTerms.has(word)).length,
+      Number((candidate.traits ?? []).some((trait) => relatedTraits.has(trait))),
+      [...words].filter((word) => promptTerms.has(word)).length
+    ];
+  };
+  const ranked = list.map((candidate) => ({ candidate, score: score(candidate) }))
+    .sort((a, b) => {
+      for (let i = 0; i < a.score.length; i++) {
+        if (a.score[i] !== b.score[i]) return b.score[i] - a.score[i];
+      }
+      return b.candidate.level - a.candidate.level || a.candidate.name.localeCompare(b.candidate.name)
+        || String(a.candidate.id).localeCompare(String(b.candidate.id));
+    }).map(({ candidate }) => candidate);
+  return limit === null ? ranked : ranked.slice(0, Math.max(0, Math.min(FEAT_CANDIDATE_LIMIT, Number(limit) || 0)));
+}
+
+/**
+ * All-class NPC admission deduplicates source identity, never display name.
+ * Separate from PC slot admission so that its established sampling, category,
+ * trait and staged-prerequisite semantics remain unchanged.
+ */
+export async function getCreatureFeatCandidates({
+  level, preferredNames = [], prompt = "", preferredTraits = [], limit = FEAT_CANDIDATE_LIMIT
+} = {}) {
+  if (!Number.isFinite(level)) return [];
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("feats")) {
+    const entries = await getIndex(packId);
+    for (const entry of entries ?? []) {
+      const itemLevel = entry.system?.level?.value;
+      const traits = entry.system?.traits?.value;
+      if (entry.type !== "feat" || entry.system?.category !== "class"
+        || !Number.isInteger(itemLevel) || itemLevel < 1 || itemLevel > level || !Array.isArray(traits)) continue;
+      const identity = candidateId(entry);
+      if (!identity || seen.has(identity)) continue;
+      seen.add(identity);
+      candidates.push(candidateRecord(entry, { name: entry.name, level: itemLevel, traits }));
+    }
+  }
+  return rankCreatureFeatCandidates(candidates, {
+    preferredNames, prompt, preferredTraits, limit,
+    classTraits: Object.keys(globalThis.CONFIG?.PF2E?.classTraits ?? {})
+  });
+}
+
 /** Clone a compendium document into plain item data ready for embedding. */
 export function toItemData(doc) {
   const data = doc.toObject();

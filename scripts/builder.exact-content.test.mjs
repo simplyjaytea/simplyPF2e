@@ -3,13 +3,24 @@
 // been issued. Legacy callers retain their explicit permissive default.
 
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+// Exact reference admission now also proves a complete NPC rule package.
+// Reuse the published Nimble Dodge rules for this deliberately renamed fixture.
+const featSource = JSON.parse(await readFile(new URL("../tests/fixtures/npc-abilities/nimble-dodge.json", import.meta.url), "utf8"));
+featSource._id = "power-attack";
+featSource.name = "Power Attack";
 
 globalThis.game = {
   settings: { get: () => ({ equipment: ["test.equipment"], spells: ["test.spells"], feats: ["test.feats"] }) },
   packs: new Map([
     ["test.equipment", { async getIndex() { return [{ _id: "longsword", name: "Longsword", type: "weapon", system: { level: { value: 0 }, traits: { value: [] } } }]; } }],
     ["test.spells", {}],
-    ["test.feats", { async getIndex() { return [{ _id: "power-attack", name: "Power Attack", type: "feat", system: { level: { value: 1 }, category: "class", traits: { value: [] } } }]; } }]
+    ["test.feats", {
+      async getIndex() { return [{ _id: "power-attack", name: "Power Attack", type: "feat", system: { level: { value: 1 }, category: "class", traits: { value: [] } } }]; },
+      async getDocument(id) { return id === "power-attack" ? { ...featSource,
+        uuid: "Compendium.test.feats.Item.power-attack", toObject: () => structuredClone(featSource) } : null; }
+    }]
   ])
 };
 

@@ -30,6 +30,7 @@ let abortController;
 let abortDuringResolve = false;
 const ref = { packId: "test.equipment", _id: "potion" };
 const mocks = {
+  getCreatureFeatCandidates: async () => [], normalizeCreatureFeatName: (name) => String(name ?? "").toLowerCase(),
   MODULE_ID: "simplypf2e",
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   AI_TASK: {}, taskMaxTokens: () => 100,

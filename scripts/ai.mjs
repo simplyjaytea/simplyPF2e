@@ -7,6 +7,7 @@ import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
 import { estimateTokens, normalizeUsage } from "./tokens.mjs";
 import {
   encodeFeatCandidateSlots, resolveEncodedFeatPicks,
+  encodeCreatureFeatCandidates, resolveCreatureFeatAliases,
   encodeForgeCandidateGroups, resolveForgeCandidateAliases
 } from "./ai-candidate-format.mjs";
 import { taskResponseProblem } from "./ai-response-validation.mjs";
@@ -913,8 +914,15 @@ Include exactly one entry per slot number (1 to ${slots.length}). Never use an I
 /** Choose a small set of class-like creature feats from an issued catalog. */
 export async function selectCreatureFeats({ concept, candidates, onProgress, signal }) {
   const maximum = Math.min(Math.max(concept?.feats?.length ?? 0, 0), 3);
-  if (!maximum || !candidates.length) return { feats: [], omitted: false, usage: null };
-  const catalog = candidates.map((candidate) => `${candidate.id} | ${candidate.name}`).join("\n");
+  if (!maximum) return { feats: [], omitted: false, status: "skipped", usage: null };
+  const encoded = encodeCreatureFeatCandidates(candidates);
+  if (!encoded.catalog.length) {
+    const error = new Error("No source-backed creature feat candidates are available.");
+    error.code = "NPC_FEAT_CATALOG_UNAVAILABLE";
+    error.diagnostics = { stage: "catalog", reason: "empty-catalog", candidateCount: 0, validPickCount: 0, invalidPickCount: 0 };
+    throw error;
+  }
+  const catalog = encoded.catalog.map(({ id, name }) => `${id} | ${name}`).join("\n");
   const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting up to ${maximum} published Pathfinder 2e class feats for a creature. Choose ONLY IDs from the provided catalog. Return a single JSON object and nothing else:
 { "featIds": string[] }
 Choose feats that fit the creature's role and tactics. Do not choose a feat more than once. It is valid to choose fewer than ${maximum}; return { "featIds": [] } when none fit.`;
@@ -928,24 +936,27 @@ Choose feats that fit the creature's role and tactics. Do not choose a feat more
     "Feat catalog (ID | exact name):",
     catalog
   ].filter((line) => line !== null).join("\n");
-  const { data: parsed, usage } = await requestJSON({
-    task: AI_TASK.CREATURE_FEAT_SELECTION, system, user, onProgress, signal
-  });
-  const seen = new Set();
-  const feats = (Array.isArray(parsed.featIds) ? parsed.featIds : [])
-    .map((id) => candidateForPick(candidates, { id }))
-    .filter((candidate) => {
-      if (!candidate) return false;
-      const key = candidate.id ?? `${candidate.ref?.packId ?? ""}\u0000${candidate.ref?._id ?? candidate.name}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, maximum)
-    .map((candidate) => ({ name: candidate.name, ...(candidate.ref ? { candidate: candidate.ref } : {}) }));
-  // Only an explicitly empty, schema-validated reply declines the wishlist.
-  // Nonempty replies that decode to no issued candidates remain failures.
-  return { feats, omitted: parsed.featIds.length === 0, usage };
+  let response;
+  try {
+    response = await requestJSON({
+      task: AI_TASK.CREATURE_FEAT_SELECTION, system, user, onProgress, signal
+    });
+  } catch (error) {
+    if (error?.cancelled) throw error;
+    // Keep the original request usage (including its bounded retry). Never
+    // log a provider exchange or turn a request error into successful omission.
+    error.code = "NPC_FEAT_REQUEST_FAILED";
+    error.diagnostics = { stage: "request", reason: "request-failed", candidateCount: encoded.catalog.length, validPickCount: 0, invalidPickCount: 0 };
+    throw error;
+  }
+  const { data: parsed, usage } = response;
+  try {
+    const feats = resolveCreatureFeatAliases(encoded, parsed.featIds, maximum);
+    return { feats, omitted: feats.length === 0, status: feats.length ? "selected" : "empty", usage };
+  } catch (error) {
+    error.usage = usage;
+    throw error;
+  }
 }
 
 /** Select published bestiary actions only from the issued action catalog. */

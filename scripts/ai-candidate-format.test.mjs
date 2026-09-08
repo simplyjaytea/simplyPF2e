@@ -55,3 +55,25 @@ for (const raw of [
 ]) assert.throws(() => resolveForgeCandidateAliases(forge, raw), /unknown .* alias/,
   "wrong-group, original opaque, and unknown Forge aliases fail closed");
 console.log("ai-candidate-format.test.mjs: Forge aliases retain exact group identities");
+
+import { encodeCreatureFeatCandidates, resolveCreatureFeatAliases } from "./ai-candidate-format.mjs";
+const firstRef = { packId: "first.pack", _id: "one" };
+const secondRef = { packId: "second.pack", _id: "two" };
+const creature = encodeCreatureFeatCandidates([
+  { id: "source-one", name: "Same Name", ref: firstRef },
+  { id: "source-two", name: "Same Name", ref: secondRef },
+  { id: "source-one", name: "Same Name", ref: firstRef },
+  { id: "no-ref", name: "Malformed" }
+]);
+assert.deepEqual(creature.catalog.map(({ id }) => id), ["F0", "F1"]);
+const restored = resolveCreatureFeatAliases(creature, ["F1", "F0"]);
+assert.equal(restored[0].candidate, secondRef);
+assert.equal(restored[1].candidate, firstRef);
+assert.deepEqual(resolveCreatureFeatAliases(creature, []), []);
+for (const invalid of [undefined, null, {}, "F0", [0], ["Same Name"], ["source-one"], ["f0"], ["F0", "F0"], ["F0", "F2"]]) {
+  assert.throws(() => resolveCreatureFeatAliases(creature, invalid), (error) =>
+    error.code === "NPC_FEAT_SELECTION_INVALID", "invalid/mixed/duplicate selections reject the entire batch");
+}
+assert.throws(() => resolveCreatureFeatAliases(creature, ["F0", "F1"], 1),
+  (error) => error.diagnostics.reason === "too-many-picks");
+console.log("ai-candidate-format.test.mjs: creature aliases are exact and atomic");

@@ -70,6 +70,13 @@ export function completionManifest({ mode, concept, resolved }) {
   records.push(...resolvedLines("focus-spell", resolved?.focusSpells));
   records.push(...castingEntryLines(concept, resolved));
   records.push(...resolvedLines("feat", resolved?.feats));
+  if (!character && resolved?.abilityPackages) {
+    for (const source of resolved.abilityPackages.sources) {
+      if (source.role === "root") continue;
+      records.push(line(source.role === "asset" ? "ability-source" : "supporting-ability", source.name, "compendium"));
+    }
+    if (resolved.abilityPackages.needsUnarmed) records.push(line("supporting-strike", "Unarmed Strike", "module-built"));
+  }
   for (const item of resolved?.equipment ?? []) records.push(line("equipment", item.name, item.entry ? "compendium" : "unresolved"));
   for (const item of resolved?.loot ?? []) {
     const built = COINS.test(item.name) ? "module-built" : (item.scroll && item.entry ? "module-built" : null);
