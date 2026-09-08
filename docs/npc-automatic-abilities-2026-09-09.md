@@ -2,6 +2,8 @@
 
 Implementation branch: `codex/npc-automatic-abilities`. Published baseline is SimplyPF2e 0.3.5.69 on Foundry 14.365 / PF2e 8.5.0. This record tracks implementation of the [reviewed plan](npc-feat-plan-2026-09-09.md); it is not a release or native acceptance claim.
 
+Publication: [PR #110](https://github.com/simplyjaytea/simplyPF2e/pull/110), source `55bbccd68c8eeec7ebf1408d7fadc86760e774bb`, passed [CI 34257060796](https://github.com/simplyjaytea/simplyPF2e/actions/runs/34257060796) and merged as `d17a2b507070ed5f403a7bb70176b335f139f7fc`. [Auto Release 34257313518](https://github.com/simplyjaytea/simplyPF2e/actions/runs/34257313518) is in progress; assets, installation and native acceptance remain pending.
+
 ## Consumer contract
 
 Generation offers source-backed abilities whose supporting dependencies can be completed automatically. The module supplies those dependencies before creating the NPC. Supporting combat abilities count toward the ability budget. The NPC keeps its GM Core baseline statistics and uses normal Foundry combat controls.
