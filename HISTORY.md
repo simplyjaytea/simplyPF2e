@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-12 — Ship-readiness assessment of v0.3.5.70
+
+- Reconciled stale local main (20 commits behind) against fetched `origin/main` `d17a2b5`, public release v0.3.5.70 and existing QA-only commits through `c8e06d3`. Audit branch `codex/ship-readiness-2026-09-12` preserves those QA notes and adds [the readiness report](docs/ship-readiness-2026-09-12.md); runtime code is unchanged.
+- Fresh Node22.23.2 gate passed all 88 regression files, 124 script syntax checks, JSON and whitespace. Public PR CI34257060796 / Auto Release34257313518 succeeded. Both release asset SHA-256 hashes match GitHub; all 48 archive files match the release source/selection except expected manifest stamping. No open PRs were returned. Independent `release_mechanics_review` examined the latest schema/balance diff using fetched real PF2e sources and found no new actionable P1/P2 defects against the installed-era 8.5.0 target.
+- Recommendation: suitable for GM-reviewed beta use along exercised paths. Stronger production claims depend first on authoritative requested PC choices and successful Rogue/racket acceptance, then bounded NPC combat, multi-member encounter, nested inventory and activation-copy checks. Existing documented gates remain appropriate. This session performed no provider requests, Foundry access/updates/world writes or authenticated GitHub publication; earlier installed QA remains version-specific evidence.
+
 ## 2026-09-09 — v0.3.5.70 publication
 
 - PR #110 source `55bbccd68c8eeec7ebf1408d7fadc86760e774bb` passed CI 34257060796 and merged as `d17a2b507070ed5f403a7bb70176b335f139f7fc`. Auto Release 34257313518 succeeded and published **v0.3.5.70**. Both assets passed SHA-256 verification; all 48 archive files match the merge apart from expected manifest stamping, and tests/fixtures are excluded.
