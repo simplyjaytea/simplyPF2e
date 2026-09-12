@@ -8,6 +8,7 @@
 import { SETTINGS, getSetting } from "./settings.mjs";
 import { featPrerequisitesMet } from "./pc-prerequisites.mjs";
 import { slugify } from "./text.mjs";
+import { createAsyncCache } from "./async-cache.mjs";
 
 export const CATEGORIES = [
   "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "classFeatures", "heritages", "bestiaryActors"
@@ -109,48 +110,46 @@ export async function getAllPacksFor(category) {
   return [...new Set([...configured, ...detected])];
 }
 
-let detectedPacks = null;
+const detectedPacks = createAsyncCache();
 
 /**
  * Scan every Item compendium in the world and report which packs can serve
  * each category, based on the item types they actually contain.
  * @returns {Promise<Record<string, {id: string, title: string, package: string}[]>>}
  */
-export async function detectAvailablePacks() {
-  if (detectedPacks) return detectedPacks;
-  const result = {
-    abilities: [], spells: [], feats: [], equipment: [],
-    ancestries: [], backgrounds: [], classes: [], classFeatures: [], heritages: [], bestiaryActors: []
-  };
-  for (const pack of game.packs) {
-    if (pack.metadata.type === "Actor") {
-      const entries = await getIndex(pack.collection);
-      if (entries?.some((entry) => entry.type === "npc")) {
-        result.bestiaryActors.push({ id: pack.collection, title: pack.title ?? pack.metadata.label, package: pack.metadata.packageName });
+export function detectAvailablePacks() {
+  return detectedPacks("all", async () => {
+    const result = {
+      abilities: [], spells: [], feats: [], equipment: [],
+      ancestries: [], backgrounds: [], classes: [], classFeatures: [], heritages: [], bestiaryActors: []
+    };
+    for (const pack of game.packs) {
+      if (pack.metadata.type === "Actor") {
+        const entries = await getIndex(pack.collection);
+        if (entries?.some((entry) => entry.type === "npc")) {
+          result.bestiaryActors.push({ id: pack.collection, title: pack.title ?? pack.metadata.label, package: pack.metadata.packageName });
+        }
+        continue;
       }
-      continue;
+      if (pack.metadata.type !== "Item") continue;
+      const entries = await getIndex(pack.collection);
+      if (!entries?.length) continue;
+      const types = new Set(entries.map((e) => e.type));
+      const info = { id: pack.collection, title: pack.title ?? pack.metadata.label, package: pack.metadata.packageName };
+      if (types.has("action")) result.abilities.push(info);
+      if (types.has("spell")) result.spells.push(info);
+      if (types.has("feat")) result.feats.push(info);
+      if ([...types].some((t) => EQUIPMENT_TYPES.has(t))) result.equipment.push(info);
+      if (types.has("ancestry")) result.ancestries.push(info);
+      if (types.has("background")) result.backgrounds.push(info);
+      if (types.has("class")) result.classes.push(info);
+      if (types.has("feat")) result.classFeatures.push(info);
+      if (types.has("heritage")) result.heritages.push(info);
     }
-    if (pack.metadata.type !== "Item") continue;
-    const entries = await getIndex(pack.collection);
-    if (!entries?.length) continue;
-    const types = new Set(entries.map((e) => e.type));
-    const info = { id: pack.collection, title: pack.title ?? pack.metadata.label, package: pack.metadata.packageName };
-    if (types.has("action")) result.abilities.push(info);
-    if (types.has("spell")) result.spells.push(info);
-    if (types.has("feat")) result.feats.push(info);
-    if ([...types].some((t) => EQUIPMENT_TYPES.has(t))) result.equipment.push(info);
-    if (types.has("ancestry")) result.ancestries.push(info);
-    if (types.has("background")) result.backgrounds.push(info);
-    if (types.has("class")) result.classes.push(info);
-    if (types.has("feat")) result.classFeatures.push(info);
-    if (types.has("heritage")) result.heritages.push(info);
-  }
-  for (const list of Object.values(result)) list.sort((a, b) => a.title.localeCompare(b.title));
-  detectedPacks = result;
-  return result;
+    for (const list of Object.values(result)) list.sort((a, b) => a.title.localeCompare(b.title));
+    return result;
+  });
 }
-
-const indexCache = new Map();
 
 function normalize(name) {
   return String(name ?? "")
@@ -162,28 +161,23 @@ function normalize(name) {
     .trim();
 }
 
+const indexCache = createAsyncCache();
 async function getIndex(packId) {
-  if (indexCache.has(packId)) return indexCache.get(packId);
   const pack = game.packs.get(packId);
-  if (!pack) {
-    indexCache.set(packId, null);
-    return null;
-  }
-  const index = await pack.getIndex({
-    fields: [
-      "name", "type", "system.slug", "system.level.value",
-      "system.traits.value", "system.traits.traditions", "system.ritual",
-      "system.category", "system.stackGroup", "system.spell", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
-    ]
+  if (!pack) return null;
+  return indexCache(pack, async () => {
+    const index = await pack.getIndex({
+      fields: [
+        "name", "type", "system.slug", "system.level.value",
+        "system.traits.value", "system.traits.traditions", "system.ritual",
+        "system.category", "system.stackGroup", "system.spell", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
+      ]
+    });
+    return index.map((entry) => ({ ...entry, packId, normalized: normalize(entry.name) }));
   });
-  const entries = index.map((e) => ({ ...e, packId, normalized: normalize(e.name) }));
-  indexCache.set(packId, entries);
-  return entries;
 }
 
-/* packId -> index entries carrying the extra fields the equipment-heavy
-   callers need (price/usage), which the shared index above doesn't request. */
-const equipmentIndexCache = new Map();
+const equipmentIndexCache = createAsyncCache();
 
 /**
  * Equipment-pack index extended with level, price, usage and traits — used by
@@ -192,56 +186,49 @@ const equipmentIndexCache = new Map();
  * @returns {Promise<object[]>} index entries, or [] when the pack is missing
  */
 export async function getEquipmentIndex(packId) {
-  if (equipmentIndexCache.has(packId)) return equipmentIndexCache.get(packId);
   const pack = game.packs.get(packId);
-  if (!pack) {
-    equipmentIndexCache.set(packId, []);
-    return [];
-  }
-  let entries = [];
+  if (!pack) return [];
   try {
-    const index = await pack.getIndex({
-      fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value", "system.category", "system.specific"]
+    return await equipmentIndexCache(pack, async () => {
+      const index = await pack.getIndex({
+        fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value", "system.category", "system.specific"]
+      });
+      return [...index];
     });
-    entries = [...index];
   } catch (err) {
     console.warn(`simplypf2e | failed to index equipment pack "${packId}"`, err);
+    return [];
   }
-  equipmentIndexCache.set(packId, entries);
-  return entries;
 }
 
 /**
  * Every equipment-pack entry, deduped by name, as lightweight records. One
- * scan serves rune lookups, base-item candidates and price sampling alike.
+ * view serves rune lookups and price sampling. Rebuild it from cached pack
+ * indexes so source selection changes and retried loads are reflected.
  * @returns {Promise<{name: string, type: string, level: number, gp: number, usage: string|null, category: string|null, specific: boolean}[]>}
  */
-let equipmentEntriesPromise = null;
-export function getAllEquipmentEntries() {
-  equipmentEntriesPromise ??= (async () => {
-    const entries = [];
-    const seen = new Set();
-    for (const packId of getPacksFor("equipment")) {
-      for (const entry of await getEquipmentIndex(packId)) {
-        const key = slugify(entry.name);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        entries.push({
-          name: entry.name,
-          type: entry.type,
-          level: entry.system?.level?.value ?? 0,
-          gp: priceToGp(entry.system?.price?.value),
-          usage: entry.system?.usage?.value ?? null,
-          category: entry.system?.category ?? null,
-          // PF2e 8.4.1 weapon/armor isSpecific is true for a non-null
-          // system.specific. Missing legacy/homebrew data remains ordinary.
-          specific: entry.system?.specific != null
-        });
-      }
+export async function getAllEquipmentEntries() {
+  const entries = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("equipment")) {
+    for (const entry of await getEquipmentIndex(packId)) {
+      const key = slugify(entry.name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({
+        name: entry.name,
+        type: entry.type,
+        level: entry.system?.level?.value ?? 0,
+        gp: priceToGp(entry.system?.price?.value),
+        usage: entry.system?.usage?.value ?? null,
+        category: entry.system?.category ?? null,
+        // PF2e 8.4.1 weapon/armor isSpecific is true for a non-null
+        // system.specific. Missing legacy/homebrew data remains ordinary.
+        specific: entry.system?.specific != null
+      });
     }
-    return entries;
-  })();
-  return equipmentEntriesPromise;
+  }
+  return entries;
 }
 
 /* Filler words that shouldn't block a token match ("Potion of Invisibility"

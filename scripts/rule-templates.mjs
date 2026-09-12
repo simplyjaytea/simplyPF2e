@@ -18,6 +18,7 @@
  */
 
 import { getPacksFor, priceToGp, RARITY_RANK } from "./compendium.mjs";
+import { createAsyncCache } from "./async-cache.mjs";
 
 // The catalog and its consumer share one supported-target boundary. These
 // are also re-exported by item-builder for activation and existing callers.
@@ -122,8 +123,8 @@ function isComplete(rule, kind) {
 
 /* -------------------- pack scanning -------------------- */
 
-/* packId -> [{name, uuid, rules}] for entries that carry any rules. */
-const rulesEntryCache = new Map();
+/* One successful rule-source scan per actual pack, shared by pending callers. */
+const rulesEntryCache = createAsyncCache();
 
 const ruleRecord = (entry, packId) => ({
   name: entry.name,
@@ -148,36 +149,34 @@ const ruleRecord = (entry, packId) => ({
  * many generations.
  */
 async function getRulesEntries(packId) {
-  if (rulesEntryCache.has(packId)) return rulesEntryCache.get(packId);
   const pack = game.packs.get(packId);
-  if (!pack || pack.metadata.type !== "Item") {
-    rulesEntryCache.set(packId, []);
-    return [];
-  }
-  let records = [];
+  if (!pack || pack.metadata.type !== "Item") return [];
   try {
-    const index = await pack.getIndex({ fields: [
-      "system.rules", "system.level.value", "system.traits.value", "system.traits.rarity",
-      "system.description.value", "system.usage.value", "system.price.value"
-    ] });
-    const entries = [...index];
-    const indexHasRules = entries.some((e) => Array.isArray(e.system?.rules));
-    if (indexHasRules) {
-      records = entries
-        .filter((e) => Array.isArray(e.system?.rules) && e.system.rules.length)
-        .map((e) => ruleRecord(e, packId));
-    } else if (entries.length) {
-      // Index carried no rules data at all — fall back to full documents.
-      const docs = await pack.getDocuments();
-      records = docs
-        .filter((d) => Array.isArray(d.system?.rules) && d.system.rules.length)
-        .map((d) => ruleRecord(d, packId));
-    }
+    return await rulesEntryCache(pack, async () => {
+      let records = [];
+      const index = await pack.getIndex({ fields: [
+        "system.rules", "system.level.value", "system.traits.value", "system.traits.rarity",
+        "system.description.value", "system.usage.value", "system.price.value"
+      ] });
+      const entries = [...index];
+      const indexHasRules = entries.some((e) => Array.isArray(e.system?.rules));
+      if (indexHasRules) {
+        records = entries
+          .filter((e) => Array.isArray(e.system?.rules) && e.system.rules.length)
+          .map((e) => ruleRecord(e, packId));
+      } else if (entries.length) {
+        // Index carried no rules data at all — fall back to full documents.
+        const docs = await pack.getDocuments();
+        records = docs
+          .filter((d) => Array.isArray(d.system?.rules) && d.system.rules.length)
+          .map((d) => ruleRecord(d, packId));
+      }
+      return records;
+    });
   } catch (err) {
     console.warn(`simplypf2e | itemforge: failed to scan pack "${packId}" for rule exemplars`, err);
+    return [];
   }
-  rulesEntryCache.set(packId, records);
-  return records;
 }
 
 /**
@@ -266,10 +265,9 @@ function scanPackOrder() {
   return ordered;
 }
 
-/* Resolved once per session: { [kind]: {rule, sourceName, sourceUuid} | null } */
-let exemplarPromise = null;
-
 /**
+ * Rebuild the exemplar view from cached pack records in current source order.
+ * A failed pack scan is retried next time instead of freezing missing kinds.
  * Find one real, published exemplar rule for every effect kind, scanning
  * packs until each kind has a "complete" exemplar (every allowed field
  * present) or the packs run out. A partial match (e.g. a Sense rule with
@@ -279,43 +277,40 @@ let exemplarPromise = null;
  * @returns {Promise<Record<string, {rule: object, sourceName: string, sourceUuid: string}|null>>}
  */
 export async function findRuleExemplars() {
-  exemplarPromise ??= (async () => {
-    const found = Object.fromEntries(ALL_KINDS.map((k) => [k, null]));
-    const incomplete = () => ALL_KINDS.filter((k) => !found[k] || !isComplete(found[k].rule, k));
-    for (const packId of scanPackOrder()) {
-      if (!incomplete().length) break;
-      const entries = await getRulesEntries(packId);
-      for (const entry of entries) {
-        const open = incomplete();
-        if (!open.length) break;
-        for (const rule of entry.rules) {
-          for (const kind of open) {
-            if (!ruleMatchesKind(rule, kind)) continue;
-            // Keep the first match; upgrade only to a more complete shape.
-            if (found[kind] && Object.keys(rule).length <= Object.keys(found[kind].rule).length) continue;
-            found[kind] = {
-              rule: structuredClone(rule),
-              sourceName: entry.name,
-              sourceUuid: entry.uuid
-            };
-          }
+  const found = Object.fromEntries(ALL_KINDS.map((k) => [k, null]));
+  const incomplete = () => ALL_KINDS.filter((k) => !found[k] || !isComplete(found[k].rule, k));
+  for (const packId of scanPackOrder()) {
+    if (!incomplete().length) break;
+    const entries = await getRulesEntries(packId);
+    for (const entry of entries) {
+      const open = incomplete();
+      if (!open.length) break;
+      for (const rule of entry.rules) {
+        for (const kind of open) {
+          if (!ruleMatchesKind(rule, kind)) continue;
+          // Keep the first match; upgrade only to a more complete shape.
+          if (found[kind] && Object.keys(rule).length <= Object.keys(found[kind].rule).length) continue;
+          found[kind] = {
+            rule: structuredClone(rule),
+            sourceName: entry.name,
+            sourceUuid: entry.uuid
+          };
         }
       }
     }
-    for (const kind of ALL_KINDS) {
-      if (found[kind]) {
-        console.debug(
-          `simplypf2e | itemforge: "${kind}" rule exemplar from "${found[kind].sourceName}" (${found[kind].sourceUuid})`
-        );
-      } else {
-        console.warn(
-          `simplypf2e | itemforge: no real ${KIND_SPECS[kind].key} rule exemplar found in any installed compendium — the "${kind}" effect kind is unavailable in this world`
-        );
-      }
+  }
+  for (const kind of ALL_KINDS) {
+    if (found[kind]) {
+      console.debug(
+        `simplypf2e | itemforge: "${kind}" rule exemplar from "${found[kind].sourceName}" (${found[kind].sourceUuid})`
+      );
+    } else {
+      console.warn(
+        `simplypf2e | itemforge: no real ${KIND_SPECS[kind].key} rule exemplar found in any installed compendium — the "${kind}" effect kind is unavailable in this world`
+      );
     }
-    return found;
-  })();
-  return exemplarPromise;
+  }
+  return found;
 }
 
 /**

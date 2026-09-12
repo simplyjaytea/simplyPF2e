@@ -222,17 +222,18 @@ Shipped features and their versions are in the [release notes](https://github.co
 
 ## For maintainers
 
-Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](HISTORY.md).
+Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](HISTORY.md). Use the [documentation map](docs/README.md) to find current acceptance records and historical plans.
 
-Standalone, dependency-free regression checks guard historical bugs and production-safe pure helpers — `node scripts/<name>.test.mjs`, no framework required. Run all local checks from the repository root with Node 22 and Bash:
+Runtime modules and their regression tests remain colocated in `scripts/`; source fixtures are under `tests/fixtures/`, and repository tooling is under `tools/`. Fixtures, tests and tooling are excluded from the release archive.
+
+Run the same dependency-free verification command used by pull-request and release CI with Node 22:
 
 ```bash
-set -euo pipefail
-for f in scripts/*.mjs; do node --check "$f"; done
-for f in scripts/*.test.mjs; do node "$f"; done
-node --input-type=module -e 'import { readFileSync } from "node:fs"; for (const f of ["module.json", "lang/en.json"]) JSON.parse(readFileSync(f, "utf8"));'
+node tools/check.mjs
 git diff --check
 ```
+
+The command checks every script and tooling module, runs every `scripts/**/*.test.mjs`, and parses the module/localization JSON. Run a single regression directly with `node scripts/<name>.test.mjs` when investigating a focused change.
 
 CI syntax-checks every module, runs every `*.test.mjs`, and validates the JSON manifests on pull requests; the release pipeline repeats syntax, regression, and JSON verification before publishing. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
 
