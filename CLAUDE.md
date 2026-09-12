@@ -60,6 +60,7 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 | `pc-prerequisites.mjs` | Fail-closed ordinary feat-prerequisite evaluator against a staged ABC/grant/skill snapshot. PF2e stores prereqs as display text, not an eligibility API. |
 | `pc-skills.mjs` | Pure concept-priority validation, real-class skill schedules, chronological allocation and conservative reconciliation; read-only native skill snapshot extraction. |
 | `choice-set.mjs` | Pre-answers supported static PF2e `ChoiceSet` rules on direct items and one level of `GrantItem` sources. Forced/key-ability/unambiguous concept choices resolve locally; other supported choices use one bounded, grounded AI batch through the generator. Real rule values stay local; exact catalog IDs are validated before applying. No first-option fallback. Unsupported/unanswered choices retain native prompts. Pure selection helpers are node-testable. |
+| `async-cache.mjs` | Shared pending-load coalescing and failed-load eviction. Successful per-pack caches use pack identity; derived equipment/rule/pricing views follow the current selected sources. |
 | `compendium.mjs` | `findEntry` fuzzy match, pack indexes (incl. the extended equipment index), candidate lists, `getPacksFor`/`getAllPacksFor`, `priceToGp`, `RARITY_RANK`. |
 | `runes.mjs` | All rune knowledge: parse out of a name, apply as system data, cap tiers to level, price from real rune docs, item-forge candidate lists. Never hardcodes a rune level or price. |
 | `text.mjs` | `slugify`, `capitalized`, `esc`, `toHtml`. Pure shared HTML escaping with no Foundry dependency; node-testable. |
@@ -73,6 +74,7 @@ Encounter mode: `designEncounter()` picks a theme + per-role briefs once, then t
 | `tokens.mjs` | Token estimate + `normalizeUsage`; fallback counts are labeled estimated and coarsened on display. |
 | `encounter.mjs` | XP budget/composition math. |
 | `presets.mjs` | 23 Remaster class flavor presets (Standard) + custom preset CRUD + random briefs. |
+| `tools/check.mjs` | Dependency-free local and CI syntax/regression/JSON gate; tooling is excluded from releases. |
 | `*.test.mjs` | Standalone regression checks (`node scripts/<name>.test.mjs`); CI runs every check before release. |
 
 ## Agent workflow
@@ -104,6 +106,8 @@ Claude-side orchestration (when running as Fable/Opus with subagent tools):
 - PF2e 8.4.1 `TreasurePF2e#isCoinage` is `system.category === "coin"` (`src/module/item/treasure/document.ts`). `stackGroup === "coins"` is the pre-8.4.1 source field; 8.4.1 `TreasureSystemData.migrateData` maps it to `category: "coin"`. Do not hand-author coin items; clone the published Gold/Silver/Copper/Platinum Pieces documents. `ActorInventory.addCurrency` loads those same docs from `coinCompendiumUuids` in `src/module/actor/inventory/index.ts`.
 
 ## Current state (2026-09-12)
+
+**Maintenance in flight:** `codex/repo-optimization` fixes duplicated/stale catalog loads, unifies verification in `tools/check.mjs`, and organizes current/historical documentation. Publication is authorized; HANDOFF.md owns its final gate and next step. Runtime rules/eligibility/formulas are unchanged.
 
 **Published baseline:** PR #110 source `55bbccd68c8eeec7ebf1408d7fadc86760e774bb` passed CI **34257060796** and merged as `d17a2b507070ed5f403a7bb70176b335f139f7fc`. Successful Auto Release **34257313518** published **v0.3.5.70**; both assets and all runtime archive files were verified against the merge. This release adds supported automatic NPC prerequisite packages, following the consumer UI/generation hardening in .65–.69. Module-only Setup installation succeeded and the existing `test` world was relaunched/rejoined as GM on Foundry 14.365 / PF2e 8.5.0 with 77 ready packs; one bounded focused native QA generation succeeded. All three implementation slices have independent Astra approval; 88 regressions and 124 syntax checks pass. Earlier .68 native Fighter, Investigator-path and small encounter results remain version-specific; Rogue and exact requested-PC fidelity did not pass. See [automatic ability evidence](docs/npc-automatic-abilities-2026-09-09.md), [consumer-readiness evidence](docs/consumer-readiness-2026-09-08.md) and [HANDOFF.md](HANDOFF.md).
 

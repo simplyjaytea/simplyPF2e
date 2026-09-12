@@ -99,33 +99,25 @@ const PRICED_TYPES = new Set([...EQUIPMENT_TYPES].filter((t) => t !== "treasure"
 
 /* -------------------- empirical pricing -------------------- */
 
-/* All priced items across the equipment packs, as {level, gp}. Cached. */
-let priceSamplesPromise = null;
-
+/* Derive prices from cached indexes using the current equipment sources. */
 async function getPriceSamples() {
-  priceSamplesPromise ??= (async () => {
-    const samples = [];
-    const seen = new Set();
-    for (const packId of getPacksFor("equipment")) {
-      for (const entry of await getEquipmentIndex(packId)) {
-        if (!PRICED_TYPES.has(entry.type)) continue;
-        const key = slugify(entry.name);
-        if (seen.has(key)) continue;
-        const gp = priceToGp(entry.system?.price?.value);
-        if (gp <= 0) continue;
-        seen.add(key);
-        samples.push({ level: entry.system?.level?.value ?? 0, gp });
-      }
+  const samples = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("equipment")) {
+    for (const entry of await getEquipmentIndex(packId)) {
+      if (!PRICED_TYPES.has(entry.type)) continue;
+      const key = slugify(entry.name);
+      if (seen.has(key)) continue;
+      const gp = priceToGp(entry.system?.price?.value);
+      if (gp <= 0) continue;
+      seen.add(key);
+      samples.push({ level: entry.system?.level?.value ?? 0, gp });
     }
-    return samples;
-  })();
-  return priceSamplesPromise;
+  }
+  return samples;
 }
 
 const MIN_PRICE_SAMPLES = 5;
-
-/* level -> median gp of real items at (or near) that level. */
-const medianCache = new Map();
 
 function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
@@ -147,22 +139,19 @@ function median(values) {
  */
 export async function priceForLevel(level, rarity = "common") {
   const lv = Math.min(Math.max(Math.round(Number(level) || 0), MIN_ITEM_LEVEL), MAX_ITEM_LEVEL);
-  if (!medianCache.has(lv)) {
-    const samples = await getPriceSamples();
-    let base = 0;
-    for (let window = 0; window <= MAX_ITEM_LEVEL; window++) {
-      const inWindow = samples.filter((s) => Math.abs(s.level - lv) <= window).map((s) => s.gp);
-      if (inWindow.length >= MIN_PRICE_SAMPLES) {
-        base = median(inWindow);
-        if (window > 2) {
-          console.log(`simplypf2e | itemforge: few priced items near level ${lv}; price benchmark widened to ±${window} levels`);
-        }
-        break;
+  const samples = await getPriceSamples();
+  let base = 0;
+  for (let window = 0; window <= MAX_ITEM_LEVEL; window++) {
+    const inWindow = samples.filter((s) => Math.abs(s.level - lv) <= window).map((s) => s.gp);
+    if (inWindow.length >= MIN_PRICE_SAMPLES) {
+      base = median(inWindow);
+      if (window > 2) {
+        console.log(`simplypf2e | itemforge: few priced items near level ${lv}; price benchmark widened to ±${window} levels`);
       }
+      break;
     }
-    medianCache.set(lv, base);
   }
-  return Math.round(medianCache.get(lv) * (RARITY_TREASURE_MULTIPLIER[rarity] ?? 1));
+  return Math.round(base * (RARITY_TREASURE_MULTIPLIER[rarity] ?? 1));
 }
 
 /* -------------------- runed weapons/armor (Phase 3) -------------------- */
@@ -347,8 +336,6 @@ export async function buildRunedItem(concept) {
 /* Fallback when the AI's usage doesn't match anything harvested. */
 const DEFAULT_USAGE = "worn";
 
-let usageOptionsPromise = null;
-
 /**
  * The most common `system.usage.value` strings among real magical equipment
  * items, so the AI picks a usage that actually exists ("wornshoes",
@@ -358,22 +345,19 @@ let usageOptionsPromise = null;
  * @returns {Promise<string[]>} up to 14 usage strings, most common first
  */
 export async function getUsageOptions() {
-  usageOptionsPromise ??= (async () => {
-    const counts = new Map();
-    for (const packId of getPacksFor("equipment")) {
-      for (const entry of await getEquipmentIndex(packId)) {
-        if (entry.type !== "equipment") continue;
-        const traits = entry.system?.traits?.value ?? [];
-        if (!traits.includes("magical")) continue;
-        const usage = entry.system?.usage?.value;
-        if (typeof usage !== "string" || !usage) continue;
-        counts.set(usage, (counts.get(usage) ?? 0) + 1);
-      }
+  const counts = new Map();
+  for (const packId of getPacksFor("equipment")) {
+    for (const entry of await getEquipmentIndex(packId)) {
+      if (entry.type !== "equipment") continue;
+      const traits = entry.system?.traits?.value ?? [];
+      if (!traits.includes("magical")) continue;
+      const usage = entry.system?.usage?.value;
+      if (typeof usage !== "string" || !usage) continue;
+      counts.set(usage, (counts.get(usage) ?? 0) + 1);
     }
-    const options = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14).map(([usage]) => usage);
-    return options.length ? options : [DEFAULT_USAGE];
-  })();
-  return usageOptionsPromise;
+  }
+  const options = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14).map(([usage]) => usage);
+  return options.length ? options : [DEFAULT_USAGE];
 }
 
 /** Match the AI's usage answer to a real harvested string (format-tolerant). */

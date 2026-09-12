@@ -194,17 +194,13 @@ export function applyRunes(data, runes) {
 
 /* -------------------- real rune levels and prices -------------------- */
 
-/* Resolved once per session: kind -> {potency: [{tier, level, gp}], secondary: [...]}. */
-const fundamentalCache = new Map();
-
 /**
  * The real level and price of every fundamental rune tier for `kind`, read
- * from the compendium documents themselves. Tiers with no matching document
+ * from the current equipment sources through their cached indexes. Tiers with no matching document
  * (an odd content set) are simply absent.
  * @param {"weapon"|"armor"} kind
  */
 export async function fundamentalRunes(kind) {
-  if (fundamentalCache.has(kind)) return fundamentalCache.get(kind);
   const entries = await getAllEquipmentEntries();
   const byName = new Map(entries.map((e) => [slugify(e.name), e]));
   const lookup = (name) => byName.get(slugify(name)) ?? null;
@@ -216,7 +212,6 @@ export async function fundamentalRunes(kind) {
     potency: collect((t) => POTENCY_CATALOG_NAME[kind](t)),
     secondary: collect((t) => SECONDARY_CATALOG_NAME[kind][t])
   };
-  fundamentalCache.set(kind, result);
   return result;
 }
 

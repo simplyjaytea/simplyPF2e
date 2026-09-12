@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-12 — Catalog cache reliability and repository organization
+
+- User requested review/organization/optimization followed by push and merge. Branch `codex/repo-optimization` includes existing .70 QA/readiness notes and focused runtime/maintenance changes; see [maintenance evidence](docs/repository-maintenance-2026-09-12.md).
+- Shared async caching coalesces overlapping pack loads and removes rejected loads for retry. Successful per-pack records use actual pack identity. Derived equipment/exemplar/price/usage/fundamental-rune views now follow current selected sources instead of freezing transient empty fallbacks or old source data. Existing formulas, source/eligibility rules and Rule Element clones remain unchanged. All 14 new production scenarios failed before their respective fixes and pass afterward; direct cache semantics have their own regression.
+- Moved repeated local/CI checks to dependency-free `tools/check.mjs`, preserving workflow trigger/version/build/publication paths. Added a documentation map and moved the historical artifact inventory out of the live handoff without discarding evidence. Tooling/fixtures remain excluded from release assets.
+- Final local Node22.23.2 checks pass 92 regression files, 129 script syntax checks plus one tooling file, JSON and whitespace. Independent `optimization_review` approved the initial and downstream follow-up diffs with no blockers. Negative-path runner probes passed. Publication is explicitly authorized; PR/CI/merge and the actual automatic-release exercise follow the local gate. No provider or Foundry/world mutation occurred. Same-object pack edits still require reload; previous native acceptance gaps remain open.
+
 ## 2026-09-12 — Ship-readiness assessment of v0.3.5.70
 
 - Reconciled stale local main (20 commits behind) against fetched `origin/main` `d17a2b5`, public release v0.3.5.70 and existing QA-only commits through `c8e06d3`. Audit branch `codex/ship-readiness-2026-09-12` preserves those QA notes and adds [the readiness report](docs/ship-readiness-2026-09-12.md); runtime code is unchanged.
