@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-15 — Completion plan and publication-state reconciliation
+
+- User requested a plan to complete the outstanding readiness/roadmap list with appropriate Luna delegation to conserve usage. [Completion plan](docs/completion-plan-2026-09-15.md) defines ordered slices, existing owners, acceptance criteria, model allocation, provider-spend discipline and native evidence requirements. No runtime implementation began.
+- Parent traced PC generation/ABC selection: catalog membership is validated, but original requested identity is not authoritative. Plan puts identity ownership at the input/selection/resolution boundary and shares it with the later editable preview. Luna's bounded read-only roadmap inventory identified reusable entrypoints and warned that the current creature builder recalculates mechanics, so reskinning cannot reuse that path as a mechanical clone.
+- Git and public GitHub evidence supersede the stale September 12 pending-publication baton: PR #111 merged as `019d17b`; latest release .71 has both assets. Last recorded native installation remains .70. No fresh .71 asset comparison or live acceptance is claimed.
+- Planning-session Node22 gate passed all 92 regression files, 129 script/one tooling syntax checks, JSON and whitespace. Documentation remains committed locally on `codex/completion-plan`; no provider calls, Foundry/world writes or authenticated GitHub publication occurred. The plan preserves separate design gates for arbitrary level shifting and the exact supported archetype catalog.
+
 ## 2026-09-12 — Catalog cache reliability and repository organization
 
 - User requested review/organization/optimization followed by push and merge. Branch `codex/repo-optimization` includes existing .70 QA/readiness notes and focused runtime/maintenance changes; see [maintenance evidence](docs/repository-maintenance-2026-09-12.md).

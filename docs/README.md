@@ -8,6 +8,7 @@ and recurring bug patterns live in [HISTORY.md](../HISTORY.md).
 
 | Record | Purpose |
 | --- | --- |
+| [Completion plan, September 15](completion-plan-2026-09-15.md) | Ordered readiness/roadmap work, Luna delegation and completion gates |
 | [Repository maintenance, September 12](repository-maintenance-2026-09-12.md) | Cache fixes, organization and release verification |
 | [Preserved live QA inventory](live-qa-inventory.md) | Historical artifact identities and preservation requirements |
 | [Ship readiness, September 12](ship-readiness-2026-09-12.md) | Assessment of v0.3.5.70 and prioritized acceptance gaps |
