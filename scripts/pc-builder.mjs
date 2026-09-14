@@ -11,7 +11,8 @@ import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocat
 import { SETTINGS, getSetting } from "./settings.mjs";
 import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
-import { stageClassPaths } from "./class-paths.mjs";
+import { getClassPathCandidates, stageClassPaths } from "./class-paths.mjs";
+import { assertPCIdentity } from "./pc-identity.mjs";
 import { stagedActorContext } from "./pc-prerequisites.mjs";
 import { persistedExpectedItems } from "./post-create.mjs";
 
@@ -141,6 +142,89 @@ export function normalizePCConcept(raw, { level }) {
   };
 }
 
+function requiredRef(identity, field) {
+  const candidate = identity?.[field];
+  return candidate && typeof candidate === "object" ? candidate.ref ?? candidate : null;
+}
+
+function sameIssuedDocument(document, candidate) {
+  const ref = candidate?.ref ?? candidate;
+  if (!document || !ref?.packId || !ref?._id) return false;
+  const uuid = document.uuid ?? "";
+  if (candidate?.uuid) return uuid === candidate.uuid;
+  const pack = typeof document.pack === "string" ? document.pack : document.pack?.collection;
+  return uuid === `Compendium.${ref.packId}.Item.${ref._id}`
+    || (pack === ref.packId && document.id === ref._id);
+}
+
+/** Validate the local, explicit PC identity contract before any provider or actor work. */
+export async function validatePCIdentityRequirements(identity) {
+  if (!identity || typeof identity !== "object" || Array.isArray(identity)) return;
+  const specs = [
+    ["ancestry", "ancestry", "ancestries"], ["background", "background", "backgrounds"],
+    ["class", "class", "classes"], ["heritage", "heritage", "heritages"]
+  ];
+  const docs = {};
+  for (const [field, type, packType] of specs) {
+    const candidate = identity[field];
+    if (candidate === null && field === "heritage") continue;
+    if (!candidate) continue;
+    const ref = requiredRef(identity, field);
+    if (!ref || !isIssuedCandidate(ref, getPacksFor(packType))) {
+      throw new Error(`simplypf2e | required ${field} source is not an issued candidate`);
+    }
+    const document = await getDocument(ref);
+    if (!document || document.type !== type || !sameIssuedDocument(document, candidate)) {
+      throw new Error(`simplypf2e | required ${field} source is missing or invalid`);
+    }
+    docs[field] = document;
+  }
+  if (docs.ancestry && docs.heritage && !heritageMatchesAncestry(docs.heritage, docs.ancestry)) {
+    throw new Error(`simplypf2e | required heritage is incompatible with required ancestry`);
+  }
+  if (identity.keyAbility !== undefined && identity.class) {
+    const legal = docs.class?.system?.keyAbility?.value;
+    if (!Array.isArray(legal) || !legal.includes(identity.keyAbility)) {
+      throw new Error(`simplypf2e | required key ability "${identity.keyAbility}" is illegal for required class`);
+    }
+  }
+  if (identity.classPath && !identity.class) {
+    throw new Error("simplypf2e | required class path requires an explicit class");
+  }
+  if (identity.classPath) {
+    const candidates = await getClassPathCandidates(toItemData(docs.class));
+    if (!candidates.some((candidate) => {
+      const a = candidate?.ref; const b = identity.classPath?.ref ?? identity.classPath;
+      return a?.packId === b?.packId && a?._id === b?._id && candidate.uuid === identity.classPath?.uuid;
+    })) {
+      throw new Error(`simplypf2e | required class path "${identity.classPath.name ?? "?"}" is missing, wrong-class, or unsupported`);
+    }
+  }
+}
+
+function assertResolvedPCIdentity(concept, resolved, identity) {
+  if (!identity || typeof identity !== "object" || !Object.keys(identity).length) return;
+  assertPCIdentity(concept, identity);
+  for (const [field, document] of [["ancestry", resolved.ancestryDoc], ["background", resolved.backgroundDoc], ["class", resolved.classDoc]]) {
+    if (identity[field] && !sameIssuedDocument(document, identity[field])) {
+      throw new Error(`simplypf2e | prepared ${field} does not match the required source`);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(identity, "heritage")) {
+    if (identity.heritage === null && resolved.heritageDoc) throw new Error("simplypf2e | prepared heritage violates the required null identity");
+    if (identity.heritage && (!resolved.heritageDoc || !sameIssuedDocument(resolved.heritageDoc, identity.heritage))) {
+      throw new Error("simplypf2e | prepared heritage does not match the required source");
+    }
+    if (resolved.heritageDoc && !heritageMatchesAncestry(resolved.heritageDoc, resolved.ancestryDoc)) {
+      throw new Error("simplypf2e | prepared heritage is incompatible with prepared ancestry");
+    }
+  }
+  if (identity.keyAbility && (!Array.isArray(resolved.classDoc?.system?.keyAbility?.value)
+    || !resolved.classDoc.system.keyAbility.value.includes(identity.keyAbility))) {
+    throw new Error("simplypf2e | required key ability is illegal for the prepared class");
+  }
+}
+
 /**
  * Expected starting wealth (gp) for a character created at `level`: the lump
  * sum from GM Core Table 10-10 "Character Wealth" (see PC_WEALTH_BY_LEVEL in
@@ -240,6 +324,10 @@ async function fallbackHeritageFor(ancestryDoc) {
  * live in the app while resolution lives here for the NPC pipeline too.
  */
 export async function resolvePCConcept(concept, { exactContent = false } = {}) {
+  await validatePCIdentityRequirements(concept.requiredIdentity);
+  if (concept.requiredIdentity && Object.keys(concept.requiredIdentity).length) {
+    assertPCIdentity(concept, concept.requiredIdentity);
+  }
   // ABC lookups scan ALL installed packs of the right type (getAllPacksFor),
   // not just the hardcoded default pack, so a legit AI pick living in a Lost
   // Omens / add-on compendium still resolves instead of aborting the run (#51).
@@ -260,6 +348,7 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
     ? concept.classCandidate : (exactContent ? null : await findEntry(classPacks, concept.class, (e) => e.type === "class"));
   const classDoc = await getDocument(classEntry);
   if (!classDoc || classDoc.type !== "class") throw new Error(`Could not find class "${concept.class}" in the compendium`);
+  const required = concept.requiredIdentity;
 
   let heritageDoc = null;
   if (concept.heritage) {
@@ -268,8 +357,10 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
       ? concept.heritageCandidate : (exactContent ? null : await findEntry(heritagePacks, concept.heritage, (e) => e.type === "heritage"));
     const pickedDoc = await getDocument(heritageEntry);
     if (!pickedDoc || pickedDoc.type !== "heritage") {
+      if (required?.heritage) throw new Error("simplypf2e | required heritage source is missing or invalid");
       console.warn(`simplypf2e | heritage "${concept.heritage}" not found in the compendium — falling back to an ancestry-matched heritage`);
     } else if (!heritageMatchesAncestry(pickedDoc, ancestryDoc)) {
+      if (required?.heritage) throw new Error("simplypf2e | required heritage is incompatible with required ancestry");
       console.warn(`simplypf2e | heritage "${concept.heritage}" does not belong to ancestry "${ancestryDoc.name}" — dropping and falling back to an ancestry-matched heritage`);
     } else {
       heritageDoc = pickedDoc;
@@ -281,6 +372,7 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
       }
     }
   }
+  assertResolvedPCIdentity(concept, { ancestryDoc, backgroundDoc, classDoc, heritageDoc }, required);
 
   // Feat slots: candidates only (no picks yet — generator-app runs
   // selectFeats() and resolveFeatPicks() below once it has these lists).
@@ -660,12 +752,17 @@ async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility, 
  * @returns {Promise<{actor: Actor, skillReport: object}>}
  */
 export async function createCharacterActor(concept, resolved, { img = null, selectChoices = null } = {}) {
+  await validatePCIdentityRequirements(concept.requiredIdentity);
+  assertResolvedPCIdentity(concept, resolved, concept.requiredIdentity);
   const items = [];
 
   // Key ability: validate the AI's pick against the class's legal options once,
   // then reuse it to drive ancestry/background free-boost preference, the class
   // item's own keyAbility.selected, the actor-level boosts, and details.keyability.
   const keyAbility = resolveKeyAbility(resolved.classDoc.system, concept.keyAbility);
+  if (concept.requiredIdentity?.keyAbility && keyAbility !== concept.requiredIdentity.keyAbility) {
+    throw new Error("simplypf2e | resolved key ability does not match the required identity");
+  }
 
   const { ranks: initialRanks, replacements } = initialSkillTraining(resolved.classDoc.system, resolved.backgroundDoc.system);
   const backgroundLore = [];
@@ -705,7 +802,8 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // them. Stage only a proven exact bridge before Actor.create; all remaining
   // class grants still flow through PF2e's normal class item.
   const stagedClassPaths = await stageClassPaths(classData, classId, {
-    context: { keyAbility, names: conceptChoiceNames(concept, resolved) }, selectChoices
+    context: { keyAbility, names: conceptChoiceNames(concept, resolved) }, selectChoices,
+    requiredPath: concept.requiredIdentity?.classPath ?? null
   });
   items.push(classData);
   items.push(...stagedClassPaths.items);

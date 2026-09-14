@@ -9,7 +9,7 @@ import {
 import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import {
   getSpellCandidates, getEquipmentCandidates, getLootCandidates, getScrollSpellCandidates,
-  getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, getFeatCandidates, getCreatureFeatCandidates, normalizeCreatureFeatName, getAbilityCandidates, sourceReadiness
+  getDocument, getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, getFeatCandidates, getCreatureFeatCandidates, normalizeCreatureFeatName, getAbilityCandidates, sourceReadiness
 } from "./compendium.mjs";
 import {
   normalizeConcept, normalizeLoot, resolveConcept, resolveLoot, computeStats, createActor,
@@ -17,7 +17,7 @@ import {
   dedupeLootAgainstEquipment, enforceNamedLootBudget
 } from "./builder.mjs";
 import {
-  normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp
+  normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp, validatePCIdentityRequirements
 } from "./pc-builder.mjs";
 import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
@@ -33,6 +33,11 @@ import { verifyCreatedActor } from "./post-create.mjs";
 import { freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
 import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-ability-packages.mjs";
+
+import { pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "./pc-identity.mjs";
+import { getClassPathCandidates } from "./class-paths.mjs";
+
+const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "keyAbility", "classPath"];
 
 const creatureFeatRefKey = (ref) => `${ref?.packId ?? ""}:${ref?._id ?? ""}`;
 
@@ -130,7 +135,7 @@ export class GeneratorApp extends SpfApp {
   #input = {
     mode: "monster", prompt: "", level: 1, rarity: "common",
     allowSpellcasting: true, includeEquipment: true, includeLoot: true,
-    preset: "", partySize: 4, threat: "moderate", treasureAmount: "standard", rarityCap: "unique"
+    preset: "", partySize: 4, threat: "moderate", treasureAmount: "standard", rarityCap: "unique", pcIdentity: {}
   };
   #modePrompts = { monster: "", npc: "", encounter: "", character: "" };
   #busy = false;
@@ -145,6 +150,8 @@ export class GeneratorApp extends SpfApp {
   /** Character mode result: normalized PC concept + resolved documents. */
   #pcConcept = null;
   #pcResolved = null;
+  /** Required controls captured with the preview, including Random’s ignored inputs. */
+  #pcIdentityInput = null;
   /** Snapshot for the last created PC; UI-only, never written to actor flags. */
   #characterReview = null;
   /** Successful one-click result; UI-only and never persisted. */
@@ -164,6 +171,7 @@ export class GeneratorApp extends SpfApp {
     this.#input.preset = presetGroups.selectedId;
     return {
       input: this.#input,
+      pcIdentityFields: this.#input.mode === "character" ? await this.#identityFields() : [],
       includeEquipment: this.#input.includeEquipment,
       includeLoot: this.#input.includeLoot,
       busy: this.#busy,
@@ -246,6 +254,64 @@ export class GeneratorApp extends SpfApp {
         && !(this.#input.mode === "encounter" && this.#encounter)
         && !(this.#input.mode === "character" && this.#pcConcept)
     };
+  }
+
+  /** Rebuild source-derived views; compendium owners cache only their source loads. */
+  async #identityCatalogs() {
+    const [ancestry, heritage, background, classes] = await Promise.all([
+      getAncestryCandidates(this.#input.rarityCap, { distinctSources: true }), getHeritageCandidates(this.#input.rarityCap, { distinctSources: true }),
+      getBackgroundCandidates(this.#input.rarityCap, { distinctSources: true }), getClassCandidates({ distinctSources: true })
+    ]);
+    const pathGroups = await Promise.all(supportedClassCandidates(classes).map(async (candidate) => {
+      const document = await getDocument(candidate.ref);
+      if (!document) return [];
+      return (await getClassPathCandidates(document.toObject())).map((path) => ({
+        ...path, className: candidate.name, classKey: pcIdentityKey(candidate)
+      }));
+    }));
+    // Different class sources may grant the same path. Issue each path once,
+    // retaining all class relations for the picker rather than duplicating its key.
+    const paths = new Map();
+    for (const path of pathGroups.flat()) {
+      const key = pcIdentityKey(path);
+      const existing = paths.get(key);
+      if (existing) {
+        if (!existing.classKeys.includes(path.classKey)) existing.classKeys.push(path.classKey);
+        if (!existing.classNames.includes(path.className)) existing.classNames.push(path.className);
+      } else paths.set(key, { ...path, classKeys: [path.classKey], classNames: [path.className] });
+    }
+    return { ancestry, heritage, background, class: classes, classPath: [...paths.values()] };
+  }
+
+  #identityInputSnapshot() {
+    return JSON.stringify({ prompt: this.#input.prompt, choices: this.#input.pcIdentity, rarityCap: this.#input.rarityCap });
+  }
+
+  async #identityFields() {
+    let catalogs = {};
+    try { catalogs = await this.#identityCatalogs(); }
+    catch (err) { console.warn(`${MODULE_ID} | required-choice catalogs unavailable`, err); }
+    const choices = this.#input.pcIdentity;
+    return PC_IDENTITY_FIELDS.map((field) => {
+      const value = choices[field] ?? "";
+      let candidates = catalogs[field] ?? [];
+      if (field === "class") candidates = supportedClassCandidates(candidates);
+      if (field === "classPath" && choices.class) candidates = candidates.filter((candidate) => candidate.classKeys.includes(choices.class));
+      let options = candidates.map((candidate) => ({
+        value: pcIdentityKey(candidate),
+        label: `${candidate.name}${candidate.classNames ? ` (${candidate.classNames.join(", ")})` : ""} — ${game.packs?.get(candidate.ref.packId)?.title ?? candidate.ref.packId}`
+      }));
+      if (field === "keyAbility") options = ["str", "dex", "con", "int", "wis", "cha"].map((key) => ({
+        value: key, label: game.i18n.localize(`SIMPLYPF2E.Identity.Ability.${key}`)
+      }));
+      if (field === "heritage") options.unshift({ value: "none", label: game.i18n.localize("SIMPLYPF2E.Identity.NoHeritage") });
+      // Keep stale selections visible so a source change cannot silently turn a requirement into AI choice.
+      if (field !== "name" && value && !options.some((option) => option.value === value)) {
+        options.unshift({ value, label: game.i18n.localize("SIMPLYPF2E.Identity.Unavailable") });
+      }
+      return { field, value, literal: field === "name", label: `SIMPLYPF2E.Identity.${field}`,
+        options: options.map((option) => ({ ...option, selected: option.value === value })) };
+    });
   }
 
   #buildPCPreviewContext() {
@@ -487,8 +553,13 @@ export class GeneratorApp extends SpfApp {
     const threat = form.querySelector('[name="threat"]')?.value ?? this.#input.threat;
     const treasureAmount = form.querySelector('[name="treasureAmount"]')?.value ?? this.#input.treasureAmount;
     const rarityCap = form.querySelector('[name="rarityCap"]')?.value ?? this.#input.rarityCap;
+    const pcIdentity = { ...this.#input.pcIdentity };
+    for (const field of PC_IDENTITY_FIELDS) {
+      const control = form.querySelector(`[name="pcIdentity.${field}"]`);
+      if (control) pcIdentity[field] = control.value;
+    }
     this.#input = { mode, prompt, level, rarity, allowSpellcasting, includeEquipment, includeLoot,
-      preset, partySize, threat, treasureAmount, rarityCap };
+      preset, partySize, threat, treasureAmount, rarityCap, pcIdentity };
   }
 
   _preserveForm() {
@@ -515,6 +586,12 @@ export class GeneratorApp extends SpfApp {
       this.#exampleTick++;
       this.render();
     });
+    for (const selector of ['[name="pcIdentity.class"]', '[name="rarityCap"]']) {
+      this.element.querySelector(selector)?.addEventListener("change", () => {
+        this.#readForm();
+        this.render();
+      });
+    }
     for (const radio of this.element.querySelectorAll('input[name="mode"]')) {
       radio.addEventListener("change", async () => {
         this.#readForm();
@@ -1055,6 +1132,16 @@ export class GeneratorApp extends SpfApp {
    * proficiencies/spell slots itself from the real items this assembles.
    */
   async #generatePC(isRandom, { signal = null } = {}) {
+    const catalogs = await this.#identityCatalogs();
+    this._throwIfCancelled();
+    const requiredIdentity = resolvePCIdentity({
+      prompt: this.#input.prompt, choices: this.#input.pcIdentity, catalogs, isRandom
+    });
+    if (requiredIdentity.class && !supportedClassCandidates([requiredIdentity.class]).length) {
+      throw new Error(game.i18n.localize("SIMPLYPF2E.Generator.NoSupportedClasses"));
+    }
+    await validatePCIdentityRequirements(requiredIdentity);
+    this._throwIfCancelled();
     await this._setStep("concept");
       const { concept: raw, usage } = await generatePCConcept({
         prompt: isRandom ? randomBrief(this.#input.mode) : this.#input.prompt,
@@ -1064,20 +1151,22 @@ export class GeneratorApp extends SpfApp {
         // choice only (generatePCConcept tells the model to ignore any
         // numeric scale wording — a PC's numbers come from the system).
         preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
+        requiredIdentity,
         onProgress: this._progressCallback(), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.PCConcept"), usage);
       const concept = normalizePCConcept(raw, { level: this.#input.level });
+      concept.gmPrompt = isRandom ? "" : this.#input.prompt;
+      concept.requiredIdentity = requiredIdentity;
+      applyPCIdentity(concept, requiredIdentity);
 
       await this._setStep("abc");
       // Rarity cap: excludes ancestries/backgrounds/heritages rarer than the
       // GM's chosen max from the candidate lists the AI even sees, so e.g.
       // capping at Uncommon means a Rare pick like Fetchling can never be
       // offered — not just discouraged by prompt wording.
-      const { rarityCap } = this.#input;
-      const [ancestryCandidates, backgroundCandidates, allClassCandidates, heritageCandidates] = await Promise.all([
-        getAncestryCandidates(rarityCap), getBackgroundCandidates(rarityCap), getClassCandidates(), getHeritageCandidates(rarityCap)
-      ]);
+      const { ancestry: ancestryCandidates, background: backgroundCandidates,
+        class: allClassCandidates, heritage: heritageCandidates } = catalogs;
       const classCandidates = supportedClassCandidates(allClassCandidates);
       if (!classCandidates.length) throw new Error(game.i18n.localize("SIMPLYPF2E.Generator.NoSupportedClasses"));
       const abc = await selectAncestryBackgroundClass({
@@ -1094,6 +1183,7 @@ export class GeneratorApp extends SpfApp {
       concept.class = abc.class;
       concept.classCandidate = abc.classCandidate;
       concept.keyAbility = abc.keyAbility;
+      assertPCIdentity(concept, requiredIdentity);
 
       // Resolve ABC + grants + feat-slot candidates now (index lookups are
       // cheap/cached) so the reused equipment/spell refine helpers below have
@@ -1229,6 +1319,7 @@ export class GeneratorApp extends SpfApp {
           this.#warnToleratedStage("loot");
         }
       }
+      assertPCIdentity(concept, requiredIdentity);
       const manifest = completionManifest({ mode: "character", concept, resolved });
       this._throwIfCancelled();
       assertComplete(manifest);
@@ -1236,6 +1327,7 @@ export class GeneratorApp extends SpfApp {
 
       this.#pcConcept = concept;
       this.#pcResolved = resolved;
+      this.#pcIdentityInput = this.#identityInputSnapshot();
     console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
   }
 
@@ -1657,6 +1749,12 @@ export class GeneratorApp extends SpfApp {
     let committed = false;
     let actor = null;
     try {
+      if (!reuseRun) {
+        this.#readForm();
+        if (this.#pcIdentityInput !== this.#identityInputSnapshot()) {
+          throw new Error(game.i18n.localize("SIMPLYPF2E.Identity.PreviewChanged"));
+        }
+      }
       await this._setStep("apply");
       if (this._progress) this._progress.detail = applyingMessage;
       await this.render();

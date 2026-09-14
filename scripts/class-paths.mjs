@@ -92,15 +92,60 @@ async function pathCandidateIsClosed(candidate, config) {
   return descendantsHaveNoChoices(source);
 }
 
+/** Return the exact closed candidates offered by an enabled level-one bridge. */
+async function closedPathCandidates(tag, config) {
+  const candidates = await getClassFeatureCandidates(tag);
+  const closed = [];
+  for (const candidate of candidates) {
+    if (await pathCandidateIsClosed(candidate, config)) closed.push(candidate);
+  }
+  return closed;
+}
+
+/**
+ * Discover the supported native path choices for a class source. The result
+ * is intentionally flat and contains only exact, issued candidates whose
+ * descendants can be resolved without a native dialog.
+ */
+export async function getClassPathCandidates(classData, { config = CONFIG?.PF2E ?? {} } = {}) {
+  const entries = classData?.system?.items;
+  if (!isObject(entries)) return [];
+  const paths = [];
+  for (const entry of Object.values(entries)) {
+    if (Number(entry?.level) !== 1 || typeof entry?.uuid !== "string") continue;
+    const document = await documentFromUuid(entry.uuid);
+    if (!document) continue;
+    const source = toItemData(document);
+    const selector = singlePathTag(source);
+    if (!selector || !isEnabledClassFeature(document)) continue;
+    paths.push(...await closedPathCandidates(selector.tag, config));
+  }
+  const seen = new Set();
+  return paths.filter((candidate) => {
+    const key = `${candidate.ref?.packId}\u0000${candidate.ref?._id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function sameCandidate(a, b) {
+  return Boolean(a && b && a.ref?.packId === b.ref?.packId && a.ref?._id === b.ref?._id
+    && a.uuid === b.uuid);
+}
+
 /**
  * Mutate a cloned class source to remove its native bridge entry and return
  * its exact replacement. This must run before Actor.create. It may invoke the
  * existing bounded choice callback; an omitted path is a hard failure, never
  * a later native dialog.
  */
-export async function stageClassPaths(classData, classId, { context, config = CONFIG?.PF2E ?? {}, selectChoices = null } = {}) {
+export async function stageClassPaths(classData, classId, { context, config = CONFIG?.PF2E ?? {}, selectChoices = null, requiredPath = null } = {}) {
   const entries = classData?.system?.items;
-  if (!isObject(entries)) return { items: [], expectedPaths: [] };
+  if (!isObject(entries)) {
+    if (requiredPath) throw new Error(`simplypf2e | required class path "${requiredPath.name ?? "?"}" has no class bridge to stage`);
+    return { items: [], expectedPaths: [] };
+  }
   const staged = [];
   const expectedPaths = [];
   for (const [entryId, entry] of Object.entries(entries)) {
@@ -114,11 +159,7 @@ export async function stageClassPaths(classData, classId, { context, config = CO
       throw new Error(`simplypf2e | required class path source for "${source.name}" is not enabled`);
     }
 
-    const candidates = await getClassFeatureCandidates(selector.tag);
-    const closed = [];
-    for (const candidate of candidates) {
-      if (await pathCandidateIsClosed(candidate, config)) closed.push(candidate);
-    }
+    const closed = await closedPathCandidates(selector.tag, config);
     if (!closed.length) {
       throw new Error(`simplypf2e | no fully resolvable enabled class paths for "${source.name}"`);
     }
@@ -126,12 +167,23 @@ export async function stageClassPaths(classData, classId, { context, config = CO
     // Replace only the runtime query with the exact candidates we just issued.
     // The real ChoiceSet and GrantItem rules stay cloned from PF2e unchanged.
     source.system.location = classId;
-    source.system.rules[selector.ruleIndex].choices = closed.map((candidate) => ({ value: candidate.uuid, label: candidate.name }));
+    let offered = closed;
+    if (requiredPath) {
+      const selectedRequired = closed.find((candidate) => sameCandidate(candidate, requiredPath));
+      if (!selectedRequired) {
+        throw new Error(`simplypf2e | required class path "${requiredPath.name ?? "?"}" is missing, wrong-class, or unsupported`);
+      }
+      offered = [selectedRequired];
+    }
+    source.system.rules[selector.ruleIndex].choices = offered.map((candidate) => ({ value: candidate.uuid, label: candidate.name }));
     await preselectChoiceSets([source], context, config, sourceFromUuid, selectChoices);
     const chosenUuid = source.system.rules[selector.ruleIndex].selection;
     const selected = closed.find((candidate) => candidate.uuid === chosenUuid);
     if (!selected) {
       throw new Error(`simplypf2e | class path "${source.name}" was not selected from the offered catalog`);
+    }
+    if (requiredPath && !sameCandidate(selected, requiredPath)) {
+      throw new Error(`simplypf2e | required class path "${requiredPath.name ?? "?"}" was not selected exactly`);
     }
 
     // GrantItem's native `preselectChoices` reaches ChoiceSets on the path
@@ -156,6 +208,9 @@ export async function stageClassPaths(classData, classId, { context, config = CO
     // was not in the transaction item array, so carry its exact source only
     // for post-create survival verification.
     expectedPaths.push({ name: selected.name, type: selected.type ?? "feat", _stats: { compendiumSource: selected.uuid } });
+  }
+  if (requiredPath && !staged.length) {
+    throw new Error(`simplypf2e | required class path "${requiredPath.name ?? "?"}" has no supported class bridge`);
   }
   return { items: staged, expectedPaths };
 }

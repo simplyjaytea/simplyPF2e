@@ -58,6 +58,10 @@ Open the **Actors** sidebar and click **SimplyPF2e** (GM only), or run `game.mod
 
 Open **Advanced options** for a preset, rarity, treasure amount, and spellcasting. Monster, NPC, and Encounter also offer **Include equipment** and **Include treasure**. Turn either off to enforce an empty category regardless of the AI response; turning off treasure also prevents coin padding. These switches do not change Character starting equipment or wealth. Character mode can also cap ancestry/background/heritage rarity. The preset menu is **— No preset —**, then **Standard classes** (the 23 Remaster PF2e classes as flavor guides), then **Custom presets** only when this world has saved any. Picking Magus or Witch there does not make those classes complete-only.
 
+Character mode has **Required character choices** for name, class, ancestry, heritage, background, key ability, and supported racket/methodology. Choose an exact source to keep it through generation; choose **No heritage** to require none. You can also write separate lines such as `Class: Rogue`, `Name: Kaelen`, and `Racket: Thief` (a racket/methodology requires an explicit class). Recognized identity mentions in free prose stop before AI spending until you set the corresponding required choice. Duplicate source names, conflicting declarations and unavailable choices also stop. Unrecognized prose remains flavor guidance; this is a bounded input grammar, not a general language interpreter. Random ignores required choices. If you change the request or required choices after Preview Plan, generate a new plan before creating.
+
+Required key abilities must be proven by the class's native base options; path-granted alternatives such as Ruffian Strength remain unavailable in this slice. Existing supported-class and live-QA limits still apply.
+
 ## Status
 
 | Feature | Status |

@@ -12,6 +12,7 @@ import {
 } from "./ai-candidate-format.mjs";
 import { taskResponseProblem } from "./ai-response-validation.mjs";
 import { validateChoicePicks } from "./choice-set.mjs";
+import { pcIdentityKey, assertPCIdentity } from "./pc-identity.mjs";
 import { CORE_SKILLS } from "./pc-skills.mjs";
 
 /**
@@ -450,9 +451,12 @@ Design guidance:
  * counterpart of generateConcept().
  * @returns {Promise<{concept: object, usage: object}>} parsed concept JSON + token usage
  */
-export async function generatePCConcept({ prompt, level, allowSpellcasting, preset, onProgress, signal }) {
+export async function generatePCConcept({ prompt, level, allowSpellcasting, preset, requiredIdentity = {}, onProgress, signal }) {
   const userPrompt = [
     `Character level: ${level}`,
+    Object.keys(requiredIdentity).length ? `Required choices (take precedence over flavor/preset): ${JSON.stringify(Object.fromEntries(
+      Object.entries(requiredIdentity).map(([key, value]) => [key, value && typeof value === "object" ? value.name : value])
+    ))}` : null,
     `Spellcasting allowed: ${allowSpellcasting ? "yes, if the class you choose casts spells" : "NO - choose a non-caster class, or a caster with spellcasting set to null"}`,
     // The build presets are written in NPC scale words ("high AC, moderate
     // HP"); for a PC they may only steer class/style choice — the system
@@ -822,6 +826,19 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
 export async function selectAncestryBackgroundClass({
   concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates = [], onProgress, signal
 }) {
+  const identity = concept.requiredIdentity ?? {};
+  const constrained = (field, candidates) => {
+    if (!Object.hasOwn(identity, field)) return candidates;
+    if (identity[field] === null) return [];
+    const key = pcIdentityKey(identity[field]);
+    const allowed = candidates.filter((candidate) => key && pcIdentityKey(candidate) === key);
+    if (allowed.length !== 1) throw new Error(`Required ${field} is no longer in the offered catalog`);
+    return allowed;
+  };
+  ancestryCandidates = constrained("ancestry", ancestryCandidates);
+  backgroundCandidates = constrained("background", backgroundCandidates);
+  classCandidates = constrained("class", classCandidates);
+  heritageCandidates = constrained("heritage", heritageCandidates);
   const system = `You are choosing a Pathfinder 2e character's ancestry, heritage, background and class. Choose ONLY IDs from the provided lists. Respond with a single JSON object and nothing else:
 { "ancestryId": string, "heritageId": string|null, "backgroundId": string, "classId": string, "keyAbility": "str"|"dex"|"con"|"int"|"wis"|"cha" }
 "heritage" must belong to the chosen ancestry, or null if none fits well. "keyAbility" must be a legal key ability for the chosen class.`;
@@ -830,6 +847,8 @@ export async function selectAncestryBackgroundClass({
     `Character: ${concept.name} (level ${concept.level})`,
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.backstory ? `Backstory: ${concept.backstory}` : null,
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
+    Object.keys(identity).length ? `Required choices: ${JSON.stringify(Object.fromEntries(Object.entries(identity).map(([key, value]) => [key, value && typeof value === "object" ? value.name : value])))}. Keep these exactly; a required null heritage means no heritage.` : null,
     `First-draft ideas (use as inspiration, but the final picks MUST come from the lists below): ancestry "${concept.ancestry}", heritage "${concept.heritage ?? "none"}", background "${concept.background}", class "${concept.class}", key ability "${concept.keyAbility}"`,
     "",
     `Available ancestries (ID | name): ${ancestryCandidates.map((a) => `${a.id} | ${a.name}`).join("; ")}`,
@@ -854,7 +873,7 @@ export async function selectAncestryBackgroundClass({
       { usage, details: { fields: unresolved } }
     );
   }
-  return {
+  const result = {
     ancestry: ancestry?.name ?? concept.ancestry,
     ancestryCandidate: ancestry?.ref ?? null,
     heritage: heritage?.name ?? null,
@@ -867,6 +886,16 @@ export async function selectAncestryBackgroundClass({
       ? parsed.keyAbility : concept.keyAbility,
     usage
   };
+  try {
+    // Name/path are outside this selector; preserve them while checking its ABC/key-ability output.
+    assertPCIdentity({ ...concept, ...result }, identity);
+    if (identity.heritage === null && parsed.heritageId !== null) {
+      throw new Error("Required heritage is none; the selector returned a heritage");
+    }
+  } catch (err) {
+    throw new AIRequestError(err.message, { usage });
+  }
+  return result;
 }
 
 /**
