@@ -91,6 +91,9 @@
       "ancestry": "Ancestry",
       "heritage": "Heritage",
       "background": "Background",
+      "backgroundLore": "Background Lore",
+      "ChooseLore": "Choose Lore",
+      "LoreHint": "Choose the Lore granted by this background before generating. This choice does not use AI.",
       "keyAbility": "Key ability",
       "classPath": "Racket / methodology",
       "Ability": { "str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma" }
@@ -138,6 +141,8 @@
       "TreasureAmount": "Treasure amount",
       "TreasureReadoutTooltip": "Total loot value across all members vs. the treasure budget (per-creature budget × count, from the GM Core Treasure by Level table)",
       "AllowSpellcasting": "Allow spellcasting",
+      "GenerateSpellLists": "Generate spell lists",
+      "SpellListsHint": "Turn off to skip generated spell lists. Feats and other native features can still grant magic or ask you to choose a spell.",
       "IncludeEquipment": "Include equipment",
       "IncludeTreasure": "Include treasure",
       "HoldingsHint": "Turn off a category to enforce none of that type. When enabled, describe the desired gear or treasure in the prompt.",

@@ -156,11 +156,18 @@
         </select>
       </div>
       <div class="form-group spf-checkbox">
-        <label>
-          <input type="checkbox" name="allowSpellcasting" {{#if input.allowSpellcasting}}checked{{/if}}>
-          {{localize "SIMPLYPF2E.Generator.AllowSpellcasting"}}
+        <label for="spf-generator-allow-spellcasting">
+          <input id="spf-generator-allow-spellcasting" type="checkbox" name="allowSpellcasting" {{#if characterMode}}aria-describedby="spf-generator-spellcasting-note"{{/if}} {{#if input.allowSpellcasting}}checked{{/if}}>
+          {{#if characterMode}}
+            {{localize "SIMPLYPF2E.Generator.GenerateSpellLists"}}
+          {{else}}
+            {{localize "SIMPLYPF2E.Generator.AllowSpellcasting"}}
+          {{/if}}
         </label>
       </div>
+      {{#if characterMode}}
+        <p id="spf-generator-spellcasting-note" class="spf-field-note" role="note">{{localize "SIMPLYPF2E.Generator.SpellListsHint"}}</p>
+      {{/if}}
       {{#unless characterMode}}
         <div class="form-group spf-checkbox">
           <label for="spf-generator-include-equipment">
@@ -192,11 +199,12 @@
           {{#if literal}}
           <input id="spf-identity-{{field}}" name="pcIdentity.{{field}}" type="text" value="{{value}}" maxlength="120" aria-describedby="spf-identity-hint" placeholder="{{localize 'SIMPLYPF2E.Identity.Choose'}}">
           {{else}}
-          <select id="spf-identity-{{field}}" name="pcIdentity.{{field}}" aria-describedby="spf-identity-hint">
-            <option value="">{{localize "SIMPLYPF2E.Identity.Choose"}}</option>
+          <select id="spf-identity-{{field}}" name="pcIdentity.{{field}}" aria-describedby="spf-identity-hint{{#if hint}} spf-identity-{{field}}-hint{{/if}}">
+            <option value="">{{localize chooseLabel}}</option>
             {{#each options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
           </select>
           {{/if}}
+          {{#if hint}}<p id="spf-identity-{{field}}-hint" class="spf-field-note">{{localize hint}}</p>{{/if}}
         </div>
         {{/each}}
       </div>
@@ -478,6 +486,7 @@
     </div>
 
     <h3>{{localize "SIMPLYPF2E.Skills.Priorities"}}</h3>
+    {{#if pcPreview.backgroundLore.length}}<p><strong>{{localize "SIMPLYPF2E.Identity.backgroundLore"}}</strong>: {{#each pcPreview.backgroundLore}}{{#unless @first}}, {{/unless}}{{this}}{{/each}}</p>{{/if}}
     <p>{{#if pcPreview.automaticSkills}}{{localize "SIMPLYPF2E.Skills.Automatic"}}{{else}}{{localize "SIMPLYPF2E.Skills.PreferenceHint"}}{{/if}}</p>
     <ul class="spf-list spf-inline">
       {{#each pcPreview.skillPriorities}}<li>{{this.name}}</li>{{/each}}

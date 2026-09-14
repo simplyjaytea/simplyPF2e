@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "./pc-identity.mjs";
 
-const candidate = (name, packId, _id) => ({ name, ref: { packId, _id }, uuid: `Compendium.${packId}.${_id}` });
+const candidate = (name, packId, _id) => ({ name, ref: { packId, _id }, uuid: `Compendium.${packId}.Item.${_id}` });
 const catalogs = {
   ancestry: [candidate("Human", "ancestries", "human"), candidate("Android", "ancestries", "android")],
   heritage: [candidate("Skilled Human", "heritages", "skilled-human")],
-  background: [candidate("Guard", "backgrounds", "guard")],
+  background: [candidate("Guard", "pf2e.backgrounds", "6UmhTxOQeqFnppxx")],
   class: [candidate("Rogue", "classes", "rogue"), candidate("Fighter", "classes", "fighter")],
   classPath: [candidate("Thief", "class-features", "thief")]
 };
+const guardLore = { backgroundLore: "legal" };
 const key = (field, index = 0) => pcIdentityKey(catalogs[field][index]);
 const error = (fn, code, field) => assert.throws(fn, (caught) => {
   assert.equal(caught.code, code);
@@ -39,6 +40,10 @@ assert.equal(declared.heritage, null);
 error(() => resolvePCIdentity({ choices: { class: "classes:missing" }, catalogs }), "PC_IDENTITY_UNKNOWN", "class");
 assert.deepEqual(resolvePCIdentity({ choices: { classPath: key("classPath") }, catalogs }), { classPath: catalogs.classPath[0] },
   "path identity remains a stable key; its required class relation is enforced by the caller");
+assert.equal(resolvePCIdentity({ choices: { background: key("background"), backgroundLore: "warfare" }, catalogs }).backgroundLore, "warfare");
+assert.equal(resolvePCIdentity({ prompt: "Background: Guard; Background Lore: Legal Lore", catalogs }).backgroundLore, "legal");
+error(() => resolvePCIdentity({ choices: { backgroundLore: "arcana" }, catalogs }), "PC_IDENTITY_CONTROL", "backgroundLore");
+error(() => resolvePCIdentity({ choices: { background: key("background"), backgroundLore: "Legal Lore" }, catalogs }), "PC_IDENTITY_CONTROL", "backgroundLore");
 assert.throws(() => resolvePCIdentity({ prompt: "Class: NotInstalled", catalogs }), (caught) => {
   assert.equal(caught.code, "PC_IDENTITY_UNKNOWN");
   assert.equal(caught.field, "class");

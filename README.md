@@ -62,6 +62,10 @@ Character mode has **Required character choices** for name, class, ancestry, her
 
 Required key abilities must be proven by the class's native base options; path-granted alternatives such as Ruffian Strength remain unavailable in this slice. Existing supported-class and live-QA limits still apply.
 
+The official **Guard** background also requires **Background Lore: Legal Lore** or **Warfare Lore**. Select Guard under Required choices to reveal its Lore control; separate `Background: Guard` and `Background Lore: Legal Lore` declarations work too. The choice appears in the preview and creates one trained Lore skill. Guard is omitted from automatic/Random background selection until its Lore is supplied. Other backgrounds retain concrete Lore supplied by their source; unresolved source placeholders stop creation. Background choices recorded only in prose still need separate support.
+
+In Character mode, **Generate spell lists** controls generated spell lists. Turning it off still permits feats and native features that grant magic or ask you to choose a spell.
+
 ## Status
 
 | Feature | Status |

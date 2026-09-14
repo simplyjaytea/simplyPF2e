@@ -2,6 +2,7 @@
 // implementation. Foundry documents and AI calls are isolated at import edges.
 import assert from "node:assert/strict";
 import * as identityHelpers from "./pc-identity.mjs";
+import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import vm from "node:vm";
@@ -18,6 +19,8 @@ let releaseWrite = null, writePending = null, failWrite = null, failWriteOnAttem
 let pcConceptUsage = { total: 1 }, abcFailure = null, abcResult = null;
 let pathDiscovery = null;
 let identityClasses = [{ name: "Fighter", ref: { packId: "pf2e.classes", _id: "fighter" } }];
+let identityBackgrounds = [];
+let offeredBackgrounds = [];
 let npcFeats = [], npcFeatFailure = null, gmPrompt = "test brief", encounterDesigns = 0, encounterMemberCount = 1;
 class Application {
   render() { return this; }
@@ -91,7 +94,7 @@ const create = async () => {
   return { actor: actor(), expectedItems: [] };
 };
 const mocks = {
-  ...identityHelpers, getDocument: async () => pathDiscovery ? { toObject: () => ({}) } : null,
+  ...identityHelpers, getBackgroundLoreOptions, getDocument: async () => pathDiscovery ? { toObject: () => ({}) } : null,
   getClassPathCandidates: async () => pathDiscovery ?? [], validatePCIdentityRequirements: async () => {},
   getCreatureFeatCandidates: async () => [{ id: "charge", name: "Sudden Charge", level: 1, ref: { packId: "pf2e.feats-srd", _id: "charge" } }],
   normalizeCreatureFeatName: (name) => String(name ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim(),
@@ -116,8 +119,8 @@ const mocks = {
   // PC path: all choice/refinement catalogs are empty, but the real app still
   // crosses the same generate → validated plan → locked create boundary.
   generatePCConcept: async () => { providerCalls++; if (pcConceptPending) await pcConceptPending; return { concept: concept(), usage: pcConceptUsage }; }, normalizePCConcept: (x) => x,
-  getAncestryCandidates: async () => [], getBackgroundCandidates: async () => [], getHeritageCandidates: async () => [],
-  selectAncestryBackgroundClass: async () => { if (abcFailure) throw abcFailure; return abcResult ?? { ancestry: "Human", background: "Worker", class: "Fighter" }; },
+  getAncestryCandidates: async () => [], getBackgroundCandidates: async () => identityBackgrounds, getHeritageCandidates: async () => [],
+  selectAncestryBackgroundClass: async ({ backgroundCandidates }) => { offeredBackgrounds = backgroundCandidates; if (abcFailure) throw abcFailure; return abcResult ?? { ancestry: "Human", background: "Worker", class: "Fighter" }; },
   resolvePCConcept: async () => ({ ancestryDoc: { name: "Human" }, classDoc: { name: "Fighter" }, backgroundDoc: { name: "Worker" }, featSlots: [], feats: [], spells: [], equipment: [], loot: [] }),
   pcSpellcastingProfile: () => null, pcStartingWealthGp: () => 0, equipmentValueGp: async () => 0,
   generatePCLoot: async () => ({ loot: [], usage: { total: 1 } }), normalizeLoot: (x) => x,
@@ -457,3 +460,46 @@ const sharedIdentity = identityHelpers.resolvePCIdentity({ choices: {
 assert.equal(sharedIdentity.class.ref.packId, "module.classes");
 assert.equal(sharedIdentity.classPath.ref._id, "thief");
 pathDiscovery = null;
+
+// Background Lore choices belong to the exact selected background source.
+identityBackgrounds = [
+  { name: "Guard", ref: { packId: "pf2e.backgrounds", _id: "6UmhTxOQeqFnppxx" } },
+  { name: "Guard", ref: { packId: "custom.backgrounds", _id: "6UmhTxOQeqFnppxx" } }
+];
+appUnderTest = app();
+let loreFields = await appUnderTest._test_identityFields();
+assert.equal(loreFields.some((field) => field.field === "backgroundLore"), false);
+appUnderTest._test_input.pcIdentity.background = identityHelpers.pcIdentityKey(identityBackgrounds[0]);
+loreFields = await appUnderTest._test_identityFields();
+let loreField = loreFields.find((field) => field.field === "backgroundLore");
+assert.deepEqual(Array.from(loreField.options, (option) => option.value), ["legal", "warfare"]);
+assert.equal(loreField.chooseLabel, "SIMPLYPF2E.Identity.ChooseLore");
+assert.equal(loreField.hint, "SIMPLYPF2E.Identity.LoreHint");
+appUnderTest._test_input.pcIdentity.backgroundLore = "legal";
+const loreSnapshot = appUnderTest._test_identityInputSnapshot();
+appUnderTest._test_input.pcIdentity.backgroundLore = "warfare";
+assert.notEqual(appUnderTest._test_identityInputSnapshot(), loreSnapshot, "changed Lore invalidates an existing preview");
+appUnderTest._test_input.pcIdentity.background = identityHelpers.pcIdentityKey(identityBackgrounds[1]);
+loreFields = await appUnderTest._test_identityFields();
+loreField = loreFields.find((field) => field.field === "backgroundLore");
+assert.equal(loreField.options.length, 1, "stale Lore stays visible without offering official choices for a custom source");
+assert.equal(loreField.options[0].value, "warfare");
+assert.equal(loreField.options[0].label, "SIMPLYPF2E.Identity.Unavailable");
+identityBefore = { calls: providerCalls, writes };
+await appUnderTest._test_runGeneration(false, { create: true });
+assert.equal(providerCalls, identityBefore.calls, "wrong-source Lore stops before provider calls");
+assert.equal(writes, identityBefore.writes);
+appUnderTest = app();
+await appUnderTest._test_runGeneration(true, { create: false });
+assert.equal(offeredBackgrounds.some((candidate) => candidate.ref.packId === "pf2e.backgrounds"), false,
+  "Random does not spend on a known background whose required Lore is absent");
+assert.equal(offeredBackgrounds.some((candidate) => candidate.ref.packId === "custom.backgrounds"), true,
+  "same-name custom sources are not treated as the official Guard bridge");
+appUnderTest = app();
+appUnderTest._test_input.pcIdentity = { background: identityHelpers.pcIdentityKey(identityBackgrounds[0]), backgroundLore: "legal" };
+abcResult = { ancestry: "Human", background: "Guard", backgroundCandidate: identityBackgrounds[0].ref, class: "Fighter" };
+await appUnderTest._test_runGeneration(false, { create: false });
+assert.equal(appUnderTest._test_error, null);
+assert.equal(offeredBackgrounds.some((candidate) => candidate.ref.packId === "pf2e.backgrounds"), true);
+assert.equal(appUnderTest._test_pcConcept.backgroundLore, "legal");
+assert.equal(appUnderTest._test_pcConcept.requiredIdentity.backgroundLore, "legal");
