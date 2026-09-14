@@ -36,7 +36,7 @@ globalThis.game = { packs: { get: (id) => id === "pf2e.classfeatures" || id === 
 globalThis.CONFIG = { PF2E: {} };
 globalThis.fromUuid = async (id) => docs.get(id) ?? null;
 
-const { stageClassPaths } = await import("./class-paths.mjs");
+const { stageClassPaths, getClassPathCandidates } = await import("./class-paths.mjs");
 const classData = { system: { items: { bridge: { level: 1, uuid: uuid("bridge") }, ordinary: { level: 1, uuid: "Compendium.pf2e.classfeatures.Item.NotAPath" } } } };
 const calls = [];
 const staged = await stageClassPaths(classData, "class-id", {
@@ -62,6 +62,18 @@ assert.deepEqual(staged.items[0].system.rules[1].preselectChoices, { skill: "soc
 assert.equal(calls.length, 2, "the bridge and selected path's static choice reuse the existing bounded selector");
 assert.deepEqual(staged.expectedPaths, [{ name: "Empiricism", type: "feat", _stats: { compendiumSource: uuid("closed") } }],
   "the native selected-path grant is included in post-create exact-source verification");
+
+const exactCandidates = await getClassPathCandidates({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } });
+const requiredPath = exactCandidates.find((candidate) => candidate.name === "Simple Methodology");
+assert.ok(requiredPath, "the requested path is present in the closed catalog");
+const forced = await stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } }, "class-id", {
+  context: {}, requiredPath,
+  selectChoices: async (groups) => ({ picks: [{ choice: groups[0].id, option: groups[0].options[0].id }] })
+});
+assert.equal(forced.items[0].system.rules[0].selection, requiredPath.uuid, "required path overrides chooser preference");
+await assert.rejects(stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } }, "class-id", {
+  context: {}, requiredPath: { name: "Wrong class", uuid: uuid("missing"), ref: { packId: "pf2e.classfeatures", _id: "missing" } }
+}), /missing, wrong-class, or unsupported/, "stale or wrong-class path is rejected before write");
 
 await assert.rejects(stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } }, "class-id", { context: {} }),
   /was not selected/, "an omitted mandatory path choice blocks before Actor.create");

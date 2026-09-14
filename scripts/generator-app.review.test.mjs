@@ -1,6 +1,7 @@
 // Execute the unmodified production app with mocked imports/platform services.
 // No provider calls, Foundry documents, or test-only production hooks.
 import assert from "node:assert/strict";
+import * as identityHelpers from "./pc-identity.mjs";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import vm from "node:vm";
@@ -24,7 +25,7 @@ const notices = [];
 class App {
   element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
     : selector.includes('name="level"') ? { value: String(generatorLevel) }
-      : selector.includes('name="prompt"') ? { value: "A dwarf fighter" }
+      : selector.includes('name="prompt"') ? { value: "A weathered courier" }
       : selector.includes('name="allowSpellcasting"') ? { checked: false } : null };
   async render() { this.context = await this._prepareContext(); }
   _beginProgress() { this.abort = new AbortController(); return this.abort.signal; }
@@ -56,6 +57,7 @@ const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fig
   backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [],
   equipment: pcEquipment().map((item) => ({ ...item, entry: {} })), loot: previewLoot });
 const mocks = {
+  ...identityHelpers, getDocument: async () => null, validatePCIdentityRequirements: async () => {},
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   AI_TASK: {}, taskMaxTokens: () => 100,
   assertComplete, completionManifest, completionSummary,
@@ -67,7 +69,7 @@ const mocks = {
   THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, randomBrief: () => "A dwarf",
   generatePCConcept: async () => { conceptCalls++; return { concept: { name: "Test", level: 1, equipment: pcEquipment(), loot: [] } }; },
   normalizePCConcept: (raw) => raw,
-  getAncestryCandidates: () => [], getBackgroundCandidates: () => [], getClassCandidates: () => [{ name: "Fighter" }], getHeritageCandidates: () => [],
+  getAncestryCandidates: () => [], getBackgroundCandidates: () => [], getClassCandidates: () => [{ name: "Fighter", ref: { packId: "pf2e.classes", _id: "fighter" } }], getHeritageCandidates: () => [],
   selectAncestryBackgroundClass: async () => ({ ancestry: "Dwarf", background: "Warrior", class: "Fighter" }),
   resolvePCConcept: async () => resolved(), pcSpellcastingProfile: () => null, slugify: (name) => name.toLowerCase(),
   generatePCLoot: async () => { pcPurchaseCalls++; return { loot: [] }; }, normalizeLoot: (loot) => loot,
@@ -123,6 +125,7 @@ assert.equal(typeof actions.cancelGeneration, "function", "in-flight generation 
 
 async function generate() {
   const app = new GeneratorApp();
+  app._preserveForm(); // model the preceding switch into Character mode
   await actions.generateRandom.call(app);
   assert.equal(app.context.error, null);
   assert.ok(app.context.pcPreview, "real generation flow must seed the private PC draft");

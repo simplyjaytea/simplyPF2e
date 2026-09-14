@@ -6,6 +6,12 @@ The user requested a plan to complete the outstanding list, with suitable work d
 
 PR #111 is merged at `019d17b67c96bc06831fe56a4cfe8784fee90762`; GitHub's latest public release is **v0.3.5.71**, with module.json and module.zip assets. The September 12 handoff's pending-publication instruction is superseded. The last recorded installation is **v0.3.5.70 / Foundry 14.365 / PF2e 8.5.0**. Publication is not proof of installation, archive byte parity, or live acceptance.
 
+## Progress — 2026-09-15 implementation
+
+- Step 0: .71 official assets/49 archive files verified; active .71 installation observed read-only in Foundry. Source-switch/overlapping-load native acceptance remains pending.
+- Step 1: required-choice implementation and independent review complete locally on `codex/pc-identity`. User chose explicit required controls and stopping ambiguous prose. See [implementation/evidence](pc-identity-2026-09-15.md); final local gate and publication/native next steps live in HANDOFF.md.
+- Steps 2–8: still outstanding. No provider/world/publication actions occurred in this implementation session.
+
 ## Execution and model allocation
 
 - Parent owns behavior tracing, design, dependency ordering, integration and evidence. Delegate bounded, fully specified implementation, regression cases, templates/localization and documentation to **gpt-5.6-luna**. Give each assignment exact files, inputs, expected behavior, tests and stop conditions; use a short context packet instead of a full-history fork.

@@ -181,6 +181,27 @@
       {{/unless}}
       </div>
     </details>
+    {{#if characterMode}}
+    <details class="spf-options" open>
+      <summary>{{localize "SIMPLYPF2E.Identity.Title"}}</summary>
+      <p id="spf-identity-hint" class="spf-field-note">{{localize "SIMPLYPF2E.Identity.Hint"}}</p>
+      <div class="spf-row">
+        {{#each pcIdentityFields}}
+        <div class="form-group">
+          <label for="spf-identity-{{field}}">{{localize label}}</label>
+          {{#if literal}}
+          <input id="spf-identity-{{field}}" name="pcIdentity.{{field}}" type="text" value="{{value}}" maxlength="120" aria-describedby="spf-identity-hint" placeholder="{{localize 'SIMPLYPF2E.Identity.Choose'}}">
+          {{else}}
+          <select id="spf-identity-{{field}}" name="pcIdentity.{{field}}" aria-describedby="spf-identity-hint">
+            <option value="">{{localize "SIMPLYPF2E.Identity.Choose"}}</option>
+            {{#each options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+          </select>
+          {{/if}}
+        </div>
+        {{/each}}
+      </div>
+    </details>
+    {{/if}}
     <div class="spf-generate-row">
       <button type="button" class="{{#unless hasPreview}}{{#unless created}}spf-primary{{/unless}}{{/unless}} spf-generate-action" data-action="generate" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-wand-sparkles" aria-hidden="true"></i>

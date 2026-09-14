@@ -2,6 +2,14 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-09-15 — Required PC choices and first completion slice
+
+- User started the completion plan and chose explicit required controls with early ambiguity rejection. Added exact source-backed name/ABC/heritage/key-ability/path constraints, bounded declaration syntax, strict ABC response validation, and native creation/preview guards. Free prose recognition remains deliberately bounded; unrecognized prose is guidance. Random ignores controls. No PC class whitelist or native predicate/resource graph was widened.
+- Luna implemented pure identity, native checks, and source-distinct catalog slices. Parent integrated generator/selector/UI and production lifecycle tests. Independent review caught production name dedup hiding sources, deselected-but-installed sources passing preview creation, and duplicate shared paths across class sources. Fixed all with regression coverage; final reviewer approved without blockers.
+- Required heritage no longer substitutes a fallback; required key ability must be a native base-class option. Ruffian Strength and newer master complex Racket predicates remain unsupported. Requirements are attached only after provider normalization, and both prepared docs and user-changed previews are checked before actor writes. [Evidence and source citations](docs/pc-identity-2026-09-15.md).
+- Final Node22.23.2 gate passed 95 regression files, 133 script syntax checks plus one tooling check, JSON/whitespace. Branch `codex/pc-identity` remains local pending repository-required publication confirmation. No provider calls or world mutations. Native UI/Rogue/higher-level acceptance remains outstanding.
+- Luna verified .71 official assets and all 49 packaged source files against PR111 merge; parent read the existing module screen confirming active .71 on Foundry14.365/PF2e8.5.0. The old installed-.70 note is superseded, but prior .70 gameplay evidence is not relabeled as .71 acceptance.
+
 ## 2026-09-15 — Completion plan and publication-state reconciliation
 
 - User requested a plan to complete the outstanding readiness/roadmap list with appropriate Luna delegation to conserve usage. [Completion plan](docs/completion-plan-2026-09-15.md) defines ordered slices, existing owners, acceptance criteria, model allocation, provider-spend discipline and native evidence requirements. No runtime implementation began.

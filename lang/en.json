@@ -79,6 +79,22 @@
       "TestSuccess": "Connected to {provider} with model {model} ({total} tokens).",
       "TestFailed": "Provider connection test failed: {message}"
     },
+    "Identity": {
+      "Title": "Required character choices",
+      "PreviewChanged": "Your character request or required choices changed. Generate a new plan before creating this character.",
+      "Hint": "Set any choices the character must keep. Recognized but ambiguous identity requests stop before AI spending. You can also use separate lines such as Class: Rogue and Name: Kaelen. Unset choices follow your description; Random ignores these requirements.",
+      "Choose": "Let AI choose",
+      "Unavailable": "Required source unavailable — choose again",
+      "NoHeritage": "No heritage",
+      "name": "Name",
+      "class": "Class",
+      "ancestry": "Ancestry",
+      "heritage": "Heritage",
+      "background": "Background",
+      "keyAbility": "Key ability",
+      "classPath": "Racket / methodology",
+      "Ability": { "str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma" }
+    },
     "Generator": {
       "Title": "SimplyPF2e — Generator",
       "OpenButton": "SimplyPF2e",

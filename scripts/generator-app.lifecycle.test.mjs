@@ -1,6 +1,7 @@
 // Production GeneratorApp lifecycle integration with the real SpfApp/progress
 // implementation. Foundry documents and AI calls are isolated at import edges.
 import assert from "node:assert/strict";
+import * as identityHelpers from "./pc-identity.mjs";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import vm from "node:vm";
@@ -14,7 +15,9 @@ if (!vm.SourceTextModule) {
 let writes = 0, creates = 0, starts = 0, finishes = 0, locked = 0, providerCalls = 0, classCalls = 0, equipmentSelections = 0, lootSelections = 0;
 let creationAttempts = 0, actorDeletes = 0, folderDeletes = 0, folderCreates = 0;
 let releaseWrite = null, writePending = null, failWrite = null, failWriteOnAttempt = null, conceptPending = null, pcConceptPending = null, readinessPending = null, readinessFailure = null;
-let pcConceptUsage = { total: 1 }, abcFailure = null;
+let pcConceptUsage = { total: 1 }, abcFailure = null, abcResult = null;
+let pathDiscovery = null;
+let identityClasses = [{ name: "Fighter", ref: { packId: "pf2e.classes", _id: "fighter" } }];
 let npcFeats = [], npcFeatFailure = null, gmPrompt = "test brief", encounterDesigns = 0, encounterMemberCount = 1;
 class Application {
   render() { return this; }
@@ -88,6 +91,8 @@ const create = async () => {
   return { actor: actor(), expectedItems: [] };
 };
 const mocks = {
+  ...identityHelpers, getDocument: async () => pathDiscovery ? { toObject: () => ({}) } : null,
+  getClassPathCandidates: async () => pathDiscovery ?? [], validatePCIdentityRequirements: async () => {},
   getCreatureFeatCandidates: async () => [{ id: "charge", name: "Sudden Charge", level: 1, ref: { packId: "pf2e.feats-srd", _id: "charge" } }],
   normalizeCreatureFeatName: (name) => String(name ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim(),
   filterNpcAbilityCandidates: async (candidates) => ({ candidates, unavailable: [] }),
@@ -97,7 +102,7 @@ const mocks = {
   getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "", presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),
   randomBrief: () => "random", sourceReadiness: () => ({ ready: true }), supportedClassCandidates: (x) => x,
   freeArchetypeNeedsPrerequisiteValidation: () => false, getClassCandidates: async () => {
-    classCalls++; if (readinessPending) await readinessPending; if (readinessFailure) throw readinessFailure; return [{ name: "Fighter" }];
+    classCalls++; if (readinessPending) await readinessPending; if (readinessFailure) throw readinessFailure; return identityClasses;
   },
   generateConcept: async () => { providerCalls++; if (conceptPending) await conceptPending; return { concept: concept(), usage: { total: 1 } }; }, normalizeConcept: (x) => x,
   resolveConcept: async (value) => ({ abilities: [], spells: [], feats: [], focusSpells: [],
@@ -112,7 +117,7 @@ const mocks = {
   // crosses the same generate → validated plan → locked create boundary.
   generatePCConcept: async () => { providerCalls++; if (pcConceptPending) await pcConceptPending; return { concept: concept(), usage: pcConceptUsage }; }, normalizePCConcept: (x) => x,
   getAncestryCandidates: async () => [], getBackgroundCandidates: async () => [], getHeritageCandidates: async () => [],
-  selectAncestryBackgroundClass: async () => { if (abcFailure) throw abcFailure; return { ancestry: "Human", background: "Worker", class: "Fighter" }; },
+  selectAncestryBackgroundClass: async () => { if (abcFailure) throw abcFailure; return abcResult ?? { ancestry: "Human", background: "Worker", class: "Fighter" }; },
   resolvePCConcept: async () => ({ ancestryDoc: { name: "Human" }, classDoc: { name: "Fighter" }, backgroundDoc: { name: "Worker" }, featSlots: [], feats: [], spells: [], equipment: [], loot: [] }),
   pcSpellcastingProfile: () => null, pcStartingWealthGp: () => 0, equipmentValueGp: async () => 0,
   generatePCLoot: async () => ({ loot: [], usage: { total: 1 } }), normalizeLoot: (x) => x,
@@ -372,3 +377,83 @@ assert.equal(appUnderTest._progress.steps.find((step) => step.key === "design").
 assert.equal(appUnderTest._tokenUsage.length, 0);
 gmPrompt = "test brief";
 console.log("generator-app.lifecycle.test.mjs: real SpfApp one-click, preview, duplicate, error and cancellation lifecycles passed");
+
+// Required choices are resolved before the first billable request and remain
+// enforced across the real generator orchestration, even with a faulty selector.
+mode = "character";
+gmPrompt = "A Fighter who works as a courier";
+appUnderTest = app();
+let identityBefore = { calls: providerCalls, writes, gear: equipmentSelections };
+await appUnderTest._test_runGeneration(false, { create: true });
+assert.equal(providerCalls, identityBefore.calls, "ambiguous prose identity stops before the concept request");
+assert.equal(writes, identityBefore.writes);
+assert.ok(appUnderTest._test_error, "ambiguity has actionable feedback");
+
+const requiredFighter = identityClasses[0];
+gmPrompt = "A weathered courier";
+appUnderTest = app();
+appUnderTest._test_input.pcIdentity = { class: identityHelpers.pcIdentityKey(requiredFighter), name: "Required <b>Name</b>" };
+abcResult = { ancestry: "Human", background: "Worker", class: "Rogue", classCandidate: { packId: "pf2e.classes", _id: "rogue" } };
+identityBefore = { calls: providerCalls, writes, gear: equipmentSelections };
+await appUnderTest._test_runGeneration(false, { create: true });
+assert.equal(providerCalls, identityBefore.calls + 1);
+assert.equal(writes, identityBefore.writes, "faulty selector cannot create the wrong identity");
+assert.equal(equipmentSelections, identityBefore.gear, "wrong identity stops before equipment spending");
+
+appUnderTest = app();
+appUnderTest._test_input.pcIdentity = { class: identityHelpers.pcIdentityKey(requiredFighter), name: "Required <b>Name</b>" };
+abcResult = { ancestry: "Human", background: "Worker", class: "Fighter", classCandidate: requiredFighter.ref };
+await appUnderTest._test_runGeneration(false, { create: false });
+assert.equal(appUnderTest._test_error, null);
+assert.equal(appUnderTest._test_pcConcept.name, "Required <b>Name</b>", "literal required name survives provider normalization and selection");
+assert.equal(appUnderTest._test_pcConcept.classCandidate._id, "fighter");
+assert.equal(appUnderTest._test_pcConcept.gmPrompt, gmPrompt);
+
+// A saved stale choice must not be downgraded to automatic selection.
+appUnderTest = app();
+appUnderTest._test_input.pcIdentity = { class: "pf2e.classes:missing" };
+identityBefore = { calls: providerCalls, writes };
+await appUnderTest._test_runGeneration(false, { create: true });
+assert.equal(providerCalls, identityBefore.calls);
+assert.equal(writes, identityBefore.writes);
+
+// Random deliberately ignores both required controls and the typed brief.
+appUnderTest = app();
+appUnderTest._test_input.pcIdentity = { class: "pf2e.classes:missing", name: "Ignored" };
+gmPrompt = "Class: Missing";
+abcResult = null;
+identityBefore = { calls: providerCalls, writes };
+await appUnderTest._test_runGeneration(true, { create: false });
+assert.equal(appUnderTest._test_error, null);
+assert.equal(providerCalls, identityBefore.calls + 1);
+assert.equal(writes, identityBefore.writes);
+assert.equal(Object.keys(appUnderTest._test_pcConcept.requiredIdentity).length, 0);
+
+// Editing a requirement after preview cannot create the old plan.
+gmPrompt = "A weathered courier";
+appUnderTest = app();
+await appUnderTest._test_runGeneration(false, { create: false });
+identityBefore = { calls: providerCalls, writes };
+appUnderTest._test_input.pcIdentity.name = "Changed after preview";
+await appUnderTest._test_createCharacterActor();
+assert.equal(writes, identityBefore.writes);
+assert.equal(providerCalls, identityBefore.calls);
+assert.match(appUnderTest._test_error, /PreviewChanged/);
+
+// Two class sources sharing one native bridge must not make a path's exact
+// source key ambiguous. The picker retains both class relationships.
+identityClasses = [
+  { name: "Rogue", ref: { packId: "pf2e.classes", _id: "rogue" } },
+  { name: "Rogue", ref: { packId: "module.classes", _id: "rogue" } }
+];
+pathDiscovery = [{ name: "Thief", ref: { packId: "pf2e.classfeatures", _id: "thief" }, uuid: "Compendium.pf2e.classfeatures.Item.thief" }];
+appUnderTest = app();
+const sharedCatalog = await appUnderTest._test_identityCatalogs();
+assert.equal(sharedCatalog.classPath.length, 1);
+assert.equal(sharedCatalog.classPath[0].classKeys.length, 2);
+const sharedIdentity = identityHelpers.resolvePCIdentity({ choices: {
+  class: identityHelpers.pcIdentityKey(identityClasses[1]), classPath: identityHelpers.pcIdentityKey(pathDiscovery[0])
+}, catalogs: sharedCatalog });
+assert.equal(sharedIdentity.class.ref.packId, "module.classes");
+assert.equal(sharedIdentity.classPath.ref._id, "thief");
+pathDiscovery = null;

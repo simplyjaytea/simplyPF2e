@@ -118,3 +118,34 @@ for (const heritageId of [null, "H-UNOFFERED"]) {
 }
 
 console.log("ai.abcSelection.test.mjs: ABC exact mapping, early required-ID rejection, usage and optional heritage passed");
+
+// An otherwise valid offered pick must not replace a module-owned requirement.
+const rogue = { id: "C1", name: "Rogue", ref: { packId: "pf2e.classes", _id: "rogue" } };
+const locked = { ...concept, class: "Rogue", classCandidate: rogue.ref, requiredIdentity: { class: rogue } };
+replies.push({ ancestryId: "A0", heritageId: "H0", backgroundId: "B0", classId: "C0", keyAbility: "dex" });
+const beforeLocked = requests.length;
+await assert.rejects(selectAncestryBackgroundClass({
+  concept: locked, ancestryCandidates: candidates.ancestries, heritageCandidates: candidates.heritages,
+  backgroundCandidates: candidates.backgrounds, classCandidates: [...candidates.classes, rogue]
+}), (error) => error.usage?.total === 18, "a valid but wrong class fails and retains spent usage");
+assert.equal(requests.length, beforeLocked + 1, "identity failure must not retry");
+assert.match(requests.at(-1).messages[1].content, /Available classes \(ID \| name\): C1 \| Rogue/);
+replies.push({ ancestryId: "A0", heritageId: "H0", backgroundId: "B0", classId: "C1", keyAbility: "dex" });
+assert.equal((await selectAncestryBackgroundClass({
+  concept: locked, ancestryCandidates: candidates.ancestries, heritageCandidates: candidates.heritages,
+  backgroundCandidates: candidates.backgrounds, classCandidates: [...candidates.classes, rogue]
+})).class, "Rogue");
+
+replies.push({ ancestryId: "A0", heritageId: null, backgroundId: "B0", classId: "C0", keyAbility: "dex" });
+await assert.rejects(selectAncestryBackgroundClass({
+  concept: { ...concept, requiredIdentity: { keyAbility: "str" } },
+  ancestryCandidates: candidates.ancestries, heritageCandidates: candidates.heritages,
+  backgroundCandidates: candidates.backgrounds, classCandidates: candidates.classes
+}), (error) => error.usage?.total === 18, "required ability mismatch fails at ABC selection");
+
+replies.push({ ancestryId: "A0", heritageId: "H0", backgroundId: "B0", classId: "C0", keyAbility: "str" });
+await assert.rejects(selectAncestryBackgroundClass({
+  concept: { ...concept, heritage: null, requiredIdentity: { heritage: null } },
+  ancestryCandidates: candidates.ancestries, heritageCandidates: candidates.heritages,
+  backgroundCandidates: candidates.backgrounds, classCandidates: candidates.classes
+}), (error) => error.usage?.total === 18, "explicit no-heritage rejects a provider pick even outside the narrowed catalog");

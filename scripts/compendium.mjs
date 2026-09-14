@@ -679,8 +679,9 @@ export function getLootCandidates(level, keywords = []) {
  * @param {string} category
  * @param {string} type
  * @param {string} [maxRarity] drop entries rarer than this ("common"|"uncommon"|"rare"|"unique")
+ * @param {{distinctSources?: boolean}} [options] retain same-name entries from distinct sources
  */
-async function getFullCandidates(category, type, maxRarity) {
+async function getFullCandidates(category, type, maxRarity, { distinctSources = false } = {}) {
   const maxRank = RARITY_RANK[maxRarity] ?? RARITY_RANK.unique;
   const candidates = [];
   const seen = new Set();
@@ -691,8 +692,9 @@ async function getFullCandidates(category, type, maxRarity) {
       if (entry.type !== type) continue;
       const rarity = entry.system?.traits?.rarity ?? "common";
       if ((RARITY_RANK[rarity] ?? 0) > maxRank) continue;
-      if (seen.has(entry.normalized)) continue;
-      seen.add(entry.normalized);
+      const identity = distinctSources ? `${entry.packId}\u0000${entry._id}` : entry.normalized;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
       candidates.push(candidateRecord(entry, { name: entry.name, traits: entry.system?.traits?.value ?? [] }));
     }
   }
@@ -727,21 +729,21 @@ export async function getAbilityCandidates(keywords = []) {
  * @param {string} [maxRarity]
  * @returns {Promise<{name: string, traits: string[]}[]>} every ancestry at or below maxRarity
  */
-export function getAncestryCandidates(maxRarity) {
-  return getFullCandidates("ancestries", "ancestry", maxRarity);
+export function getAncestryCandidates(maxRarity, options) {
+  return getFullCandidates("ancestries", "ancestry", maxRarity, options);
 }
 
 /**
  * @param {string} [maxRarity]
  * @returns {Promise<{name: string, traits: string[]}[]>} every background at or below maxRarity
  */
-export function getBackgroundCandidates(maxRarity) {
-  return getFullCandidates("backgrounds", "background", maxRarity);
+export function getBackgroundCandidates(maxRarity, options) {
+  return getFullCandidates("backgrounds", "background", maxRarity, options);
 }
 
 /** @returns {Promise<{name: string, traits: string[]}[]>} every class */
-export function getClassCandidates() {
-  return getFullCandidates("classes", "class");
+export function getClassCandidates(options) {
+  return getFullCandidates("classes", "class", undefined, options);
 }
 
 /**
@@ -779,8 +781,8 @@ export async function getClassFeatureCandidates(tag) {
  * @param {string} [maxRarity]
  * @returns {Promise<{name: string, traits: string[]}[]>} every heritage at or below maxRarity
  */
-export function getHeritageCandidates(maxRarity) {
-  return getFullCandidates("heritages", "heritage", maxRarity);
+export function getHeritageCandidates(maxRarity, options) {
+  return getFullCandidates("heritages", "heritage", maxRarity, options);
 }
 
 /**
