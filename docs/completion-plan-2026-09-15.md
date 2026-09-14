@@ -8,9 +8,10 @@ PR #111 is merged at `019d17b67c96bc06831fe56a4cfe8784fee90762`; GitHub's latest
 
 ## Progress — 2026-09-15 implementation
 
-- Step 0: .71 official assets/49 archive files verified; active .71 installation observed read-only in Foundry. Source-switch/overlapping-load native acceptance remains pending.
-- Step 1: required-choice implementation and independent review complete locally on `codex/pc-identity`. User chose explicit required controls and stopping ambiguous prose. See [implementation/evidence](pc-identity-2026-09-15.md); final local gate and publication/native next steps live in HANDOFF.md.
-- Steps 2–8: still outstanding. No provider/world/publication actions occurred in this implementation session.
+- Step 0: .71 assets were verified; .72 now published and installed, with 50 archive files/official hashes verified. Source-switch/overlapping-load native acceptance remains pending. Ordinary UI cannot prove cache coalescing without a read-only runtime harness; source settings were not changed in this continuation.
+- Step 1: required choices published through PR #112 as .72. Two no-spend preflight rejections passed. One native level-1 run retained exact required name/Human/no heritage/Guard/Rogue/Dexterity/Thief, with native class grants. See [implementation/evidence](pc-identity-2026-09-15.md).
+- Step 2: incomplete. The approved level-1 run used 26,839 tokens, then native inspection found Guard Lore missing. No higher-level generation ran. Local follow-up adds an explicit source-backed Guard Lore choice and clarifies the spell-list label per user preference; publication and native recheck remain pending.
+- Steps 3–8: still outstanding. Preserve the versioned native evidence and all prior QA artifacts.
 
 ## Execution and model allocation
 

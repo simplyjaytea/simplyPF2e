@@ -2,6 +2,7 @@
 // No provider calls, Foundry documents, or test-only production hooks.
 import assert from "node:assert/strict";
 import * as identityHelpers from "./pc-identity.mjs";
+import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import vm from "node:vm";
@@ -57,7 +58,7 @@ const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fig
   backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [],
   equipment: pcEquipment().map((item) => ({ ...item, entry: {} })), loot: previewLoot });
 const mocks = {
-  ...identityHelpers, getDocument: async () => null, validatePCIdentityRequirements: async () => {},
+  ...identityHelpers, getBackgroundLoreOptions, getDocument: async () => null, validatePCIdentityRequirements: async () => {},
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   AI_TASK: {}, taskMaxTokens: () => 100,
   assertComplete, completionManifest, completionSummary,

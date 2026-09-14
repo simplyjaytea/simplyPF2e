@@ -5,7 +5,10 @@
  * ABC document by itself.
  */
 
+import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
+
 const CATALOG_FIELDS = Object.freeze(["ancestry", "heritage", "background", "class", "classPath"]);
+const BACKGROUND_LORE = Object.freeze({ legal: "legal", warfare: "warfare" });
 const ABILITIES = Object.freeze({
   str: "str", dex: "dex", con: "con", int: "int", wis: "wis", cha: "cha",
   strength: "str", dexterity: "dex", constitution: "con", intelligence: "int",
@@ -16,13 +19,14 @@ const ABILITY_NAMES = Object.freeze(Object.keys(ABILITIES).filter((key) => key.l
 const DECLARATION_FIELDS = Object.freeze({
   name: "name", ancestry: "ancestry", heritage: "heritage", background: "background",
   class: "class", "key ability": "keyAbility", racket: "classPath",
-  methodology: "classPath", "class path": "classPath"
+  methodology: "classPath", "class path": "classPath",
+  "background lore": "backgroundLore"
 });
 
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value) => typeof value === "string" ? value.trim() : "";
-const fieldLabel = (field) => ({ classPath: "class path", keyAbility: "key ability" })[field] ?? field;
+const fieldLabel = (field) => ({ classPath: "class path", keyAbility: "key ability", backgroundLore: "background Lore" })[field] ?? field;
 const displayField = (field) => {
   const label = field === "keyAbility" ? "key ability" : fieldLabel(field);
   return label.charAt(0).toLocaleUpperCase() + label.slice(1);
@@ -97,6 +101,14 @@ function parseAbility(value, field, source) {
   return ABILITIES[key];
 }
 
+function parseBackgroundLore(value, source) {
+  const key = normalizedName(value);
+  if (Object.hasOwn(BACKGROUND_LORE, key)) return BACKGROUND_LORE[key];
+  if (key === "legal lore") return "legal";
+  if (key === "warfare lore") return "warfare";
+  fail("PC_IDENTITY_UNKNOWN", "backgroundLore", `${source} must use Legal Lore or Warfare Lore`);
+}
+
 function declarationParts(prompt) {
   const free = [];
   const declarations = [];
@@ -145,6 +157,13 @@ function explicitControls(choices, catalogs) {
     result.set("keyAbility", choices.keyAbility);
     }
   }
+  if (has(choices, "backgroundLore") && choices.backgroundLore !== "") {
+    if (typeof choices.backgroundLore !== "string") fail("PC_IDENTITY_CONTROL", "backgroundLore", "set legal or warfare");
+    if (!Object.hasOwn(BACKGROUND_LORE, choices.backgroundLore)) {
+      fail("PC_IDENTITY_CONTROL", "backgroundLore", "set the enum slug legal or warfare");
+    }
+    result.set("backgroundLore", choices.backgroundLore);
+  }
   for (const field of CATALOG_FIELDS) {
     if (!has(choices, field)) continue;
     if (typeof choices[field] === "string" && !choices[field].trim()) continue;
@@ -168,6 +187,8 @@ function declarationValues(parsed, catalogs) {
       result.set(field, value.trim());
     } else if (field === "keyAbility") {
       result.set(field, parseAbility(value, field, "the declaration"));
+    } else if (field === "backgroundLore") {
+      result.set(field, parseBackgroundLore(value, "the declaration"));
     } else if (field === "heritage" && normalizedName(value) === "none") {
       result.set(field, null);
     } else {
@@ -178,7 +199,7 @@ function declarationValues(parsed, catalogs) {
 }
 
 function sameValue(field, left, right) {
-  if (field === "name" || field === "keyAbility") return left === right;
+  if (field === "name" || field === "keyAbility" || field === "backgroundLore") return left === right;
   if (left === null || right === null) return left === right;
   return pcIdentityKey(left) !== "" && pcIdentityKey(left) === pcIdentityKey(right);
 }
@@ -263,10 +284,15 @@ export function resolvePCIdentity({ prompt = "", choices = {}, catalogs = {}, is
   const parsed = declarationParts(prompt);
   const declared = declarationValues(parsed, catalogs);
   const resolved = combine(controls, declared);
+  if (resolved.has("backgroundLore")) {
+    if (!resolved.has("background") || !getBackgroundLoreOptions(resolved.get("background")).length) {
+      fail("PC_IDENTITY_CONFLICT", "backgroundLore", "Background Lore requires the exact published Guard background");
+    }
+  }
   proseAmbiguity(parsed, resolved, catalogs);
 
   const identity = {};
-  for (const field of ["name", "keyAbility", ...CATALOG_FIELDS]) {
+  for (const field of ["name", "keyAbility", "backgroundLore", ...CATALOG_FIELDS]) {
     if (resolved.has(field)) identity[field] = resolved.get(field);
   }
   return identity;
@@ -283,6 +309,7 @@ export function applyPCIdentity(concept, identity = {}) {
   if (!isObject(concept) || !isObject(identity)) fail("PC_IDENTITY_APPLY", "concept", "concept and identity must be objects");
   if (has(identity, "name")) concept.name = identity.name;
   if (has(identity, "keyAbility")) concept.keyAbility = identity.keyAbility;
+  if (has(identity, "backgroundLore")) concept.backgroundLore = identity.backgroundLore;
   for (const field of CATALOG_FIELDS) {
     if (!has(identity, field)) continue;
     if (field === "heritage" && identity[field] === null) {
@@ -308,6 +335,9 @@ export function assertPCIdentity(concept, identity = {}) {
   }
   if (has(identity, "keyAbility") && concept.keyAbility !== identity.keyAbility) {
     fail("PC_IDENTITY_ASSERT", "keyAbility", "concept key ability does not match the required value");
+  }
+  if (has(identity, "backgroundLore") && concept.backgroundLore !== identity.backgroundLore) {
+    fail("PC_IDENTITY_ASSERT", "backgroundLore", "concept background Lore does not match the required value");
   }
   for (const field of CATALOG_FIELDS) {
     if (!has(identity, field)) continue;

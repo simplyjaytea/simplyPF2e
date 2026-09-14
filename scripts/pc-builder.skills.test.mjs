@@ -1,6 +1,7 @@
 // Production builder with a native-preparation stand-in. This proves sequencing,
 // ownership and payloads, not Foundry's actual grant/derived-data implementation.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { CORE_SKILLS } from "./pc-skills.mjs";
 
 let scenario, created;
@@ -169,3 +170,53 @@ args.resolved.classDoc.system.trainedSkills.additional = 0;
 await assert.rejects(createCharacterActor(args.concept, args.resolved), /lore save failed/);
 assert.equal(events.at(-1).kind, "delete");
 console.log("pc-builder.skills.test.mjs: native seeding, ownership, finalization and rollback passed");
+
+// Guard's published 8.5.0 data omits its Lore choice; master uses a placeholder.
+// Exercise the production identity boundary and embedded Lore payload together.
+const { issueCandidate } = await import("./compendium.mjs");
+const { validatePCIdentityRequirements, normalizePCConcept } = await import("./pc-builder.mjs");
+const guardPack = "pf2e.backgrounds";
+let guardDocument;
+const pack = { collection: guardPack, metadata: { type: "Item" },
+  getIndex: async () => [guardDocument.toObject()], getDocument: async () => guardDocument };
+game.packs = new Map([[guardPack, pack]]);
+game.settings = { get: () => ({ backgrounds: [guardPack] }) };
+globalThis.fromUuid = async (uuid) => uuid === guardDocument.uuid ? guardDocument : null;
+function guardInput(version, choice) {
+  const source = JSON.parse(readFileSync(new URL(`../tests/fixtures/pc-backgrounds/guard-${version}.json`, import.meta.url), "utf8"));
+  guardDocument = { ...source, id: source._id, pack: guardPack,
+    uuid: `Compendium.${guardPack}.Item.${source._id}`, toObject: () => clone(source) };
+  const background = issueCandidate({ packId: guardPack, _id: source._id, type: source.type,
+    name: source.name, normalized: "guard", system: source.system }, { name: source.name, uuid: guardDocument.uuid });
+  const input = reset();
+  input.resolved.backgroundDoc = guardDocument;
+  Object.assign(input.concept, { background: "Guard", backgroundCandidate: background.ref, backgroundLore: choice,
+    requiredIdentity: { background, ...(choice === undefined ? {} : { backgroundLore: choice }) } });
+  return input;
+}
+for (const version of ["8.5.0", "master"]) {
+  for (const choice of ["legal", "warfare"]) {
+    args = guardInput(version, choice);
+    await validatePCIdentityRequirements(args.concept.requiredIdentity);
+    result = await createCharacterActor(args.concept, args.resolved);
+    const lore = created._source.items.filter((item) => item.type === "lore");
+    assert.equal(lore.length, 1);
+    assert.equal(lore[0].name, choice === "legal" ? "Legal Lore" : "Warfare Lore");
+    assert.equal(lore[0].system.proficient.value, 1);
+    assert.ok(result.skillReport.rows.some((row) => row.name === lore[0].name && row.rank === 1));
+  }
+}
+for (const choice of [undefined, "sailing"]) {
+  args = guardInput("8.5.0", choice);
+  await assert.rejects(validatePCIdentityRequirements(args.concept.requiredIdentity), /Lore/);
+  await assert.rejects(createCharacterActor(args.concept, args.resolved), /Lore/);
+  assert.equal(events.length, 0, "missing/invalid Guard Lore stops before native actor work");
+}
+args = guardInput("8.5.0", "legal");
+const prepared = { ...guardDocument, system: clone(guardDocument.system) };
+prepared.system.trainedSkills.lore = ["Changed Lore"];
+await assert.rejects(createCharacterActor(args.concept, { ...args.resolved, backgroundDoc: prepared }), /Lore/);
+assert.equal(events.length, 0, "changed prepared background cannot silently replace the chosen Lore");
+assert.equal(normalizePCConcept({ backgroundLore: "legal", requiredIdentity: { backgroundLore: "legal" } }, { level: 1 }).backgroundLore,
+  undefined, "provider data cannot inject an authoritative Lore choice");
+console.log("pc-builder.skills.test.mjs: exact Guard Lore choices create trained native Lore and fail before writes");

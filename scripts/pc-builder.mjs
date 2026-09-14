@@ -13,6 +13,7 @@ import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTr
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
 import { getClassPathCandidates, stageClassPaths } from "./class-paths.mjs";
 import { assertPCIdentity } from "./pc-identity.mjs";
+import { resolveBackgroundLore } from "./pc-background-lore.mjs";
 import { stagedActorContext } from "./pc-prerequisites.mjs";
 import { persistedExpectedItems } from "./post-create.mjs";
 
@@ -200,6 +201,10 @@ export async function validatePCIdentityRequirements(identity) {
       throw new Error(`simplypf2e | required class path "${identity.classPath.name ?? "?"}" is missing, wrong-class, or unsupported`);
     }
   }
+  if (identity.backgroundLore !== undefined && !docs.background) {
+    throw new Error("simplypf2e | Background Lore requires an explicit background choice");
+  }
+  if (docs.background) resolveBackgroundLore(docs.background, identity.backgroundLore);
 }
 
 function assertResolvedPCIdentity(concept, resolved, identity) {
@@ -373,14 +378,14 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
     }
   }
   assertResolvedPCIdentity(concept, { ancestryDoc, backgroundDoc, classDoc, heritageDoc }, required);
+  const backgroundLore = resolveBackgroundLore(backgroundDoc, required?.backgroundLore);
 
   // Feat slots: candidates only (no picks yet — generator-app runs
   // selectFeats() and resolveFeatPicks() below once it has these lists).
   // Ordinary prerequisites are display text; filter them against the staged
   // ABC/grants/skills the plan already proves, never an empty-array shortcut.
   const { ranks: provenSkills } = initialSkillTraining(classDoc.system, backgroundDoc.system);
-  const loreSkills = Object.fromEntries((Array.isArray(backgroundDoc.system?.trainedSkills?.lore)
-    ? backgroundDoc.system.trainedSkills.lore : [])
+  const loreSkills = Object.fromEntries(backgroundLore
     .filter((name) => typeof name === "string" && name.trim())
     .map((name) => [slugify(name), 1]));
   // Published Skillful Lessons limits Investigator's odd-level skill feats
@@ -451,7 +456,7 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
   // pcStartingWealthGp()) is what actually fills it with coins.
   const loot = await resolveLoot(concept, { exactContent });
 
-  return { ancestryDoc, heritageDoc, backgroundDoc, classDoc, featSlots, spells, focusSpells, equipment, loot };
+  return { ancestryDoc, heritageDoc, backgroundDoc, backgroundLore, classDoc, featSlots, spells, focusSpells, equipment, loot };
 }
 
 /**
@@ -766,6 +771,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
 
   const { ranks: initialRanks, replacements } = initialSkillTraining(resolved.classDoc.system, resolved.backgroundDoc.system);
   const backgroundLore = [];
+  const concreteBackgroundLore = resolveBackgroundLore(resolved.backgroundDoc, concept.requiredIdentity?.backgroundLore);
 
   // Assign ABC ids before embedding and preserve them with `keepId` below.
   // Generated feat slots already reference these ids, and PF2e's native
@@ -809,8 +815,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   items.push(...stagedClassPaths.items);
 
   // Background Lore: a real embedded lore item (not a system.skills entry).
-  const loreNames = resolved.backgroundDoc.system?.trainedSkills?.lore;
-  for (const name of Array.isArray(loreNames) ? loreNames : []) {
+  for (const name of concreteBackgroundLore) {
     if (typeof name !== "string" || !name.trim() || backgroundLore.some((entry) => slugify(entry.name) === slugify(name))) continue;
     const data = { ...loreItem(name), _id: foundry.utils.randomID() };
     backgroundLore.push(data);

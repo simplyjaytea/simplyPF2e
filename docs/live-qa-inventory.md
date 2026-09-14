@@ -4,6 +4,8 @@ Historical evidence copied from HANDOFF.md during the 2026-09-12 repository orga
 
 ## Recorded artifacts and results
 
+- .72 **QA Native Thief**, `Actor.W6CEjvm7ABmNlCI2`: exact required Human/no heritage/Guard/Rogue/Dexterity/Thief, 17/17 HP, AC18, 8/8 additional trained, 1 gp/15.28 gp total wealth. Native Thief `Item.togpUX6E4HqAIl7R` retains `Compendium.pf2e.classfeatures.Item.wAh2riuFRzz0edPl`; Racket/Sneak Attack/Surprise Attack/Nimble Dodge/Quick Coercion present. Native dialogs completed as Arcane Tattoos (Shield) and Assurance (Thievery); no spellcasting entry. Guard Lore missing: acceptance failure, tracked in [PC evidence](pc-identity-2026-09-15.md). 2:48 including dialog time, 26,839 reported tokens. No second generation, rolls or cleanup; viewport restored. Cumulative known provider spend lower bound **333,213 tokens**.
+
 - .65 provider/draft retention and active close/reopen passed. No-gear NPC and long-ID Forge trials failed closed, no documents.
 - .66 **+1 Ghost Touch Longsword**, `Item.tFgwn9t2X9sJ5Uks`: native level4/common/110gp, +1/GhostTouch/noStriking. **+1 Slick Chain Shirt**, `Item.nHUw36mL1umsIl99`: level5/common/205gp, +1/Slick/noResilient. Preview/native parity passed.
 - .66 **Consumer Balm Charm**, `Item.VyS6JrJ2RMkPbd9G`, companion `Macro.APHICPnePyZHziV5`: level4/common/75gp, invested two-action2d6 healing1/day.

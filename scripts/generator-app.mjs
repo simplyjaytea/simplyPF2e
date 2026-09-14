@@ -36,8 +36,9 @@ import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-abi
 
 import { pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
+import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
 
-const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "keyAbility", "classPath"];
+const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "backgroundLore", "keyAbility", "classPath"];
 
 const creatureFeatRefKey = (ref) => `${ref?.packId ?? ""}:${ref?._id ?? ""}`;
 
@@ -304,14 +305,21 @@ export class GeneratorApp extends SpfApp {
       if (field === "keyAbility") options = ["str", "dex", "con", "int", "wis", "cha"].map((key) => ({
         value: key, label: game.i18n.localize(`SIMPLYPF2E.Identity.Ability.${key}`)
       }));
+      if (field === "backgroundLore") {
+        const background = (catalogs.background ?? []).find((candidate) => pcIdentityKey(candidate) === choices.background);
+        options = getBackgroundLoreOptions(background);
+        if (!options.length && !value) return null;
+      }
       if (field === "heritage") options.unshift({ value: "none", label: game.i18n.localize("SIMPLYPF2E.Identity.NoHeritage") });
       // Keep stale selections visible so a source change cannot silently turn a requirement into AI choice.
       if (field !== "name" && value && !options.some((option) => option.value === value)) {
         options.unshift({ value, label: game.i18n.localize("SIMPLYPF2E.Identity.Unavailable") });
       }
       return { field, value, literal: field === "name", label: `SIMPLYPF2E.Identity.${field}`,
+        chooseLabel: field === "backgroundLore" ? "SIMPLYPF2E.Identity.ChooseLore" : "SIMPLYPF2E.Identity.Choose",
+        hint: field === "backgroundLore" ? "SIMPLYPF2E.Identity.LoreHint" : null,
         options: options.map((option) => ({ ...option, selected: option.value === value })) };
-    });
+    }).filter(Boolean);
   }
 
   #buildPCPreviewContext() {
@@ -336,6 +344,7 @@ export class GeneratorApp extends SpfApp {
       ancestry,
       heritage,
       background,
+      backgroundLore: resolved.backgroundLore ?? [],
       class: pcClass,
       skillPriorities: skillPriorityOrder(concept.skillPriorities, concept.keyAbility).order.map((slug) => ({ name: GeneratorApp.#skillName(slug) })),
       automaticSkills: normalizeSkillPriorities(concept.skillPriorities).length === 0,
@@ -586,7 +595,7 @@ export class GeneratorApp extends SpfApp {
       this.#exampleTick++;
       this.render();
     });
-    for (const selector of ['[name="pcIdentity.class"]', '[name="rarityCap"]']) {
+    for (const selector of ['[name="pcIdentity.class"]', '[name="pcIdentity.background"]', '[name="rarityCap"]']) {
       this.element.querySelector(selector)?.addEventListener("change", () => {
         this.#readForm();
         this.render();
@@ -1170,7 +1179,13 @@ export class GeneratorApp extends SpfApp {
       const classCandidates = supportedClassCandidates(allClassCandidates);
       if (!classCandidates.length) throw new Error(game.i18n.localize("SIMPLYPF2E.Generator.NoSupportedClasses"));
       const abc = await selectAncestryBackgroundClass({
-        concept, ancestryCandidates, backgroundCandidates, classCandidates, heritageCandidates,
+        concept, ancestryCandidates,
+        // A known background requiring an explicit local choice cannot finish
+        // an unconstrained/Random run. Keep it available in Required choices,
+        // but don't spend selecting it before the GM has supplied its Lore.
+        backgroundCandidates: backgroundCandidates.filter((candidate) =>
+          !getBackgroundLoreOptions(candidate).length || requiredIdentity.backgroundLore !== undefined),
+        classCandidates, heritageCandidates,
         onProgress: this._progressCallback(), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.ABC"), abc.usage);
