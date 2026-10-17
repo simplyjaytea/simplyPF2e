@@ -1443,7 +1443,7 @@ export class GeneratorApp extends SpfApp {
           concept, slots: resolved.featSlots, onProgress: this._progressCallback(), signal
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), featUsage);
-        resolved.feats = await resolveFeatPicks(resolved.featSlots, picks, { exactContent: true });
+        resolved.feats = await resolveFeatPicks(resolved.featSlots, picks, { exactContent: true, className: resolved.classDoc?.name ?? null });
       } else {
         resolved.feats = [];
       }

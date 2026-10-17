@@ -12,6 +12,7 @@ export const SETTINGS = {
   sourcePacks: "sourcePacks",
   customPresets: "customPresets",
   freeArchetype: "freeArchetype",
+  multiclassArchetypes: "multiclassArchetypes",
   experimentalTools: "experimentalTools"
 };
 
@@ -154,6 +155,16 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
   game.settings.register(MODULE_ID, SETTINGS.freeArchetype, {
     name: "SIMPLYPF2E.Settings.FreeArchetype.Name",
     hint: "SIMPLYPF2E.Settings.FreeArchetype.Hint",
+    scope: "world",
+    config: true,
+    restricted: true,
+    type: Boolean,
+    default: false
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.multiclassArchetypes, {
+    name: "SIMPLYPF2E.Settings.MulticlassArchetypes.Name",
+    hint: "SIMPLYPF2E.Settings.MulticlassArchetypes.Hint",
     scope: "world",
     config: true,
     restricted: true,

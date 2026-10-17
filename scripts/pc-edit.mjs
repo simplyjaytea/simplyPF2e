@@ -28,6 +28,7 @@ import { getDocument, isIssuedCandidate, toItemData } from "./compendium.mjs";
 import { resolvePCConcept, heritageMatchesAncestry } from "./pc-builder.mjs";
 import { resolveEquipment, equipmentValueGp } from "./builder.mjs";
 import { getBackgroundLoreOptions, resolveBackgroundLore } from "./pc-background-lore.mjs";
+import { multiclassBlockers } from "./pc-multiclass.mjs";
 import { assertPCIdentity, pcIdentityKey } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { completionManifest } from "./completion.mjs";
@@ -35,6 +36,7 @@ import { supportedClassCandidates } from "./pc-support.mjs";
 import { slugify } from "./text.mjs";
 
 export const PC_EDIT_CODES = Object.freeze({
+  MULTICLASS: "PC_EDIT_MULTICLASS",
   INVALID: "PC_EDIT_INVALID",
   UNSUPPORTED: "PC_EDIT_UNSUPPORTED",
   DEFERRED: "PC_EDIT_DEFERRED",
@@ -305,6 +307,11 @@ function applyFeatEdit(next, edit, changed) {
   if (resolved.feats.some((pick, other) => other !== index && pick?.entry && slugify(pick.name) === nameKey)) {
     fail(PC_EDIT_CODES.DUPLICATE, "feat", `"${candidate.name}" is already picked`);
   }
+  // Ordinary multiclass lock (C08): validate the whole resulting order, so a
+  // replacement dedication cannot strand feats already held from another package.
+  const ordered = resolved.feats.map((pick, other) => (other === index ? candidate.name : (pick?.entry ? pick.name : null)));
+  const [blocked] = multiclassBlockers(ordered, resolved.classDoc?.name ?? "");
+  if (blocked) fail(PC_EDIT_CODES.MULTICLASS, "feat", blocked.reason);
   resolved.feats[index] = {
     type: slot.type,
     level: slot.level,
@@ -342,7 +349,7 @@ async function applyEquipmentEdit(next, edit, catalogs, deps, changed) {
  * still offered and its name is not already taken; otherwise it becomes an
  * unresolved entry and is reported.
  */
-function remapFeats(previous, slots, invalidated) {
+function remapFeats(previous, slots, invalidated, className = null) {
   const taken = new Set();
   const feats = slots.map((slot, index) => {
     const unresolved = { type: slot.type, level: slot.level, archetype: Boolean(slot.archetype), name: `${slot.type} feat`, entry: null };
@@ -365,6 +372,12 @@ function remapFeats(previous, slots, invalidated) {
   previous.slice(slots.length).forEach((old, offset) => {
     if (old?.entry) invalidated.push({ field: "feat", slot: slots.length + offset, reason: "slot no longer exists" });
   });
+  if (className) {
+    for (const hit of multiclassBlockers(feats.map((feat) => (feat.entry ? feat.name : null)), className)) {
+      invalidated.push({ field: "feat", slot: hit.index, reason: hit.reason });
+      feats[hit.index] = { type: slots[hit.index].type, level: slots[hit.index].level, archetype: Boolean(slots[hit.index].archetype), name: `${slots[hit.index].type} feat`, entry: null };
+    }
+  }
   return feats;
 }
 
@@ -387,7 +400,7 @@ async function refresh(next, deps, invalidated) {
     backgroundLore: fresh.backgroundLore,
     classDoc: fresh.classDoc,
     featSlots: fresh.featSlots,
-    feats: remapFeats(next.resolved.feats, fresh.featSlots, invalidated)
+    feats: remapFeats(next.resolved.feats, fresh.featSlots, invalidated, fresh.classDoc?.name ?? null)
   };
   concept.traits = [slugify(fresh.ancestryDoc.name), slugify(fresh.classDoc.name)];
 }

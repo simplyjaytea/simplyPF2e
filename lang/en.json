@@ -29,6 +29,10 @@
         "Name": "Free Archetype variant rule",
         "Hint": "Free Archetype is not yet available for complete one-click characters at level 2 or higher: its feat prerequisites need staged validation."
       },
+      "MulticlassArchetypes": {
+        "Name": "Ordinary multiclass archetypes (noncaster)",
+        "Hint": "Offers the noncaster archetype catalog (dedications and their feats) in class feat slots, enforcing dedication locks. Caster dedications and packages outside the catalog stay unavailable."
+      },
       "ExperimentalTools": {
         "Name": "Enable experimental tools",
         "Hint": "Off by default. Turns on roadmap tools that have not all passed live Foundry acceptance yet, currently the /forge chat command. Only the GM can use them, and they may create actors or fail differently from the stable generator. Leave this off for production games."
