@@ -29,3 +29,9 @@ Integrate locally before review; public main merges only after review approval a
 ## Active dispatch
 
 Task IDs, worktree paths and resulting commits are recorded here as workers are launched and finish. No delegated work was complete when this execution record was created.
+
+- C01 running, Haiku 5.5 / max, isolated worktree. Task ID: `node:delegated-task:command%3Amcp%3Aaaf26449-0dbe-48c0-82a1-94addedf5077%3Adelegate-task%3Acompletion-20261017-c01-baseline-v1`.
+- C02 running, Haiku 5.5 / max, isolated worktree. Task ID: `node:delegated-task:command%3Amcp%3Aaaf26449-0dbe-48c0-82a1-94addedf5077%3Adelegate-task%3Acompletion-20261017-c02-chat-v1`.
+- C03 running, Haiku 5.5 / max, isolated worktree. Task ID: `node:delegated-task:command%3Amcp%3Aaaf26449-0dbe-48c0-82a1-94addedf5077%3Adelegate-task%3Acompletion-20261017-c03-reskin-v1`.
+- All three launch from c2e23ed. T3 is preparing/assigning the worktrees; each worker must report its exact path/branch and committed result. Consume completion via task_status only when notified/result needed; do not poll or duplicate active work.
+- Next dispatch: when C01 finishes, integrate its evidence and use the freed slot for C07 archetype design (independent); when C02/C03 finish, integrate prerequisites and dispatch C04/C05 with shared-file ownership serialized. C10 design may use a free slot. Continue until C01–C13 are resolved, then the consolidated Opus review.
