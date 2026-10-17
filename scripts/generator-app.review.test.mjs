@@ -10,7 +10,7 @@ import { parseCoins } from "./builder.mjs";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
-import { freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates } from "./pc-support.mjs";
+import { supportedClassCandidates } from "./pc-support.mjs";
 
 if (!vm.SourceTextModule) {
   const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
@@ -18,7 +18,7 @@ if (!vm.SourceTextModule) {
 }
 
 let actor, createFailure, verifyFailure, deleteFailure, skillReport, creates = 0, deleted = 0, sheetCalls = 0;
-let conceptCalls = 0, generatorLevel = 1, freeArchetype = false;
+let conceptCalls = 0, generatorLevel = 1;
 let previewLoot = [];
 let pcEquipmentOverride = null, pcWealthTarget = 0, pcEquipmentValue = 0, pcPurchaseCalls = 0;
 let lastBudgetTarget = null, budgetPending = null, budgetStarted = null;
@@ -49,7 +49,7 @@ const context = vm.createContext({
   game: {
     i18n: { localize: (key) => key, format: (key) => key },
     actors: { get: (id) => id === actor?.id ? actor : null },
-    settings: { get: () => freeArchetype }
+    settings: { get: () => false }
   },
   ui: { notifications: Object.fromEntries(["info", "warn"].map((kind) => [kind, (text) => notices.push([kind, text])])) }
 });
@@ -63,7 +63,7 @@ const mocks = {
   AI_TASK: {}, taskMaxTokens: () => 100,
   assertComplete, completionManifest, completionSummary,
   verifyCreatedActor: () => { if (verifyFailure) throw verifyFailure; },
-  freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates,
+  supportedClassCandidates,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
   presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),
@@ -179,18 +179,6 @@ pcEquipmentOverride = null;
 pcWealthTarget = 0;
 pcEquipmentValue = 0;
 previewLoot = [];
-
-// Free Archetype begins adding feats at level 2. Until its published text
-// prerequisites can be checked on a staged actor, the production preflight
-// must stop before the first concept/provider request.
-freeArchetype = true;
-generatorLevel = 2;
-const beforeBlocked = conceptCalls;
-await actions.generateRandom.call(new GeneratorApp());
-assert.equal(conceptCalls, beforeBlocked, "unsupported Free Archetype stops before the provider concept call");
-assert.ok(notices.some(([, text]) => text === "SIMPLYPF2E.Generator.FreeArchetypeUnsupported"));
-freeArchetype = false;
-generatorLevel = 1;
 
 function setActor({ items = [], failSheet = false } = {}) {
   actor = { id: "created", name: "<img src=x>", items: { contents: items }, async delete() {

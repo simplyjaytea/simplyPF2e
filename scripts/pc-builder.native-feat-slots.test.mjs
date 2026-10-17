@@ -51,7 +51,7 @@ for (const [category, entry] of Object.entries(entries)) {
   packMap.set(id, {
     collection: id, metadata: { type: "Item", label: category },
     getIndex: async () => [entry],
-    getDocument: async () => ({ ...entry, uuid: `Compendium.${id}.Item.${entry._id}` })
+    getDocument: async () => ({ ...entry, uuid: `Compendium.${id}.Item.${entry._id}`, toObject: () => structuredClone(entry) })
   });
 }
 const feats = ["ancestry", "class", "skill", "general"].map((category) =>

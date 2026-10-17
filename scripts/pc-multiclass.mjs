@@ -7,15 +7,29 @@
 //   - A dedication may be taken only when no other package is in progress, or
 //     after two other feats of the current package have been taken.
 //   - A package feat needs its dedication held and any named feat prerequisite.
+//   - A dedication needs its ability-score prerequisites (`abilities`): each
+//     requirement is the PF2e "<Ability> +N" text, i.e. modifier >= N, checked
+//     against the modifiers the system derives for the slot's level.
 // Removing a dedication therefore invalidates its later feats on re-validation.
 
 import { slugify } from "./text.mjs";
 
-/** @type {ReadonlyArray<{slug: string, dedication: string, feats: {name: string, requires: readonly string[]}[]}>} */
+const ABILITY_LABELS = Object.freeze({
+  str: "Strength", dex: "Dexterity", con: "Constitution", int: "Intelligence", wis: "Wisdom", cha: "Charisma"
+});
+
+/**
+ * PF2e 8.5.0 dedication prerequisites (packs/pf2e/feats/archetype/<pkg>/*-dedication.json,
+ * `system.prerequisites.value`): fighter and monk "Strength +2"/"Dexterity +2",
+ * barbarian "Strength +2"/"Constitution +2", investigator "Intelligence +2",
+ * ranger "Dexterity +2".
+ * @type {ReadonlyArray<{slug: string, dedication: string, abilities: {key: string, min: number}[], feats: {name: string, requires: readonly string[]}[]}>}
+ */
 export const MULTICLASS_PACKAGES = Object.freeze([
   Object.freeze({
     slug: "fighter",
     dedication: "Fighter Dedication",
+    abilities: Object.freeze([Object.freeze({ key: "str", min: 2 }), Object.freeze({ key: "dex", min: 2 })]),
     feats: Object.freeze([
       Object.freeze({ name: "Basic Maneuver", requires: Object.freeze([]) }),
       Object.freeze({ name: "Reactive Striker", requires: Object.freeze([]) })
@@ -24,6 +38,7 @@ export const MULTICLASS_PACKAGES = Object.freeze([
   Object.freeze({
     slug: "investigator",
     dedication: "Investigator Dedication",
+    abilities: Object.freeze([Object.freeze({ key: "int", min: 2 })]),
     feats: Object.freeze([
       Object.freeze({ name: "Basic Deduction", requires: Object.freeze([]) }),
       Object.freeze({ name: "Investigator's Stratagem", requires: Object.freeze([]) }),
@@ -33,6 +48,7 @@ export const MULTICLASS_PACKAGES = Object.freeze([
   Object.freeze({
     slug: "barbarian",
     dedication: "Barbarian Dedication",
+    abilities: Object.freeze([Object.freeze({ key: "str", min: 2 }), Object.freeze({ key: "con", min: 2 })]),
     feats: Object.freeze([
       Object.freeze({ name: "Basic Fury", requires: Object.freeze([]) }),
       Object.freeze({ name: "Instinct Ability", requires: Object.freeze([]) }),
@@ -42,12 +58,18 @@ export const MULTICLASS_PACKAGES = Object.freeze([
   Object.freeze({
     slug: "monk",
     dedication: "Monk Dedication",
+    abilities: Object.freeze([Object.freeze({ key: "str", min: 2 }), Object.freeze({ key: "dex", min: 2 })]),
     feats: Object.freeze([
       Object.freeze({ name: "Monk Moves", requires: Object.freeze([]) }),
       Object.freeze({ name: "Monk's Flurry", requires: Object.freeze([]) })
     ])
   }),
-  Object.freeze({ slug: "ranger", dedication: "Ranger Dedication", feats: Object.freeze([]) })
+  Object.freeze({
+    slug: "ranger",
+    dedication: "Ranger Dedication",
+    abilities: Object.freeze([Object.freeze({ key: "dex", min: 2 })]),
+    feats: Object.freeze([])
+  })
 ]);
 
 /**
@@ -79,9 +101,11 @@ export const MULTICLASS_UNAVAILABLE = Object.freeze([
 
 const BY_SLUG = new Map();
 for (const pkg of MULTICLASS_PACKAGES) {
-  BY_SLUG.set(slugify(pkg.dedication), { name: pkg.dedication, pkg: pkg.slug, role: "dedication", requires: [] });
+  BY_SLUG.set(slugify(pkg.dedication), {
+    name: pkg.dedication, pkg: pkg.slug, role: "dedication", requires: [], abilities: pkg.abilities.map((req) => ({ ...req }))
+  });
   for (const feat of pkg.feats) {
-    BY_SLUG.set(slugify(feat.name), { name: feat.name, pkg: pkg.slug, role: "feat", requires: [...feat.requires] });
+    BY_SLUG.set(slugify(feat.name), { name: feat.name, pkg: pkg.slug, role: "feat", requires: [...feat.requires], abilities: [] });
   }
 }
 
@@ -90,10 +114,27 @@ export function multiclassCatalogNames() {
   return [...BY_SLUG.values()].map((entry) => entry.name);
 }
 
-/** @returns {{name: string, pkg: string, role: "dedication"|"feat", requires: string[]}|null} */
+/** @returns {{name: string, pkg: string, role: "dedication"|"feat", requires: string[], abilities: {key: string, min: number}[]}|null} */
 export function multiclassFeatInfo(name) {
   if (typeof name !== "string") return null;
   return BY_SLUG.get(slugify(name)) ?? null;
+}
+
+/**
+ * Reason a catalog dedication's ability prerequisite is unmet at a slot, or
+ * null when it is met or the name is not a dedication. `abilities` maps each
+ * ability key to the modifier the system derives for that slot's level; a
+ * dedication checked without that data fails closed.
+ * @param {string|null} name
+ * @param {Record<string, number>|null|undefined} abilities
+ * @returns {string|null}
+ */
+export function multiclassAbilityBlocker(name, abilities) {
+  const info = multiclassFeatInfo(name);
+  if (!info || info.abilities.length === 0) return null;
+  if (!abilities || typeof abilities !== "object") return `${info.name} needs ability modifiers that are not known`;
+  const missing = info.abilities.find((req) => !(Number(abilities[req.key]) >= req.min));
+  return missing ? `${info.name} needs ${ABILITY_LABELS[missing.key] ?? missing.key} +${missing.min}` : null;
 }
 
 /**

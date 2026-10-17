@@ -106,7 +106,7 @@ const mocks = {
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "", presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),
   randomBrief: () => "random", sourceReadiness: () => ({ ready: true }), supportedClassCandidates: (x) => x,
-  freeArchetypeNeedsPrerequisiteValidation: () => false, getClassCandidates: async () => {
+  getClassCandidates: async () => {
     classCalls++; if (readinessPending) await readinessPending; if (readinessFailure) throw readinessFailure; return identityClasses;
   },
   generateConcept: async () => { providerCalls++; if (conceptPending) await conceptPending; return { concept: concept(), usage: { total: 1 } }; }, normalizeConcept: (x) => x,

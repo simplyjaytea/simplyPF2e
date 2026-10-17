@@ -5,7 +5,7 @@ import {
   buildEquipmentItems, buildLootItems, filterItemTypes, heightenedLevelFor
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
-import { multiclassCatalogNames, multiclassFeatInfo, multiclassPickBlocker } from "./pc-multiclass.mjs";
+import { multiclassAbilityBlocker, multiclassCatalogNames, multiclassFeatInfo, multiclassPickBlocker } from "./pc-multiclass.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
@@ -406,6 +406,8 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
   const featSlots = [];
   const freeArchetype = Boolean(getSetting(SETTINGS.freeArchetype));
   const multiclass = Boolean(getSetting(SETTINGS.multiclassArchetypes));
+  const keyAbility = resolveKeyAbility(classDoc.system, concept.keyAbility);
+  const abilitySections = plannedAbilitySections(ancestryDoc, backgroundDoc, keyAbility, concept.abilityPriorities);
   for (const slot of buildFeatSlots(concept.level, { freeArchetype, classSystem: classDoc.system })) {
     const prerequisiteContext = stagedActorContext({
       level: slot.level, ancestry: ancestryDoc, heritage: heritageDoc,
@@ -413,38 +415,43 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
       allowedSkillFeats: skillfulLessons && slot.type === "skill" && slot.level >= 3 && slot.level % 2 === 1
         ? mentalSkills : null
     });
-    const traits = slot.archetype ? ["archetype"]
-      : slot.type === "ancestry" ? [ancestryTrait]
-      : slot.type === "class" ? [classTrait] : [];
-    let candidates = await getFeatCandidates({
-      level: slot.level, category: slot.type, traits, preferredNames: concept.feats,
-      prerequisiteContext
-    });
-    // Retry once without the trait filter before giving up: a valid slot
-    // whose ancestry/class trait matched nothing at this level (odd content
-    // packs, sparse low levels) is better filled with an on-category feat than
-    // silently dropped. Archetype slots keep their trait (loosening would just
-    // give plain class feats, defeating the slot). Issue #64 item 4a.
-    if (!candidates.length && traits.length && !slot.archetype) {
+    // Ability modifiers the actor has at this slot's level; dedication ability
+    // prerequisites are checked against them.
+    const abilities = deriveAbilityModifiers(abilitySections, slot.level);
+    let candidates;
+    if (slot.archetype) {
+      // Free Archetype offers only the proven catalog; generic archetype feats stay excluded.
+      candidates = await multiclassFeatCandidates(slot.level, classDoc.name, abilities);
+    } else {
+      const traits = slot.type === "ancestry" ? [ancestryTrait]
+        : slot.type === "class" ? [classTrait] : [];
       candidates = await getFeatCandidates({
-        level: slot.level, category: slot.type, preferredNames: concept.feats,
+        level: slot.level, category: slot.type, traits, preferredNames: concept.feats,
         prerequisiteContext
       });
+      // Retry once without the trait filter before giving up: a valid slot
+      // whose ancestry/class trait matched nothing at this level (odd content
+      // packs, sparse low levels) is better filled with an on-category feat than
+      // silently dropped. Issue #64 item 4a.
+      if (!candidates.length && traits.length) {
+        candidates = await getFeatCandidates({
+          level: slot.level, category: slot.type, preferredNames: concept.feats,
+          prerequisiteContext
+        });
+      }
+      // Ordinary multiclass (C08): class slots also offer the noncaster catalog.
+      // The dedication lock is enforced at pick time.
+      if (multiclass && slot.type === "class") {
+        candidates = mergeFeatCandidates(candidates, await multiclassFeatCandidates(slot.level, classDoc.name, abilities));
+      }
     }
-    // Ordinary multiclass (C08): class and archetype slots also offer the
-    // noncaster catalog. Archetype slots are narrowed to that catalog so caster
-    // packages never appear. The dedication lock is enforced at pick time.
-    if (multiclass && (slot.archetype || slot.type === "class")) {
-      const catalog = await multiclassFeatCandidates(slot.level, classDoc.name);
-      candidates = slot.archetype ? catalog : mergeFeatCandidates(candidates, catalog);
-    }
-    if (candidates.length) featSlots.push({ ...slot, candidates });
+    if (candidates.length) featSlots.push({ ...slot, abilities, candidates });
     else {
       // Preserve the earned entitlement through selection and the completion
       // manifest. Dropping an unsupported slot would let a character commit
       // while appearing complete merely because no unresolved record existed.
       console.warn(`simplypf2e | no feat candidates for a ${slot.type}${slot.archetype ? " (archetype)" : ""} slot at level ${slot.level} — slot remains unresolved`);
-      featSlots.push({ ...slot, candidates: [] });
+      featSlots.push({ ...slot, abilities, candidates: [] });
     }
   }
 
@@ -504,27 +511,38 @@ export async function resolveFeatPicks(featSlots, picks, { exactContent = false,
   const taken = new Set();
   const resolved = [];
 
+  /**
+   * Why `label` cannot fill `slot` now, or null: a Free Archetype slot takes
+   * only the catalog, the ordinary-multiclass lock applies when className is
+   * known, and dedication ability prerequisites are checked against the slot.
+   */
+  const pickBlocker = (slot, label) => {
+    if (slot.archetype && !multiclassFeatInfo(label)) return "not in the Free Archetype catalog";
+    if (!className && !slot.archetype) return null;
+    const priorNames = resolved.map((item) => (item.entry ? item.name : null));
+    return (className ? multiclassPickBlocker(priorNames, label, className) : null)
+      ?? multiclassAbilityBlocker(label, slot.abilities);
+  };
+
   /** Resolve one candidate for one slot, rejecting cross-slot/raw references. */
-  const resolveFor = (slot, name, candidate = null) => {
+  const resolveFor = async (slot, name, candidate = null) => {
     const allowedPacks = getPacksFor("feats");
     const offeredCandidate = (slot.candidates ?? []).find((item) => item?.ref === candidate) ?? null;
-    if (className) {
-      const priorNames = resolved.map((item) => (item.entry ? item.name : null));
-      if (multiclassPickBlocker(priorNames, offeredCandidate?.name ?? name, className)) return Promise.resolve(null);
-    }
+    if (pickBlocker(slot, offeredCandidate?.name ?? name)) return null;
     const offered = offeredCandidate?.ref ?? null;
     if (offered && isIssuedCandidate(offered, allowedPacks)) {
-      return Promise.resolve(taken.has(slugify(offeredCandidate.name)) ? null : offered);
+      return taken.has(slugify(offeredCandidate.name)) ? null : offered;
     }
-    if (exactContent) return Promise.resolve(null);
+    if (exactContent) return null;
     // Preserve the pre-existing permissive seam for callers that explicitly
     // opt out of complete-only creation. The one-click path above never
     // reaches this branch: it requires the exact reference offered to this
-    // slot, not merely an allowed pack.
-    if (candidate?.packId && allowedPacks.includes(candidate.packId)) {
-      return Promise.resolve(taken.has(slugify(name)) ? null : candidate);
+    // slot, not merely an allowed pack. Free Archetype slots never take a raw
+    // reference, since their catalog check needs a verified label.
+    if (candidate?.packId && allowedPacks.includes(candidate.packId) && !slot.archetype) {
+      return taken.has(slugify(name)) ? null : candidate;
     }
-    return findEntry(
+    const found = await findEntry(
       allowedPacks,
       name,
       (e) => e.type === "feat"
@@ -532,6 +550,7 @@ export async function resolveFeatPicks(featSlots, picks, { exactContent = false,
         && (e.system?.level?.value ?? 0) <= slot.level
         && !taken.has(slugify(e.name))
     );
+    return found && pickBlocker(slot, found.name) ? null : found;
   };
 
   for (let i = 0; i < featSlots.length; i++) {
@@ -592,6 +611,74 @@ function assignAbilityBoosts(keyAbility, preferences) {
   const boosts = {};
   for (const level of ABILITY_BOOST_LEVELS) boosts[level] = [...priority];
   return boosts;
+}
+
+/** Selected values a PF2e ABC slot map contributes after the ancestry prepareBaseData rules. */
+function ancestrySlotSelections(slots) {
+  return Object.values(slots ?? {}).flatMap((slot) => {
+    const value = Array.isArray(slot?.value) ? slot.value : [];
+    let selected = slot?.selected ?? null;
+    if (selected && !value.includes(selected)) selected = null;
+    if (value.length === 1) selected = value[0];
+    return selected ? [selected] : [];
+  });
+}
+
+/**
+ * Ability sections in the order PF2e's character prepareBuildData applies
+ * them (manual: false, the mode createCharacterActor writes): ancestry, then
+ * background, class key, and the level boosts. Mirrors foundryvtt/pf2e 8.5.0:
+ * ancestry/background/class document prepareActorData and character
+ * prepareBuildData. `alternateAncestryBoosts` replaces the ancestry slot
+ * boosts and suppresses slot flaws; `voluntary` adds its boost and flaws.
+ * Level 0 sections always apply; level sections apply at a slot whose level
+ * reaches them.
+ */
+export function plannedAbilitySections(ancestryDoc, backgroundDoc, keyAbility, preferences) {
+  const ancestry = toItemData(ancestryDoc).system;
+  assignItemBoosts(ancestry, keyAbility, preferences);
+  const background = toItemData(backgroundDoc).system;
+  assignItemBoosts(background, keyAbility, preferences);
+  const alternate = ancestry.alternateAncestryBoosts;
+  const voluntary = ancestry.voluntary ?? null;
+  const ancestrySection = {
+    level: 0,
+    boosts: [
+      ...(alternate ? alternate : ancestrySlotSelections(ancestry.boosts)),
+      ...(voluntary?.boost ? [voluntary.boost] : [])
+    ],
+    flaws: [...(alternate ? [] : ancestrySlotSelections(ancestry.flaws)), ...(voluntary?.flaws ?? [])]
+  };
+  const backgroundSection = {
+    level: 0,
+    boosts: Object.values(background.boosts ?? {}).flatMap((slot) => (slot?.selected ? [slot.selected] : []))
+  };
+  const classSection = { level: 0, boosts: [keyAbility] };
+  const levelSections = Object.entries(assignAbilityBoosts(keyAbility, preferences))
+    .map(([level, boosts]) => ({ level: Number(level), boosts }));
+  return [ancestrySection, backgroundSection, classSection, ...levelSections];
+}
+
+/**
+ * Ability modifiers derived from `sections` at `level` (PF2e 8.5.0
+ * prepareBuildData): each boost adds 1 below modifier +4 and 0.5 from +4 up,
+ * each flaw subtracts 1, and the result is clamped to [-5, 10]. A key outside
+ * the six abilities throws rather than producing a guessed modifier.
+ * @returns {Record<string, number>}
+ */
+export function deriveAbilityModifiers(sections, level) {
+  const mods = Object.fromEntries(ABILITY_KEYS.map((key) => [key, 0]));
+  const known = (key) => {
+    if (!ABILITY_KEYS.includes(key)) throw new Error(`simplypf2e | unknown ability "${key}" in the ability boost plan`);
+    return key;
+  };
+  for (const section of sections) {
+    if (section.level > level) continue;
+    for (const key of section.boosts) mods[known(key)] += mods[key] >= 4 ? 0.5 : 1;
+    for (const key of section.flaws ?? []) mods[known(key)] -= 1;
+  }
+  for (const key of ABILITY_KEYS) mods[key] = Math.min(10, Math.max(-5, mods[key]));
+  return mods;
 }
 
 /**
@@ -1291,9 +1378,10 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
 /**
  * Noncaster catalog feats at `level` (C08). The compendium sampler is capped
  * for ordinary pools, so this asks for an uncapped list and keeps only exact
- * catalog names. Own-class dedications are never offered.
+ * catalog names. Own-class dedications are never offered, and a dedication
+ * whose ability prerequisites `abilities` do not meet is left out.
  */
-async function multiclassFeatCandidates(level, className) {
+async function multiclassFeatCandidates(level, className, abilities) {
   const catalog = new Set(multiclassCatalogNames().map(slugify));
   const own = slugify(String(className ?? ""));
   const found = await getFeatCandidates({
@@ -1302,7 +1390,8 @@ async function multiclassFeatCandidates(level, className) {
   return found.filter((candidate) => {
     const info = multiclassFeatInfo(candidate.name);
     if (!info || !catalog.has(slugify(candidate.name))) return false;
-    return !(info.role === "dedication" && info.pkg === own);
+    if (info.role === "dedication" && info.pkg === own) return false;
+    return !multiclassAbilityBlocker(candidate.name, abilities);
   });
 }
 

@@ -28,7 +28,7 @@ import { getDocument, isIssuedCandidate, toItemData } from "./compendium.mjs";
 import { resolvePCConcept, heritageMatchesAncestry } from "./pc-builder.mjs";
 import { resolveEquipment, equipmentValueGp } from "./builder.mjs";
 import { getBackgroundLoreOptions, resolveBackgroundLore } from "./pc-background-lore.mjs";
-import { multiclassBlockers } from "./pc-multiclass.mjs";
+import { multiclassAbilityBlocker, multiclassBlockers } from "./pc-multiclass.mjs";
 import { assertPCIdentity, pcIdentityKey } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { completionManifest } from "./completion.mjs";
@@ -312,6 +312,9 @@ function applyFeatEdit(next, edit, changed) {
   const ordered = resolved.feats.map((pick, other) => (other === index ? candidate.name : (pick?.entry ? pick.name : null)));
   const [blocked] = multiclassBlockers(ordered, resolved.classDoc?.name ?? "");
   if (blocked) fail(PC_EDIT_CODES.MULTICLASS, "feat", blocked.reason);
+  // Dedication ability prerequisites (C09): the slot's derived modifiers must meet them.
+  const abilityBlock = multiclassAbilityBlocker(candidate.name, slot.abilities);
+  if (abilityBlock) fail(PC_EDIT_CODES.INVALID, "feat", abilityBlock);
   resolved.feats[index] = {
     type: slot.type,
     level: slot.level,
@@ -364,6 +367,8 @@ function remapFeats(previous, slots, invalidated, className = null) {
     }
     const match = slot.candidates.find((candidate) => candidateKey(candidate) === refKey(old.entry));
     if (!match) return invalidate(`"${old.name}" is no longer offered`);
+    const abilityBlock = multiclassAbilityBlocker(match.name, slot.abilities);
+    if (abilityBlock) return invalidate(abilityBlock);
     const nameKey = slugify(match.name);
     if (taken.has(nameKey)) return invalidate(`"${old.name}" duplicates an earlier pick`);
     taken.add(nameKey);
