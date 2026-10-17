@@ -8,6 +8,7 @@ and recurring bug patterns live in [HISTORY.md](../HISTORY.md).
 
 | Record | Purpose |
 | --- | --- |
+| [Completion-plan review, October 17](completion-review-2026-10-17.md) | Opus 5.5 high review, parent assessment and outstanding scope decisions |
 | [Completion proposal, October 17](completion-proposal-2026-10-17.md) | Proposed remaining phases, completion criteria and bounded QA/release gates after PR #113 |
 | [Required PC identity](pc-identity-2026-09-15.md) | First completion slice, source evidence, independent review and pending native QA |
 | [Completion plan, September 15](completion-plan-2026-09-15.md) | Ordered readiness/roadmap work, Luna delegation and completion gates |
