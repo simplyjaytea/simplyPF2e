@@ -2,6 +2,12 @@
 
 Read this first, then CLAUDE.md. Use the [documentation map](docs/README.md) for source records and historical evidence.
 
+## Active completion execution — 2026-10-17
+
+- User approved implementing the revised plan using isolated worktrees with **Haiku 5.5 / max** for every chunk, then **one consolidated Opus 5.5 code reviewer**, followed by merge once approved. Current publication/merge authorization supersedes older pending-publication instructions for this integrated work. Use a PR; never write main directly.
+- Integration branch `codex/completion-integration-2026-10-17`; [execution ledger](docs/completion-execution-2026-10-17.md) defines C01–C13 and dependencies. Start C01 baseline/QA preparation, C02 experimental gate/chat, C03 AI reskin engine in separate T3 worktrees. Record task IDs there; completion notifications drive integration and next dispatches.
+- No fresh paid-generation allowance, screen-reader operator or isolated minimum-version environment has yet been concretely established. Prepare the QA ledger before seeking the exact missing scope; continue independent implementation. No public release, installation or native QA has occurred in this execution yet.
+
 ## Status reconciliation — 2026-10-17
 
 - User-requested independent T3 review completed on `claudeAgent` / `claude-opus-5-5`, effort `high`: **approve with changes**. Round 1 taskId: `node:delegated-task:command%3Amcp%3Aaaf26449-0dbe-48c0-82a1-94addedf5077%3Adelegate-task%3Acompletion-plan-opus55-high-review-20261017-round1`. Parent assessed findings, spot-checked native adjustment source and local escaping/class support, and revised the proposal. See [review/disposition record](docs/completion-review-2026-10-17.md). Revised text has not had a second Opus review. Proposal awaits user direction; no runtime implementation, QA or publication has started.
