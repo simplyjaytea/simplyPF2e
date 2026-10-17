@@ -1,4 +1,5 @@
 import { AI_TASK } from "./ai-task-profiles.mjs";
+import { reskinOutputProblem } from "./reskin-policy.mjs";
 
 const CREATURE_KEYS = [
   "name", "blurb", "description", "readAloud", "recallKnowledge", "size", "traits", "languages",
@@ -60,6 +61,12 @@ const RULES = Object.freeze({
     required: ["name", "briefs"],
     arrays: ["briefs"],
     nonEmptyStrings: ["name"]
+  },
+  // Flavor-only output: exactly name/flavor/biography, plain and inert text.
+  // Rejections use the structural retry path, so a hostile reply is re-asked once.
+  [AI_TASK.RESKIN_FLAVOR]: {
+    required: ["name", "flavor", "biography"],
+    validate: reskinOutputProblem
   }
 });
 
@@ -92,5 +99,5 @@ export function taskResponseProblem(task, data) {
     .filter(([key, allowed]) => !allowed.includes(data[key]))
     .map(([key]) => key);
   if (wrongEnums.length) return `fields must use offered enum slugs: ${wrongEnums.join(", ")}`;
-  return null;
+  return rule.validate?.(data) ?? null;
 }
