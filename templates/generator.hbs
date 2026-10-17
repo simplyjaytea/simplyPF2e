@@ -485,6 +485,35 @@
       </span>
     </div>
 
+    {{#if pcEditor}}
+    <fieldset class="spf-pc-editor" aria-describedby="pc-edit-status">
+      <legend>{{localize "SIMPLYPF2E.PCEdit.Title"}}</legend>
+      <p class="spf-hint">{{localize "SIMPLYPF2E.PCEdit.Hint"}}</p>
+      {{#if pcEditor.unavailable}}<p class="spf-warning" role="alert">{{localize "SIMPLYPF2E.PCEdit.Unavailable"}}</p>{{/if}}
+      {{#if pcEditor.spellsDeferred}}<p class="spf-hint">{{localize "SIMPLYPF2E.PCEdit.SpellsDeferred"}}</p>{{/if}}
+      {{#each pcEditor.controls}}
+        <div class="spf-pc-edit-row">
+          <label for="{{this.id}}">{{this.label}}{{#if this.pending}} <span class="spf-warning">{{localize "SIMPLYPF2E.PCEdit.NeedsChoice"}}</span>{{/if}}</label>
+          <select id="{{this.id}}" name="pcEdit.{{this.control}}" {{#if ../pcEditor.busy}}disabled{{/if}}>
+            {{#each this.options}}<option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>{{/each}}
+          </select>
+          <button type="button" data-action="applyPCEdit" data-control="{{this.control}}" aria-label="{{localize 'SIMPLYPF2E.PCEdit.Apply'}} {{this.label}}" {{#if ../pcEditor.busy}}disabled{{/if}}>{{localize "SIMPLYPF2E.PCEdit.Apply"}}</button>
+        </div>
+      {{/each}}
+      <div id="pc-edit-status" aria-live="polite">
+        {{#if pcEditor.error}}<p class="spf-warning" role="alert">{{pcEditor.error}}</p>{{/if}}
+        {{#if pcEditor.notice}}<p>{{pcEditor.notice}}</p>{{/if}}
+      </div>
+      {{#if pcEditor.blockers.length}}
+        <p>{{localize "SIMPLYPF2E.PCEdit.Blockers"}}</p>
+        <ul id="pc-edit-blockers" class="spf-warning">
+          {{#each pcEditor.blockers}}<li>{{this}}</li>{{/each}}
+        </ul>
+      {{/if}}
+    </fieldset>
+    {{/if}}
+
+
     <h3>{{localize "SIMPLYPF2E.Skills.Priorities"}}</h3>
     {{#if pcPreview.backgroundLore.length}}<p><strong>{{localize "SIMPLYPF2E.Identity.backgroundLore"}}</strong>: {{#each pcPreview.backgroundLore}}{{#unless @first}}, {{/unless}}{{this}}{{/each}}</p>{{/if}}
     <p>{{#if pcPreview.automaticSkills}}{{localize "SIMPLYPF2E.Skills.Automatic"}}{{else}}{{localize "SIMPLYPF2E.Skills.PreferenceHint"}}{{/if}}</p>
@@ -564,7 +593,7 @@
     {{/if}}
 
     <footer class="spf-actions">
-      <button type="button" class="spf-primary" data-action="createActor" {{#if busy}}disabled{{/if}}>
+      <button type="button" class="spf-primary" data-action="createActor" {{#if busy}}disabled{{else}}{{#if pcEditor.blocked}}disabled aria-describedby="pc-edit-blockers"{{/if}}{{/if}}>
         <i class="fa-solid fa-user-plus" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Generator.CreateCharacter"}}
       </button>
       <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>

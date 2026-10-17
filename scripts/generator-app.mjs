@@ -39,6 +39,9 @@ import { getClassPathCandidates } from "./class-paths.mjs";
 import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
 import { assertExperimentalToolAccess } from "./experimental-tools.mjs";
 import { validateForgeRequest } from "./forge-command.mjs";
+import { heritageMatchesAncestry } from "./pc-builder.mjs";
+import { applyPCEdit, validatePCEditCompletion } from "./pc-edit.mjs";
+import { pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } from "./pc-editor.mjs";
 
 const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "backgroundLore", "keyAbility", "classPath"];
 
@@ -109,6 +112,7 @@ export class GeneratorApp extends SpfApp {
       previewPlan: GeneratorApp.#onPreviewPlan,
       generateRandom: GeneratorApp.#onGenerateRandom,
       createActor: GeneratorApp.#onCreateActor,
+      applyPCEdit: GeneratorApp.#onApplyPCEdit,
       discard: GeneratorApp.#onDiscard,
       dismissCharacterReview: GeneratorApp.#onDismissCharacterReview,
       openReviewedCharacter: GeneratorApp.#onOpenReviewedCharacter,
@@ -155,6 +159,14 @@ export class GeneratorApp extends SpfApp {
   #pcResolved = null;
   /** Required controls captured with the preview, including Random’s ignored inputs. */
   #pcIdentityInput = null;
+  /** PC editor: choices awaiting a re-pick, unapplied control drafts, and the last edit outcome. UI-only. */
+  #pcPending = [];
+  #pcEditDrafts = {};
+  #pcEditError = null;
+  #pcEditNotice = null;
+  #pcEditInFlight = false;
+  /** Heritages eligible for the current ancestry and catalog; reloaded when either changes. */
+  #pcHeritageCache = null;
   /** Snapshot for the last created PC; UI-only, never written to actor flags. */
   #characterReview = null;
   /** Successful one-click result; UI-only and never persisted. */
@@ -248,6 +260,7 @@ export class GeneratorApp extends SpfApp {
       preview: ["monster", "npc"].includes(this.#input.mode) ? this.#buildPreviewContext() : null,
       encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
       pcPreview: this.#input.mode === "character" ? this.#buildPCPreviewContext() : null,
+      pcEditor: this.#pcConcept && this.#input.mode === "character" ? await this.#buildPCEditorContext() : null,
       characterReview: this.#characterReview,
       created: this.#created,
       hasPreview: Boolean(this.#concept || this.#encounter || this.#pcConcept),
@@ -324,6 +337,139 @@ export class GeneratorApp extends SpfApp {
         hint: field === "backgroundLore" ? "SIMPLYPF2E.Identity.LoreHint" : null,
         options: options.map((option) => ({ ...option, selected: option.value === value })) };
     }).filter(Boolean);
+  }
+
+  /** Current PC plan in the shape the edit contract reads. */
+  #pcPlan() {
+    return { concept: this.#pcConcept, resolved: this.#pcResolved, pending: this.#pcPending };
+  }
+
+  /** Clear PC editor drafts and outcomes whenever the PC plan is replaced or discarded. */
+  #resetPCEdit() {
+    this.#pcPending = [];
+    this.#pcEditDrafts = {};
+    this.#pcEditError = null;
+    this.#pcEditNotice = null;
+    this.#pcHeritageCache = null;
+  }
+
+  /** Heritages whose documents match the current ancestry; documents load once per ancestry and catalog. */
+  async #pcEligibleHeritages(candidates, ancestryDoc) {
+    const key = JSON.stringify([
+      ancestryDoc?.uuid ?? ancestryDoc?._id ?? ancestryDoc?.name ?? "", candidates.map((candidate) => pcIdentityKey(candidate))
+    ]);
+    if (this.#pcHeritageCache?.key === key) return this.#pcHeritageCache.candidates;
+    const eligible = [];
+    for (const candidate of candidates) {
+      const doc = await getDocument(candidate.ref);
+      if (doc?.type === "heritage" && heritageMatchesAncestry(doc, ancestryDoc)) eligible.push(candidate);
+    }
+    this.#pcHeritageCache = { key, candidates: eligible };
+    return eligible;
+  }
+
+  /** Catalogs for PC edits: the identity pickers, with heritage narrowed to the current ancestry. */
+  async #pcEditCatalogs(plan) {
+    const catalogs = await this.#identityCatalogs();
+    return {
+      ...catalogs,
+      heritage: await this.#pcEligibleHeritages(catalogs.heritage ?? [], plan.resolved.ancestryDoc),
+      equipment: (await getEquipmentCandidates(plan.concept.level)) ?? []
+    };
+  }
+
+  /** Editor view: one control per editable choice with its draft or current selection, plus commit blockers. */
+  async #buildPCEditorContext() {
+    const plan = this.#pcPlan();
+    const validation = validatePCEditCompletion(plan);
+    let catalogs = null;
+    try { catalogs = await this.#pcEditCatalogs(plan); }
+    catch (err) { console.warn(`${MODULE_ID} | PC editor catalogs unavailable`, err); }
+    const selections = pcEditorSelections(plan);
+    const pending = new Set(plan.pending.map((item) => item.field));
+    const label = (key) => game.i18n.localize(`SIMPLYPF2E.Identity.${key}`);
+    const option = (candidate) => ({
+      value: pcIdentityKey(candidate),
+      label: `${candidate.name} — ${game.packs?.get(candidate.ref.packId)?.title ?? candidate.ref.packId}`
+    });
+    const controls = [];
+    const add = (control, title, options, pendingField = control) => {
+      const current = Object.hasOwn(this.#pcEditDrafts, control) ? this.#pcEditDrafts[control] : selections[control];
+      const list = options.map((item) => ({ ...item, selected: item.value === current }));
+      if (!list.some((item) => item.selected)) {
+        list.unshift({ value: "", label: game.i18n.localize("SIMPLYPF2E.PCEdit.Choose"), selected: true });
+      }
+      controls.push({ control, id: `pc-edit-${control.replace(/\./g, "-")}`, label: title, options: list, pending: pending.has(pendingField) });
+    };
+    if (catalogs) {
+      add("ancestry", label("ancestry"), catalogs.ancestry.map(option));
+      add("heritage", label("heritage"), [
+        { value: "", label: game.i18n.localize("SIMPLYPF2E.Identity.NoHeritage") }, ...catalogs.heritage.map(option)
+      ]);
+      add("background", label("background"), catalogs.background.map(option));
+      add("class", label("class"), supportedClassCandidates(catalogs.class).map(option));
+      const paths = catalogs.classPath.filter((path) => path.classKeys.includes(selections.class));
+      if (paths.length || pending.has("classPath")) add("classPath", label("classPath"), paths.map(option));
+      const legal = plan.resolved.classDoc?.system?.keyAbility?.value;
+      add("keyAbility", label("keyAbility"), (Array.isArray(legal) ? legal : ["str", "dex", "con", "int", "wis", "cha"])
+        .map((key) => ({ value: key, label: game.i18n.localize(`SIMPLYPF2E.Identity.Ability.${key}`) })));
+      const lore = getBackgroundLoreOptions(plan.resolved.backgroundDoc);
+      if (lore.length || pending.has("backgroundLore")) add("backgroundLore", label("backgroundLore"), lore);
+      plan.resolved.featSlots.forEach((slot, index) => add(
+        `feat.${index}`, game.i18n.format("SIMPLYPF2E.PCEdit.FeatSlot", { type: slot.type, level: slot.level }), (slot.candidates ?? []).map(option)
+      ));
+      const equipment = catalogs.equipment.map(option);
+      plan.concept.equipment.forEach((line, index) => add(
+        `equipment.${index}`, game.i18n.format("SIMPLYPF2E.PCEdit.EquipmentLine", { index: index + 1, name: line.name }), equipment
+      ));
+    }
+    const blockers = [
+      ...validation.pending.map((item) => game.i18n.format("SIMPLYPF2E.PCEdit.PendingChoice", { field: label(item.field), reason: item.reason })),
+      ...validation.errors,
+      ...validation.unresolved.map((item) => game.i18n.format("SIMPLYPF2E.PCEdit.UnresolvedItem", { category: item.category, name: item.name }))
+    ];
+    const spellsDeferred = Boolean(plan.concept.spellcasting) || (plan.concept.focusSpells ?? []).length > 0
+      || (plan.resolved.spells ?? []).length > 0 || (plan.resolved.focusSpells ?? []).length > 0;
+    return {
+      controls,
+      unavailable: catalogs === null,
+      blockers,
+      blocked: !validation.complete || this.#pcEditInFlight,
+      spellsDeferred,
+      busy: this.#pcEditInFlight,
+      error: this.#pcEditError,
+      notice: this.#pcEditNotice
+    };
+  }
+
+  /** Apply one PC editor control through the edit contract. A refusal keeps every draft for correction. */
+  static async #onApplyPCEdit(_event, target) {
+    const control = target?.dataset?.control;
+    if (!this.#pcConcept || !control || this.#pcEditInFlight || this.#busy) return;
+    this.#readForm();
+    this.#pcEditInFlight = true;
+    this.#pcEditError = null;
+    this.#pcEditNotice = null;
+    try {
+      const plan = this.#pcPlan();
+      const edit = pcEditFromControl(control, this.#pcEditDrafts[control]);
+      const result = await applyPCEdit(plan, edit, { catalogs: await this.#pcEditCatalogs(plan) });
+      this.#pcConcept = result.plan.concept;
+      this.#pcResolved = result.plan.resolved;
+      this.#pcPending = result.plan.pending;
+      this.#manifest = validatePCEditCompletion(result.plan).manifest;
+      for (const key of [control, ...pcEditorInvalidatedControls(result.invalidated)]) delete this.#pcEditDrafts[key];
+      const messages = [game.i18n.localize(result.changed.length ? "SIMPLYPF2E.PCEdit.Applied" : "SIMPLYPF2E.PCEdit.Unchanged")];
+      for (const item of result.invalidated) messages.push(item.reason);
+      this.#pcEditNotice = messages.join(" ");
+    } catch (err) {
+      const contract = String(err?.code ?? "").startsWith("PC_EDIT_");
+      if (!contract) console.warn(`${MODULE_ID} | PC edit failed`, err);
+      this.#pcEditError = contract ? err.message : game.i18n.localize("SIMPLYPF2E.PCEdit.Failed");
+    } finally {
+      this.#pcEditInFlight = false;
+    }
+    await this.render();
   }
 
   #buildPCPreviewContext() {
@@ -570,6 +716,9 @@ export class GeneratorApp extends SpfApp {
     for (const field of PC_IDENTITY_FIELDS) {
       const control = form.querySelector(`[name="pcIdentity.${field}"]`);
       if (control) pcIdentity[field] = control.value;
+    }
+    for (const control of form.querySelectorAll('[name^="pcEdit."]')) {
+      this.#pcEditDrafts[control.name.slice("pcEdit.".length)] = control.value;
     }
     this.#input = { mode, prompt, level, rarity, allowSpellcasting, includeEquipment, includeLoot,
       preset, partySize, threat, treasureAmount, rarityCap, pcIdentity };
@@ -849,6 +998,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#resetPCEdit();
     this.#experimentalDraft = false;
     this._tokenUsage = [];
   }
@@ -894,6 +1044,7 @@ export class GeneratorApp extends SpfApp {
       this.#noteGenerationFailure(err, "character generation");
       this.#pcConcept = null;
       this.#pcResolved = null;
+      this.#resetPCEdit();
       this.#manifest = null;
       outcome = err?.cancelled ? "cancelled" : "error";
     } finally {
@@ -981,6 +1132,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#resetPCEdit();
     this.#experimentalDraft = request !== null;
     this._tokenUsage = [];
     const signal = this._beginProgress([
@@ -1397,6 +1549,7 @@ export class GeneratorApp extends SpfApp {
 
       this.#pcConcept = concept;
       this.#pcResolved = resolved;
+      this.#resetPCEdit();
       this.#pcIdentityInput = this.#identityInputSnapshot();
     console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
   }
@@ -1822,6 +1975,10 @@ export class GeneratorApp extends SpfApp {
     let committed = false;
     let actor = null;
     try {
+      // Fail closed: a PC with a pending choice, an unresolved item, or an edit in flight is never written.
+      if (this.#pcEditInFlight || !validatePCEditCompletion(this.#pcPlan()).complete) {
+        throw new Error(game.i18n.localize("SIMPLYPF2E.PCEdit.CreateBlocked"));
+      }
       if (!reuseRun) {
         this.#readForm();
         if (this.#pcIdentityInput !== this.#identityInputSnapshot()) {
@@ -1869,6 +2026,7 @@ export class GeneratorApp extends SpfApp {
       const grounding = GeneratorApp.#completionContext(this.#manifest);
       this.#pcConcept = null;
       this.#pcResolved = null;
+      this.#resetPCEdit();
       this.#characterReview = null;
       this.#manifest = null;
       this.#created = { name: actor.name, actorId: actor.id, count: 1, grounding };
@@ -1908,6 +2066,7 @@ export class GeneratorApp extends SpfApp {
       if (survivor) {
         this.#pcConcept = null;
         this.#pcResolved = null;
+        this.#resetPCEdit();
         this.#characterReview = null;
         this.#manifest = null;
       }
@@ -2144,6 +2303,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#resetPCEdit();
     this.#manifest = null;
     this.#error = null;
     this._tokenUsage = [];
