@@ -125,6 +125,19 @@ export class CreatureToolsApp extends SpfApp {
   _preserveForm() {
     this.#readForm();
   }
+  _onRender(context, options) {
+    super._onRender?.(context, options);
+    const root = this.element;
+    if (!root) return;
+    const refresh = () => {
+      this.#readForm();
+      this.render();
+    };
+    root.querySelector('[name="npcId"]')?.addEventListener("change", refresh);
+    for (const node of root.querySelectorAll('[name="adjustment"]')) {
+      node.addEventListener("change", refresh);
+    }
+  }
 
   #refusedNow() {
     const refusal = experimentalToolRefusal();

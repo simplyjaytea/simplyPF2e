@@ -212,6 +212,10 @@ export function planLevelShift(source, targetLevel) {
   }
 
   const items = Array.isArray(source.items) ? source.items : [];
+  for (const { item, index } of items.map((item, index) => ({ item, index })).filter(({ item }) => item?.type === "lore")) {
+    const mod = item.system?.mod?.value;
+    if (isNumber(mod)) stat(["items", index, "system", "mod", "value"], `Lore: ${item.name ?? index}`, "skills", SKILL);
+  }
   const melee = items.map((item, index) => ({ item, index })).filter(({ item }) => item?.type === "melee");
   if (!melee.length) fail(LEVEL_SHIFT_CODES.NO_STRIKE, "A creature without a melee Strike is not supported.");
   let primaryStrike = null;
@@ -307,8 +311,10 @@ export function planLevelShift(source, targetLevel) {
     }
     const innate = preparedById.get(item.system?.location?.value) === "innate";
     const rank = item.system?.level?.value;
-    if (!innate && isNumber(rank) && rank > Math.ceil(target / 2)) {
-      fail(LEVEL_SHIFT_CODES.CASTER_RANK_OVER_CAP, `${name} is rank ${rank}, above the cap of ${Math.ceil(target / 2)} at level ${target}.`, `items.${index}`);
+    const effectiveRank = Number(item.system?.location?.heightenedLevel);
+    const checkRank = Number.isFinite(effectiveRank) ? effectiveRank : rank;
+    if (!innate && isNumber(checkRank) && checkRank > Math.ceil(target / 2)) {
+      fail(LEVEL_SHIFT_CODES.CASTER_RANK_OVER_CAP, `${name} is rank ${checkRank}, above the cap of ${Math.ceil(target / 2)} at level ${target}.`, `items.${index}`);
     }
   }
 
