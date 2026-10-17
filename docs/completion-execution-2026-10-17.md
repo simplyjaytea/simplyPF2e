@@ -30,8 +30,7 @@ Integrate locally before review; public main merges only after review approval a
 
 Task IDs, worktree paths and resulting commits are recorded here as workers are launched and finish. No delegated work was complete when this execution record was created.
 
-- C01–C03 and C04/C07/C10 integrated into `codex/completion-integration-2026-10-17`; latest gate passed (145 scripts + 1 tooling, 103 regression files, exit 0); `git diff --check` clean.
-- C04 complete: worktree `/home/jtf/.t3/worktrees/simplyPF2e/t3-c04`, branch `t3/c04`, commit `f58e5ef`.
-- C07 complete: worktree `/home/jtf/.t3/worktrees/simplyPF2e/t3-c07`, branch `t3/c07`, commit `7795ccc`.
-- C10 complete: worktree `/home/jtf/.t3/worktrees/simplyPF2e/t3-c10`, branch `t3/c10`, commit `de38206`.
-- Next dispatch (Wave 2, max 3): C05 (PC editing contract) and C11 (level-shifting implementation) from the new integration HEAD. C06 remains queued until C05 integrates; C08 waits for C06+C07.
+- All C01–C13 chunks integrated into `codex/completion-integration-2026-10-17` at `e537722`. Latest gate passed (159 scripts + 1 tooling, 109 regression files, exit 0); `git diff --check` clean.
+- C05 `fff94d2`, C06 `59a101b`, C08 `272e5cd`, C09 `6042948`, C11 `bfaefb0`, C12 `26fd85b`, C13 `ab2399a` integrated in addition to earlier chunks.
+- Native QA remains unperformed; R01–R25 and N01–N08 are open. Level shifting has no user-facing entry point.
+- Next step: consolidated Opus 5.5 review of `feeeec6..integration-head`, then PR/publication per user authorization.
