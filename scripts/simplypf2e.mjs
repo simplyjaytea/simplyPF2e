@@ -3,9 +3,12 @@ import { GeneratorApp } from "./generator-app.mjs";
 import { ItemForgeApp } from "./itemforge-app.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { ProviderSetupApp } from "./provider-setup-app.mjs";
+import { experimentalToolRefusal } from "./experimental-tools.mjs";
+import { FORGE_COMMAND_PATTERN, runForgeCommand } from "./forge-command.mjs";
 
 let app = null;
 let itemForgeApp = null;
+const FORGE_CHAT_COMMAND = "simplypf2e-forge";
 
 function canOpenApps() {
   if (game.system?.id !== "pf2e") {
@@ -31,6 +34,36 @@ function openItemForge() {
   itemForgeApp ??= new ItemForgeApp();
   itemForgeApp.render(true);
   return itemForgeApp;
+}
+
+function startForgeRequest(request) {
+  app ??= new GeneratorApp();
+  return app.startExperimentalMonsterRequest(request);
+}
+
+function notifyForgeCommand(key, data) {
+  ui.notifications.warn(data ? game.i18n.format(key, data) : game.i18n.localize(key));
+}
+
+/*
+ * A registered chat command takes the typed line instead of posting it, and
+ * returning false keeps every outcome out of the log. Unrelated chat never
+ * matches the pattern, so it passes through untouched.
+ */
+function registerForgeChatCommand() {
+  const commands = foundry.applications?.sidebar?.tabs?.ChatLog?.CHAT_COMMANDS;
+  if (!commands) {
+    console.warn(`${MODULE_ID} | chat command registry unavailable; /forge is not registered`);
+    return;
+  }
+  commands[FORGE_CHAT_COMMAND] = {
+    rgx: FORGE_COMMAND_PATTERN,
+    fn: (_command, match) => runForgeCommand(match?.[1] ?? "", {
+      refusal: experimentalToolRefusal,
+      notify: notifyForgeCommand,
+      start: startForgeRequest
+    })
+  };
 }
 
 function addDirectoryButton(html, { markerClass, icon, label, onClick, placement = "header" }) {
@@ -87,6 +120,9 @@ Hooks.once("ready", () => {
   // and .openItemForge() for the magic item forge.
   const module = game.modules.get(MODULE_ID);
   module.api = { open: openGenerator, openItemForge };
+  // Registered only in PF2e: in other systems the module stays inert and
+  // Foundry reports /forge as an unknown command.
+  registerForgeChatCommand();
 });
 
 /* Add a "SimplyPF2e" button to the Actors directory header (GM only). */

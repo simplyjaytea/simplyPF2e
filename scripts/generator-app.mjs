@@ -37,6 +37,8 @@ import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-abi
 import { pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
+import { assertExperimentalToolAccess } from "./experimental-tools.mjs";
+import { validateForgeRequest } from "./forge-command.mjs";
 
 const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "backgroundLore", "keyAbility", "classPath"];
 
@@ -159,6 +161,8 @@ export class GeneratorApp extends SpfApp {
   #created = null;
   /** Validated plan manifest retained only until it is presented after creation. */
   #manifest = null;
+  /** True when the current monster draft came from /forge; creation and reroll re-check the gate. */
+  #experimentalDraft = false;
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
 
@@ -745,6 +749,49 @@ export class GeneratorApp extends SpfApp {
     return this.#runGeneration(true, { create: false });
   }
 
+  /**
+   * Public entry for the experimental `/forge` command and console callers.
+   * It takes a plain request, not form state. Unsaved text and the selected mode
+   * are captured first and the Monster view is shown, but only this run uses the
+   * request's brief and level, so the GM's drafts are never overwritten. Resolves
+   * true once a run has started and settled; false when the request was refused,
+   * invalid, busy, or stopped by readiness before any run began.
+   */
+  async startExperimentalMonsterRequest(request) {
+    try {
+      assertExperimentalToolAccess();
+    } catch (err) {
+      ui.notifications.warn(err.message);
+      return false;
+    }
+    const checked = validateForgeRequest(request);
+    if (!checked.ok) {
+      ui.notifications.warn(game.i18n.localize(checked.key));
+      return false;
+    }
+    if (this.#busy) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Chat.ForgeBusy"));
+      return false;
+    }
+    // A Character or Encounter preview is kept until created or discarded. A Monster
+    // preview is replaced, as Generate replaces it.
+    if (this.#pcConcept || this.#encounter) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Chat.ForgeResultPending"));
+      return false;
+    }
+    if (this.element) this.#readForm();
+    this.#input.mode = "monster";
+    this.#input.prompt = this.#modePrompts.monster;
+    this.render(true);
+    // beginProgress advances the run counter only after readiness passes.
+    const runId = this._runId;
+    await this.#runGeneration(false, {
+      create: checked.request.intent === "generate",
+      request: checked.request
+    });
+    return this._runId !== runId;
+  }
+
   async #assertGenerationReady() {
     const warning = getProviderAuthWarningKey(getProviderRequestConfig());
     if (warning) {
@@ -802,6 +849,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#experimentalDraft = false;
     this._tokenUsage = [];
   }
 
@@ -887,13 +935,15 @@ export class GeneratorApp extends SpfApp {
     }
   }
 
-  async #runGeneration(isRandom, { create = false } = {}) {
+  async #runGeneration(isRandom, { create = false, request = null } = {}) {
     if (this.#busy) return;
     // Reserve synchronously before async readiness/catalog work so a second
     // click cannot start a competing run while the first awaits I/O.
     this.#busy = true;
     try {
-      this.#readForm();
+      // A /forge request already captured the drafts and chose the Monster
+      // view. Re-reading the form here would revert that selection.
+      if (!request) this.#readForm();
       if (!await this.#assertGenerationReady()) {
         this.#busy = false;
         await this.render();
@@ -915,7 +965,10 @@ export class GeneratorApp extends SpfApp {
       return this.#runPCGeneration(isRandom, { create });
     }
     if (this.#input.mode === "encounter") return this.#runEncounterGeneration(isRandom, { create });
-    if (!isRandom && !this.#input.prompt.trim()) {
+    // A /forge request supplies its own brief and level for this run only.
+    const brief = request ? request.prompt : this.#input.prompt;
+    const level = request ? request.level : this.#input.level;
+    if (!isRandom && !brief.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
       this.#busy = false;
       await this.render();
@@ -928,6 +981,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#experimentalDraft = request !== null;
     this._tokenUsage = [];
     const signal = this._beginProgress([
       ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept"), taskMaxTokens(AI_TASK.CREATURE_CONCEPT)],
@@ -943,24 +997,25 @@ export class GeneratorApp extends SpfApp {
     let outcome = "success";
     try {
       await this._setStep("concept");
-      const gmPrompt = isRandom ? randomBrief(this.#input.mode) : this.#input.prompt;
+      const gmPrompt = isRandom ? randomBrief(this.#input.mode) : brief;
       const { concept: raw, usage } = await generateConcept({
         // Random mode rolls a fresh local brief each generation, so
         // Regenerate gives a genuinely different creature every time.
         prompt: gmPrompt,
-        level: this.#input.level,
+        level,
         rarity: this.#input.rarity,
         allowSpellcasting: this.#input.allowSpellcasting,
         includeEquipment: this.#input.includeEquipment,
         includeLoot: this.#input.includeLoot,
-        preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
+        // A /forge brief is explicit, so the preset's suggestions do not apply.
+        preset: isRandom || request ? null : findPreset(this.#input.preset)?.prompt ?? null,
         amount: this.#input.treasureAmount,
         intent: this.#input.mode,
         onProgress: this._progressCallback(), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Concept"), usage);
       this.#concept = this.#enforceCreatureCategoryOptions(
-        { ...normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity }), gmPrompt }
+        { ...normalizeConcept(raw, { level, rarity: this.#input.rarity }), gmPrompt }
       );
       // Defensive filter: allowSpellcasting is only enforced in the AI prompt,
       // so a non-compliant model output can still return a valid tradition.
@@ -1691,6 +1746,9 @@ export class GeneratorApp extends SpfApp {
       const scaffold = await findBestiaryScaffold(this.#concept);
       if (!scaffold) throw new Error(game.i18n.localize("SIMPLYPF2E.Errors.NoBestiaryScaffold"));
       const img = scaffold.img ?? null;
+      // An experimental draft is authorized again here, after generation and any
+      // reroll, so disabling the setting mid-run still blocks the native write.
+      if (this.#experimentalDraft) assertExperimentalToolAccess();
       this._lockCreation();
       const created = await createActor(this.#concept, this.#resolved, { img, scaffold });
       actor = created.actor;
@@ -2010,6 +2068,14 @@ export class GeneratorApp extends SpfApp {
 
   static async #onRerollLoot() {
     if (this.#busy || !this.#concept) return;
+    if (this.#experimentalDraft) {
+      try {
+        assertExperimentalToolAccess();
+      } catch (err) {
+        ui.notifications.warn(err.message);
+        return;
+      }
+    }
     if (this.element?.querySelector) this.#readForm();
     const planMode = this.#manifest?.mode ?? this.#input.mode;
     if (this.#input.includeLoot === false && ["monster", "npc", "encounter"].includes(planMode)) {
