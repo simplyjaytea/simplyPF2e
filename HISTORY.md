@@ -1,6 +1,10 @@
 # simplyPF2e — session history
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
+## 2026-10-17 — Integrated C01–C03 completion chunks
+
+- Merged C01 (`6df707b`), C02 (`8961eed`), and C03 (`3988cf5`) into `codex/completion-integration-2026-10-17`. Node 22 gate passed (145 scripts + 1 tooling, 102 regression files, exit 0); `git diff --check` clean.
+- Wave 1 dispatch next: C04, C07, C10 from the new integration HEAD with Haiku 5.5/max workers. C05 remains queued until C04 integrates. No native QA, provider spend, publication, or release has occurred.
 
 ## 2026-10-17 — Proposed completion sequence
 

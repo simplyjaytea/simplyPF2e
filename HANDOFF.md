@@ -7,6 +7,11 @@ Read this first, then CLAUDE.md. Use the [documentation map](docs/README.md) for
 - User approved implementing the revised plan using isolated worktrees with **Haiku 5.5 / max** for every chunk, then **one consolidated Opus 5.5 code reviewer**, followed by merge once approved. Current publication/merge authorization supersedes older pending-publication instructions for this integrated work. Use a PR; never write main directly.
 - Integration branch `codex/completion-integration-2026-10-17`; [execution ledger](docs/completion-execution-2026-10-17.md) defines C01–C13 and dependencies. Start C01 baseline/QA preparation, C02 experimental gate/chat, C03 AI reskin engine in separate T3 worktrees. Record task IDs there; completion notifications drive integration and next dispatches.
 - No fresh paid-generation allowance, screen-reader operator or isolated minimum-version environment has yet been concretely established. Prepare the QA ledger before seeking the exact missing scope; continue independent implementation. No public release, installation or native QA has occurred in this execution yet.
+## Integration update — 2026-10-17
+
+- C01, C02, and C03 are merged into `codex/completion-integration-2026-10-17`; Node 22 gate passed (145 scripts + 1 tooling, 102 regression files, exit 0); `git diff --check` clean.
+- Wave 1 dispatch next: C04, C07, C10 from the new integration HEAD, max three Haiku 5.5/max workers. C05 remains queued until C04 integrates.
+- No native QA, provider spend, publication, or release has occurred. Rows R01–R25 remain open.
 
 ## Status reconciliation — 2026-10-17
 
