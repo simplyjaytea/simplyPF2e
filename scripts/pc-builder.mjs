@@ -5,6 +5,7 @@ import {
   buildEquipmentItems, buildLootItems, filterItemTypes, heightenedLevelFor
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
+import { multiclassCatalogNames, multiclassFeatInfo, multiclassPickBlocker } from "./pc-multiclass.mjs";
 import { findRuleExemplar } from "./rule-templates.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
@@ -404,6 +405,7 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
   const classTrait = slugify(classDoc.name);
   const featSlots = [];
   const freeArchetype = Boolean(getSetting(SETTINGS.freeArchetype));
+  const multiclass = Boolean(getSetting(SETTINGS.multiclassArchetypes));
   for (const slot of buildFeatSlots(concept.level, { freeArchetype, classSystem: classDoc.system })) {
     const prerequisiteContext = stagedActorContext({
       level: slot.level, ancestry: ancestryDoc, heritage: heritageDoc,
@@ -428,6 +430,13 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
         level: slot.level, category: slot.type, preferredNames: concept.feats,
         prerequisiteContext
       });
+    }
+    // Ordinary multiclass (C08): class and archetype slots also offer the
+    // noncaster catalog. Archetype slots are narrowed to that catalog so caster
+    // packages never appear. The dedication lock is enforced at pick time.
+    if (multiclass && (slot.archetype || slot.type === "class")) {
+      const catalog = await multiclassFeatCandidates(slot.level, classDoc.name);
+      candidates = slot.archetype ? catalog : mergeFeatCandidates(candidates, catalog);
     }
     if (candidates.length) featSlots.push({ ...slot, candidates });
     else {
@@ -487,10 +496,10 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
  * Legacy/pre-selection callers retain the former name-lookup behavior.
  * @param {{type: string, level: number, candidates: {name: string, ref?: object}[]}[]} featSlots
  * @param {{slot: number, name: string, candidate?: object}[]} picks
- * @param {{exactContent?: boolean}} [options]
+ * @param {{exactContent?: boolean, className?: string}} [options] className enables the ordinary-multiclass dedication lock
  * @returns {Promise<{type: string, level: number, archetype: boolean, name: string, entry: object|null}[]>}
  */
-export async function resolveFeatPicks(featSlots, picks, { exactContent = false } = {}) {
+export async function resolveFeatPicks(featSlots, picks, { exactContent = false, className = null } = {}) {
   const bySlot = new Map(picks.map((p) => [p.slot, p]));
   const taken = new Set();
   const resolved = [];
@@ -499,6 +508,10 @@ export async function resolveFeatPicks(featSlots, picks, { exactContent = false 
   const resolveFor = (slot, name, candidate = null) => {
     const allowedPacks = getPacksFor("feats");
     const offeredCandidate = (slot.candidates ?? []).find((item) => item?.ref === candidate) ?? null;
+    if (className) {
+      const priorNames = resolved.map((item) => (item.entry ? item.name : null));
+      if (multiclassPickBlocker(priorNames, offeredCandidate?.name ?? name, className)) return Promise.resolve(null);
+    }
     const offered = offeredCandidate?.ref ?? null;
     if (offered && isIssuedCandidate(offered, allowedPacks)) {
       return Promise.resolve(taken.has(slugify(offeredCandidate.name)) ? null : offered);
@@ -1273,4 +1286,28 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   return { actor, expectedItems, skillReport: { rows, warnings, loadoutWarnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
     trainingBudget: skillPlan?.trainingBudget ?? null, unspentTraining: skillPlan?.unspentTraining ?? null,
     unspentIncreases: skillPlan?.unspentIncreases ?? null } };
+}
+
+/**
+ * Noncaster catalog feats at `level` (C08). The compendium sampler is capped
+ * for ordinary pools, so this asks for an uncapped list and keeps only exact
+ * catalog names. Own-class dedications are never offered.
+ */
+async function multiclassFeatCandidates(level, className) {
+  const catalog = new Set(multiclassCatalogNames().map(slugify));
+  const own = slugify(String(className ?? ""));
+  const found = await getFeatCandidates({
+    level, category: "class", traits: ["archetype"], limit: Number.MAX_SAFE_INTEGER
+  });
+  return found.filter((candidate) => {
+    const info = multiclassFeatInfo(candidate.name);
+    if (!info || !catalog.has(slugify(candidate.name))) return false;
+    return !(info.role === "dedication" && info.pkg === own);
+  });
+}
+
+/** Append catalog candidates not already offered by the ordinary pool. */
+function mergeFeatCandidates(base, extra) {
+  const seen = new Set(base.map((candidate) => slugify(candidate.name)));
+  return [...base, ...extra.filter((candidate) => !seen.has(slugify(candidate.name)))];
 }
