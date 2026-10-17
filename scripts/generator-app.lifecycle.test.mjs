@@ -22,6 +22,8 @@ let identityClasses = [{ name: "Fighter", ref: { packId: "pf2e.classes", _id: "f
 let identityBackgrounds = [];
 let offeredBackgrounds = [];
 let npcFeats = [], npcFeatFailure = null, gmPrompt = "test brief", encounterDesigns = 0, encounterMemberCount = 1;
+let pcEditGate = { complete: true, pending: [], errors: [], unresolved: [], manifest: {} };
+let pcEditRefusal = null, pcEditInvalidated = [];
 class Application {
   render() { return this; }
   async close() {}
@@ -104,7 +106,7 @@ const mocks = {
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "", presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),
   randomBrief: () => "random", sourceReadiness: () => ({ ready: true }), supportedClassCandidates: (x) => x,
-  freeArchetypeNeedsPrerequisiteValidation: () => false, getClassCandidates: async () => {
+  getClassCandidates: async () => {
     classCalls++; if (readinessPending) await readinessPending; if (readinessFailure) throw readinessFailure; return identityClasses;
   },
   generateConcept: async () => { providerCalls++; if (conceptPending) await conceptPending; return { concept: concept(), usage: { total: 1 } }; }, normalizeConcept: (x) => x,
@@ -126,6 +128,11 @@ const mocks = {
   generatePCLoot: async () => ({ loot: [], usage: { total: 1 } }), normalizeLoot: (x) => x,
   dedupeLootAgainstEquipment: (x) => x, enforceNamedLootBudget: (x) => x,
   createCharacterActor: create, reviewUnresolvedChoices: () => ({ choices: [], incomplete: false }),
+  validatePCEditCompletion: () => pcEditGate,
+  applyPCEdit: async (plan) => { if (pcEditRefusal) throw pcEditRefusal; return { plan, changed: ["classPath"], invalidated: pcEditInvalidated, equipmentGp: 0 }; },
+  pcEditFromControl: (control, value) => ({ control, value }),
+  pcEditorSelections: () => ({}), pcEditorInvalidatedControls: (items = []) => items.map((item) => (item.field === "feat" ? `feat.${item.slot}` : item.field)),
+  heritageMatchesAncestry: () => true,
   normalizeSkillPriorities: () => [], skillPriorityOrder: () => [], slugify: (x) => x.toLowerCase(),
   getEquipmentCandidates: async () => [{ id: "equipment", name: "Lantern", ref: {} }], getLootCandidates: async () => [{ id: "loot", name: "Silver Ring", ref: {} }], getSpellCandidates: async () => [], getScrollSpellCandidates: async () => [], getFocusSpellCandidates: async () => [], getFeatCandidates: async () => [], getAbilityCandidates: async () => [],
   selectEquipment: async () => { equipmentSelections++; return { equipment: [], omitted: true }; },
@@ -503,3 +510,50 @@ assert.equal(appUnderTest._test_error, null);
 assert.equal(offeredBackgrounds.some((candidate) => candidate.ref.packId === "pf2e.backgrounds"), true);
 assert.equal(appUnderTest._test_pcConcept.backgroundLore, "legal");
 assert.equal(appUnderTest._test_pcConcept.requiredIdentity.backgroundLore, "legal");
+// C06 PC editor: the production apply action consumes drafts on success,
+// keeps them on refusal, clears invalidated drafts, and gates native create.
+abcResult = null; abcFailure = null; identityBackgrounds = []; offeredBackgrounds = [];
+mode = "character"; appUnderTest = app();
+await appUnderTest._test_runGeneration(false, { create: false });
+assert.equal(appUnderTest._test_error, null, "character preview builds for the PC editor");
+assert.ok(appUnderTest._test_pcConcept, "PC editor has a plan to edit");
+const editable = await appUnderTest._test_buildPCEditorContext();
+assert.equal(editable.blocked, false, "a complete plan leaves Create enabled");
+assert.equal(editable.blockers.length, 0, "a complete plan lists no blockers");
+
+// Success: the applied control's draft is consumed and an invalidated slot's draft is cleared.
+pcEditInvalidated = [{ field: "feat", slot: 1, reason: "slot no longer exists" }];
+appUnderTest._test_pcEditDrafts.classPath = "test.pack:path";
+appUnderTest._test_pcEditDrafts["feat.1"] = "test.pack:old-feat";
+await actions.applyPCEdit.call(appUnderTest, null, { dataset: { control: "classPath" } });
+assert.equal(appUnderTest._test_pcEditError, null);
+assert.equal(appUnderTest._test_pcEditNotice, "SIMPLYPF2E.PCEdit.Applied slot no longer exists");
+assert.equal("classPath" in appUnderTest._test_pcEditDrafts, false, "applied control's draft is consumed");
+assert.equal("feat.1" in appUnderTest._test_pcEditDrafts, false, "invalidated control's draft is cleared");
+pcEditInvalidated = [];
+
+// Refusal: the contract message is shown and the draft survives for correction.
+pcEditRefusal = Object.assign(new Error("PC edit (keyAbility): choose a value first"), { code: "PC_EDIT_INVALID" });
+appUnderTest._test_pcEditDrafts.keyAbility = "zzz";
+await actions.applyPCEdit.call(appUnderTest, null, { dataset: { control: "keyAbility" } });
+assert.equal(appUnderTest._test_pcEditError, "PC edit (keyAbility): choose a value first");
+assert.equal(appUnderTest._test_pcEditNotice, null);
+assert.equal(appUnderTest._test_pcEditDrafts.keyAbility, "zzz", "refused edit keeps its draft");
+
+// Unexpected failure: a localized generic message, and the draft is still kept.
+pcEditRefusal = new Error("provider exploded");
+await actions.applyPCEdit.call(appUnderTest, null, { dataset: { control: "keyAbility" } });
+assert.equal(appUnderTest._test_pcEditError, "SIMPLYPF2E.PCEdit.Failed");
+assert.equal(appUnderTest._test_pcEditDrafts.keyAbility, "zzz", "unexpected failure keeps its draft");
+pcEditRefusal = null;
+
+// Commit gate: an incomplete plan disables Create and never reaches the native write.
+pcEditGate = { complete: false, pending: [{ field: "classPath", reason: "re-pick" }], errors: [], unresolved: [], manifest: {} };
+const blockedEditor = await appUnderTest._test_buildPCEditorContext();
+assert.equal(blockedEditor.blocked, true, "an incomplete plan disables Create");
+assert.equal(blockedEditor.blockers.length, 1, "the pending choice is listed as a blocker");
+const writesBeforeGate = writes;
+await appUnderTest._test_createCharacterActor();
+assert.equal(writes, writesBeforeGate, "an incomplete plan never reaches native create");
+assert.match(appUnderTest._test_error, /PCEdit\.CreateBlocked/);
+pcEditGate = { complete: true, pending: [], errors: [], unresolved: [], manifest: {} };

@@ -1,0 +1,101 @@
+<div class="simplypf2e-generator simplypf2e-creature-tools">
+  {{#if refusal}}
+    <p class="notification warning" role="alert">{{refusal}}</p>
+  {{/if}}
+  {{#if error}}
+    <p class="notification error" role="alert">{{error}}</p>
+  {{/if}}
+
+  <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
+    <legend>{{localize "SIMPLYPF2E.CreatureTools.ReskinLegend"}}</legend>
+    <p class="spf-hint">{{localize "SIMPLYPF2E.CreatureTools.ReskinHint"}}</p>
+    {{#if candidatesError}}
+      <p class="notification error" role="alert">{{candidatesError}}</p>
+    {{/if}}
+    <div class="form-group stacked">
+      <label for="spf-creature-source">{{localize "SIMPLYPF2E.CreatureTools.Source"}}</label>
+      <select id="spf-creature-source" name="sourceUuid">
+        <option value="">{{localize "SIMPLYPF2E.CreatureTools.ChooseSource"}}</option>
+        {{#each sources}}
+          <option value="{{this.uuid}}" {{#if this.selected}}selected{{/if}}>{{this.name}} ({{this.packTitle}}, {{localize "SIMPLYPF2E.CreatureTools.LevelShort"}} {{this.level}})</option>
+        {{/each}}
+      </select>
+    </div>
+    <div class="form-group stacked">
+      <label for="spf-creature-prompt">{{localize "SIMPLYPF2E.CreatureTools.Target"}}</label>
+      <textarea id="spf-creature-prompt" name="prompt" rows="3">{{input.prompt}}</textarea>
+    </div>
+    <div class="spf-generate-row">
+      <button type="button" class="spf-primary" data-action="preview" {{#if busy}}disabled{{/if}}>
+        {{localize "SIMPLYPF2E.CreatureTools.Preview"}}
+      </button>
+    </div>
+  </fieldset>
+
+  {{#if progress}}{{> simplypf2e-progress}}{{/if}}
+
+  {{#if plan}}
+    <section class="spf-card spf-preview">
+      <h3>{{localize "SIMPLYPF2E.CreatureTools.PreviewHeading"}}</h3>
+      <p><strong>{{localize "SIMPLYPF2E.CreatureTools.PreviewName"}}:</strong> {{plan.name}}</p>
+      <p><strong>{{localize "SIMPLYPF2E.CreatureTools.PreviewSource"}}:</strong> {{plan.sourceName}} ({{plan.itemCount}} {{localize "SIMPLYPF2E.CreatureTools.Items"}})</p>
+      <p><strong>{{localize "SIMPLYPF2E.CreatureTools.PreviewChanges"}}:</strong> {{localize "SIMPLYPF2E.CreatureTools.PreviewChangesNote"}}</p>
+      <p class="spf-creature-flavor">{{plan.flavor}}</p>
+      <div class="spf-creature-bio">{{plan.biography}}</div>
+      <div class="spf-generate-row">
+        <button type="button" class="spf-primary" data-action="createReskin" {{#if busy}}disabled{{/if}}>
+          {{localize "SIMPLYPF2E.CreatureTools.Create"}}
+        </button>
+        <button type="button" class="spf-secondary" data-action="discardReskin" {{#if busy}}disabled{{/if}}>
+          {{localize "SIMPLYPF2E.CreatureTools.Discard"}}
+        </button>
+      </div>
+    </section>
+  {{/if}}
+
+  {{#if created}}
+    <p class="notification info">
+      {{localize "SIMPLYPF2E.CreatureTools.CreatedNote"}} {{created.name}}
+      {{#if created.presentationWarning}} — {{localize "SIMPLYPF2E.CreatureTools.PresentationFailed"}}{{/if}}
+    </p>
+  {{/if}}
+
+  <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
+    <legend>{{localize "SIMPLYPF2E.CreatureTools.AdjustLegend"}}</legend>
+    <p class="spf-hint">{{localize "SIMPLYPF2E.CreatureTools.AdjustHint"}}</p>
+    <div class="form-group stacked">
+      <label for="spf-creature-npc">{{localize "SIMPLYPF2E.CreatureTools.Npc"}}</label>
+      <select id="spf-creature-npc" name="npcId">
+        <option value="">{{localize "SIMPLYPF2E.CreatureTools.ChooseNpc"}}</option>
+        {{#each npcs}}
+          <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.name}}</option>
+        {{/each}}
+      </select>
+    </div>
+    <div class="form-group stacked">
+      {{#each adjustments}}
+        <label class="spf-radio">
+          <input type="radio" name="adjustment" value="{{this.value}}" {{#if this.selected}}checked{{/if}}>
+          {{localize this.label}}
+        </label>
+      {{/each}}
+    </div>
+    {{#if adjustmentPreview}}
+      <p class="spf-hint">
+        {{adjustmentPreview.name}}: {{adjustmentPreview.from}} → {{adjustmentPreview.to}}
+        ({{localize "SIMPLYPF2E.CreatureTools.HpNow"}} {{adjustmentPreview.hp}}/{{adjustmentPreview.hpMax}})
+      </p>
+    {{/if}}
+    <p class="spf-hint">{{localize "SIMPLYPF2E.CreatureTools.NativeNote"}}</p>
+    {{#if adjustmentNotice}}
+      <p class="notification {{adjustmentNotice.kind}}" role="status">{{adjustmentNotice.text}}</p>
+    {{/if}}
+    <div class="spf-generate-row">
+      <button type="button" class="spf-primary" data-action="applyAdjustment" {{#if busy}}disabled{{/if}}>
+        {{localize "SIMPLYPF2E.CreatureTools.Apply"}}
+      </button>
+    </div>
+  </fieldset>
+
+  {{#if lastRunCost}}<p class="spf-hint">{{lastRunCost}}</p>{{/if}}
+</div>

@@ -211,7 +211,7 @@ for (const omitted of [false, true]) {
 {
   const app = new App();
   Object.assign(app._test_input, { mode: "encounter", level: 1, partySize: 1, threat: "trivial" });
-  app.element = { querySelector: () => null };
+  app.element = { querySelector: () => null, querySelectorAll: () => [] };
   await app._test_runGeneration(false, { create: false });
   assert.match(app._test_error, /budget is too small/,
     "an unsupported tiny encounter is reported before any provider request");
@@ -222,7 +222,7 @@ for (const omitted of [false, true]) {
   const fields = { '[name="mode"]:checked': "encounter", '[name="level"]': "3.7", '[name="partySize"]': "2.4" };
   app._test_input.includeEquipment = false;
   app._test_input.includeLoot = false;
-  app.element = { querySelector: (selector) => selector in fields ? { value: fields[selector] } : null };
+  app.element = { querySelector: (selector) => selector in fields ? { value: fields[selector] } : null, querySelectorAll: () => [] };
   app._test_readForm();
   assert.equal(app._test_input.level, 4);
   assert.equal(app._test_input.partySize, 2, "encounter math accepts whole creatures and whole PC levels");
@@ -235,7 +235,7 @@ for (const omitted of [false, true]) {
   const app = new App();
   const gmPrompt = "A minimal courier with no loot.";
   app._test_input.prompt = gmPrompt;
-  app.element = { querySelector: () => null };
+  app.element = { querySelector: () => null, querySelectorAll: () => [] };
   app._test_assertGenerationReady = () => true;
   await app._test_runGeneration(false);
   assert.equal(app._test_error, null);

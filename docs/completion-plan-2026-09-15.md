@@ -1,5 +1,7 @@
 # Completion plan — 2026-09-15
 
+Execution-order update: the [October 17 proposal](completion-proposal-2026-10-17.md) proposes a revised sequence after PR #113, with independent review and explicit evidence/scope changes. Its sequence remains proposed until approved. This document preserves the original detailed acceptance criteria and historical progress; its publication-state and immediate-next-assignment paragraphs are stale.
+
 ## Scope and baseline
 
 The user requested a plan to complete the outstanding list, with suitable work delegated to Luna to conserve usage. This plan includes the prioritized readiness gaps, latest catalog optimization acceptance, and all four README roadmap bullets (split into separate deliverables below). Planning does not begin implementation, authorize new provider spending, or publish a release.

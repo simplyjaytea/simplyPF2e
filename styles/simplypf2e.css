@@ -565,6 +565,19 @@
   line-height: 1.35;
 }
 
+/* PC editor (C06): warning text and one row per editable control. */
+.simplypf2e .spf-warning {
+  color: var(--spf-warning);
+}
+
+.simplypf2e .spf-pc-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spf-space-md);
+  margin: var(--spf-space-xs) 0;
+}
+
 /* Item Forge kind choices. Kept separate from the generator's mode switch. */
 .simplypf2e .spf-kind-choices {
   display: grid;

@@ -2,6 +2,26 @@
 
 Read this first, then CLAUDE.md. Use the [documentation map](docs/README.md) for source records and historical evidence.
 
+## Active completion execution — 2026-10-17
+
+- User approved implementing the revised plan using isolated worktrees with **Haiku 5.5 / max** for every chunk, then **one consolidated Opus 5.5 code reviewer**, followed by merge once approved. Current publication/merge authorization supersedes older pending-publication instructions for this integrated work. Use a PR; never write main directly.
+- Integration branch `codex/completion-integration-2026-10-17`; [execution ledger](docs/completion-execution-2026-10-17.md) defines C01–C13 and dependencies. Start C01 baseline/QA preparation, C02 experimental gate/chat, C03 AI reskin engine in separate T3 worktrees. Record task IDs there; completion notifications drive integration and next dispatches.
+- No fresh paid-generation allowance, screen-reader operator or isolated minimum-version environment has yet been concretely established. Prepare the QA ledger before seeking the exact missing scope; continue independent implementation. No public release, installation or native QA has occurred in this execution yet.
+## Integration update — 2026-10-17
+
+- C01, C02, and C03 are merged into `codex/completion-integration-2026-10-17`; Node 22 gate passed (145 scripts + 1 tooling, 102 regression files, exit 0); `git diff --check` clean.
+- Wave 1 dispatch next: C04, C07, C10 from the new integration HEAD, max three Haiku 5.5/max workers. C05 remains queued until C04 integrates.
+- No native QA, provider spend, publication, or release has occurred. Rows R01–R25 remain open.
+
+## Status reconciliation — 2026-10-17
+
+- User-requested independent T3 review completed on `claudeAgent` / `claude-opus-5-5`, effort `high`: **approve with changes**. Round 1 taskId: `node:delegated-task:command%3Amcp%3Aaaf26449-0dbe-48c0-82a1-94addedf5077%3Adelegate-task%3Acompletion-plan-opus55-high-review-20261017-round1`. Parent assessed findings, spot-checked native adjustment source and local escaping/class support, and revised the proposal. See [review/disposition record](docs/completion-review-2026-10-17.md). Revised text has not had a second Opus review. Proposal awaits user direction; no runtime implementation, QA or publication has started.
+- User requested a proposed completion plan. [October 17 proposal](docs/completion-proposal-2026-10-17.md) now separates current-feature acceptance from roadmap completion, proposes six phases, moves arbitrary level shifting last, and defines bounded QA/review/publication gates. It is awaiting user direction; implementation and QA have not started. Exact next action on approval: Phase 1 local/read-only baseline preparation, then present the concrete native QA batch and spending ceiling for authorization.
+- Read-only completion-list review confirmed local clean main at `feeeec6` and public GitHub PR #113 merged at `feeeec605bfb23077cc210bcbd718467d5375807`. GitHub's latest release is **v0.3.5.73**. The September 15 pending-publication instructions below are superseded; do not republish the Guard Lore fix.
+- No release-asset comparison, Foundry connection, installation, generation or live acceptance occurred during this review. Last recorded installation remains .72; .73 installation and Guard Lore acceptance are unverified.
+- Exact next step: verify .73 assets and actual installed version, then arrange the bounded native Guard/Thief Lore recheck within renewed QA authorization. Continue supported-PC progression and the remaining acceptance matrix before roadmap expansion. Cache acceptance and completion-plan steps 2–8 remain open.
+- This session only records status on `codex/status-2026-10-17`; no runtime changes or new test results. The older records below preserve prior QA evidence and spending limits. CLAUDE.md, README and the completion plan still contain historical publication/acceptance wording; use this reconciliation for current publication state.
+
 ## Current work — 2026-09-15 native PC follow-up
 
 - Branch: codex/pc-native-acceptance, based on PR #112 merge df8d53040027e7f1f3655b09085dd87bb2695694. User authorized merging the identity slice and continuing work; #112 merged after successful CI34865591818. Auto Release34865642787 published v0.3.5.72. Luna verified both official asset hashes and all 50 packaged files.

@@ -30,13 +30,18 @@ import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryScaffold } from "./art.mjs";
 import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
 import { verifyCreatedActor } from "./post-create.mjs";
-import { freeArchetypeNeedsPrerequisiteValidation, supportedClassCandidates } from "./pc-support.mjs";
+import { supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
 import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-ability-packages.mjs";
 
 import { pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
+import { assertExperimentalToolAccess } from "./experimental-tools.mjs";
+import { validateForgeRequest } from "./forge-command.mjs";
+import { heritageMatchesAncestry } from "./pc-builder.mjs";
+import { applyPCEdit, validatePCEditCompletion } from "./pc-edit.mjs";
+import { pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } from "./pc-editor.mjs";
 
 const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "backgroundLore", "keyAbility", "classPath"];
 
@@ -107,6 +112,7 @@ export class GeneratorApp extends SpfApp {
       previewPlan: GeneratorApp.#onPreviewPlan,
       generateRandom: GeneratorApp.#onGenerateRandom,
       createActor: GeneratorApp.#onCreateActor,
+      applyPCEdit: GeneratorApp.#onApplyPCEdit,
       discard: GeneratorApp.#onDiscard,
       dismissCharacterReview: GeneratorApp.#onDismissCharacterReview,
       openReviewedCharacter: GeneratorApp.#onOpenReviewedCharacter,
@@ -153,12 +159,22 @@ export class GeneratorApp extends SpfApp {
   #pcResolved = null;
   /** Required controls captured with the preview, including Random’s ignored inputs. */
   #pcIdentityInput = null;
+  /** PC editor: choices awaiting a re-pick, unapplied control drafts, and the last edit outcome. UI-only. */
+  #pcPending = [];
+  #pcEditDrafts = {};
+  #pcEditError = null;
+  #pcEditNotice = null;
+  #pcEditInFlight = false;
+  /** Heritages eligible for the current ancestry and catalog; reloaded when either changes. */
+  #pcHeritageCache = null;
   /** Snapshot for the last created PC; UI-only, never written to actor flags. */
   #characterReview = null;
   /** Successful one-click result; UI-only and never persisted. */
   #created = null;
   /** Validated plan manifest retained only until it is presented after creation. */
   #manifest = null;
+  /** True when the current monster draft came from /forge; creation and reroll re-check the gate. */
+  #experimentalDraft = false;
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
 
@@ -244,6 +260,7 @@ export class GeneratorApp extends SpfApp {
       preview: ["monster", "npc"].includes(this.#input.mode) ? this.#buildPreviewContext() : null,
       encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
       pcPreview: this.#input.mode === "character" ? this.#buildPCPreviewContext() : null,
+      pcEditor: this.#pcConcept && this.#input.mode === "character" ? await this.#buildPCEditorContext() : null,
       characterReview: this.#characterReview,
       created: this.#created,
       hasPreview: Boolean(this.#concept || this.#encounter || this.#pcConcept),
@@ -320,6 +337,148 @@ export class GeneratorApp extends SpfApp {
         hint: field === "backgroundLore" ? "SIMPLYPF2E.Identity.LoreHint" : null,
         options: options.map((option) => ({ ...option, selected: option.value === value })) };
     }).filter(Boolean);
+  }
+
+  /** Current PC plan in the shape the edit contract reads. */
+  #pcPlan() {
+    return { concept: this.#pcConcept, resolved: this.#pcResolved, pending: this.#pcPending };
+  }
+
+  /** Clear PC editor drafts and outcomes whenever the PC plan is replaced or discarded. */
+  #resetPCEdit() {
+    this.#pcPending = [];
+    this.#pcEditDrafts = {};
+    this.#pcEditError = null;
+    this.#pcEditNotice = null;
+    this.#pcHeritageCache = null;
+  }
+
+  /** Heritages whose documents match the current ancestry; documents load once per ancestry and catalog. */
+  async #pcEligibleHeritages(candidates, ancestryDoc) {
+    const key = JSON.stringify([
+      ancestryDoc?.uuid ?? ancestryDoc?._id ?? ancestryDoc?.name ?? "", candidates.map((candidate) => pcIdentityKey(candidate))
+    ]);
+    if (this.#pcHeritageCache?.key === key) return this.#pcHeritageCache.candidates;
+    const eligible = [];
+    for (const candidate of candidates) {
+      const doc = await getDocument(candidate.ref);
+      if (doc?.type === "heritage" && heritageMatchesAncestry(doc, ancestryDoc)) eligible.push(candidate);
+    }
+    this.#pcHeritageCache = { key, candidates: eligible };
+    return eligible;
+  }
+
+  /** Catalogs for PC edits: the identity pickers, with heritage narrowed to the current ancestry. */
+  async #pcEditCatalogs(plan) {
+    const catalogs = await this.#identityCatalogs();
+    return {
+      ...catalogs,
+      heritage: await this.#pcEligibleHeritages(catalogs.heritage ?? [], plan.resolved.ancestryDoc),
+      equipment: (await getEquipmentCandidates(plan.concept.level)) ?? []
+    };
+  }
+
+  /** Editor view: one control per editable choice with its draft or current selection, plus commit blockers. */
+  async #buildPCEditorContext() {
+    const plan = this.#pcPlan();
+    const validation = validatePCEditCompletion(plan);
+    let catalogs = null;
+    try { catalogs = await this.#pcEditCatalogs(plan); }
+    catch (err) { console.warn(`${MODULE_ID} | PC editor catalogs unavailable`, err); }
+    const selections = pcEditorSelections(plan);
+    const pending = new Set(plan.pending.map((item) => item.field));
+    const label = (key) => game.i18n.localize(`SIMPLYPF2E.Identity.${key}`);
+    const option = (candidate) => ({
+      value: pcIdentityKey(candidate),
+      label: `${candidate.name} — ${game.packs?.get(candidate.ref.packId)?.title ?? candidate.ref.packId}`
+    });
+    const controls = [];
+    const add = (control, title, options, pendingField = control) => {
+      const current = Object.hasOwn(this.#pcEditDrafts, control) ? this.#pcEditDrafts[control] : selections[control];
+      const list = options.map((item) => ({ ...item, selected: item.value === current }));
+      if (!list.some((item) => item.selected)) {
+        list.unshift({ value: "", label: game.i18n.localize("SIMPLYPF2E.PCEdit.Choose"), selected: true });
+      }
+      controls.push({ control, id: `pc-edit-${control.replace(/\./g, "-")}`, label: title, options: list, pending: pending.has(pendingField) });
+    };
+    if (catalogs) {
+      add("ancestry", label("ancestry"), catalogs.ancestry.map(option));
+      add("heritage", label("heritage"), [
+        { value: "", label: game.i18n.localize("SIMPLYPF2E.Identity.NoHeritage") }, ...catalogs.heritage.map(option)
+      ]);
+      add("background", label("background"), catalogs.background.map(option));
+      add("class", label("class"), supportedClassCandidates(catalogs.class).map(option));
+      const paths = catalogs.classPath.filter((path) => path.classKeys.includes(selections.class));
+      if (paths.length || pending.has("classPath")) add("classPath", label("classPath"), paths.map(option));
+      const legal = plan.resolved.classDoc?.system?.keyAbility?.value;
+      add("keyAbility", label("keyAbility"), (Array.isArray(legal) ? legal : ["str", "dex", "con", "int", "wis", "cha"])
+        .map((key) => ({ value: key, label: game.i18n.localize(`SIMPLYPF2E.Identity.Ability.${key}`) })));
+      const lore = getBackgroundLoreOptions(plan.resolved.backgroundDoc);
+      if (lore.length || pending.has("backgroundLore")) add("backgroundLore", label("backgroundLore"), lore);
+      plan.resolved.featSlots.forEach((slot, index) => add(
+        `feat.${index}`, game.i18n.format("SIMPLYPF2E.PCEdit.FeatSlot", { type: slot.type, level: slot.level }), (slot.candidates ?? []).map(option)
+      ));
+      const equipment = catalogs.equipment.map(option);
+      plan.concept.equipment.forEach((line, index) => add(
+        `equipment.${index}`, game.i18n.format("SIMPLYPF2E.PCEdit.EquipmentLine", { index: index + 1, name: line.name }), equipment
+      ));
+    }
+    const blockers = [
+      ...validation.pending.map((item) => game.i18n.format("SIMPLYPF2E.PCEdit.PendingChoice", { field: label(item.field), reason: item.reason })),
+      ...validation.errors,
+      ...validation.unresolved.map((item) => game.i18n.format("SIMPLYPF2E.PCEdit.UnresolvedItem", { category: item.category, name: item.name }))
+    ];
+    const spellsDeferred = Boolean(plan.concept.spellcasting) || (plan.concept.focusSpells ?? []).length > 0
+      || (plan.resolved.spells ?? []).length > 0 || (plan.resolved.focusSpells ?? []).length > 0;
+    return {
+      controls,
+      unavailable: catalogs === null,
+      blockers,
+      blocked: !validation.complete || this.#pcEditInFlight,
+      spellsDeferred,
+      busy: this.#pcEditInFlight,
+      error: this.#pcEditError,
+      notice: this.#pcEditNotice
+    };
+  }
+
+  /** Apply one PC editor control through the edit contract. A refusal keeps every draft for correction. */
+  static async #onApplyPCEdit(_event, target) {
+    const control = target?.dataset?.control;
+    if (!this.#pcConcept || !control || this.#pcEditInFlight || this.#busy) return;
+    this.#readForm();
+    this.#pcEditInFlight = true;
+    this.#busy = true;
+    this.#pcEditError = null;
+    this.#pcEditNotice = null;
+    try {
+      const plan = this.#pcPlan();
+      const edit = pcEditFromControl(control, this.#pcEditDrafts[control]);
+      const result = await applyPCEdit(plan, edit, { catalogs: await this.#pcEditCatalogs(plan) });
+      this.#pcConcept = result.plan.concept;
+      this.#pcResolved = result.plan.resolved;
+      this.#pcPending = result.plan.pending;
+      if (result.changed.some((change) => String(change).startsWith("equipment:"))) {
+        const wealthTarget = pcStartingWealthGp(this.#pcConcept.level, this.#input.treasureAmount);
+        const lootBudget = Math.max(wealthTarget - (result.equipmentGp ?? 0), 0);
+        this.#pcResolved.loot = dedupeLootAgainstEquipment(this.#pcResolved.loot ?? [], this.#pcResolved.equipment ?? []);
+        this.#pcResolved.loot = enforceNamedLootBudget(this.#pcResolved.loot, lootBudget);
+        this.#pcResolved.loot = await applyTreasureBudget(this.#pcResolved.loot, lootBudget);
+      }
+      this.#manifest = validatePCEditCompletion(result.plan).manifest;
+      for (const key of [control, ...pcEditorInvalidatedControls(result.invalidated)]) delete this.#pcEditDrafts[key];
+      const messages = [game.i18n.localize(result.changed.length ? "SIMPLYPF2E.PCEdit.Applied" : "SIMPLYPF2E.PCEdit.Unchanged")];
+      for (const item of result.invalidated) messages.push(item.reason);
+      this.#pcEditNotice = messages.join(" ");
+    } catch (err) {
+      const contract = String(err?.code ?? "").startsWith("PC_EDIT_");
+      if (!contract) console.warn(`${MODULE_ID} | PC edit failed`, err);
+      this.#pcEditError = contract ? err.message : game.i18n.localize("SIMPLYPF2E.PCEdit.Failed");
+    } finally {
+      this.#pcEditInFlight = false;
+      this.#busy = false;
+    }
+    await this.render();
   }
 
   #buildPCPreviewContext() {
@@ -567,6 +726,9 @@ export class GeneratorApp extends SpfApp {
       const control = form.querySelector(`[name="pcIdentity.${field}"]`);
       if (control) pcIdentity[field] = control.value;
     }
+    for (const control of form.querySelectorAll('[name^="pcEdit."]')) {
+      this.#pcEditDrafts[control.name.slice("pcEdit.".length)] = control.value;
+    }
     this.#input = { mode, prompt, level, rarity, allowSpellcasting, includeEquipment, includeLoot,
       preset, partySize, threat, treasureAmount, rarityCap, pcIdentity };
   }
@@ -745,19 +907,53 @@ export class GeneratorApp extends SpfApp {
     return this.#runGeneration(true, { create: false });
   }
 
+  /**
+   * Public entry for the experimental `/forge` command and console callers.
+   * It takes a plain request, not form state. Unsaved text and the selected mode
+   * are captured first and the Monster view is shown, but only this run uses the
+   * request's brief and level, so the GM's drafts are never overwritten. Resolves
+   * true once a run has started and settled; false when the request was refused,
+   * invalid, busy, or stopped by readiness before any run began.
+   */
+  async startExperimentalMonsterRequest(request) {
+    try {
+      assertExperimentalToolAccess();
+    } catch (err) {
+      ui.notifications.warn(err.message);
+      return false;
+    }
+    const checked = validateForgeRequest(request);
+    if (!checked.ok) {
+      ui.notifications.warn(game.i18n.localize(checked.key));
+      return false;
+    }
+    if (this.#busy) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Chat.ForgeBusy"));
+      return false;
+    }
+    // A Character or Encounter preview is kept until created or discarded. A Monster
+    // preview is replaced, as Generate replaces it.
+    if (this.#pcConcept || this.#encounter) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Chat.ForgeResultPending"));
+      return false;
+    }
+    if (this.element) this.#readForm();
+    this.#input.mode = "monster";
+    this.#input.prompt = this.#modePrompts.monster;
+    this.render(true);
+    // beginProgress advances the run counter only after readiness passes.
+    const runId = this._runId;
+    await this.#runGeneration(false, {
+      create: checked.request.intent === "generate",
+      request: checked.request
+    });
+    return this._runId !== runId;
+  }
+
   async #assertGenerationReady() {
     const warning = getProviderAuthWarningKey(getProviderRequestConfig());
     if (warning) {
       ui.notifications.warn(game.i18n.localize(warning));
-      return false;
-    }
-    // This runs before the first concept request: a Free Archetype slot starts
-    // at level 2, but PF2e's published feat prerequisites are display text,
-    // not a generic staged-actor eligibility API. Do not bill for a plan we
-    // cannot validate as a complete unattended character.
-    const freeArchetype = globalThis.game?.settings?.get?.(MODULE_ID, SETTINGS.freeArchetype) === true;
-    if (this.#input.mode === "character" && freeArchetypeNeedsPrerequisiteValidation(this.#input.level, freeArchetype)) {
-      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.FreeArchetypeUnsupported"));
       return false;
     }
     // Isolated production-path tests intentionally do not construct Foundry's
@@ -802,6 +998,8 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#resetPCEdit();
+    this.#experimentalDraft = false;
     this._tokenUsage = [];
   }
 
@@ -846,6 +1044,7 @@ export class GeneratorApp extends SpfApp {
       this.#noteGenerationFailure(err, "character generation");
       this.#pcConcept = null;
       this.#pcResolved = null;
+      this.#resetPCEdit();
       this.#manifest = null;
       outcome = err?.cancelled ? "cancelled" : "error";
     } finally {
@@ -887,13 +1086,15 @@ export class GeneratorApp extends SpfApp {
     }
   }
 
-  async #runGeneration(isRandom, { create = false } = {}) {
+  async #runGeneration(isRandom, { create = false, request = null } = {}) {
     if (this.#busy) return;
     // Reserve synchronously before async readiness/catalog work so a second
     // click cannot start a competing run while the first awaits I/O.
     this.#busy = true;
     try {
-      this.#readForm();
+      // A /forge request already captured the drafts and chose the Monster
+      // view. Re-reading the form here would revert that selection.
+      if (!request) this.#readForm();
       if (!await this.#assertGenerationReady()) {
         this.#busy = false;
         await this.render();
@@ -915,7 +1116,10 @@ export class GeneratorApp extends SpfApp {
       return this.#runPCGeneration(isRandom, { create });
     }
     if (this.#input.mode === "encounter") return this.#runEncounterGeneration(isRandom, { create });
-    if (!isRandom && !this.#input.prompt.trim()) {
+    // A /forge request supplies its own brief and level for this run only.
+    const brief = request ? request.prompt : this.#input.prompt;
+    const level = request ? request.level : this.#input.level;
+    if (!isRandom && !brief.trim()) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Errors.NoPrompt"));
       this.#busy = false;
       await this.render();
@@ -928,6 +1132,8 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#resetPCEdit();
+    this.#experimentalDraft = request !== null;
     this._tokenUsage = [];
     const signal = this._beginProgress([
       ["concept", game.i18n.localize("SIMPLYPF2E.Progress.Concept"), taskMaxTokens(AI_TASK.CREATURE_CONCEPT)],
@@ -943,24 +1149,25 @@ export class GeneratorApp extends SpfApp {
     let outcome = "success";
     try {
       await this._setStep("concept");
-      const gmPrompt = isRandom ? randomBrief(this.#input.mode) : this.#input.prompt;
+      const gmPrompt = isRandom ? randomBrief(this.#input.mode) : brief;
       const { concept: raw, usage } = await generateConcept({
         // Random mode rolls a fresh local brief each generation, so
         // Regenerate gives a genuinely different creature every time.
         prompt: gmPrompt,
-        level: this.#input.level,
+        level,
         rarity: this.#input.rarity,
         allowSpellcasting: this.#input.allowSpellcasting,
         includeEquipment: this.#input.includeEquipment,
         includeLoot: this.#input.includeLoot,
-        preset: isRandom ? null : findPreset(this.#input.preset)?.prompt ?? null,
+        // A /forge brief is explicit, so the preset's suggestions do not apply.
+        preset: isRandom || request ? null : findPreset(this.#input.preset)?.prompt ?? null,
         amount: this.#input.treasureAmount,
         intent: this.#input.mode,
         onProgress: this._progressCallback(), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Concept"), usage);
       this.#concept = this.#enforceCreatureCategoryOptions(
-        { ...normalizeConcept(raw, { level: this.#input.level, rarity: this.#input.rarity }), gmPrompt }
+        { ...normalizeConcept(raw, { level, rarity: this.#input.rarity }), gmPrompt }
       );
       // Defensive filter: allowSpellcasting is only enforced in the AI prompt,
       // so a non-compliant model output can still return a valid tradition.
@@ -1236,7 +1443,7 @@ export class GeneratorApp extends SpfApp {
           concept, slots: resolved.featSlots, onProgress: this._progressCallback(), signal
         });
         this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Feats"), featUsage);
-        resolved.feats = await resolveFeatPicks(resolved.featSlots, picks, { exactContent: true });
+        resolved.feats = await resolveFeatPicks(resolved.featSlots, picks, { exactContent: true, className: resolved.classDoc?.name ?? null });
       } else {
         resolved.feats = [];
       }
@@ -1342,6 +1549,7 @@ export class GeneratorApp extends SpfApp {
 
       this.#pcConcept = concept;
       this.#pcResolved = resolved;
+      this.#resetPCEdit();
       this.#pcIdentityInput = this.#identityInputSnapshot();
     console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
   }
@@ -1691,6 +1899,9 @@ export class GeneratorApp extends SpfApp {
       const scaffold = await findBestiaryScaffold(this.#concept);
       if (!scaffold) throw new Error(game.i18n.localize("SIMPLYPF2E.Errors.NoBestiaryScaffold"));
       const img = scaffold.img ?? null;
+      // An experimental draft is authorized again here, after generation and any
+      // reroll, so disabling the setting mid-run still blocks the native write.
+      if (this.#experimentalDraft) assertExperimentalToolAccess();
       this._lockCreation();
       const created = await createActor(this.#concept, this.#resolved, { img, scaffold });
       actor = created.actor;
@@ -1764,6 +1975,10 @@ export class GeneratorApp extends SpfApp {
     let committed = false;
     let actor = null;
     try {
+      // Fail closed: a PC with a pending choice, an unresolved item, or an edit in flight is never written.
+      if (this.#pcEditInFlight || !validatePCEditCompletion(this.#pcPlan()).complete) {
+        throw new Error(game.i18n.localize("SIMPLYPF2E.PCEdit.CreateBlocked"));
+      }
       if (!reuseRun) {
         this.#readForm();
         if (this.#pcIdentityInput !== this.#identityInputSnapshot()) {
@@ -1811,6 +2026,7 @@ export class GeneratorApp extends SpfApp {
       const grounding = GeneratorApp.#completionContext(this.#manifest);
       this.#pcConcept = null;
       this.#pcResolved = null;
+      this.#resetPCEdit();
       this.#characterReview = null;
       this.#manifest = null;
       this.#created = { name: actor.name, actorId: actor.id, count: 1, grounding };
@@ -1850,6 +2066,7 @@ export class GeneratorApp extends SpfApp {
       if (survivor) {
         this.#pcConcept = null;
         this.#pcResolved = null;
+        this.#resetPCEdit();
         this.#characterReview = null;
         this.#manifest = null;
       }
@@ -2010,6 +2227,14 @@ export class GeneratorApp extends SpfApp {
 
   static async #onRerollLoot() {
     if (this.#busy || !this.#concept) return;
+    if (this.#experimentalDraft) {
+      try {
+        assertExperimentalToolAccess();
+      } catch (err) {
+        ui.notifications.warn(err.message);
+        return;
+      }
+    }
     if (this.element?.querySelector) this.#readForm();
     const planMode = this.#manifest?.mode ?? this.#input.mode;
     if (this.#input.includeLoot === false && ["monster", "npc", "encounter"].includes(planMode)) {
@@ -2078,6 +2303,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#resetPCEdit();
     this.#manifest = null;
     this.#error = null;
     this._tokenUsage = [];

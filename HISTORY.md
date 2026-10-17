@@ -1,6 +1,18 @@
 # simplyPF2e — session history
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
+## 2026-10-17 — Integrated C01–C03 completion chunks
+
+- Merged C01 (`6df707b`), C02 (`8961eed`), and C03 (`3988cf5`) into `codex/completion-integration-2026-10-17`. Node 22 gate passed (145 scripts + 1 tooling, 102 regression files, exit 0); `git diff --check` clean.
+- Wave 1 dispatch next: C04, C07, C10 from the new integration HEAD with Haiku 5.5/max workers. C05 remains queued until C04 integrates. No native QA, provider spend, publication, or release has occurred.
+
+## 2026-10-17 — Proposed completion sequence
+
+- User subsequently authorized implementing the revised plan: each chunk in its own worktree, Haiku 5.5 at max effort, then one consolidated Opus 5.5 code reviewer and merge when approved. Created integration branch and C01–C13 execution ledger; dispatched C01 baseline/QA preparation, C02 experimental gate/chat, C03 AI reskin engine through T3 with worktree isolation. Runtime results are pending; publication and native QA have not occurred. This supersedes the earlier proposal-only status for implementation and eventual integrated publication.
+- User requested Opus 5.5 at high effort to review the plan. Its verdict was approve with changes; [review and parent assessment](docs/completion-review-2026-10-17.md) record the findings. Parent revised compatibility isolation, AI-reskin boundaries, PC spell scope, rollback preparation, QA cost/reproducibility, cache evidence, parallel scheduling, archetype rules and proposed experimental release gating. Revisions remain proposed and have not had a second independent review. No implementation or live QA occurred.
+- Reconciled git/public GitHub publication state: PR #113 is merged and .73 published; .73 asset parity, installation and Guard Lore native acceptance remain unverified. Prior pending-publication instructions are superseded.
+- At the user's request, wrote [a six-phase completion proposal](docs/completion-proposal-2026-10-17.md). It separates existing-feature acceptance from full scoped roadmap delivery and proposes moving arbitrary level shifting last because it has independent, unresolved balance requirements. This sequence is proposed, not an approved implementation decision.
+- Proposed first work is local/read-only baseline preparation, followed by a specifically authorized QA batch. No runtime changes, paid generations, installation or authenticated GitHub publication occurred.
 
 ## 2026-09-15 — Identity release, native Thief acceptance and Guard Lore follow-up
 

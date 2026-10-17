@@ -18,7 +18,7 @@ Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
 https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
 ```
 
-The link always resolves to the newest release, so Foundry offers updates automatically. This line targets Foundry **v14** with the **pf2e** system **8.4.1**. Other version pairs need the same acceptance checks before being claimed as supported.
+The link always resolves to the newest release, so Foundry offers updates automatically. The manifest declares Foundry **v14** and a **pf2e** system minimum of **8.4.1**. Live QA has run on Foundry 14.365 with pf2e **8.5.0**; the 8.4.1 minimum has not been exercised in a live instance. Other version pairs need the same acceptance checks before being claimed as supported.
 
 ## Setup
 
@@ -39,7 +39,7 @@ The link always resolves to the newest release, so Foundry offers updates automa
 
 **Providers:** DeepSeek (`https://api.deepseek.com/v1`, recommended), OpenAI, OpenRouter, Ollama (`http://localhost:11434/v1`), and LM Studio (`http://localhost:1234/v1`). Local servers must allow the exact Foundry browser origin through CORS. Set Ollama's `OLLAMA_ORIGINS` to that origin; in LM Studio enable CORS in Developer → Server Settings.
 
-Creativity, max response tokens, request timeout, and the optional Free Archetype variant live under advanced module settings. Grounding/selectors always use temperature 0. Complete one-click characters stop at level 2+ while Free Archetype is enabled, because that extra feat graph is not fully validated yet.
+Creativity, max response tokens, request timeout, and the optional Free Archetype variant live under advanced module settings. Grounding/selectors always use temperature 0. With Free Archetype enabled, each even class-feat level from 2 gains an archetype slot filled only from the proven catalog, with dedication ability prerequisites checked against the character.
 
 **Compendium sources:** by default the module draws from the PF2e system packs. Under **Compendium Sources** pick which Item packs supply abilities, spells, feats, equipment, and class features, plus which Actor packs supply bestiary scaffolds. Creature and encounter generation require an enabled bestiary Actor pack before they spend tokens.
 
@@ -75,6 +75,9 @@ In Character mode, **Generate spell lists** controls generated spell lists. Turn
 | **Presets** | **Standard** lists the 23 Remaster PF2e classes as flavor guides. **Custom** appears only when this world has saved presets. Magus, Witch, and the other Standard classes do not finish complete-only Characters. |
 | **Player Character mode** | Released for GM-reviewed use with **Fighter**, **Rogue**, and **Investigator** offered. Native Fighter and Investigator paths have bounded live coverage; Rogue acceptance remains incomplete. Standard presets guide flavor only. Review the class, heritage, choices, equipment, and numbers before play. |
 | **Item forge** | Core flows live-verified on Foundry 14 / PF2e 8.5: cancellation isolation, runed sheet parity, and generated-macro escaping. GMs open it from the Items directory; the v0.3.5.57 entry point passed live click and singleton-window checks. |
+| **Ordinary multiclass (noncaster)** | Behind the default-off world setting **Ordinary multiclass archetypes (noncaster)**. Only the noncaster catalog is offered; no live Foundry acceptance is recorded. |
+| **Experimental tools** | Behind the default-off **Enable experimental tools** setting, GM only. Includes the `/forge` chat command, the Creature Tools reskin and elite/weak flows, and `openCreatureTools`. Not native-accepted; may create actors or fail differently from the stable generator. |
+| **Level shifting** | Internal API only; no UI, chat command, or `module.api` entry point. Not native-accepted. |
 
 ## What's new
 
@@ -127,7 +130,7 @@ Complete one-click selection currently offers Fighter, Rogue, and Investigator. 
 
 **Review the character concept before play.** The provider can choose a different offered class or omit heritage even when the prompt requests one. Use **Preview Plan** when those details must be checked before creation, and complete any native PF2e choice dialogs. Compendium match counts establish source grounding; they do not verify that every requested detail was followed.
 
-Starting wealth buys real gear rather than turning into raw coin, and fundamental runes on weapons and armor are capped to what the character's level actually allows. Single-class builds only — no multiclass archetypes, and no pre-create screen for swapping individual picks (regenerate instead).
+Starting wealth buys real gear rather than turning into raw coin, and fundamental runes on weapons and armor are capped to what the character's level actually allows. Builds are single-class unless the GM enables **Ordinary multiclass archetypes (noncaster)** in world settings (off by default). That setting offers only the noncaster dedication catalog and its package feats in class feat slots, with dedication locks enforced; caster dedications stay unavailable. The Character preview lets you edit each identity, feat, and equipment choice before creation; spell-affecting choices are still deferred.
 
 After native features establish the character's actual proficiencies, the new sheet readies only its exact generated equipment: one proficient worn armor and no more than two hands of proficient weapons, shields, or tools. Incompatible or conflicting selections stay stowed and appear as a review warning. Compatible generated ammunition is selected for non-repeating reload-0 weapons; reloadable/repeating weapons, investment, and containers stay with the normal PF2e sheet controls.
 
@@ -150,6 +153,10 @@ Pick **Wondrous Item**, **Weapon**, or **Armor**, describe it, set level and rar
 **Activated items** add a 1/day ability — damage, heal, condition, or self-buff — as a companion **macro**, with a clickable Activate link in the description and the macros filed in a "SimplyPF2e Item Forge" folder (auto-deleted with the item). Target a token, click Activate; damage and healing post as normal PF2e chat cards so the built-in Apply buttons handle the rest. Each copy tracks its own charge and recharges through Rest for the Night, including player-owned rests. The charge must save before an effect runs; repeated clicks on the same client cannot activate the same copy concurrently. Companion macros remain while another world, actor, or token copy still references them. Activation dice and DCs use module-owned GM Core benchmarks; these are custom-item defaults, not published magic-item balance values.
 
 **Weapons and armor** use a rune pipeline: real base items, real property runes filtered by their actual usage string and the base armor category, and fundamental rune tiers whose real item level fits the target. The AI picks only from those candidates. Selections retain their exact compendium references, even when packs contain identically named items. A temporary native PF2e item prepares the preview price, level, and rarity without saving anything. Create checks the selected sources again and preserves the cloned base source values for native preparation. Runes whose published restriction depends on armor material are excluded because the compendium index cannot prove material compatibility.
+
+### Experimental tools
+
+Off by default. A GM turns on **Enable experimental tools** in world settings to use the `/forge <brief> <level>` chat command (add `--preview` to plan without creating) and the **Creature Tools** directory button. Creature Tools offers AI reskins of an existing bestiary-based creature and native elite/weak adjustments to an explicitly selected NPC. Each action rechecks the setting before any provider request or world write. These flows have no live Foundry acceptance yet.
 
 ### Presets
 
@@ -201,8 +208,8 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 **Rules coverage**
 
 - Complete one-click Player Character selection currently offers **Fighter, Rogue, and Investigator**. Wizard still needs verified class-owned spellbook and curriculum support. No class is widened merely to create a dialog-dependent or approximate build. NPCs retain spontaneous-style spellcasting entries.
-- PF2e stores feat prerequisites as display text, not a general eligibility API. Complete-only PC catalogs keep a feat only when every published clause is readable and proven against the staged ancestry/background/class grants and already-known skill training. Unmet, malformed, or unprovable text (including most feat-chains, expert/master ranks not yet on the snapshot, and Free Archetype's extra graph) is dropped rather than guessed. Empty feat slots still block creation. Prerequisites are evaluated at the slot's earned level. Investigator's restricted Skillful Lessons slots currently require proven explicit mental-skill or Lore rank prerequisites; generic choices and unmodeled methodology exceptions are excluded.
-- At level 2 or higher, enabling the module's Free Archetype variant stops complete one-click character generation before any AI request. Its eventual extra class-category feats are wired to the system's distinct `archetype-<level>` slots rather than ordinary class-feat slots.
+- PF2e stores feat prerequisites as display text, not a general eligibility API. Complete-only PC catalogs keep a feat only when every published clause is readable and proven against the staged ancestry/background/class grants and already-known skill training. Unmet, malformed, or unprovable text (including most feat-chains and expert/master ranks not yet on the snapshot) is dropped rather than guessed. Empty feat slots still block creation. Prerequisites are evaluated at the slot's earned level. Investigator's restricted Skillful Lessons slots currently require proven explicit mental-skill or Lore rank prerequisites; generic choices and unmodeled methodology exceptions are excluded.
+- With the Free Archetype variant enabled, each even class-feat level from 2 gains an archetype feat slot. Those slots use the system's distinct `archetype-<level>` group rather than ordinary class-feat slots, take only proven catalog dedications and their package feats, check dedication ability prerequisites against the slot's derived modifiers, and enforce the ordinary multiclass lock. A dedication of the PC's own class is refused.
 - PC loadout readiness currently covers published equipment proficiency, one armor slot, the two-hand limit, and compatible selected ammunition for non-repeating reload-0 weapons. Reloadable/repeating ammunition, item investment, container placement, and broader item-specific activation requirements still use the native sheet controls.
 - NPC discovery includes enabled class-feat sources across classes, but execution is limited to supported rule and dependency packages. Feats become NPC action items because PF2e forbids raw feats on NPC sheets. PC-only resources, unproven prose prerequisites, unsupported native choices and incompatible grants remain unavailable. This is not universal automation for every PC feat.
 - Explicit named NPC abilities use bounded local requirement matching. Ambiguous names or exclusions stop rather than granting unintended powers. Encounter themes containing named ability constraints stop before generation because the module cannot reliably assign a free-form requirement to a particular member; generate that constrained NPC separately.
@@ -212,19 +219,25 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 **Remaining live-acceptance gaps** (built, reviewed, and source-verified; the cases below still need actual-game coverage)
 
-- **Rogue** native creation and racket grants remain unaccepted after a failed live retry. One **Investigator** methodology/grant path passed on a live sheet, but broader class, feat, and level coverage remains open.
+- **Rogue** has one bounded live pass in v0.3.5.72: a level-1 Thief kept its exact identity, racket, and Sneak Attack grants, but its Guard Background Lore was missing. The Guard Lore choice in v0.3.5.73 awaits native recheck, and higher-level Rogue coverage remains open. One **Investigator** methodology/grant path passed on a live sheet, but broader class, feat, and level coverage remains open.
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
-- **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend. Its eventual slots are wired to PF2e's distinct `archetype-<level>` group.
+- **Free Archetype.** Archetype slots are catalog-only, with ability prerequisites checked per slot. Native ChoiceSet prompts and live slot rendering are not yet verified.
 - **PC spellcasting beyond complete-only classes.** Base-slot regressions cover all 140 rows of seven Remaster class tables, but native casting/expending, restricted class slots, and spellbook/familiar inventories still need live coverage. Complete one-click class selection remains limited to Fighter, Rogue, and Investigator.
 - **Item Forge coverage beyond the accepted paths.** A passive wondrous item, runed weapon/armor sheet parity, cancellation isolation, and generated healing/condition macro escaping have live evidence. The full passive-effect and activation matrix does not. Its rune path also has known gaps: no general rune prerequisite or exclusivity engine, material-restricted armor runes are excluded, and shield/ammunition runes are out of scope. Category restrictions such as light-only or medium/heavy-only are enforced against the real base armor category.
 - **Remaining activated-item macro paths** lean on PF2e system APIs that can change between versions. Damage, self-buff, and fallback branches still need live coverage. Every call degrades to a plain descriptive chat message rather than throwing. Best-effort behaviours: a condition's duration is shown but not enforced, a save whose degree of success can't be read is left for the table to adjudicate, and 1/day recharge relies on the "Rest for the Night" flow firing.
 
 ## Roadmap
 
-- [ ] **Chat command** — `/forge swamp hag 6` straight from the chat box during play.
-- [ ] **Reskin an existing creature** — use a bestiary entry as the mechanical template and let the AI reflavor it.
-- [ ] **Elite/weak adjustments** and level shifting for existing creatures.
-- [ ] **Multiclass archetypes** and a pre-create screen for swapping individual PC picks.
+Built, not native-accepted, and off by default:
+
+- **Chat command** `/forge <brief> <level>` (with `--preview`) and the **Creature Tools** reskin and elite/weak flows, behind **Enable experimental tools**.
+- **Ordinary multiclass archetypes** (noncaster catalog), behind their own setting.
+
+Not yet available as user-facing features:
+
+- **Level shifting** exists only as an internal module API (`scripts/level-shift.mjs`). It has no UI, chat command, or `module.api` entry point until a later UI slice.
+- **Caster multiclass dedications** and spell editing in the Character editor.
+- **Native acceptance** of every experimental and multiclass row listed under Remaining live-acceptance gaps.
 
 Shipped features and their versions are in the [release notes](https://github.com/simplyjaytea/simplyPF2e/releases).
 

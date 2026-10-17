@@ -11,7 +11,9 @@ export const SETTINGS = {
   requestTimeout: "requestTimeout",
   sourcePacks: "sourcePacks",
   customPresets: "customPresets",
-  freeArchetype: "freeArchetype"
+  freeArchetype: "freeArchetype",
+  multiclassArchetypes: "multiclassArchetypes",
+  experimentalTools: "experimentalTools"
 };
 
 export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
@@ -147,12 +149,34 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
   });
 
   // Free Archetype is a GM campaign-rule choice, so it is world-scoped and
-  // restricted. The complete-only builder currently refuses level-2+ requests
-  // while its feat prerequisite graph remains unvalidated; level 1 has no
-  // variant slot and remains available.
+  // restricted. When enabled, each even class-feat level from 2 gains an
+  // archetype slot filled only from the proven catalog, with dedication ability
+  // prerequisites checked against the character.
   game.settings.register(MODULE_ID, SETTINGS.freeArchetype, {
     name: "SIMPLYPF2E.Settings.FreeArchetype.Name",
     hint: "SIMPLYPF2E.Settings.FreeArchetype.Hint",
+    scope: "world",
+    config: true,
+    restricted: true,
+    type: Boolean,
+    default: false
+  });
+
+  game.settings.register(MODULE_ID, SETTINGS.multiclassArchetypes, {
+    name: "SIMPLYPF2E.Settings.MulticlassArchetypes.Name",
+    hint: "SIMPLYPF2E.Settings.MulticlassArchetypes.Hint",
+    scope: "world",
+    config: true,
+    restricted: true,
+    type: Boolean,
+    default: false
+  });
+
+  // Off by default. Roadmap tools that lack live acceptance stay unavailable
+  // until a GM enables them for this world; experimental-tools.mjs enforces it.
+  game.settings.register(MODULE_ID, SETTINGS.experimentalTools, {
+    name: "SIMPLYPF2E.Settings.ExperimentalTools.Name",
+    hint: "SIMPLYPF2E.Settings.ExperimentalTools.Hint",
     scope: "world",
     config: true,
     restricted: true,

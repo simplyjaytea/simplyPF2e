@@ -27,7 +27,15 @@
       },
       "FreeArchetype": {
         "Name": "Free Archetype variant rule",
-        "Hint": "Free Archetype is not yet available for complete one-click characters at level 2 or higher: its feat prerequisites need staged validation."
+        "Hint": "Free Archetype adds one archetype feat slot at each even class-feat level from level 2. Only proven catalog dedications are offered, and each needs its ability modifiers."
+      },
+      "MulticlassArchetypes": {
+        "Name": "Ordinary multiclass archetypes (noncaster)",
+        "Hint": "Offers the noncaster archetype catalog (dedications and their feats) in class feat slots, enforcing dedication locks. Caster dedications and packages outside the catalog stay unavailable."
+      },
+      "ExperimentalTools": {
+        "Name": "Enable experimental tools",
+        "Hint": "Off by default. Turns on roadmap tools that have not all passed live Foundry acceptance yet, currently the /forge chat command. Only the GM can use them, and they may create actors or fail differently from the stable generator. Leave this off for production games."
       }
     },
     "ProviderSetup": {
@@ -97,6 +105,24 @@
       "keyAbility": "Key ability",
       "classPath": "Racket / methodology",
       "Ability": { "str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma" }
+    },
+    "PCEdit": {
+      "Title": "Edit character",
+      "Hint": "Change one choice at a time and press Apply. Applying recomputes the character from the current catalogs; a refused change keeps your selection. Create stays disabled until every choice is resolved.",
+      "Choose": "Choose…",
+      "Apply": "Apply",
+      "NeedsChoice": "(needs a new choice)",
+      "Unavailable": "Current catalogs could not be loaded. Choices cannot be edited until they load.",
+      "SpellsDeferred": "This character has spells. Spell-affecting edits are not available yet.",
+      "Blockers": "Resolve before creating this character:",
+      "PendingChoice": "{field} needs a new choice: {reason}",
+      "UnresolvedItem": "Unresolved {category}: {name}",
+      "FeatSlot": "Feat ({type}, level {level})",
+      "EquipmentLine": "Equipment {index}: {name}",
+      "Applied": "Change applied.",
+      "Unchanged": "No change.",
+      "Failed": "The change could not be applied. See the console for details.",
+      "CreateBlocked": "Resolve the blocked character choices before creating this character."
     },
     "Generator": {
       "Title": "SimplyPF2e — Generator",
@@ -179,7 +205,6 @@
       "OpenSheet": "Open Sheet",
       "GenerateAnother": "Generate Another",
       "NoSupportedClasses": "No supported complete-only player-character classes are available in the enabled compendium sources.",
-      "FreeArchetypeUnsupported": "Free Archetype at level 2 or higher needs staged feat-prerequisite validation, so complete one-click character generation is unavailable while that variant is enabled.",
       "ReviewTitle": "Character created — review",
       "ReviewHint": "These features had no recorded choice after creation. Some may be conditional or intentionally disabled; review them in Foundry. This snapshot does not refresh when you edit the character and is not a full character validation.",
       "ReviewIncomplete": "Not every item could be inspected. Review the character manually.",
@@ -535,6 +560,67 @@
       "ABCSelectionUnresolved": "The AI selected {fields} outside the offered options. Generate again.",
       "NoBestiaryScaffold": "No usable NPC actor was available in the enabled Bestiary Actor sources. Check Compendium Sources and try again.",
       "WrongSystem": "SimplyPF2e requires the Pathfinder Second Edition (pf2e) game system."
+    },
+    "CreatureTools": {
+      "Title": "Creature Tools (experimental)",
+      "OpenButton": "Creature Tools",
+      "ReskinLegend": "Reskin a bestiary creature",
+      "ReskinHint": "Creates a new actor from an enabled bestiary NPC. The source actor is never changed. The AI proposes a name and text only; the stat block is copied unchanged.",
+      "Source": "Source creature",
+      "ChooseSource": "Choose a bestiary creature…",
+      "LevelShort": "level",
+      "Target": "Target concept",
+      "Preview": "Preview reskin",
+      "PreviewHeading": "Reviewed reskin",
+      "PreviewName": "Name",
+      "PreviewSource": "Source",
+      "PreviewChanges": "Changes",
+      "PreviewChangesNote": "name and public notes only; stats, items, and rules come from the source",
+      "Items": "items",
+      "Create": "Create new actor",
+      "Discard": "Discard",
+      "CreatedNote": "Created new actor:",
+      "AdjustLegend": "Elite or weak (native PF2e adjustment)",
+      "AdjustHint": "Applies PF2e's own elite or weak adjustment to an existing world NPC you select. PF2e recalculates the stats; this module does not.",
+      "Npc": "World NPC",
+      "ChooseNpc": "Choose an NPC…",
+      "HpNow": "current HP",
+      "NativeNote": "PF2e recalculates stats and HP when applied. The preview shows only the transition.",
+      "Apply": "Apply adjustment",
+      "ProgressConcept": "Drafting reskin",
+      "ProgressApply": "Creating actor",
+      "NoSource": "Choose a source creature first.",
+      "NoTarget": "Describe the target concept first.",
+      "Created": "Created {name}.",
+      "PresentationFailed": "The actor was created, but its sheet could not be opened.",
+      "RollbackSurvivor": "Creation failed and the partial actor {name} could not be removed. Delete it manually.",
+      "NoNpc": "Choose an NPC first.",
+      "Adjusted": "{name}: {from} → {to}.",
+      "AdjustUnchanged": "The NPC is already in that state; nothing was written.",
+      "Adjust": {
+        "elite": "Elite",
+        "weak": "Weak",
+        "normal": "Normal"
+      },
+      "Errors": {
+        "InvalidTarget": "Choose elite, weak, or normal.",
+        "NotAdjustable": "Only an existing world NPC can be adjusted (not a compendium copy, a token, or another type).",
+        "VerificationFailed": "The native adjustment did not persist; the previous state was restored.",
+        "RollbackFailed": "The adjustment did not persist and the previous state could not be restored. Check the NPC manually."
+      }
+    },
+    "Experimental": {
+      "GMOnly": "Only a GM can use experimental SimplyPF2e tools.",
+      "Disabled": "Experimental tools are turned off. Turn on Enable experimental tools in Module Settings → SimplyPF2e, then try again."
+    },
+    "Chat": {
+      "ForgeUsage": "Usage: /forge [--preview] <brief> <level>. The level is a whole number from {min} to {max} and comes last. --preview validates the creature without creating an actor.",
+      "ForgeNoBrief": "/forge needs a creature description before the level.",
+      "ForgeLevel": "The level must be a whole number from {min} to {max} as the last word, for example: /forge swamp hag 6",
+      "ForgeOption": "Only one --preview option is allowed, before or after the description.",
+      "ForgeIntent": "Choose generate or preview for this request.",
+      "ForgeBusy": "A SimplyPF2e generation is already running. Wait for it to finish or cancel it before using /forge again.",
+      "ForgeResultPending": "A Character or Encounter preview is waiting. Create or discard it before using /forge, so it is not replaced."
     }
   }
 }

@@ -799,10 +799,12 @@ export function getHeritageCandidates(maxRarity, options) {
  * @param {string[]} [args.preferredNames] exact legal first-draft picks kept before sampling
  * @param {boolean} [args.requireNoPrerequisites] empty-array gate when no staged context is supplied
  * @param {object} [args.prerequisiteContext] staged-actor snapshot from `stagedActorContext()`
+ * @param {number} [args.limit]      sampling cap (default FEAT_CANDIDATE_LIMIT); exact allow-lists pass a larger cap
  * @returns {Promise<{name: string, level: number, traits: string[]}[]>} sorted by level then name
  */
 export async function getFeatCandidates({
-  level, category, traits = [], preferredNames = [], requireNoPrerequisites = false, prerequisiteContext = null
+  level, category, traits = [], preferredNames = [], requireNoPrerequisites = false, prerequisiteContext = null,
+  limit = FEAT_CANDIDATE_LIMIT
 } = {}) {
   const candidates = [];
   const seen = new Set();
@@ -829,7 +831,7 @@ export async function getFeatCandidates({
     }
   }
   candidates.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-  return limitFeatCandidates(candidates, FEAT_CANDIDATE_LIMIT, preferredNames);
+  return limitFeatCandidates(candidates, limit, preferredNames);
 }
 
 /** Exact normalization for NPC requirement binding; this does not fuzzy-match. */
