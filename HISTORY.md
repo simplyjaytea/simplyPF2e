@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-17 — Proposed completion sequence
+
+- Reconciled git/public GitHub publication state: PR #113 is merged and .73 published; .73 asset parity, installation and Guard Lore native acceptance remain unverified. Prior pending-publication instructions are superseded.
+- At the user's request, wrote [a six-phase completion proposal](docs/completion-proposal-2026-10-17.md). It separates existing-feature acceptance from full scoped roadmap delivery and proposes moving arbitrary level shifting last because it has independent, unresolved balance requirements. This sequence is proposed, not an approved implementation decision.
+- Proposed first work is local/read-only baseline preparation, followed by a specifically authorized QA batch. No runtime changes, paid generations, installation or authenticated GitHub publication occurred.
+
 ## 2026-09-15 — Identity release, native Thief acceptance and Guard Lore follow-up
 
 - User authorized merging PR #112 and continuing. CI34865591818 passed; merge df8d53040027e7f1f3655b09085dd87bb2695694 triggered successful Auto Release34865642787 and v0.3.5.72. Luna verified both asset hashes and all50packaged files. Module-only Setup update succeeded; core/system/provider/world artifacts were preserved.

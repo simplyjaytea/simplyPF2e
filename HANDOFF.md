@@ -4,6 +4,7 @@ Read this first, then CLAUDE.md. Use the [documentation map](docs/README.md) for
 
 ## Status reconciliation — 2026-10-17
 
+- User requested a proposed completion plan. [October 17 proposal](docs/completion-proposal-2026-10-17.md) now separates current-feature acceptance from roadmap completion, proposes six phases, moves arbitrary level shifting last, and defines bounded QA/review/publication gates. It is awaiting user direction; implementation and QA have not started. Exact next action on approval: Phase 1 local/read-only baseline preparation, then present the concrete native QA batch and spending ceiling for authorization.
 - Read-only completion-list review confirmed local clean main at `feeeec6` and public GitHub PR #113 merged at `feeeec605bfb23077cc210bcbd718467d5375807`. GitHub's latest release is **v0.3.5.73**. The September 15 pending-publication instructions below are superseded; do not republish the Guard Lore fix.
 - No release-asset comparison, Foundry connection, installation, generation or live acceptance occurred during this review. Last recorded installation remains .72; .73 installation and Guard Lore acceptance are unverified.
 - Exact next step: verify .73 assets and actual installed version, then arrange the bounded native Guard/Thief Lore recheck within renewed QA authorization. Continue supported-PC progression and the remaining acceptance matrix before roadmap expansion. Cache acceptance and completion-plan steps 2–8 remain open.
