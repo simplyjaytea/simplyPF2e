@@ -18,7 +18,7 @@ Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
 https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
 ```
 
-The link always resolves to the newest release, so Foundry offers updates automatically. This line targets Foundry **v14** with the **pf2e** system **8.4.1**. Other version pairs need the same acceptance checks before being claimed as supported.
+The link always resolves to the newest release, so Foundry offers updates automatically. The manifest declares Foundry **v14** and a **pf2e** system minimum of **8.4.1**. Live QA has run on Foundry 14.365 with pf2e **8.5.0**; the 8.4.1 minimum has not been exercised in a live instance. Other version pairs need the same acceptance checks before being claimed as supported.
 
 ## Setup
 
@@ -212,7 +212,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 **Remaining live-acceptance gaps** (built, reviewed, and source-verified; the cases below still need actual-game coverage)
 
-- **Rogue** native creation and racket grants remain unaccepted after a failed live retry. One **Investigator** methodology/grant path passed on a live sheet, but broader class, feat, and level coverage remains open.
+- **Rogue** has one bounded live pass in v0.3.5.72: a level-1 Thief kept its exact identity, racket, and Sneak Attack grants, but its Guard Background Lore was missing. The Guard Lore choice in v0.3.5.73 awaits native recheck, and higher-level Rogue coverage remains open. One **Investigator** methodology/grant path passed on a live sheet, but broader class, feat, and level coverage remains open.
 - **Focus spells**, for both PCs and NPCs. The pool size (spell count, capped at 3) is a defensible module default, not a verified GM Core rule. NPC focus spells only attach alongside normal spellcasting — a focus-only creature isn't supported.
 - **Free Archetype.** Level-2+ complete one-click generation intentionally stops before provider spend. Its eventual slots are wired to PF2e's distinct `archetype-<level>` group.
 - **PC spellcasting beyond complete-only classes.** Base-slot regressions cover all 140 rows of seven Remaster class tables, but native casting/expending, restricted class slots, and spellbook/familiar inventories still need live coverage. Complete one-click class selection remains limited to Fighter, Rogue, and Investigator.
