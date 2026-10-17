@@ -2,6 +2,13 @@
 
 Read this first, then CLAUDE.md. Use the [documentation map](docs/README.md) for source records and historical evidence.
 
+## Status reconciliation — 2026-10-17
+
+- Read-only completion-list review confirmed local clean main at `feeeec6` and public GitHub PR #113 merged at `feeeec605bfb23077cc210bcbd718467d5375807`. GitHub's latest release is **v0.3.5.73**. The September 15 pending-publication instructions below are superseded; do not republish the Guard Lore fix.
+- No release-asset comparison, Foundry connection, installation, generation or live acceptance occurred during this review. Last recorded installation remains .72; .73 installation and Guard Lore acceptance are unverified.
+- Exact next step: verify .73 assets and actual installed version, then arrange the bounded native Guard/Thief Lore recheck within renewed QA authorization. Continue supported-PC progression and the remaining acceptance matrix before roadmap expansion. Cache acceptance and completion-plan steps 2–8 remain open.
+- This session only records status on `codex/status-2026-10-17`; no runtime changes or new test results. The older records below preserve prior QA evidence and spending limits. CLAUDE.md, README and the completion plan still contain historical publication/acceptance wording; use this reconciliation for current publication state.
+
 ## Current work — 2026-09-15 native PC follow-up
 
 - Branch: codex/pc-native-acceptance, based on PR #112 merge df8d53040027e7f1f3655b09085dd87bb2695694. User authorized merging the identity slice and continuing work; #112 merged after successful CI34865591818. Auto Release34865642787 published v0.3.5.72. Luna verified both official asset hashes and all 50 packaged files.
