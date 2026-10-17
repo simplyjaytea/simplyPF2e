@@ -150,6 +150,7 @@ export function multiclassBlockers(names, className) {
   const ownClass = slugify(String(className ?? ""));
   const blocked = [];
   const held = new Set();
+  const heldDedications = new Set();
   let current = null;
   let others = 0;
   names.forEach((name, index) => {
@@ -158,9 +159,9 @@ export function multiclassBlockers(names, className) {
     let reason = null;
     if (info.role === "dedication") {
       if (info.pkg === ownClass) reason = `${info.name} is a dedication of your own class`;
-      else if (current && current.pkg === info.pkg) reason = `${info.name} is already held`;
+      else if (heldDedications.has(info.pkg)) reason = `${info.name} is already held`;
       else if (current && others < 2) reason = `complete ${current.name} (two more feats) before ${info.name}`;
-    } else if (!current || current.pkg !== info.pkg) {
+    } else if (!heldDedications.has(info.pkg)) {
       reason = `${info.name} needs ${packageDedication(info.pkg)} first`;
     } else {
       const missing = info.requires.find((req) => !held.has(slugify(req)));
@@ -172,6 +173,7 @@ export function multiclassBlockers(names, className) {
     }
     held.add(slugify(info.name));
     if (info.role === "dedication") {
+      heldDedications.add(info.pkg);
       current = { name: info.name, pkg: info.pkg };
       others = 0;
     } else {

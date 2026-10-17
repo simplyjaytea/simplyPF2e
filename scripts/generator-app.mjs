@@ -448,6 +448,7 @@ export class GeneratorApp extends SpfApp {
     if (!this.#pcConcept || !control || this.#pcEditInFlight || this.#busy) return;
     this.#readForm();
     this.#pcEditInFlight = true;
+    this.#busy = true;
     this.#pcEditError = null;
     this.#pcEditNotice = null;
     try {
@@ -457,6 +458,13 @@ export class GeneratorApp extends SpfApp {
       this.#pcConcept = result.plan.concept;
       this.#pcResolved = result.plan.resolved;
       this.#pcPending = result.plan.pending;
+      if (result.changed.some((change) => String(change).startsWith("equipment:"))) {
+        const wealthTarget = pcStartingWealthGp(this.#pcConcept.level, this.#input.treasureAmount);
+        const lootBudget = Math.max(wealthTarget - (result.equipmentGp ?? 0), 0);
+        this.#pcResolved.loot = dedupeLootAgainstEquipment(this.#pcResolved.loot ?? [], this.#pcResolved.equipment ?? []);
+        this.#pcResolved.loot = enforceNamedLootBudget(this.#pcResolved.loot, lootBudget);
+        this.#pcResolved.loot = await applyTreasureBudget(this.#pcResolved.loot, lootBudget);
+      }
       this.#manifest = validatePCEditCompletion(result.plan).manifest;
       for (const key of [control, ...pcEditorInvalidatedControls(result.invalidated)]) delete this.#pcEditDrafts[key];
       const messages = [game.i18n.localize(result.changed.length ? "SIMPLYPF2E.PCEdit.Applied" : "SIMPLYPF2E.PCEdit.Unchanged")];
@@ -468,6 +476,7 @@ export class GeneratorApp extends SpfApp {
       this.#pcEditError = contract ? err.message : game.i18n.localize("SIMPLYPF2E.PCEdit.Failed");
     } finally {
       this.#pcEditInFlight = false;
+      this.#busy = false;
     }
     await this.render();
   }
