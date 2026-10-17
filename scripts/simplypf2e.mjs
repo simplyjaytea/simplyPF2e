@@ -1,13 +1,15 @@
 import { MODULE_ID, registerSettings } from "./settings.mjs";
 import { GeneratorApp } from "./generator-app.mjs";
 import { ItemForgeApp } from "./itemforge-app.mjs";
+import { CreatureToolsApp } from "./creature-tools-app.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { ProviderSetupApp } from "./provider-setup-app.mjs";
-import { experimentalToolRefusal } from "./experimental-tools.mjs";
+import { experimentalToolRefusal, experimentalToolsEnabled } from "./experimental-tools.mjs";
 import { FORGE_COMMAND_PATTERN, runForgeCommand } from "./forge-command.mjs";
 
 let app = null;
 let itemForgeApp = null;
+let creatureToolsApp = null;
 const FORGE_CHAT_COMMAND = "simplypf2e-forge";
 
 function canOpenApps() {
@@ -34,6 +36,18 @@ function openItemForge() {
   itemForgeApp ??= new ItemForgeApp();
   itemForgeApp.render(true);
   return itemForgeApp;
+}
+
+function openCreatureTools() {
+  if (!canOpenApps()) return null;
+  const refusal = experimentalToolRefusal();
+  if (refusal) {
+    ui.notifications.warn(game.i18n.localize(refusal.localizeKey));
+    return null;
+  }
+  creatureToolsApp ??= new CreatureToolsApp();
+  creatureToolsApp.render(true);
+  return creatureToolsApp;
 }
 
 function startForgeRequest(request) {
@@ -117,15 +131,16 @@ Hooks.once("ready", () => {
     return;
   }
   // Macro/console API: game.modules.get("simplypf2e").api.open()
-  // and .openItemForge() for the magic item forge.
+  // and .openItemForge() for the magic item forge; .openCreatureTools() for experimental creature tools.
   const module = game.modules.get(MODULE_ID);
-  module.api = { open: openGenerator, openItemForge };
+  module.api = { open: openGenerator, openItemForge, openCreatureTools };
   // Registered only in PF2e: in other systems the module stays inert and
   // Foundry reports /forge as an unknown command.
   registerForgeChatCommand();
 });
 
-/* Add a "SimplyPF2e" button to the Actors directory header (GM only). */
+/* Add a "SimplyPF2e" button to the Actors directory header (GM only). The experimental
+   "Creature Tools" button joins it only while the gate is on. One handler per hook name. */
 Hooks.on("renderActorDirectory", (_directory, html) => {
   if (!game.user.isGM || game.system.id !== "pf2e") return;
   addDirectoryButton(html, {
@@ -134,6 +149,14 @@ Hooks.on("renderActorDirectory", (_directory, html) => {
     label: "SIMPLYPF2E.Generator.OpenButton",
     onClick: openGenerator
   });
+  if (experimentalToolsEnabled()) {
+    addDirectoryButton(html, {
+      markerClass: "spf-creature-tools-directory-button",
+      icon: "fa-wand-magic-sparkles",
+      label: "SIMPLYPF2E.CreatureTools.OpenButton",
+      onClick: openCreatureTools
+    });
+  }
 });
 
 /* Add an "Item Forge" button to the Items directory header (GM only). */
