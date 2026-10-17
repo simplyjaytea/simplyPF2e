@@ -11,7 +11,8 @@ export const SETTINGS = {
   requestTimeout: "requestTimeout",
   sourcePacks: "sourcePacks",
   customPresets: "customPresets",
-  freeArchetype: "freeArchetype"
+  freeArchetype: "freeArchetype",
+  experimentalTools: "experimentalTools"
 };
 
 export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
@@ -153,6 +154,18 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
   game.settings.register(MODULE_ID, SETTINGS.freeArchetype, {
     name: "SIMPLYPF2E.Settings.FreeArchetype.Name",
     hint: "SIMPLYPF2E.Settings.FreeArchetype.Hint",
+    scope: "world",
+    config: true,
+    restricted: true,
+    type: Boolean,
+    default: false
+  });
+
+  // Off by default. Roadmap tools that lack live acceptance stay unavailable
+  // until a GM enables them for this world; experimental-tools.mjs enforces it.
+  game.settings.register(MODULE_ID, SETTINGS.experimentalTools, {
+    name: "SIMPLYPF2E.Settings.ExperimentalTools.Name",
+    hint: "SIMPLYPF2E.Settings.ExperimentalTools.Hint",
     scope: "world",
     config: true,
     restricted: true,
