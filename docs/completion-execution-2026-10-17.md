@@ -30,8 +30,8 @@ Integrate locally before review; public main merges only after review approval a
 
 Task IDs, worktree paths and resulting commits are recorded here as workers are launched and finish. No delegated work was complete when this execution record was created.
 
-- C01 complete/integrated. Worktree `/home/jtf/.t3/worktrees/simplyPF2e/t3-e024e347`, branch `t3/e024e347`, commit `6df707b`; merged into integration HEAD after the Node 22 gate.
-- C02 complete/integrated. Worktree `/home/jtf/.t3/worktrees/simplyPF2e/t3-19d334c7`, branch `t3/19d334c7`, commit `8961eed`; merged into integration HEAD after the Node 22 gate.
-- C03 complete/integrated. Worktree `/home/jtf/.t3/worktrees/simplyPF2e/t3-ba12f6b8`, branch `t3/ba12f6b8`, commit `3988cf5`; merged into integration HEAD after the Node 22 gate.
-- Integration verification: Node 22 gate passed (145 scripts + 1 tooling, 102 regression files, exit 0); `git diff --check` clean.
-- Next dispatch (Wave 1, max 3): C04, C07, C10 from the new integration HEAD. C05 remains queued until C04 integrates.
+- C01–C03 and C04/C07/C10 integrated into `codex/completion-integration-2026-10-17`; latest gate passed (145 scripts + 1 tooling, 103 regression files, exit 0); `git diff --check` clean.
+- C04 complete: worktree `/home/jtf/.t3/worktrees/simplyPF2e/t3-c04`, branch `t3/c04`, commit `f58e5ef`.
+- C07 complete: worktree `/home/jtf/.t3/worktrees/simplyPF2e/t3-c07`, branch `t3/c07`, commit `7795ccc`.
+- C10 complete: worktree `/home/jtf/.t3/worktrees/simplyPF2e/t3-c10`, branch `t3/c10`, commit `de38206`.
+- Next dispatch (Wave 2, max 3): C05 (PC editing contract) and C11 (level-shifting implementation) from the new integration HEAD. C06 remains queued until C05 integrates; C08 waits for C06+C07.
