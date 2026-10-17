@@ -27,7 +27,7 @@ class App {
   element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
     : selector.includes('name="level"') ? { value: String(generatorLevel) }
       : selector.includes('name="prompt"') ? { value: "A weathered courier" }
-      : selector.includes('name="allowSpellcasting"') ? { checked: false } : null };
+      : selector.includes('name="allowSpellcasting"') ? { checked: false } : null, querySelectorAll: () => [] };
   async render() { this.context = await this._prepareContext(); }
   _beginProgress() { this.abort = new AbortController(); return this.abort.signal; }
   async _setStep() {}
@@ -86,7 +86,12 @@ const mocks = {
   lootValueGp: (loot) => (Array.isArray(loot) ? loot : []).reduce((sum, item) =>
     sum + (parseCoins(item?.name) ? (Number(item?.resolvedValue ?? item?.value) || 1) * (Number(item?.quantity) || 1) : 0), 0),
   parseCoins,
-  createCharacterActor: async () => { creates++; if (createFailure) throw createFailure; return { actor, skillReport }; }
+  createCharacterActor: async () => { creates++; if (createFailure) throw createFailure; return { actor, skillReport }; },
+  validatePCEditCompletion: () => ({ complete: true, pending: [], errors: [], unresolved: [], manifest: {} }),
+  applyPCEdit: async (plan) => ({ plan, changed: [], invalidated: [], equipmentGp: 0 }),
+  pcEditFromControl: (control, value) => ({ control, value }),
+  pcEditorSelections: () => ({}), pcEditorInvalidatedControls: () => [],
+  heritageMatchesAncestry: () => true,
 };
 const source = await readFile(new URL("./generator-app.mjs", import.meta.url), "utf8");
 const appModule = new vm.SourceTextModule(source, { context });

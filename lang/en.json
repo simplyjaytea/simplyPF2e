@@ -102,6 +102,24 @@
       "classPath": "Racket / methodology",
       "Ability": { "str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma" }
     },
+    "PCEdit": {
+      "Title": "Edit character",
+      "Hint": "Change one choice at a time and press Apply. Applying recomputes the character from the current catalogs; a refused change keeps your selection. Create stays disabled until every choice is resolved.",
+      "Choose": "Choose…",
+      "Apply": "Apply",
+      "NeedsChoice": "(needs a new choice)",
+      "Unavailable": "Current catalogs could not be loaded. Choices cannot be edited until they load.",
+      "SpellsDeferred": "This character has spells. Spell-affecting edits are not available yet.",
+      "Blockers": "Resolve before creating this character:",
+      "PendingChoice": "{field} needs a new choice: {reason}",
+      "UnresolvedItem": "Unresolved {category}: {name}",
+      "FeatSlot": "Feat ({type}, level {level})",
+      "EquipmentLine": "Equipment {index}: {name}",
+      "Applied": "Change applied.",
+      "Unchanged": "No change.",
+      "Failed": "The change could not be applied. See the console for details.",
+      "CreateBlocked": "Resolve the blocked character choices before creating this character."
+    },
     "Generator": {
       "Title": "SimplyPF2e — Generator",
       "OpenButton": "SimplyPF2e",
