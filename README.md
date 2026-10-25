@@ -254,7 +254,7 @@ node tools/check.mjs
 git diff --check
 ```
 
-The command syntax-checks every script, test and tooling module, runs every `tests/**/*.test.mjs`, and parses the module/localization JSON. Run a single regression directly with `node tests/<name>.test.mjs` when investigating a focused change.
+The command syntax-checks every script, test and tooling module, runs every `tests/**/*.test.mjs`, and parses the module/localization JSON. It also runs a static integrity check over relative imports and their named exports, template paths and registered partials, and `SIMPLYPF2E.*` localization keys (unused keys are reported as a warning count). Run a single regression directly with `node tests/<name>.test.mjs` when investigating a focused change.
 
 CI syntax-checks every module, runs every `*.test.mjs`, and validates the JSON manifests on pull requests; the release pipeline repeats syntax, regression, and JSON verification before publishing. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
 
