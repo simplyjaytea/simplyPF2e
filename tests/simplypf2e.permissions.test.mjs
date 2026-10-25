@@ -2,6 +2,8 @@
 // module API must enforce the same boundary from the browser console.
 // Run: node tests/simplypf2e.permissions.test.mjs
 import assert from "node:assert/strict";
+import { EXPERIMENTAL_REFUSAL } from "../scripts/experimental-tools.mjs";
+import { SETTINGS } from "../scripts/settings.mjs";
 
 let renders = 0;
 class FakeApplicationV2 {
@@ -117,6 +119,7 @@ globalThis.game = {
   system: { id: "pf2e" },
   user: { id: "player", isGM: false },
   modules: new Map([["simplypf2e", moduleRecord]]),
+  settings: { get: (_module, key) => (key === SETTINGS.experimentalTools ? false : undefined) },
   i18n: { localize: (key) => key }
 };
 globalThis.ui = { notifications: {
@@ -166,6 +169,21 @@ assert.equal(renders, 2, "directory-button clicks render their respective apps")
 assert.ok(moduleRecord.api.open(), "a GM can open the generator through the public API");
 assert.ok(moduleRecord.api.openItemForge(), "a GM retains the documented item-forge console access");
 assert.equal(renders, 4);
+
+// The experimental level-shift API refuses at the gate even for a GM: the refusal comes before any
+// source read, and Actor.create is never reached. The probe actor throws on any property access.
+const creates = [];
+globalThis.Actor = { create: async (data) => { creates.push(data); return {}; } };
+let sourceReads = 0;
+const unreadableActor = new Proxy({}, { get() { sourceReads += 1; throw new Error("level-shift backend reached"); } });
+assert.equal(typeof moduleRecord.api.levelShift.prepare, "function", "the level-shift preview is exposed");
+assert.equal(typeof moduleRecord.api.levelShift.create, "function", "the level-shift create is exposed");
+await assert.rejects(moduleRecord.api.levelShift.prepare(unreadableActor, 6),
+  (error) => error.code === EXPERIMENTAL_REFUSAL.DISABLED, "a GM cannot preview a level shift while the gate is closed");
+await assert.rejects(moduleRecord.api.levelShift.create({ fake: true }),
+  (error) => error.code === EXPERIMENTAL_REFUSAL.DISABLED, "a GM cannot create a level shift while the gate is closed");
+assert.equal(sourceReads, 0, "the source is never read while the gate is closed");
+assert.equal(creates.length, 0, "Actor.create is never called while the gate is closed");
 
 game.system.id = "dnd5e";
 const wrongSystemItems = makeDirectory();
