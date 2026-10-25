@@ -25,7 +25,7 @@ Four generator modes plus a forge, all GM-only, all requiring the pf2e system:
 | **Item Forge** | Magic items: passive wondrous items from cloned Rule Elements, 1/day activations via prewritten macros, runed weapons/armor | Core flows live-verified |
 | **Experimental tools** (off by default) | `/forge <brief> <level>` chat command; Creature Tools reskin + native elite/weak | Built, reviewed, **not native-accepted** |
 | **Ordinary multiclass** (off by default) | Noncaster dedication catalog for PCs (`multiclassArchetypes`); Free Archetype slots (`freeArchetype`); both settings default off | Built, **not native-accepted** |
-| **Level shifting** | New NPC at level ±1/±2 via benchmark deltas | Internal API only, no UI |
+| **Level shifting** (off by default) | New NPC at level ±1/±2 via GM Core benchmark deltas; source unchanged | Built behind `experimentalTools` (Creature Tools section + `api.levelShift`), **not native-accepted** |
 
 Repo: `simplyjaytea/simplyPF2e`. Public install manifest: `https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json`. **Every merge to `main` auto-publishes a release that every install is offered immediately.**
 
@@ -76,7 +76,7 @@ Out of scope by decision: universal PF2e feat automation, caster multiclass dedi
 
 - Focus pool size = spell count capped at 3 (module default, not GM Core). Focus-only NPCs (no tradition, so no DC) unsupported.
 - Rarity cap applies to ancestry/background/heritage only.
-- Level shifting supports deltas −2, −1, +1, +2 only; narrow caster policy; abilities unchanged, skills shifted; first-instance Strike damage shifted; result named `<name> (Level T)`. These were C11's assumptions pending the user's confirmation — see §8.
+- Level shifting supports deltas −2, −1, +1, +2 only; narrow caster policy; abilities unchanged, skills shifted; first-instance Strike damage shifted; result named `<name> (Level T)`. Confirmed by the user on 2026-10-25; the gated UI shipped in the 2026-10-25 sprint.
 - A one-level benchmark delta is **not** the flat elite +2; a level-shifted clone must have `attributes.adjustment` null (C10 design decision, not pf2e source).
 - Multiclass catalog (PF2e 8.5.0 names): Fighter, Investigator, Barbarian, Monk, Ranger dedications + listed package feats; caster dedications unavailable.
 
@@ -90,7 +90,7 @@ Three pipelines over shared compendium/table infrastructure, plus the experiment
 
 **Item Forge** (`item-builder.mjs`, `rule-templates.mjs`, `macro-templates.mjs`, `runes.mjs`) — passive items clone unchanged REs from eligible published equipment; activations use four prewritten macro bodies; runed weapons/armor clone a real base plus real rune items. PF2e derives final price/level.
 
-**Experimental** — `forge-command.mjs` parses `/forge` and feeds the Monster lifecycle; `reskin.mjs` + `reskin-policy.mjs` clone one exact bestiary NPC and append AI flavor proven inert; `creature-tools.mjs` wraps those plus native `applyAdjustment`; `level-shift.mjs` + `level-shift-policy.mjs` build a new NPC by benchmark delta. All pass through `experimental-tools.mjs`.
+**Experimental** — `forge-command.mjs` parses `/forge` and feeds the Monster lifecycle; `reskin.mjs` + `reskin-policy.mjs` clone one exact bestiary NPC and append AI flavor proven inert; `creature-tools.mjs` wraps those plus native `applyAdjustment` and the level-shift flows; `level-shift.mjs` + `level-shift-policy.mjs` build a new NPC by benchmark delta. All pass through `experimental-tools.mjs`.
 
 **Shared** — `completion.mjs` (required-content manifests, persisted-source checks) and `post-create.mjs` (commit/rollback boundary: failures roll back only new documents; failed cleanup reports survivors and discards the draft to prevent duplicate retries). `compendium.mjs` (`findEntry` fuzzy match, pack indexes, candidate lists, `priceToGp`, `RARITY_RANK`), `async-cache.mjs` (pending-load coalescing, failed-load eviction), `ai.mjs` (all provider calls, streaming SSE, retry-once, fail-closed JSON), `tables.mjs` / `pc-tables.mjs` (benchmarks, PC cadence, casting profiles).
 
@@ -178,11 +178,12 @@ Live QA runs on the user's Foundry (Foundry 14.365 / PF2e 8.5.0, world `test`) a
 
 ## 8. Current state — 2026-10-25
 
-- **Latest release: v0.3.5.74**, published 2026-10-17 from PR #114 (`d0ec85e`, "Integrate completion chunks C01–C13" plus six P2 fixes from a consolidated Opus review). Auto Release run 39051396149 succeeded. Release-asset parity for .74 against the merge has **not** been re-verified (C01 did this for .73).
+- **Latest release: v0.3.5.74**, published 2026-10-17 from PR #114 (`d0ec85e`, "Integrate completion chunks C01–C13" plus six P2 fixes from a consolidated Opus review). Auto Release run 39051396149 succeeded. Release-asset parity for .74 was verified on 2026-10-25: both digests match the API and all 63 archive entries are byte-identical to `d0ec85e` ([record](docs/evidence/release-parity-2026-10-25.md)).
 - **Last recorded installation: v0.3.5.72.** Nothing from .73 or .74 has been installed or natively exercised. The Guard Lore fix (.73), all experimental tools, the PC editor, multiclass, Free Archetype and level shifting have zero live evidence.
-- **Local gate:** 50 runtime modules, 109 regression files, exit 0 on Node 26.12.1.
+- **Local gate:** 50 runtime modules, 112 regression files, plus the static integrity check (`tools/check-integrity.mjs`: imports, named exports, template paths, localization keys), exit 0 on Node 26.12.1.
 - **Native ledger:** R01–R25 (22 OPEN, 3 BLOCKED: R20 PC focus path, R22 screen-reader operator, R24 isolated PF2e 8.4.1 instance) and N01–N08 all OPEN. Zero PASS rows. Known provider spend lower bound 333,213 tokens.
-- **Open decisions the user owns:** (a) level-shift entry point — add a gated Creature Tools section + `module.api` member, or leave internal; (b) confirm C11's assumed policy (deltas ±1/±2, narrow caster rule); (c) a QA spending envelope for Batch A; (d) screen-reader operator and isolated 8.4.1 environment, or explicit deferral.
+- **Decided 2026-10-25:** level shifting has a gated Creature Tools section and `module.api.levelShift` (preview, then create); the C11 policy (deltas ±1/±2, narrow caster rule, abilities unchanged, skills shifted, first-instance Strike damage shifted, `<name> (Level T)`) is confirmed. Its native rows (N08) stay OPEN.
+- **Open decisions the user owns:** (c) a QA spending envelope for Batch A — the runbook is ready ([qa-batch-a](docs/plans/qa-batch-a-2026-10-25.md)); (d) screen-reader operator and isolated 8.4.1 environment, or explicit deferral.
 - Historical narrative and the full bug log: [docs/HISTORY.md](docs/HISTORY.md). Last large plans: [completion proposal](docs/plans/completion-proposal-2026-10-17.md), [execution ledger](docs/plans/completion-execution-2026-10-17.md), [consolidated review record](docs/reviews/completion-review-2026-10-17.md).
 
 ## 9. Backlog — what to do next
@@ -191,10 +192,10 @@ Ordered. Pick the top item whose prerequisites are met; move finished items to �
 
 ### Ready now — local only, no spend, no live world, no publication
 
-1. **Dead code and localization sweep** (flagged by C12 §3.5, never done): exports with no production consumer (`findFundamentalRune`, `availableEffectKinds`, others) and unused `lang/en.json` keys (`NoExemplars`, `Generator.CreateAll`, `Presets.*Tooltip`...). Haiku worker; verify each with grep across `scripts/ templates/`; keep anything a test uses; gate must stay green.
-2. **Release-asset parity check for v0.3.5.74**: download both assets, compare digests and every archive entry against `d0ec85e` (mirror C01 §2 method). Documentation outcome goes to the acceptance ledger R01 prerequisites.
-3. **Level-shift entry point design note** (decision (a) above): write a one-page proposal (gated Creature Tools section + `api.levelShift`, preview-first, same rollback contract) so the user can approve or decline. No code until approved.
-4. **Link check in the gate**: add a dependency-free relative-link checker for `*.md` to `tools/` and call it from `check.mjs`, so the reorganized docs cannot rot.
+1. **Dead code and localization sweep** (flagged by C12 §3.5, never done): exports with no production consumer (`findFundamentalRune`, `availableEffectKinds`, others) and the 10 unused `lang/en.json` keys the integrity check now reports as warnings. Haiku worker; verify each with grep across `scripts/ templates/`; keep anything a test uses; gate must stay green.
+2. **Link check in the gate**: add a dependency-free relative-link checker for `*.md` to `tools/check-integrity.mjs` (or a sibling) so the reorganized docs cannot rot.
+
+Done in the 2026-10-25 sprint ([plan](docs/plans/sprint-2026-10-25.md)): static integrity check in the gate; gated level-shift UI + `api.levelShift`; v0.3.5.74 release parity; Batch A runbook.
 
 ### Needs user authorization — live world and/or provider spend
 
@@ -227,4 +228,4 @@ Condensed from the former `CLAUDE.md` "Known gaps". User-facing wording lives in
 - **Focus spells, v1 scope:** focus-only NPCs (no tradition, no DC) are unsupported; the pool size convention (spell count, capped at 3) is a module default. Both are signed-off decisions.
 - **Rarity cap covers ancestry/background/heritage only.** `getFullCandidates()`'s `maxRarity` + `RARITY_RANK` exist if extending is wanted.
 - **Item forge Phase 3:** no rune prerequisite/exclusivity validation; shield and ammunition runes are out of scope. Armor property runes are gated to the base armor's category (`propertyRuneFitsBase` in `runes.mjs`), but the material-constrained usages `etched-onto-metal-armor`, `etched-onto-lm-nonmetal-armor` and `etched-onto-medium-heavy-metal-armor` are excluded because an armor's metal-ness is not in the index data.
-- **Roadmap gates:** `/forge`, Creature Tools reskin and elite/weak are behind default-off `experimentalTools`; noncaster multiclass behind `multiclassArchetypes`; none native-accepted. Level shifting is an internal API with no UI. Caster multiclass dedications are unbuilt. See [completion proposal](docs/plans/completion-proposal-2026-10-17.md).
+- **Roadmap gates:** `/forge`, Creature Tools reskin and elite/weak are behind default-off `experimentalTools`; noncaster multiclass behind `multiclassArchetypes`; none native-accepted. Level shifting is behind the same `experimentalTools` gate since the 2026-10-25 sprint. Caster multiclass dedications are unbuilt. See [completion proposal](docs/plans/completion-proposal-2026-10-17.md).

@@ -12,6 +12,8 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
+| [Sprint plan, October 25](plans/sprint-2026-10-25.md) | Three work packages: integrity gate, gated level-shift UI, .74 parity + Batch A runbook; integration/review protocol |
+| [QA Batch A runbook, October 25](plans/qa-batch-a-2026-10-25.md) | Operator script for R01/N01/R06/R02/R07/R21 on v0.3.5.74 with ceilings, stop rule and ledger paste-back |
 | [Completion execution, October 17](plans/completion-execution-2026-10-17.md) | Execution ledger defining chunks C01–C13, their dependencies and integration status |
 | [Completion proposal, October 17](plans/completion-proposal-2026-10-17.md) | Proposed remaining phases, completion criteria and bounded QA/release gates after PR #113 |
 | [Completion plan, September 15](plans/completion-plan-2026-09-15.md) | Ordered readiness/roadmap work, Luna delegation and completion gates |
@@ -29,6 +31,8 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
+| [Release parity, v0.3.5.74](evidence/release-parity-2026-10-25.md) | Asset digests and 63/63 archive entries verified against the PR #114 merge |
+| [Level-shift UI](evidence/level-shift-ui-2026-10-25.md) | Gated Creature Tools level-shift section and `api.levelShift`; confirmed policy; open native rows |
 | [Required PC identity](evidence/pc-identity-2026-09-15.md) | First completion slice, source evidence, independent review and pending native QA |
 | [NPC automatic abilities](evidence/npc-automatic-abilities-2026-09-09.md) | Implemented package boundary, source evidence and bounded .70 native QA |
 | [Consumer readiness](evidence/consumer-readiness-2026-09-08.md) | UI/generation changes and version-specific .65–.69 QA |
