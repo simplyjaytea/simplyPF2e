@@ -3,7 +3,6 @@ import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import { SpfApp } from "./app-base.mjs";
 import { experimentalToolRefusal } from "./experimental-tools.mjs";
 import { RESKIN_CODES } from "./reskin.mjs";
-import { LEVEL_SHIFT_ERROR_CODES } from "./level-shift.mjs";
 import { SUPPORTED_SHIFTS } from "./level-shift-policy.mjs";
 import { MIN_LEVEL, MAX_LEVEL } from "./tables.mjs";
 import {
@@ -15,6 +14,28 @@ import {
 const SPENT_PLAN_CODES = new Set([
   RESKIN_CODES.STALE_SOURCE, RESKIN_CODES.INVALID_PLAN, RESKIN_CODES.INVALID_OUTPUT, RESKIN_CODES.VERIFICATION_FAILED
 ]);
+
+/** The NPC's native base level. Elite and weak adjustments do not change the source level. */
+function shiftBaseLevel(actor) {
+  return Number(actor?.baseLevel ?? actor?._source?.system?.details?.level?.value ?? actor?.system?.details?.level?.value);
+}
+
+/** Supported target levels for a world NPC, limited to the range the level-shift policy accepts. */
+function shiftTargetLevelsFor(actor) {
+  const sourceLevel = shiftBaseLevel(actor);
+  if (!Number.isInteger(sourceLevel)) return [];
+  return SUPPORTED_SHIFTS
+    .map((delta) => sourceLevel + delta)
+    .filter((level) => level >= MIN_LEVEL && level <= MAX_LEVEL);
+}
+
+/** The localized error, followed by any problems the backend attached, joined for display. */
+function errorText(err) {
+  const problems = (err?.problems ?? [])
+    .map((problem) => (typeof problem === "string" ? problem : problem?.message ?? problem?.code))
+    .filter(Boolean);
+  return problems.length ? `${err.message} ${problems.join("; ")}` : err.message;
+}
 
 /**
  * Creature tools (experimental): reskin an enabled bestiary NPC into a new
@@ -83,13 +104,8 @@ export class CreatureToolsApp extends SpfApp {
       .map((actor) => ({ id: actor.id, name: actor.name, selected: actor.id === this.#input.shiftNpcId }));
     const selectedNpc = npcs.find((npc) => npc.selected) ? game.actors.get(this.#input.npcId) : null;
     const selectedShiftNpc = shiftNpcs.find((npc) => npc.selected) ? game.actors.get(this.#input.shiftNpcId) : null;
-    const sourceLevel = Number(selectedShiftNpc?.system?.details?.level?.value);
-    const shiftTargetLevels = (!refusal && selectedShiftNpc && Number.isInteger(sourceLevel))
-      ? SUPPORTED_SHIFTS
-          .map((delta) => sourceLevel + delta)
-          .filter((level) => level >= MIN_LEVEL && level <= MAX_LEVEL)
-          .map((level) => ({ value: level, label: level, selected: String(level) === String(this.#input.shiftTargetLevel) }))
-      : [];
+    const shiftTargetLevels = refusal ? [] : shiftTargetLevelsFor(selectedShiftNpc)
+      .map((level) => ({ value: level, label: level, selected: String(level) === String(this.#input.shiftTargetLevel) }));
     let adjustmentPreview = null;
     if (!refusal && selectedNpc) {
       try {
@@ -162,11 +178,27 @@ export class CreatureToolsApp extends SpfApp {
       this.render();
     };
     root.querySelector('[name="npcId"]')?.addEventListener("change", refresh);
-    root.querySelector('[name="shiftNpcId"]')?.addEventListener("change", refresh);
-    root.querySelector('[name="shiftTargetLevel"]')?.addEventListener("change", refresh);
+    // A changed NPC or target level invalidates the reviewed shift: the GM must preview it again.
+    const refreshShift = () => {
+      this.#readForm();
+      if (this.#shiftPrepared && !this.#shiftMatchesForm(this.#shiftPrepared)) {
+        this.#shiftPrepared = null;
+        this.#shiftPreview = null;
+      }
+      this.render();
+    };
+    root.querySelector('[name="shiftNpcId"]')?.addEventListener("change", refreshShift);
+    root.querySelector('[name="shiftTargetLevel"]')?.addEventListener("change", refreshShift);
     for (const node of root.querySelectorAll('[name="adjustment"]')) {
       node.addEventListener("change", refresh);
     }
+  }
+
+  /** True when the reviewed shift still matches the NPC and target level currently in the form. */
+  #shiftMatchesForm(prepared) {
+    const actor = game.actors?.get(this.#input.shiftNpcId);
+    return Boolean(actor) && actor.uuid === prepared.sourceUuid
+      && String(this.#input.shiftTargetLevel).trim() === String(prepared.plan.targetLevel);
   }
 
   #refusedNow() {
@@ -310,8 +342,10 @@ export class CreatureToolsApp extends SpfApp {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.CreatureTools.NoNpc"));
       return;
     }
-    const targetLevel = Number(this.#input.shiftTargetLevel);
-    if (!Number.isInteger(targetLevel)) {
+    // The target must be one of this NPC's supported levels. An unchosen value is "" and never previews level 0.
+    const raw = String(this.#input.shiftTargetLevel ?? "").trim();
+    const targetLevel = Number(raw);
+    if (!raw || !Number.isInteger(targetLevel) || !shiftTargetLevelsFor(actor).includes(targetLevel)) {
       ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.CreatureTools.Shift.NoTargetLevel"));
       return;
     }
@@ -326,11 +360,7 @@ export class CreatureToolsApp extends SpfApp {
       if (prepared?.plan?.ok) this.#shiftPrepared = prepared;
     } catch (err) {
       console.error(`${MODULE_ID} | level shift preparation failed`, err);
-      this.#error = err.message;
-      if (err?.code === LEVEL_SHIFT_ERROR_CODES.STALE_SOURCE) {
-        this.#shiftPrepared = null;
-        this.#shiftPreview = null;
-      }
+      this.#error = errorText(err);
     } finally {
       this.#busy = false;
       await this.render();
@@ -340,9 +370,16 @@ export class CreatureToolsApp extends SpfApp {
   static async #onCreateShift() {
     if (this.#busy || !this.#shiftPrepared) return;
     if (this.#refusedNow()) return;
+    this.#readForm();
+    if (!this.#shiftMatchesForm(this.#shiftPrepared)) {
+      this.#shiftPrepared = null;
+      this.#shiftPreview = null;
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.CreatureTools.Shift.PreviewChanged"));
+      await this.render();
+      return;
+    }
     this.#busy = true;
     this.#error = null;
-    let outcome = "success";
     try {
       const result = await createCreatureLevelShift(this.#shiftPrepared);
       this.#shiftPrepared = null;
@@ -351,19 +388,18 @@ export class CreatureToolsApp extends SpfApp {
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.CreatureTools.Created", { name: result.name }));
       result.actor?.sheet?.render(true);
     } catch (err) {
+      // Every create error spends the reviewed shift: the GM must preview again before another create.
+      this.#shiftPrepared = null;
+      this.#shiftPreview = null;
+      this.#error = errorText(err);
       if (err?.simplyPF2eRollbackActor) {
-        ui.notifications.error(game.i18n.format("SIMPLYPF2E.CreatureTools.RollbackSurvivor", {
+        const survivor = game.i18n.format("SIMPLYPF2E.CreatureTools.RollbackSurvivor", {
           name: err.simplyPF2eRollbackActor.name
-        }));
+        });
+        ui.notifications.error(survivor);
+        this.#error = this.#error + " " + survivor;
       }
-      if (err?.code === LEVEL_SHIFT_ERROR_CODES.STALE_SOURCE || err?.code === LEVEL_SHIFT_ERROR_CODES.PLAN_REJECTED
-        || err?.code === LEVEL_SHIFT_ERROR_CODES.VERIFICATION_FAILED) {
-        this.#shiftPrepared = null;
-        this.#shiftPreview = null;
-      }
-      outcome = "error";
       console.error(`${MODULE_ID} | level shift creation failed`, err);
-      this.#error = err.message;
     } finally {
       this.#busy = false;
       await this.render();

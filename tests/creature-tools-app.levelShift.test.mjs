@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 
 const root = new URL("../", import.meta.url);
 const template = await readFile(new URL("templates/creature-tools.hbs", root), "utf8");

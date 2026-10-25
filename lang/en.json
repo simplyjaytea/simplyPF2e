@@ -610,7 +610,8 @@
         "PreviewHeading": "Reviewed level shift",
         "PreviewName": "New name",
         "PreviewSource": "Source level",
-        "NoTargetLevel": "Choose a target level first."
+        "NoTargetLevel": "Choose a target level first.",
+        "PreviewChanged": "The NPC or target level changed after this preview. Preview the shift again."
       },
       "Errors": {
         "InvalidTarget": "Choose elite, weak, or normal.",
@@ -620,8 +621,9 @@
         "LevelShiftInvalidSource": "Level shifting needs a world NPC actor.",
         "LevelShiftPlanRejected": "This level shift was rejected. See the problems listed in the preview.",
         "LevelShiftStaleSource": "The source actor changed after this preview. Preview the shift again.",
-        "LevelShiftVerificationFailed": "Level shift verification failed. The new actor was removed.",
-        "LevelShiftRollbackFailed": "Level shift verification failed and the new actor could not be removed. Delete it manually."
+        "LevelShiftVerificationFailed": "The shifted actor did not verify against the policy; nothing was kept.",
+        "LevelShiftRollbackFailed": "Level shift verification failed and the new actor could not be removed. Delete it manually.",
+        "LevelShiftNotIssued": "This level shift was not prepared in this session. Preview it again."
       }
     },
     "Experimental": {
