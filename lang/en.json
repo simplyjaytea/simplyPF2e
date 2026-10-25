@@ -602,11 +602,28 @@
         "weak": "Weak",
         "normal": "Normal"
       },
+      "Shift": {
+        "Legend": "Level shift (experimental)",
+        "Hint": "Creates a new NPC shifted by one or two levels using GM Core benchmark deltas. The source actor is never changed.",
+        "TargetLevel": "Target level",
+        "ChooseTargetLevel": "Choose a target level…",
+        "PreviewHeading": "Reviewed level shift",
+        "PreviewName": "New name",
+        "PreviewSource": "Source level",
+        "NoTargetLevel": "Choose a target level first.",
+        "PreviewChanged": "The NPC or target level changed after this preview. Preview the shift again."
+      },
       "Errors": {
         "InvalidTarget": "Choose elite, weak, or normal.",
         "NotAdjustable": "Only an existing world NPC can be adjusted (not a compendium copy, a token, or another type).",
         "VerificationFailed": "The native adjustment did not persist; the previous state was restored.",
-        "RollbackFailed": "The adjustment did not persist and the previous state could not be restored. Check the NPC manually."
+        "RollbackFailed": "The adjustment did not persist and the previous state could not be restored. Check the NPC manually.",
+        "LevelShiftInvalidSource": "Level shifting needs a world NPC actor.",
+        "LevelShiftPlanRejected": "This level shift was rejected. See the problems listed in the preview.",
+        "LevelShiftStaleSource": "The source actor changed after this preview. Preview the shift again.",
+        "LevelShiftVerificationFailed": "The shifted actor did not verify against the policy; nothing was kept.",
+        "LevelShiftRollbackFailed": "Level shift verification failed and the new actor could not be removed. Delete it manually.",
+        "LevelShiftNotIssued": "This level shift was not prepared in this session. Preview it again."
       }
     },
     "Experimental": {

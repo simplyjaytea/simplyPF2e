@@ -2,6 +2,7 @@ import { MODULE_ID, registerSettings } from "./settings.mjs";
 import { GeneratorApp } from "./generator-app.mjs";
 import { ItemForgeApp } from "./itemforge-app.mjs";
 import { CreatureToolsApp } from "./creature-tools-app.mjs";
+import { prepareCreatureLevelShift, createCreatureLevelShift } from "./creature-tools.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { ProviderSetupApp } from "./provider-setup-app.mjs";
 import { experimentalToolRefusal, experimentalToolsEnabled } from "./experimental-tools.mjs";
@@ -133,7 +134,13 @@ Hooks.once("ready", () => {
   // Macro/console API: game.modules.get("simplypf2e").api.open()
   // and .openItemForge() for the magic item forge; .openCreatureTools() for experimental creature tools.
   const module = game.modules.get(MODULE_ID);
-  module.api = { open: openGenerator, openItemForge, openCreatureTools };
+  module.api = {
+    open: openGenerator,
+    openItemForge,
+    openCreatureTools,
+    // Both refuse when the experimental gate is closed.
+    levelShift: { prepare: prepareCreatureLevelShift, create: createCreatureLevelShift }
+  };
   // Registered only in PF2e: in other systems the module stays inert and
   // Foundry reports /forge as an unknown command.
   registerForgeChatCommand();

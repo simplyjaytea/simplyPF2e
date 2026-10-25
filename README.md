@@ -77,7 +77,7 @@ In Character mode, **Generate spell lists** controls generated spell lists. Turn
 | **Item forge** | Core flows live-verified on Foundry 14 / PF2e 8.5: cancellation isolation, runed sheet parity, and generated-macro escaping. GMs open it from the Items directory; the v0.3.5.57 entry point passed live click and singleton-window checks. |
 | **Ordinary multiclass (noncaster)** | Behind the default-off world setting **Ordinary multiclass archetypes (noncaster)**. Only the noncaster catalog is offered; no live Foundry acceptance is recorded. |
 | **Experimental tools** | Behind the default-off **Enable experimental tools** setting, GM only. Includes the `/forge` chat command, the Creature Tools reskin and elite/weak flows, and `openCreatureTools`. Not native-accepted; may create actors or fail differently from the stable generator. |
-| **Level shifting** | Internal API only; no UI, chat command, or `module.api` entry point. Not native-accepted. |
+| **Level shifting** | Behind the default-off **Enable experimental tools** setting, GM only. Creates a new NPC shifted by one or two levels using GM Core benchmark deltas; the source is unchanged. Not native-accepted. |
 
 ## What's new
 
@@ -235,7 +235,7 @@ Built, not native-accepted, and off by default:
 
 Not yet available as user-facing features:
 
-- **Level shifting** exists only as an internal module API (`scripts/level-shift.mjs`). It has no UI, chat command, or `module.api` entry point until a later UI slice.
+- **Level shifting** is available behind the default-off **Enable experimental tools** setting, GM only, through the Creature Tools app and `module.api.levelShift`. Not native-accepted.
 - **Caster multiclass dedications** and spell editing in the Character editor.
 - **Native acceptance** of every experimental and multiclass row listed under Remaining live-acceptance gaps.
 
@@ -243,9 +243,9 @@ Shipped features and their versions are in the [release notes](https://github.co
 
 ## For maintainers
 
-Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](HISTORY.md). Use the [documentation map](docs/README.md) to find current acceptance records and historical plans.
+Development conventions, architecture, and the full bug history live in [PLAYBOOK.md](PLAYBOOK.md) and [HISTORY.md](docs/HISTORY.md). Use the [documentation map](docs/README.md) to find current acceptance records and historical plans.
 
-Runtime modules and their regression tests remain colocated in `scripts/`; source fixtures are under `tests/fixtures/`, and repository tooling is under `tools/`. Fixtures, tests and tooling are excluded from the release archive.
+Runtime modules live in `scripts/`; regression tests and their published-source fixtures live under `tests/`, and repository tooling is under `tools/`. Fixtures, tests and tooling are excluded from the release archive.
 
 Run the same dependency-free verification command used by pull-request and release CI with Node 22:
 
@@ -254,7 +254,7 @@ node tools/check.mjs
 git diff --check
 ```
 
-The command checks every script and tooling module, runs every `scripts/**/*.test.mjs`, and parses the module/localization JSON. Run a single regression directly with `node scripts/<name>.test.mjs` when investigating a focused change.
+The command syntax-checks every script, test and tooling module, runs every `tests/**/*.test.mjs`, and parses the module/localization JSON. It also runs a static integrity check over relative imports and their named exports, template paths and registered partials, and `SIMPLYPF2E.*` localization keys (unused keys are reported as a warning count). Run a single regression directly with `node tests/<name>.test.mjs` when investigating a focused change.
 
 CI syntax-checks every module, runs every `*.test.mjs`, and validates the JSON manifests on pull requests; the release pipeline repeats syntax, regression, and JSON verification before publishing. Live Foundry behavior remains outside this suite and must be checked across supported Foundry/PF2e versions before a production release.
 

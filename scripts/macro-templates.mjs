@@ -13,7 +13,7 @@
  * chat cards, condition application, effect creation) is wrapped in try/catch
  * with a plain-chat-message fallback, so a macro NEVER throws an unhandled
  * error or leaves the player stuck: a degraded-but-functional macro (roll +
- * "apply this manually") always beats a broken one. See CLAUDE.md for which
+ * "apply this manually") always beats a broken one. See PLAYBOOK.md for which
  * API calls have strong real precedent vs. which are best-effort-with-fallback.
  */
 

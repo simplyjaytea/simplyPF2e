@@ -24,11 +24,20 @@ function run(args) {
 
 try {
   const scripts = filesUnder(resolve(root, "scripts")).filter((file) => file.endsWith(".mjs"));
+  const testSources = filesUnder(resolve(root, "tests")).filter((file) => file.endsWith(".mjs"));
+  const misplacedTest = scripts.find((file) => file.endsWith(".test.mjs"));
+  if (misplacedTest) throw new Error(`Regression tests belong under tests/, found: ${relative(root, misplacedTest)}`);
   const tooling = filesUnder(resolve(root, "tools")).filter((file) => file.endsWith(".mjs"));
-  const tests = scripts.filter((file) => file.endsWith(".test.mjs"));
-  if (!scripts.length || !tests.length) throw new Error("Expected runtime modules and regression tests under scripts/");
-  for (const file of [...scripts, ...tooling]) run(["--check", file]);
-  console.log(`Syntax passed: ${scripts.length} scripts, ${tooling.length} tooling files`);
+  const tests = testSources.filter((file) => file.endsWith(".test.mjs"));
+  if (!scripts.length || !tests.length) throw new Error("Expected runtime modules under scripts/ and regression tests under tests/");
+  for (const file of [...scripts, ...testSources, ...tooling]) run(["--check", file]);
+  console.log(`Syntax passed: ${scripts.length} scripts, ${tests.length} tests, ${tooling.length} tooling files`);
+  const integrityResult = spawnSync(process.execPath, [resolve(root, "tools", "check-integrity.mjs")], { cwd: root, encoding: "utf8" });
+  if (integrityResult.stdout) process.stdout.write(integrityResult.stdout);
+  if (integrityResult.stderr) process.stderr.write(integrityResult.stderr);
+  if (integrityResult.error || integrityResult.status !== 0) {
+    throw integrityResult.error ?? new Error(`Integrity check failed (${integrityResult.signal ?? integrityResult.status})`);
+  }
   for (const file of tests) {
     console.log(`Checking ${relative(root, file)}`);
     run([file]);
