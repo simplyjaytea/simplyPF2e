@@ -24,7 +24,7 @@ Four generator modes plus a forge, all GM-only, all requiring the pf2e system:
 | **Player Character** | A level-N PC built from real Ancestry/Background/Class/heritage/feat items so pf2e derives the math itself | GM-reviewed beta; complete-only classes Fighter, Rogue, Investigator |
 | **Item Forge** | Magic items: passive wondrous items from cloned Rule Elements, 1/day activations via prewritten macros, runed weapons/armor | Core flows live-verified |
 | **Experimental tools** (off by default) | `/forge <brief> <level>` chat command; Creature Tools reskin + native elite/weak | Built, reviewed, **not native-accepted** |
-| **Ordinary multiclass** (off by default) | Noncaster dedication catalog for PCs; Free Archetype slots | Built, **not native-accepted** |
+| **Ordinary multiclass** (off by default) | Noncaster dedication catalog for PCs (`multiclassArchetypes`); Free Archetype slots (`freeArchetype`); both settings default off | Built, **not native-accepted** |
 | **Level shifting** | New NPC at level ±1/±2 via benchmark deltas | Internal API only, no UI |
 
 Repo: `simplyjaytea/simplyPF2e`. Public install manifest: `https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json`. **Every merge to `main` auto-publishes a release that every install is offered immediately.**
@@ -55,28 +55,29 @@ Out of scope by decision: universal PF2e feat automation, caster multiclass dedi
 3. **When a pf2e field name or shape matters, fetch the real `foundryvtt/pf2e` source.** This is the single most repeated bug source in the project's history (see the bug log). A delegate's claim of "verified" must quote the source line; unquoted = recalled = unverified.
 4. **The in-module AI never emits a number or writes code.** It picks scale words and enum slugs; the module supplies values from tables, real documents, or prewritten macro bodies.
 5. **Escape AI/user text before it reaches HTML** via `scripts/text.mjs` `esc`/`toHtml`. Escaping covers HTML, **not** Foundry enricher syntax (`@Check`, `@Damage`, `@UUID`, inline rolls); cosmetic AI text must also be proven enricher-inert (`reskin-policy.mjs`).
-6. **Fail closed.** An unresolved pick is dropped with `console.warn`, never guessed. Exceptions: a PC feat slot and a PC caster's spell list (empty is worse than approximate) may fall back only to unused exact candidates from the same slot; skill preferences fall back to labeled key-ability defaults. Missing budgets/schedules or unsupported native mechanics are never guessed.
+6. **Fail closed.** An unresolved pick is dropped with `console.warn`, never guessed. Exceptions (empty is worse than approximate): a PC feat slot may fall back only to unused exact candidates from the same slot; a PC caster's spell list may be completed from the vetted real tradition candidate list, but planned spells never fall back to unvetted names. Skill preferences fall back to labeled key-ability defaults. Missing budgets/schedules or unsupported native mechanics are never guessed.
 7. **Local tests never close a native acceptance row.** Report implemented / reviewed / published / installed / live-accepted as five separate facts.
 8. **Never spend the user's provider tokens, write to the live world, publish, or run `gh` without an explicit, scoped, current authorization.** Approval of one batch is not approval of the next.
 
 ### Verified against real pf2e source — do not re-litigate
 
 - Setting all five `build.attributes.boosts` tiers regardless of level is safe (`character/document.ts` slices each tier by `allowedBoosts`).
-- A PC spellcasting entry's `proficiency.value` is a floor, not a cap (`spellcasting-entry/document.ts` takes `Math.max` with the actor's `base-spellcasting` rank).
+- A PC spellcasting entry's `proficiency.value` is a floor, not a cap (`spellcasting-entry/document.ts` takes `Math.max` with the actor's `base-spellcasting` rank, which class features raise).
 - `details.languages.value` is not truncated to max; the system adds Int mod to `build.languages.max` itself.
 - Not writing `system.price`/`system.level` on a runed item is correct (`physical/document.ts` recomputes both via `computeLevelRarityPrice()` every prep).
 - A character's `resources.focus.max` is zeroed every prep and rebuilt only from ActiveEffectLike rules, so the PC focus pool needs a cloned RE; an NPC's can be plain actor data.
-- PF2e 8.4.1+ `TreasurePF2e#isCoinage` is `system.category === "coin"`. Never hand-author coin items; clone the published Gold/Silver/Copper/Platinum Pieces documents (`ActorInventory.addCurrency` uses the same `coinCompendiumUuids`).
+- PF2e 8.4.1 `TreasurePF2e#isCoinage` is `system.category === "coin"` (`src/module/item/treasure/document.ts`). `stackGroup === "coins"` is the pre-8.4.1 source field; 8.4.1 `TreasureSystemData.migrateData` maps it to `category: "coin"`. Never hand-author coin items; clone the published Gold/Silver/Copper/Platinum Pieces documents. `ActorInventory.addCurrency` loads those same published coin docs from `coinCompendiumUuids` in `src/module/actor/inventory/index.ts`.
 - NPC sheets forbid raw `feat` items (`actor/npc/document.ts` allowedItemTypes); feats become action items via `featToAction`. NPC `classDC` is a native level-derived value; Stunning Blows' save must be bridged to `@actor.attributes.classDC.value`.
-- `applyAdjustment` (elite/weak) returns immediately for an already-selected state; the module never recomputes elite/weak math. A one-level benchmark delta is **not** the flat elite +2; a level-shifted clone must have `attributes.adjustment` null.
+- `applyAdjustment` (elite/weak) returns immediately for an already-selected state; the module never recomputes elite/weak math.
 - Two different mechanisms write a feat's `system.location`: slot feats use `"<group>-<level>"`; an ABC item's own granted feat uses the granting item's embedded `_id`.
-- Real PF2e Guard background has `trainedSkills.lore: []`; its Legal/Warfare choice exists only in prose, hence the explicit Background Lore control.
+- In PF2e 8.5.0 the Guard background has `trainedSkills.lore: []`; its Legal/Warfare choice exists only in prose, hence the explicit Background Lore control. Current pf2e master stores the non-concrete descriptor `"<Legal or Warfare> Lore"` instead; `scripts/pc-background-lore.mjs` handles this.
 
 ### Signed-off module decisions (not rules, but settled)
 
 - Focus pool size = spell count capped at 3 (module default, not GM Core). Focus-only NPCs (no tradition, so no DC) unsupported.
 - Rarity cap applies to ancestry/background/heritage only.
 - Level shifting supports deltas −2, −1, +1, +2 only; narrow caster policy; abilities unchanged, skills shifted; first-instance Strike damage shifted; result named `<name> (Level T)`. These were C11's assumptions pending the user's confirmation — see §8.
+- A one-level benchmark delta is **not** the flat elite +2; a level-shifted clone must have `attributes.adjustment` null (C10 design decision, not pf2e source).
 - Multiclass catalog (PF2e 8.5.0 names): Fighter, Investigator, Barbarian, Monk, Ranger dedications + listed package feats; caster dedications unavailable.
 
 ## 4. Architecture
@@ -142,7 +143,7 @@ Release archive = `module.json LICENSE README.md lang scripts styles templates` 
 ### Branching, gate, release
 
 - Work on a named branch (`claude/<topic>-<date>`, `codex/<topic>`). Open a PR. The user decides when to merge; **merging publishes**.
-- Before calling anything done: `node tools/check.mjs` (CI runs it on Node 22; locally Node 26 is installed and passes — if a Node-version-specific failure is suspected, `mise exec node@22 -- node tools/check.mjs`) and `git diff --check`.
+- Before calling anything done: `node tools/check.mjs` (CI runs it on Node 22; locally only Node 26.x is installed under mise and passes — Node 22 is NOT installed, so if a Node-version-specific failure is suspected, `mise exec node@22 -- node tools/check.mjs` would first download Node 22) and `git diff --check`.
 - Add a `tests/*.test.mjs` for genuinely pure logic behind any bug-shaped change. Do not add tests that merely restate implementation.
 - Live Foundry behavior (rendering, derived stats, grant chains, dialogs) is **not** self-checkable from this machine. Say so in the PR body and in HANDOFF.md, and open/keep the ledger row.
 
@@ -159,7 +160,7 @@ Release archive = `module.json LICENSE README.md lang scripts styles templates` 
 
 ### Session protocol
 
-Start: read PLAYBOOK §7–8 and HANDOFF.md; `git status`, `git log --oneline -10`, `git fetch`; check whether an in-flight PR merged (`curl -s https://api.github.com/repos/simplyjaytea/simplyPF2e/pulls?state=all&per_page=3`).
+Start: read PLAYBOOK §7–8 and HANDOFF.md; `git status`, `git log --oneline -10`, `git fetch`; check whether an in-flight PR merged (`curl -s "https://api.github.com/repos/simplyjaytea/simplyPF2e/pulls?state=all&per_page=3"`).
 
 End (or before any risky long operation): overwrite HANDOFF.md; append HISTORY.md; update PLAYBOOK §8 if current state changed; leave the tree clean or committed on a named branch. Never leave uncommitted work on `main`.
 
@@ -171,7 +172,7 @@ Live QA runs on the user's Foundry (Foundry 14.365 / PF2e 8.5.0, world `test`) a
 
 - No local Foundry. No local pf2e checkout; fetch files from GitHub raw as needed (reachable).
 - `gh` CLI hangs on this machine. Read GitHub via `curl https://api.github.com/repos/simplyjaytea/simplyPF2e/...`; push/PR only with the user's authorization.
-- Node via mise: 26.12.1 installed; CI uses 22. Gate takes ~7 s.
+- Node via mise: only 26.12.1 is installed; Node 22 (used by CI) is NOT installed locally, and `mise exec node@22 -- node tools/check.mjs` would first download it. Gate takes ~7 s.
 - Git identity for this repo: `user.name "jt"`, `user.email "jt_f@ymail.com"` (the checkout may show a different global identity; set it per-repo before committing).
 - Prior sessions' worktrees lived under `/home/jtf/.t3/worktrees/` (Codex "T3"); remote branches `codex/*` are historical and may be pruned only with the user's say-so.
 
@@ -212,3 +213,18 @@ Ordered. Pick the top item whose prerequisites are met; move finished items to �
 
 - Keep HANDOFF.md truthful at every stop. Keep §8 of this file truthful whenever a release, install or QA result lands.
 - Prune merged `codex/*` remote branches only with the user's say-so.
+
+## 10. Known gaps (pointers)
+
+Condensed from the former `CLAUDE.md` "Known gaps". User-facing wording lives in the [README Limitations](README.md#limitations); evidence lives under `docs/evidence/`.
+
+- **NPC feat compatibility:** since v0.3.5.70, source-backed ability packages clone complete verified dependency graphs. Stunning Blows supports its verified Flurry source, class-DC bridge and unarmed support. Crane Stance (`Strike.replaceAll`), Deflect Projectile's hands-free predicate and arbitrary class resources/choices fail closed. Target-save, combat-turn and condition application are untested. See [automatic ability record](docs/evidence/npc-automatic-abilities-2026-09-09.md) and [NPC feat plan](docs/plans/npc-feat-plan-2026-09-09.md).
+- **Skill completion limits:** unknown grant timing, non-floor native rank transformations and missing class data are warned, not inferred. Duplicate native feat grants and arbitrary new Lore replacements stay manual. Not a full feat-prerequisite validator or historical level-up simulator.
+- **Native acceptance limits:** only bounded native checks exist (see [PC identity evidence](docs/evidence/pc-identity-2026-09-15.md), [consumer readiness](docs/evidence/consumer-readiness-2026-09-08.md) and the [acceptance ledger](docs/acceptance-ledger.md)). Nested backpack quantities/container links, multi-member encounters, duplicate-copy activation and screen-reader behavior are unverified; complete supported-PC acceptance is not established.
+- **PC casting coverage:** seven supported Remaster casting profiles (Bard, Cleric, Druid, Oracle, Sorcerer, Witch, Wizard) are regression-checked against all 140 rows of the PF2e 8.4.1 class tables; ordinary signatures for the three qualified spontaneous classes are selected in the spell pass. Legacy/complex profiles, subclass-granted spells, restricted font/curriculum slots, bonus signature feats, variable-tradition consistency and full spellbook/familiar inventories are manual. Empty or invalid plans never invent preparations. Live casting acceptance is outstanding.
+- **Wizard excluded:** complete-only class selection stays Fighter, Rogue, Investigator; Wizard waits on class-owned spellbook/curriculum support.
+- **Free Archetype is catalog-only:** archetype slots take only the proven catalog, with dedication ability and lock checks at pick time and in the PC edit path. Native ChoiceSet prompts and live slot rendering are unverified.
+- **Focus spells, v1 scope:** focus-only NPCs (no tradition, no DC) are unsupported; the pool size convention (spell count, capped at 3) is a module default. Both are signed-off decisions.
+- **Rarity cap covers ancestry/background/heritage only.** `getFullCandidates()`'s `maxRarity` + `RARITY_RANK` exist if extending is wanted.
+- **Item forge Phase 3:** no rune prerequisite/exclusivity validation; shield and ammunition runes are out of scope. Armor property runes are gated to the base armor's category (`propertyRuneFitsBase` in `runes.mjs`), but the material-constrained usages `etched-onto-metal-armor`, `etched-onto-lm-nonmetal-armor` and `etched-onto-medium-heavy-metal-armor` are excluded because an armor's metal-ness is not in the index data.
+- **Roadmap gates:** `/forge`, Creature Tools reskin and elite/weak are behind default-off `experimentalTools`; noncaster multiclass behind `multiclassArchetypes`; none native-accepted. Level shifting is an internal API with no UI. Caster multiclass dedications are unbuilt. See [completion proposal](docs/plans/completion-proposal-2026-10-17.md).

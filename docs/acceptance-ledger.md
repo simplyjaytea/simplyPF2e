@@ -13,21 +13,21 @@ In each Row cell, the parenthetical gives new or reuse, then counted provider ge
 
 | ID | Row (short) | Status | Prerequisite / blocker | Source |
 | --- | --- | --- | --- | --- |
-| R01 | Installed version: SimplyPF2e 0.3.5.73 active on Foundry 14.365 / PF2e 8.5.0; world, provider settings and other packages unchanged (module-only update; 0 / —) | OPEN | Install authorization; existing `test` world | c01 §8 |
+| R01 | Installed version: SimplyPF2e 0.3.5.73 active on Foundry 14.365 / PF2e 8.5.0; world, provider settings and other packages unchanged (module-only update; 0 / —). Target is now v0.3.5.74 (latest release); c01 was written against .73. | OPEN | Install authorization; existing `test` world | c01 §8 |
 | R02 | Batch A: Guard/Thief, level 1, Legal Lore; literal name, Rogue, Human, no heritage, Guard, Dexterity, Thief, spellcasting off, treasure Standard (new, required; 1 / 40,000) | OPEN | Batch A authorization; R01 | c01 §8 |
 | R03 | Batch B-1: Guard/Fighter, Warfare Lore; level chosen from `pc-tables.mjs` cadence and checked against the real Fighter class document (new; 1 / 65,000) | OPEN | Batch B authorization; R02 passed | c01 §8 |
 | R04 | Batch B-2: higher-level Rogue with a racket at a source-verified boundary; Guard background keeps its Lore choice (new; 1 / 65,000) | OPEN | Batch B | c01 §8 |
 | R05 | Batch B-3: Investigator boundary; methodology grant; restricted Skillful Lessons slots proven or excluded (new; 1 / 65,000) | OPEN | Batch B | c01 §8 |
 | R06 | Zero-spend identity preflight: Guard without Lore, conflicting `Background` declarations, ambiguous class or heritage prose, path without explicit class each stop before any request (UI only; 0 / 0) | OPEN | UI access | c01 §8 |
 | R07 | Reuse-only PC checks on QA Native Thief, Bren Blackthorn and Kaelen Voss: sheet links, Lore visibility, inventory drag and sort (reuse; 0 / 0) | OPEN | GM access | c01 §8 |
-| R08 | Source switch (plan step 0): price, level, tier and usage follow the selected sources; toggles restored and verified (reuse baselines §6; 0–2 previews / 5,000) | OPEN | Settings writes, restored afterward | c01 §8 |
+| R08 | Source switch (plan step 0): price, level, tier and usage follow the selected sources; toggles restored and verified (reuse baselines (c01 §6); 0–2 previews / 5,000) | OPEN | Settings writes, restored afterward | c01 §8 |
 | R09 | Overlapping loads, UI-observable outcome: forge preview during a Generator catalog load resolves; cancelling leaves no item (UI; 0 within R08 ceiling) | OPEN | — | c01 §8 |
 | R10 | NPC combat with Stunning Blows and Flurry against a designated existing target (reuse Veyra; 0 / 0) | OPEN | Scoped world-write authorization for target condition and chat; target named | c01 §8 |
 | R11 | Multi-member encounter: at least two actual members; composition and XP match `encounter.mjs` budget math; loot and item links per member (new; 1 / 35,000) | OPEN | Batch C authorization | c01 §8 |
 | R12 | Native partial-write rollback (encounter) on the R11 plan: harness cancels one item of member 2; no residue; retry creates once (same plan; 0 extra / 0) | OPEN | Self-check passes (c01 §9.4); GM console; approval for the temporary harness | c01 §8 |
 | R13 | Survivor branch, optional: same fault plus a cancelled delete for the stranded actor; survivor reported, no duplicate on retry (new, plan discarded; 1 / 15,000) | OPEN | Decision to run; R12 self-check | c01 §8 |
 | R14 | Nested kit: expands to every physical leaf once, with quantities and container links intact (new, possibly shared with R19; 1 / 35,000 shared, or contingent 25,000) | OPEN | A candidate kit with nested contents must be generated | c01 §8 |
-| R15 | Forged copies: two copies with distinct IDs; activating one decrements only that copy's charge and uses that copy's macro (reuse Consumer Balm Charm and copy; 0 / 0) | OPEN | Documented native method to embed a second copy | c01 §8 |
+| R15 | Forged copies: two copies with distinct IDs; activating one decrements only that copy's charge and uses that copy's macro (reuse Consumer Balm Charm and copy; 0 / 0) | OPEN | Documented method to embed a second copy | c01 §8 |
 | R16 | Forge damage activation: target-based damage posts a native chat card with Apply; charge persists; companion macro in the "SimplyPF2e Item Forge" folder (new forge creation; 1 / 5,000) | OPEN | Forge creation step | c01 §8 |
 | R17 | Forge self-buff activation: self-buff applied as the item defines; chat output; charge decrements (new forge creation; 1 / 5,000) | OPEN | — | c01 §8 |
 | R18 | Depletion, rest and missing context: depleted state shown; rest restores; missing target gives a descriptive chat message (reuse R16/R17 items and QA Consumer Activation; 0 / 0) | OPEN | — | c01 §8 |
@@ -36,8 +36,8 @@ In each Row cell, the parenthetical gives new or reuse, then counted provider ge
 | R21 | Keyboard and states (non-assistive-technology parts): keyboard reach, focus return, labelled errors and progress, reduced motion; run within the R02–R06 windows (UI; 0 / 0) | OPEN | — | c01 §8; c12 §5.1 note: unchanged |
 | R22 | Real screen-reader session with an operator; product, version, browser and OS recorded; announcements recorded (operator; 0 / 0) | BLOCKED | Operator not yet established | c01 §8; c12 §5.1 note: real screen-reader session required; not performed |
 | R23 | Installed-target matrix (Foundry 14.365 / PF2e 8.5.0): covered by R01 and rows R02–R21 run on the installed pair (—) | OPEN | R01 | c01 §8; c12 §5.1 note: unchanged |
-| R24 | Declared minimum smoke (PF2e 8.4.1): separate Foundry data directory with PF2e 8.4.1 and SimplyPF2e .73; module loads; gate; generator opens; zero-spend preflight subset; optional single NPC (separate instance; 0, +1 optional / 15,000) | BLOCKED | Operator-provisioned instance | c01 §8; c12 §5.1 note: isolated PF2e 8.4.1 instance required; not performed |
-| R25 | Cache acceptance split: native evidence limited to the observable switching in R08 and R09; native coalescing is not claimed (local tests plus R08/R09; 0 / 0) | OPEN | — | c01 §8; c12 §5.1 note: unchanged |
+| R24 | Declared minimum smoke (PF2e 8.4.1): separate Foundry data directory with PF2e 8.4.1 and SimplyPF2e .73; module loads; gate; generator opens; zero-spend preflight subset; optional single NPC (separate instance; 0, +1 optional / 15,000). Target is now v0.3.5.74 (latest release); c01 was written against .73. | BLOCKED | Operator-provisioned instance | c01 §8; c12 §5.1 note: isolated PF2e 8.4.1 instance required; not performed |
+| R25 | Cache acceptance split: native evidence limited to the observable switching in R08 and R09; native coalescing is not claimed (—) | OPEN | — | c01 §8; c12 §5.1 note: unchanged |
 
 ## N rows (feature-slice live checks, C02–C11)
 

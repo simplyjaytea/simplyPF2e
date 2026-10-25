@@ -25,6 +25,8 @@ function run(args) {
 try {
   const scripts = filesUnder(resolve(root, "scripts")).filter((file) => file.endsWith(".mjs"));
   const testSources = filesUnder(resolve(root, "tests")).filter((file) => file.endsWith(".mjs"));
+  const misplacedTest = scripts.find((file) => file.endsWith(".test.mjs"));
+  if (misplacedTest) throw new Error(`Regression tests belong under tests/, found: ${relative(root, misplacedTest)}`);
   const tooling = filesUnder(resolve(root, "tools")).filter((file) => file.endsWith(".mjs"));
   const tests = testSources.filter((file) => file.endsWith(".test.mjs"));
   if (!scripts.length || !tests.length) throw new Error("Expected runtime modules under scripts/ and regression tests under tests/");

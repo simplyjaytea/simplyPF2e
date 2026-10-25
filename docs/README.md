@@ -1,6 +1,6 @@
 # Documentation map
 
-Users start with the root [README](../README.md) for installation, supported behavior and user-facing limits. Agents start at [PLAYBOOK.md](../PLAYBOOK.md), then the live session baton in [HANDOFF.md](../HANDOFF.md). [CLAUDE.md](../CLAUDE.md) owns the current architecture and invariants, and [AGENTS.md](../AGENTS.md) owns agent operating rules. [HISTORY.md](HISTORY.md), which lives in this folder, holds the session log and recurring bug patterns.
+Users start with the root [README](../README.md) for installation, supported behavior and user-facing limits. Agents start at [PLAYBOOK.md](../PLAYBOOK.md), then the live session baton in [HANDOFF.md](../HANDOFF.md). [PLAYBOOK.md](../PLAYBOOK.md) owns scope, architecture, invariants and operating rules; [CLAUDE.md](../CLAUDE.md) and [AGENTS.md](../AGENTS.md) are pointers to it. [HANDOFF.md](../HANDOFF.md) is the live baton, and [HISTORY.md](HISTORY.md), which lives in this folder, is the session log with recurring bug patterns.
 
 ## Live ledger
 
