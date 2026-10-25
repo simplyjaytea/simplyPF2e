@@ -1,330 +1,523 @@
 #!/usr/bin/env node
-/** Dependency-free static integrity check for simplyPF2e. */
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
-import { join, relative, resolve, dirname } from "node:path";
+/**
+ * Static integrity gate for simplyPF2e (no dependencies).
+ *
+ * - Imports, re-exports and named bindings: real ESM linking with vm.SourceTextModule.
+ *   Modules are linked, never evaluated, so Foundry globals are never touched.
+ * - Dynamic import(), template and partial paths, and localization keys: regex scans over
+ *   source with comments blanked (string literals kept, offsets preserved).
+ *
+ * Run: node tools/check-integrity.mjs [--root <dir>]
+ * Needs --experimental-vm-modules; the script re-executes itself with the flag when it is missing.
+ *
+ * Known gaps:
+ * - A regex literal containing an unescaped `//` or a quote can confuse the comment/string scanner.
+ * - Dynamic import() whose specifier has a `${}` placeholder is skipped.
+ * - Bare specifiers (node:*, packages) get stubs built from the importer's own names, so their
+ *   exports are not verified; only relative bindings are checked against real targets.
+ * - Relative specifiers must name an exact file (no extension or index probing), matching the
+ *   browser loader Foundry uses.
+ */
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { isBuiltin } from "node:module";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 
-const root = process.argv[2] ? resolve(process.argv[2]) : fileURLToPath(new URL("../", import.meta.url));
-
-function walkFiles(dir, suffix) {
-  const out = [];
-  if (!existsSync(dir)) return out;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...walkFiles(path, suffix));
-    else if (entry.isFile() && (!suffix || entry.name.endsWith(suffix))) out.push(path);
-  }
-  return out.sort();
+if (!process.execArgv.includes("--experimental-vm-modules")) {
+  const child = spawnSync(
+    process.execPath,
+    ["--experimental-vm-modules", "--disable-warning=ExperimentalWarning", import.meta.filename, ...process.argv.slice(2)],
+    { stdio: "inherit" }
+  );
+  process.exit(child.status ?? 1);
 }
 
-function rel(filePath) {
-  return relative(root, filePath);
+const DEFAULT_ROOT = fileURLToPath(new URL("../", import.meta.url));
+
+function parseRootArgument(args) {
+  const at = args.indexOf("--root");
+  if (at === -1) return DEFAULT_ROOT;
+  if (!args[at + 1]) throw new Error("--root needs a directory");
+  return resolve(args[at + 1]);
 }
 
-const scriptsDir = resolve(root, "scripts");
-const testsDir = resolve(root, "tests");
-const templatesDir = resolve(root, "templates");
-const langPath = resolve(root, "lang", "en.json");
+const root = parseRootArgument(process.argv.slice(2));
+const rel = (file) => relative(root, file).split("\\").join("/");
+const isRelative = (spec) => spec.startsWith("./") || spec.startsWith("../");
+const isObject = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+const IDENTIFIER_RE = /^[A-Za-z_$][\w$]*$/;
 
-const scriptFiles = walkFiles(scriptsDir, ".mjs");
-const testFiles = walkFiles(testsDir, ".mjs");
-const templateFiles = walkFiles(templatesDir, ".hbs");
-const codeFiles = [...scriptFiles, ...testFiles];
-
-const problems = [];
-let importsChecked = 0;
-let exportsChecked = 0;
-let templatesChecked = 0;
-
-function resolveRelative(fromFile, spec) {
-  if (!spec.startsWith(".")) return null;
-  const base = resolve(dirname(fromFile), spec);
-  const candidates = [base, `${base}.mjs`, join(base, "index.mjs")];
-  for (const candidate of candidates) {
-    try {
-      if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
-    } catch {
-      // ignore
-    }
-  }
-  return null;
-}
-
-const exportInfoCache = new Map();
-function parseExportInfo(filePath) {
-  if (exportInfoCache.has(filePath)) return exportInfoCache.get(filePath);
-  let content = "";
+function isFile(path) {
   try {
-    content = readFileSync(filePath, "utf8");
+    return statSync(path).isFile();
   } catch {
-    const empty = { direct: new Set(), reexports: [] };
-    exportInfoCache.set(filePath, empty);
-    return empty;
+    return false;
   }
-  const direct = new Set();
-  const reexports = [];
-
-  for (const m of content.matchAll(/export\s+(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)/g)) {
-    direct.add(m[1]);
-  }
-
-  for (const m of content.matchAll(/export\s*\{([^}]*)\}(?:\s*from\s*['"]([^'"]+)['"])?/g)) {
-    const body = m[1];
-    const from = m[2];
-    const names = [];
-    for (const part of body.split(",")) {
-      const t = part.trim();
-      if (!t) continue;
-      const asMatch = t.match(/^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/);
-      if (asMatch) {
-        if (from) names.push({ from: asMatch[1], to: asMatch[2] });
-        else direct.add(asMatch[2]);
-      } else if (/^[A-Za-z_$][\w$]*$/.test(t)) {
-        if (from) names.push({ from: t, to: t });
-        else direct.add(t);
-      }
-    }
-    if (from && names.length) reexports.push({ target: from, names });
-  }
-
-  for (const m of content.matchAll(/export\s*\*\s*from\s*['"]([^'"]+)['"]/g)) {
-    reexports.push({ target: m[1], names: null });
-  }
-
-  const info = { direct, reexports };
-  exportInfoCache.set(filePath, info);
-  return info;
 }
 
-const resolvedExportsCache = new Map();
-function resolveExports(filePath, visited = new Set()) {
-  if (resolvedExportsCache.has(filePath)) return resolvedExportsCache.get(filePath);
-  if (visited.has(filePath)) return new Set();
-  visited.add(filePath);
-  const info = parseExportInfo(filePath);
-  const result = new Set(info.direct);
-  for (const re of info.reexports) {
-    const targetPath = resolveRelative(filePath, re.target);
-    if (!targetPath) continue;
-    const targetExports = resolveExports(targetPath, new Set(visited));
-    if (re.names === null) {
-      for (const n of targetExports) result.add(n);
-    } else {
-      for (const { from, to } of re.names) {
-        if (targetExports.has(from)) result.add(to);
-      }
-    }
-  }
-  resolvedExportsCache.set(filePath, result);
-  return result;
+function walk(dir, suffix) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) return walk(path, suffix);
+      return entry.isFile() && entry.name.endsWith(suffix) ? [path] : [];
+    })
+    .sort();
 }
 
-for (const file of codeFiles) {
-  const content = readFileSync(file, "utf8");
-
-  for (const m of content.matchAll(/^\s*import\s+([^;]*?)\s+from\s*['"]([^'"]+)['"]/gm)) {
-    const clause = m[1];
-    const spec = m[2];
-    if (!spec.startsWith(".")) continue;
-    importsChecked++;
-    const target = resolveRelative(file, spec);
-    if (!target) {
-      problems.push(`Unresolved import: ${rel(file)} -> ${spec}`);
+/**
+ * Blanks // and block comments (keeping line breaks and offsets) and records string and
+ * template literals. `${}` placeholders inside templates are scanned as code. `inString[k]` is 1
+ * for every character that sits inside a literal's text, so code regexes can skip matches there.
+ */
+function scanSource(source) {
+  const out = source.split("");
+  const inString = new Uint8Array(source.length);
+  const strings = [];
+  const frames = [{ kind: "code", braces: 0, placeholder: false }];
+  const blank = (from, to) => {
+    for (let k = from; k < to; k++) if (out[k] !== "\n") out[k] = " ";
+  };
+  let i = 0;
+  while (i < source.length) {
+    const top = frames[frames.length - 1];
+    const ch = source[i];
+    const next = source[i + 1];
+    if (top.kind === "template") {
+      if (ch === "\\") {
+        inString[i] = 1;
+        inString[i + 1] = 1;
+        i += 2;
+      } else if (ch === "`") {
+        strings.push({ quote: "`", start: top.start, end: i, text: source.slice(top.start + 1, i), interpolated: top.interpolated });
+        frames.pop();
+        i++;
+      } else if (ch === "$" && next === "{") {
+        top.interpolated = true;
+        frames.push({ kind: "code", braces: 0, placeholder: true });
+        i += 2;
+      } else {
+        inString[i] = 1;
+        i++;
+      }
       continue;
     }
-    const braceMatch = clause.match(/\{([^}]*)\}/);
-    if (braceMatch) {
-      const names = braceMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
-      for (const part of names) {
-        const asMatch = part.match(/^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/);
-        const original = asMatch ? asMatch[1] : part;
-        if (!/^[A-Za-z_$][\w$]*$/.test(original)) continue;
-        exportsChecked++;
-        const exported = resolveExports(target);
-        if (!exported.has(original)) {
-          problems.push(`Missing export: ${rel(file)} imports '${original}' from ${rel(target)} (not exported)`);
+    if (ch === "/" && next === "/") {
+      let end = source.indexOf("\n", i);
+      if (end === -1) end = source.length;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      const close = source.indexOf("*/", i + 2);
+      const end = close === -1 ? source.length : close + 2;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      let end = i + 1;
+      while (end < source.length && source[end] !== ch && source[end] !== "\n") end += source[end] === "\\" ? 2 : 1;
+      if (end > source.length) end = source.length;
+      inString.fill(1, i, Math.min(end + 1, source.length));
+      strings.push({ quote: ch, start: i, end, text: source.slice(i + 1, end), interpolated: false });
+      i = end + 1;
+      continue;
+    }
+    if (ch === "`") {
+      frames.push({ kind: "template", start: i, interpolated: false });
+      i++;
+      continue;
+    }
+    if (ch === "{") {
+      top.braces++;
+    } else if (ch === "}") {
+      if (top.placeholder && top.braces === 0) frames.pop();
+      else if (top.braces > 0) top.braces--;
+    }
+    i++;
+  }
+  return { code: out.join(""), strings, inString };
+}
+
+const IMPORT_RE = /(?<![\w$.])import\s*(?:([A-Za-z_$][\w$]*)\s*,?\s*)?(?:\*\s*as\s+[A-Za-z_$][\w$]*\s*|\{([^}]*)\}\s*)?(?:from\s*)?(["'])([^"'\n]+)\3/g;
+const EXPORT_FROM_RE = /(?<![\w$.])export\s*(?:\{([^}]*)\}|\*(?:\s*as\s+[A-Za-z_$][\w$]*)?)\s*from\s*(["'])([^"'\n]+)\2/g;
+const DYNAMIC_IMPORT_RE = /(?<![\w$.])import\s*\(\s*(["'`])((?:\\.|(?!\1)[^\\\n])*)\1\s*\)/g;
+
+function importedNames(body) {
+  return body
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.split(/\s+as\s+/)[0].trim());
+}
+
+/** Static import and re-export declarations of comment-stripped code, with the names they bind. */
+function parseStatements(code, inString) {
+  const statements = [];
+  for (const m of code.matchAll(IMPORT_RE)) {
+    if (inString[m.index]) continue;
+    const names = [];
+    if (m[1]) names.push("default");
+    if (m[2] !== undefined) names.push(...importedNames(m[2]));
+    statements.push({ spec: m[4], names });
+  }
+  for (const m of code.matchAll(EXPORT_FROM_RE)) {
+    if (inString[m.index]) continue;
+    statements.push({ spec: m[3], names: m[1] === undefined ? [] : importedNames(m[1]) });
+  }
+  return statements;
+}
+
+const infoCache = new Map();
+function fileInfo(file) {
+  if (!infoCache.has(file)) {
+    const { code, strings, inString } = scanSource(readFileSync(file, "utf8"));
+    infoCache.set(file, { code, strings, statements: parseStatements(code, inString), inString });
+  }
+  return infoCache.get(file);
+}
+
+const problems = new Set();
+const report = (message) => problems.add(message);
+const brokenFiles = new Set();
+
+function namesRequested(importerFile, spec) {
+  const names = new Set();
+  for (const statement of fileInfo(importerFile).statements) {
+    if (statement.spec === spec) for (const name of statement.names) names.add(name);
+  }
+  return [...names];
+}
+
+/**
+ * One fresh link graph (own context and cache). Relative specifiers resolve to exact files.
+ * Missing or unparseable targets become stubs exporting exactly the names the importer requests,
+ * so the only report for them is the root cause, not a cascade of missing-export errors.
+ */
+function createGraph() {
+  const context = vm.createContext({});
+  const sources = new Map();
+
+  const stub = (names, identifier) => {
+    const exported = [...new Set(names)];
+    return new vm.SyntheticModule(
+      exported,
+      function evaluateStub() {
+        for (const name of exported) this.setExport(name, undefined);
+      },
+      { identifier, context }
+    );
+  };
+
+  const sourceModule = (file) => {
+    if (sources.has(file)) return sources.get(file);
+    let mod = null;
+    if (!brokenFiles.has(file)) {
+      try {
+        mod = new vm.SourceTextModule(readFileSync(file, "utf8"), { identifier: file, context });
+      } catch (error) {
+        if (error?.name !== "SyntaxError") throw error;
+        brokenFiles.add(file);
+        report(`Syntax error: ${rel(file)}: ${error.message}`);
+      }
+    }
+    sources.set(file, mod);
+    return mod;
+  };
+
+  const linker = (specifier, referencing) => {
+    const importer = referencing.identifier;
+    const names = namesRequested(importer, specifier);
+    if (!isRelative(specifier)) return stub(names, `bare:${specifier}`);
+    const target = resolve(dirname(importer), specifier);
+    if (!isFile(target)) {
+      report(`Unresolved import: ${rel(importer)} -> ${specifier}`);
+      return stub(names, target);
+    }
+    return sourceModule(target) ?? stub(names, target);
+  };
+
+  return { context, sources, linker, sourceModule };
+}
+
+/** Node versions that split linking from instantiation leave the module unlinked after link(). */
+function instantiateIfPending(mod) {
+  if (mod.status === "unlinked" && typeof mod.instantiate === "function") mod.instantiate();
+}
+
+const isMissingExport = (error) => error?.name === "SyntaxError" && /does not provide an export named/.test(error.message);
+
+/** True when `import { name } from spec` fails on its own, resolved from the importer's file. */
+async function edgeFails(importerFile, spec, name) {
+  const graph = createGraph();
+  const probe = new vm.SourceTextModule(`import { ${name} as __probe } from ${JSON.stringify(spec)};\n`, {
+    identifier: importerFile,
+    context: graph.context
+  });
+  try {
+    await probe.link(graph.linker);
+    instantiateIfPending(probe);
+    return false;
+  } catch (error) {
+    return isMissingExport(error) && error.message.includes(`'${spec}'`) && error.message.includes(`'${name}'`);
+  }
+}
+
+/** After a root graph fails, reports every named relative edge that fails on its own. */
+async function attributeMissingExports(graph) {
+  let found = 0;
+  for (const [importerFile, mod] of graph.sources) {
+    if (!mod) continue;
+    for (const statement of fileInfo(importerFile).statements) {
+      if (!isRelative(statement.spec)) continue;
+      for (const name of statement.names) {
+        if (!IDENTIFIER_RE.test(name)) continue;
+        if (await edgeFails(importerFile, statement.spec, name)) {
+          report(`Missing export: ${rel(importerFile)} imports '${name}' from ${statement.spec}`);
+          found++;
         }
       }
     }
   }
+  return found;
+}
 
-  for (const m of content.matchAll(/^\s*export\s+[^;]*?\s+from\s*['"]([^'"]+)['"]/gm)) {
-    const spec = m[1];
-    if (!spec.startsWith(".")) continue;
-    importsChecked++;
-    const target = resolveRelative(file, spec);
-    if (!target) {
-      problems.push(`Unresolved import: ${rel(file)} -> ${spec}`);
+/** Links one root module as its own graph. Never evaluates. */
+async function linkRoot(file) {
+  const graph = createGraph();
+  const mod = graph.sourceModule(file);
+  if (!mod) return;
+  try {
+    await mod.link(graph.linker);
+    instantiateIfPending(mod);
+  } catch (error) {
+    if (!isMissingExport(error)) {
+      report(`Link failed: ${rel(file)}: ${error.message}`);
+      return;
     }
+    const attributed = await attributeMissingExports(graph);
+    if (!attributed) report(`Missing export (unattributed): ${rel(file)}: ${error.message}`);
   }
+}
 
-  for (const m of content.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) {
-    const spec = m[1];
-    if (!spec.startsWith(".")) continue;
-    importsChecked++;
-    const target = resolveRelative(file, spec);
-    if (!target) {
-      problems.push(`Unresolved import: ${rel(file)} -> ${spec}`);
+function checkDynamicImports(codeFiles) {
+  for (const file of codeFiles) {
+    const { code, inString } = fileInfo(file);
+    for (const m of code.matchAll(DYNAMIC_IMPORT_RE)) {
+      if (inString[m.index]) continue;
+      const spec = m[2];
+      if (spec.includes("${")) continue;
+      if (isRelative(spec)) {
+        if (!isFile(resolve(dirname(file), spec))) report(`Unresolved dynamic import: ${rel(file)} -> ${spec}`);
+      } else if (!isBuiltin(spec)) {
+        report(`Unresolved dynamic import: ${rel(file)} -> ${spec}`);
+      }
     }
   }
 }
 
-const simplyPath = resolve(root, "scripts", "simplypf2e.mjs");
-const registeredPartials = new Set();
-if (existsSync(simplyPath)) {
-  const c = readFileSync(simplyPath, "utf8");
-  const m = c.match(/loadTemplates\s*\(\s*\{([\s\S]*?)\}\s*\)/);
-  if (m) {
-    for (const km of m[1].matchAll(/['"]([^'"]+)['"]\s*:/g)) registeredPartials.add(km[1]);
-    for (const km of m[1].matchAll(/([A-Za-z0-9_-]+)\s*:/g)) registeredPartials.add(km[1]);
+function braceBody(code, open) {
+  let depth = 0;
+  for (let k = open; k < code.length; k++) {
+    if (code[k] === "{") depth++;
+    else if (code[k] === "}") {
+      depth--;
+      if (depth === 0) return code.slice(open + 1, k);
+    }
   }
+  return code.slice(open + 1);
 }
 
-const templatePathRegex = /modules\/\$\{MODULE_ID\}\/templates\/([^\s'"`)]+\.hbs)|\btemplates\/([A-Za-z0-9_./-]+\.hbs)/g;
+function topLevelEntries(body) {
+  const entries = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of body) {
+    if ("([{".includes(ch)) depth++;
+    else if (")]}".includes(ch)) depth--;
+    if (ch === "," && depth === 0) {
+      entries.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) entries.push(current);
+  return entries;
+}
+
+/** Keys of the first loadTemplates({...}) object literal in scripts/simplypf2e.mjs. */
+function registeredPartials() {
+  const partials = new Set();
+  const file = resolve(root, "scripts", "simplypf2e.mjs");
+  if (!isFile(file)) return partials;
+  const code = fileInfo(file).code;
+  const start = code.indexOf("loadTemplates(");
+  if (start === -1) return partials;
+  const open = code.indexOf("{", start);
+  if (open === -1) return partials;
+  for (const entry of topLevelEntries(braceBody(code, open))) {
+    const m = entry.match(/^\s*(?:(["'`])([^"'`]+)\1|([A-Za-z_$][\w$-]*))\s*:/);
+    if (m) partials.add(m[2] ?? m[3]);
+  }
+  return partials;
+}
+
+const TEMPLATE_PATH_RE = /modules\/\$\{MODULE_ID\}\/templates\/([^\s'"`)]+\.hbs)|\btemplates\/([A-Za-z0-9_./-]+\.hbs)/g;
+const KEY_RE = /^SIMPLYPF2E(?:\.[A-Za-z0-9_]+)+$/;
+const PREFIX_RE = /^SIMPLYPF2E(?:\.[A-Za-z0-9_]+)*\.?$/;
+const CONCAT_RE = /^\s*(?:\+|\.concat\s*\()/;
+
+const scripts = walk(join(root, "scripts"), ".mjs");
+const tests = walk(join(root, "tests"), ".mjs");
+const codeFiles = [...scripts, ...tests];
+const templateFiles = walk(join(root, "templates"), ".hbs");
+
+let importsChecked = 0;
+let exportsChecked = 0;
 for (const file of codeFiles) {
-  const content = readFileSync(file, "utf8");
-  for (const m of content.matchAll(templatePathRegex)) {
-    templatesChecked++;
-    const name = m[1] || m[2];
-    const target = resolve(root, "templates", name);
-    if (!existsSync(target)) {
-      problems.push(`Missing template: ${rel(file)} references templates/${name}`);
-    }
+  for (const statement of fileInfo(file).statements) {
+    if (!isRelative(statement.spec)) continue;
+    importsChecked++;
+    exportsChecked += statement.names.length;
   }
 }
 
+let templatesChecked = 0;
+for (const file of scripts) {
+  for (const m of fileInfo(file).code.matchAll(TEMPLATE_PATH_RE)) {
+    const name = m[1] ?? m[2];
+    if (name.includes("${")) continue;
+    templatesChecked++;
+    if (!isFile(resolve(root, "templates", name))) report(`Missing template: ${rel(file)} references templates/${name}`);
+  }
+}
+
+const partials = registeredPartials();
 for (const file of templateFiles) {
-  const content = readFileSync(file, "utf8");
-  for (const m of content.matchAll(/\{\{>\s*([A-Za-z0-9_-]+)/g)) {
+  const text = readFileSync(file, "utf8");
+  for (const m of text.matchAll(/\{\{>\s*([A-Za-z0-9_-]+)/g)) {
     templatesChecked++;
-    const partial = m[1];
-    if (!registeredPartials.has(partial)) {
-      problems.push(`Unregistered partial: ${rel(file)} uses {{> ${partial}}}`);
-    }
+    if (!partials.has(m[1])) report(`Unregistered partial: ${rel(file)} uses {{> ${m[1]}}}`);
+  }
+  for (const m of text.matchAll(/\{\{>\s*(["'])([^"'\n]+)\1/g)) {
+    templatesChecked++;
+    const path = m[2];
+    const at = path.lastIndexOf("templates/");
+    const name = at === -1 ? path : path.slice(at + "templates/".length);
+    if (!isFile(resolve(root, "templates", name))) report(`Missing partial template: ${rel(file)} -> ${path}`);
   }
 }
 
-const keyRegex = /SIMPLYPF2E(?:\.(?:[A-Za-z0-9_]+(?:\$\{[^}]*\})?|\$\{[^}]*\}))+/g;
-
+// Localization.
 let lang = {};
 try {
-  lang = JSON.parse(readFileSync(langPath, "utf8"));
+  lang = JSON.parse(readFileSync(join(root, "lang", "en.json"), "utf8"));
 } catch {
-  problems.push(`Cannot parse ${rel(langPath)}`);
+  report(`Cannot parse ${rel(join(root, "lang", "en.json"))}`);
 }
 
 function getLeaf(obj, dotted) {
-  const parts = dotted.split(".");
   let cur = obj;
-  for (const p of parts) {
-    if (cur && typeof cur === "object" && Object.prototype.hasOwnProperty.call(cur, p)) {
-      cur = cur[p];
-    } else {
-      return undefined;
-    }
+  for (const part of dotted.split(".")) {
+    if (isObject(cur) && Object.prototype.hasOwnProperty.call(cur, part)) cur = cur[part];
+    else return undefined;
   }
   return cur;
 }
 
+const nodeAt = (path) => (path ? getLeaf(lang, path) : lang);
+
 function flattenLeaves(obj, prefix = "") {
-  const out = [];
-  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+  if (isObject(obj)) {
     const keys = Object.keys(obj);
-    if (keys.length === 0) {
-      if (prefix) out.push(prefix);
-      return out;
-    }
-    for (const k of keys) {
-      out.push(...flattenLeaves(obj[k], prefix ? `${prefix}.${k}` : k));
-    }
-  } else {
-    if (prefix) out.push(prefix);
+    if (keys.length === 0) return prefix ? [prefix] : [];
+    return keys.flatMap((k) => flattenLeaves(obj[k], prefix ? `${prefix}.${k}` : k));
   }
-  return out;
+  return prefix ? [prefix] : [];
 }
 
 const allLeaves = flattenLeaves(lang);
 const usedLeaves = new Set();
-
 function markSubtree(path) {
-  const node = path ? getLeaf(lang, path) : lang;
-  if (!node || typeof node !== "object") {
-    if (path) usedLeaves.add(path);
+  const node = nodeAt(path);
+  if (!isObject(node)) {
+    usedLeaves.add(path);
     return;
   }
   for (const leaf of flattenLeaves(node, path)) usedLeaves.add(leaf);
 }
 
-const usedKeys = new Set();
-for (const file of [...codeFiles, ...templateFiles]) {
-  const content = readFileSync(file, "utf8");
-  for (const m of content.matchAll(keyRegex)) usedKeys.add(m[0]);
+const checkedKeys = new Set();
+const missingKey = (key, file) => report(`Missing localization key: ${key} (${rel(file)})`);
+
+function checkCompleteKey(key, file) {
+  checkedKeys.add(key);
+  const value = getLeaf(lang, key);
+  if (value === undefined) missingKey(key, file);
+  else if (typeof value !== "string") report(`Non-string localization key: ${key} (${rel(file)})`);
+  else markSubtree(key);
 }
 
-let localizationChecked = 0;
-for (const key of usedKeys) {
-  localizationChecked++;
-  if (key.includes("${")) {
-    const idx = key.indexOf("${");
-    const prefix = key.slice(0, idx);
-    let ok = false;
-    let markPath = null;
-    let markParent = null;
-    let markPartial = null;
-    if (prefix.endsWith(".")) {
-      const parentPath = prefix.slice(0, -1);
-      const parent = parentPath ? getLeaf(lang, parentPath) : lang;
-      ok = !!parent && typeof parent === "object";
-      if (ok && parentPath && parentPath !== "SIMPLYPF2E") {
-        markPath = parentPath;
-      }
-    } else {
-      const parts = prefix.split(".");
-      const partial = parts.pop();
-      const parentPath = parts.join(".");
-      const parent = parentPath ? getLeaf(lang, parentPath) : lang;
-      if (parent && typeof parent === "object") {
-        ok = Object.keys(parent).some((k) => k.startsWith(partial));
-        if (ok && parentPath) {
-          markParent = parentPath;
-          markPartial = partial;
-        }
-      }
-    }
-    if (!ok) {
-      problems.push(`Missing localization key: ${key}`);
-    } else {
-      if (markPath) markSubtree(markPath);
-      if (markParent && markPartial) {
-        const node = markParent ? getLeaf(lang, markParent) : lang;
-        if (node && typeof node === "object") {
-          for (const k of Object.keys(node)) {
-            if (k.startsWith(markPartial)) {
-              const leafPath = markParent ? `${markParent}.${k}` : k;
-              markSubtree(leafPath);
-            }
-          }
-        }
-      }
-    }
-  } else {
-    const val = getLeaf(lang, key);
-    if (val === undefined) {
-      problems.push(`Missing localization key: ${key}`);
-    } else {
-      markSubtree(key);
+/** Prefix mode: a dynamic or concatenated key must resolve to an object, or to a key family. */
+function checkPrefixKey(key, prefix, file) {
+  checkedKeys.add(key);
+  if (prefix.endsWith(".")) {
+    const parentPath = prefix.slice(0, -1);
+    if (!isObject(nodeAt(parentPath))) return missingKey(key, file);
+    if (parentPath !== "SIMPLYPF2E") markSubtree(parentPath);
+    return undefined;
+  }
+  const direct = nodeAt(prefix);
+  if (direct !== undefined) return markSubtree(prefix);
+  const cut = prefix.lastIndexOf(".");
+  const parentPath = prefix.slice(0, cut);
+  const partial = prefix.slice(cut + 1);
+  const parent = nodeAt(parentPath);
+  if (!isObject(parent)) return missingKey(key, file);
+  const matches = Object.keys(parent).filter((k) => k.startsWith(partial));
+  if (!matches.length) return missingKey(key, file);
+  for (const k of matches) markSubtree(parentPath ? `${parentPath}.${k}` : k);
+  return undefined;
+}
+
+for (const file of scripts) {
+  const { code, strings } = fileInfo(file);
+  for (const literal of strings) {
+    if (!literal.text.startsWith("SIMPLYPF2E.")) continue;
+    if (literal.interpolated) {
+      const prefix = literal.text.slice(0, literal.text.indexOf("${"));
+      if (PREFIX_RE.test(prefix)) checkPrefixKey(literal.text, prefix, file);
+    } else if (CONCAT_RE.test(code.slice(literal.end + 1, literal.end + 40))) {
+      if (PREFIX_RE.test(literal.text)) checkPrefixKey(literal.text, literal.text, file);
+    } else if (KEY_RE.test(literal.text)) {
+      checkCompleteKey(literal.text, file);
     }
   }
 }
+
+for (const file of templateFiles) {
+  for (const m of readFileSync(file, "utf8").matchAll(/\{\{\s*localize\s+(["'])([^"'\n]*)\1/g)) {
+    if (KEY_RE.test(m[2])) checkCompleteKey(m[2], file);
+  }
+}
+
+for (const file of codeFiles) await linkRoot(file);
+checkDynamicImports(codeFiles);
 
 const unusedCount = allLeaves.filter((k) => !usedLeaves.has(k)).length;
 
-if (problems.length) {
-  for (const p of problems) {
-    console.error(p);
-    console.log(p);
-  }
+if (problems.size) {
+  for (const problem of problems) console.error(problem);
+  console.log(`Integrity failed: ${problems.size} problem(s)`);
   process.exitCode = 1;
 } else {
-  console.log(`Integrity passed: ${importsChecked} imports, ${exportsChecked} exports, ${templatesChecked} templates, ${localizationChecked} localization keys; ${unusedCount} unused keys`);
+  console.log(
+    `Integrity passed: ${importsChecked} imports, ${exportsChecked} exports, ${templatesChecked} templates, ${checkedKeys.size} localization keys; ${unusedCount} unused keys`
+  );
 }
