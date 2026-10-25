@@ -2,16 +2,17 @@
 
 Read [PLAYBOOK.md](PLAYBOOK.md) first. This file holds only what the last session left in flight. Overwrite it at every session end.
 
-## Session 2026-10-25 — repository initialization and playbook
+## Session 2026-10-25 (second half) — sprint: integrity gate, level-shift UI, .74 parity, Batch A runbook
 
-- **Done:** reconciled the repo's true state (v0.3.5.74 is the latest release, from PR #114 merged 2026-10-17; the previous CLAUDE.md/HANDOFF.md still described .73 and a half-integrated C01–C03). Wrote `PLAYBOOK.md` as the single agent manual; reduced `CLAUDE.md` and `AGENTS.md` to pointers. Moved all 109 regression tests from `scripts/` to `tests/` (gate updated in `tools/check.mjs`; release archive selection unchanged). Reorganized `docs/` into `plans/`, `reviews/`, `evidence/` (chunk records under `evidence/chunks-2026-10-17/`), moved `HISTORY.md` to `docs/HISTORY.md`, relinked every relative Markdown link, and added `docs/acceptance-ledger.md` (R01–R25, N01–N08 consolidated).
-- **Branch:** `claude/playbook-init-2026-10-25`. Workers ran in isolated worktrees (Haiku 5.5, high); merged locally, gate green, independently reviewed by Opus 5.5 (verdict APPROVE WITH FIXES: 0 P1, 5 P2 docs-only, 14 P3), fixes applied by Sonnet 5.5. See `docs/HISTORY.md` top entry for details and the PR number once opened.
-- **Not done / unverified:** nothing was installed, generated, published, or exercised natively. v0.3.5.74 release-asset parity is not re-verified. Native ledger unchanged: zero PASS rows.
-- **Exact next step:** user picks from PLAYBOOK §9. Recommended order: backlog items 1–4 (local, no spend) can start immediately in parallel worktrees; item 5 (install .74 + Batch A) needs the user's explicit install and spending authorization.
-- **Open decisions for the user:** level-shift entry point; confirm C11's assumed shift policy; Batch A spending envelope; screen-reader operator / isolated PF2e 8.4.1 environment or explicit deferral.
+- **Done, on branch `claude/sprint-2026-10-25`** (built on `claude/playbook-init-2026-10-25`, which holds the playbook/test-move/docs reorg): see [sprint plan](docs/plans/sprint-2026-10-25.md) and the top entry of [docs/HISTORY.md](docs/HISTORY.md). Opus audit APPROVE WITH FIXES; every P2 and P3 fixed by Haiku; gate green on Node 22.23.4 and 26.12.1.
+- **Publication state:** the branch is pushed and a PR is open (number in the final session report). **Merging publishes v0.3.5.75**; that is the user's call. Shipped runtime change: gated level-shift UI + `module.api.levelShift`; nothing changes with `experimentalTools` off.
+- **Not done / unverified:** no installation, no provider spend, no Foundry run. Native ledger unchanged (zero PASS). Node 22 verification used a mise-installed Node 22.23.4.
+- **Exact next step:** (1) user merges the PR when ready; (2) live QA Batch A per [runbook](docs/plans/qa-batch-a-2026-10-25.md) after installing the release that contains this work (module-only update), with the user's spend authorization (ceiling 1 generation / 40,000 tokens); (3) remaining local backlog in PLAYBOOK §9: dead-code and the 16 unused lang keys; Markdown link check in the gate.
+- **Open decisions for the user:** Batch A spending envelope; screen-reader operator / isolated PF2e 8.4.1 environment or explicit deferral.
+- **Housekeeping:** Orca worktrees `/home/jtf/orca/workspaces/simplyPF2e/wp{1,2,3}-*` and branches `simplyjaytea/wp{1,2,3}-*` are merged and can be removed; the user's opencode default model was restored to `opencode/glm-5.3-flash-free`.
 
 ## Preserved environment facts
 
 - Live QA artifacts to preserve: [docs/evidence/live-qa-inventory.md](docs/evidence/live-qa-inventory.md). Last recorded installation v0.3.5.72 on Foundry 14.365 / PF2e 8.5.0, world `test`, provider `omniroute / auto/best-free`. Known provider spend lower bound 333,213 tokens.
-- `gh` hangs here; use `curl https://api.github.com/...` for reads. Node 26.12.1 local, Node 22 in CI. Git identity for commits: `jt` / `jt_f@ymail.com`.
+- `gh` hangs here; use `curl https://api.github.com/...` for reads. Node 26.12.1 default and 22.23.4 via `mise exec node@22`. Git identity for commits: `jt` / `jt_f@ymail.com`.
 - Remote `codex/*` branches are historical; prune only with the user's say-so.
