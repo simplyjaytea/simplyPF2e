@@ -3,9 +3,12 @@ import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import { SpfApp } from "./app-base.mjs";
 import { experimentalToolRefusal } from "./experimental-tools.mjs";
 import { RESKIN_CODES } from "./reskin.mjs";
+import { LEVEL_SHIFT_ERROR_CODES } from "./level-shift.mjs";
+import { SUPPORTED_SHIFTS } from "./level-shift-policy.mjs";
+import { MIN_LEVEL, MAX_LEVEL } from "./tables.mjs";
 import {
   CREATURE_ADJUSTMENTS, applyCreatureAdjustment, createCreatureReskin, listCreatureReskinSources,
-  prepareCreatureReskin, previewCreatureAdjustment
+  prepareCreatureReskin, previewCreatureAdjustment, prepareCreatureLevelShift, createCreatureLevelShift
 } from "./creature-tools.mjs";
 
 /** Plan-invalidating codes: the reviewed plan cannot be created again as shown. */
@@ -35,6 +38,9 @@ export class CreatureToolsApp extends SpfApp {
       createReskin: CreatureToolsApp.#onCreateReskin,
       discardReskin: CreatureToolsApp.#onDiscardReskin,
       applyAdjustment: CreatureToolsApp.#onApplyAdjustment,
+      previewShift: CreatureToolsApp.#onPreviewShift,
+      createShift: CreatureToolsApp.#onCreateShift,
+      discardShift: CreatureToolsApp.#onDiscardShift,
       cancelGeneration: CreatureToolsApp.#onCancelGeneration
     }
   };
@@ -44,7 +50,7 @@ export class CreatureToolsApp extends SpfApp {
   };
 
   /** Form values kept across re-renders. */
-  #input = { sourceUuid: "", prompt: "", npcId: "", adjustment: "elite" };
+  #input = { sourceUuid: "", prompt: "", npcId: "", adjustment: "elite", shiftNpcId: "", shiftTargetLevel: "" };
   /** Enabled bestiary sources, loaded once while the gate is open. */
   #candidates = null;
   #candidatesError = null;
@@ -55,6 +61,10 @@ export class CreatureToolsApp extends SpfApp {
   #preview = null;
   #created = null;
   #adjustmentNotice = null;
+  /** The prepared level shift: kept in memory only, never persisted. */
+  #shiftPrepared = null;
+  #shiftPreview = null;
+  #shiftCreated = null;
 
   async _prepareContext() {
     const refusal = experimentalToolRefusal();
@@ -68,7 +78,18 @@ export class CreatureToolsApp extends SpfApp {
     const npcs = refusal ? [] : [...(game.actors?.contents ?? [])]
       .filter((actor) => actor.type === "npc" && !actor.isToken)
       .map((actor) => ({ id: actor.id, name: actor.name, selected: actor.id === this.#input.npcId }));
+    const shiftNpcs = refusal ? [] : [...(game.actors?.contents ?? [])]
+      .filter((actor) => actor.type === "npc" && !actor.isToken)
+      .map((actor) => ({ id: actor.id, name: actor.name, selected: actor.id === this.#input.shiftNpcId }));
     const selectedNpc = npcs.find((npc) => npc.selected) ? game.actors.get(this.#input.npcId) : null;
+    const selectedShiftNpc = shiftNpcs.find((npc) => npc.selected) ? game.actors.get(this.#input.shiftNpcId) : null;
+    const sourceLevel = Number(selectedShiftNpc?.system?.details?.level?.value);
+    const shiftTargetLevels = (!refusal && selectedShiftNpc && Number.isInteger(sourceLevel))
+      ? SUPPORTED_SHIFTS
+          .map((delta) => sourceLevel + delta)
+          .filter((level) => level >= MIN_LEVEL && level <= MAX_LEVEL)
+          .map((level) => ({ value: level, label: level, selected: String(level) === String(this.#input.shiftTargetLevel) }))
+      : [];
     let adjustmentPreview = null;
     if (!refusal && selectedNpc) {
       try {
@@ -102,8 +123,13 @@ export class CreatureToolsApp extends SpfApp {
         value, label: `SIMPLYPF2E.CreatureTools.Adjust.${value}`, selected: value === this.#input.adjustment
       })),
       npcs,
+      shiftNpcs,
+      shiftTargetLevels,
       adjustmentPreview,
       adjustmentNotice: this.#adjustmentNotice,
+      shiftPreview: this.#shiftPreview,
+      shiftCreated: this.#shiftCreated,
+      shiftPrepared: this.#shiftPrepared !== null,
       lastRunCost: this._formatLastRunCost(),
       tokenReport: this._buildTokenReport()
     };
@@ -118,7 +144,9 @@ export class CreatureToolsApp extends SpfApp {
       sourceUuid: root.querySelector('[name="sourceUuid"]')?.value ?? input.sourceUuid,
       prompt: root.querySelector('[name="prompt"]')?.value ?? input.prompt,
       npcId: root.querySelector('[name="npcId"]')?.value ?? input.npcId,
-      adjustment: root.querySelector('[name="adjustment"]:checked')?.value ?? input.adjustment
+      adjustment: root.querySelector('[name="adjustment"]:checked')?.value ?? input.adjustment,
+      shiftNpcId: root.querySelector('[name="shiftNpcId"]')?.value ?? input.shiftNpcId,
+      shiftTargetLevel: root.querySelector('[name="shiftTargetLevel"]')?.value ?? input.shiftTargetLevel
     };
   }
 
@@ -134,6 +162,8 @@ export class CreatureToolsApp extends SpfApp {
       this.render();
     };
     root.querySelector('[name="npcId"]')?.addEventListener("change", refresh);
+    root.querySelector('[name="shiftNpcId"]')?.addEventListener("change", refresh);
+    root.querySelector('[name="shiftTargetLevel"]')?.addEventListener("change", refresh);
     for (const node of root.querySelectorAll('[name="adjustment"]')) {
       node.addEventListener("change", refresh);
     }
@@ -269,6 +299,85 @@ export class CreatureToolsApp extends SpfApp {
       this.#busy = false;
       await this.render();
     }
+  }
+
+  static async #onPreviewShift() {
+    if (this.#busy) return;
+    this.#readForm();
+    if (this.#refusedNow()) return;
+    const actor = game.actors?.get(this.#input.shiftNpcId);
+    if (!actor) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.CreatureTools.NoNpc"));
+      return;
+    }
+    const targetLevel = Number(this.#input.shiftTargetLevel);
+    if (!Number.isInteger(targetLevel)) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.CreatureTools.Shift.NoTargetLevel"));
+      return;
+    }
+    this.#busy = true;
+    this.#error = null;
+    this.#shiftPrepared = null;
+    this.#shiftPreview = null;
+    this.#shiftCreated = null;
+    try {
+      const { prepared, preview } = await prepareCreatureLevelShift(actor, targetLevel);
+      this.#shiftPreview = preview;
+      if (prepared?.plan?.ok) this.#shiftPrepared = prepared;
+    } catch (err) {
+      console.error(`${MODULE_ID} | level shift preparation failed`, err);
+      this.#error = err.message;
+      if (err?.code === LEVEL_SHIFT_ERROR_CODES.STALE_SOURCE) {
+        this.#shiftPrepared = null;
+        this.#shiftPreview = null;
+      }
+    } finally {
+      this.#busy = false;
+      await this.render();
+    }
+  }
+
+  static async #onCreateShift() {
+    if (this.#busy || !this.#shiftPrepared) return;
+    if (this.#refusedNow()) return;
+    this.#busy = true;
+    this.#error = null;
+    let outcome = "success";
+    try {
+      const result = await createCreatureLevelShift(this.#shiftPrepared);
+      this.#shiftPrepared = null;
+      this.#shiftPreview = null;
+      this.#shiftCreated = { name: result.name };
+      ui.notifications.info(game.i18n.format("SIMPLYPF2E.CreatureTools.Created", { name: result.name }));
+      result.actor?.sheet?.render(true);
+    } catch (err) {
+      if (err?.simplyPF2eRollbackActor) {
+        ui.notifications.error(game.i18n.format("SIMPLYPF2E.CreatureTools.RollbackSurvivor", {
+          name: err.simplyPF2eRollbackActor.name
+        }));
+      }
+      if (err?.code === LEVEL_SHIFT_ERROR_CODES.STALE_SOURCE || err?.code === LEVEL_SHIFT_ERROR_CODES.PLAN_REJECTED
+        || err?.code === LEVEL_SHIFT_ERROR_CODES.VERIFICATION_FAILED) {
+        this.#shiftPrepared = null;
+        this.#shiftPreview = null;
+      }
+      outcome = "error";
+      console.error(`${MODULE_ID} | level shift creation failed`, err);
+      this.#error = err.message;
+    } finally {
+      this.#busy = false;
+      await this.render();
+    }
+  }
+
+  static async #onDiscardShift() {
+    if (this.#busy) return;
+    this.#readForm();
+    this.#shiftPrepared = null;
+    this.#shiftPreview = null;
+    this.#shiftCreated = null;
+    this.#error = null;
+    await this.render();
   }
 
   static #onCancelGeneration() {

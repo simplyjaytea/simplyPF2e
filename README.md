@@ -77,7 +77,7 @@ In Character mode, **Generate spell lists** controls generated spell lists. Turn
 | **Item forge** | Core flows live-verified on Foundry 14 / PF2e 8.5: cancellation isolation, runed sheet parity, and generated-macro escaping. GMs open it from the Items directory; the v0.3.5.57 entry point passed live click and singleton-window checks. |
 | **Ordinary multiclass (noncaster)** | Behind the default-off world setting **Ordinary multiclass archetypes (noncaster)**. Only the noncaster catalog is offered; no live Foundry acceptance is recorded. |
 | **Experimental tools** | Behind the default-off **Enable experimental tools** setting, GM only. Includes the `/forge` chat command, the Creature Tools reskin and elite/weak flows, and `openCreatureTools`. Not native-accepted; may create actors or fail differently from the stable generator. |
-| **Level shifting** | Internal API only; no UI, chat command, or `module.api` entry point. Not native-accepted. |
+| **Level shifting** | Behind the default-off **Enable experimental tools** setting, GM only. Creates a new NPC shifted by one or two levels using GM Core benchmark deltas; the source is unchanged. Not native-accepted. |
 
 ## What's new
 
@@ -235,7 +235,7 @@ Built, not native-accepted, and off by default:
 
 Not yet available as user-facing features:
 
-- **Level shifting** exists only as an internal module API (`scripts/level-shift.mjs`). It has no UI, chat command, or `module.api` entry point until a later UI slice.
+- **Level shifting** is available behind the default-off **Enable experimental tools** setting, GM only, through the Creature Tools app and `module.api.levelShift`. Not native-accepted.
 - **Caster multiclass dedications** and spell editing in the Character editor.
 - **Native acceptance** of every experimental and multiclass row listed under Remaining live-acceptance gaps.
 

@@ -2,6 +2,11 @@ import { assertExperimentalToolAccess, experimentalToolRefusal } from "./experim
 import {
   listReskinSourceCandidates, prepareReskinPlan, reskinPlanPreview, commitReskinPlan
 } from "./reskin.mjs";
+import {
+  prepareLevelShift as prepareLevelShiftBackend, createLevelShift as createLevelShiftBackend,
+  LevelShiftError, LEVEL_SHIFT_ERROR_CODES
+} from "./level-shift.mjs";
+import { describeLevelShift } from "./level-shift-policy.mjs";
 
 /*
  * Creature tools (experimental): reskin flows on top of the C03 backend and a
@@ -103,6 +108,49 @@ async function writeAdjustment(actor, choice) {
  * NPCs, and verifies the persisted state. When the target does not persist, it
  * restores the captured state through the same native call and reports the result.
  */
+export { LEVEL_SHIFT_ERROR_CODES } from "./level-shift.mjs";
+
+const LEVEL_SHIFT_ERROR_KEYS = Object.freeze({
+  [LEVEL_SHIFT_ERROR_CODES.INVALID_SOURCE]: "SIMPLYPF2E.CreatureTools.Errors.LevelShiftInvalidSource",
+  [LEVEL_SHIFT_ERROR_CODES.PLAN_REJECTED]: "SIMPLYPF2E.CreatureTools.Errors.LevelShiftPlanRejected",
+  [LEVEL_SHIFT_ERROR_CODES.STALE_SOURCE]: "SIMPLYPF2E.CreatureTools.Errors.LevelShiftStaleSource",
+  [LEVEL_SHIFT_ERROR_CODES.VERIFICATION_FAILED]: "SIMPLYPF2E.CreatureTools.Errors.LevelShiftVerificationFailed",
+  [LEVEL_SHIFT_ERROR_CODES.ROLLBACK_FAILED]: "SIMPLYPF2E.CreatureTools.Errors.LevelShiftRollbackFailed"
+});
+
+function mapLevelShiftError(error) {
+  if (error instanceof LevelShiftError) {
+    const key = LEVEL_SHIFT_ERROR_KEYS[error.code];
+    const message = key ? game.i18n.localize(key) : error.message;
+    const mapped = new CreatureToolsError(error.code, message);
+    mapped.problems = error.problems;
+    if (error.simplyPF2eRollbackActor) mapped.simplyPF2eRollbackActor = error.simplyPF2eRollbackActor;
+    return mapped;
+  }
+  return error;
+}
+
+/** Asserts the experimental gate, then prepares a level shift and its preview. */
+export async function prepareCreatureLevelShift(actor, targetLevel) {
+  assertExperimentalToolAccess();
+  try {
+    const prepared = await prepareLevelShiftBackend(actor, targetLevel);
+    return { prepared, preview: describeLevelShift(prepared.plan) };
+  } catch (error) {
+    throw mapLevelShiftError(error);
+  }
+}
+
+/** Asserts the experimental gate, then creates the level-shifted actor. */
+export async function createCreatureLevelShift(prepared) {
+  assertExperimentalToolAccess();
+  try {
+    return await createLevelShiftBackend(prepared);
+  } catch (error) {
+    throw mapLevelShiftError(error);
+  }
+}
+
 export async function applyCreatureAdjustment(actor, target) {
   assertExperimentalToolAccess();
   const wanted = normalizeTarget(target);

@@ -97,5 +97,69 @@
     </div>
   </fieldset>
 
+  <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
+    <legend>{{localize "SIMPLYPF2E.CreatureTools.Shift.Legend"}}</legend>
+    <p class="spf-hint">{{localize "SIMPLYPF2E.CreatureTools.Shift.Hint"}}</p>
+    <div class="form-group stacked">
+      <label for="spf-creature-shift-npc">{{localize "SIMPLYPF2E.CreatureTools.Npc"}}</label>
+      <select id="spf-creature-shift-npc" name="shiftNpcId">
+        <option value="">{{localize "SIMPLYPF2E.CreatureTools.ChooseNpc"}}</option>
+        {{#each shiftNpcs}}
+          <option value="{{this.id}}" {{#if this.selected}}selected{{/if}}>{{this.name}}</option>
+        {{/each}}
+      </select>
+    </div>
+    <div class="form-group stacked">
+      <label for="spf-creature-shift-target">{{localize "SIMPLYPF2E.CreatureTools.Shift.TargetLevel"}}</label>
+      <select id="spf-creature-shift-target" name="shiftTargetLevel">
+        <option value="">{{localize "SIMPLYPF2E.CreatureTools.Shift.ChooseTargetLevel"}}</option>
+        {{#each shiftTargetLevels}}
+          <option value="{{this.value}}" {{#if this.selected}}selected{{/if}}>{{this.label}}</option>
+        {{/each}}
+      </select>
+    </div>
+    <div class="spf-generate-row">
+      <button type="button" class="spf-primary" data-action="previewShift" {{#if busy}}disabled{{/if}}>
+        {{localize "SIMPLYPF2E.CreatureTools.Preview"}}
+      </button>
+    </div>
+  </fieldset>
+
+  {{#if shiftPreview}}
+    <section class="spf-card spf-preview">
+      <h3>{{localize "SIMPLYPF2E.CreatureTools.Shift.PreviewHeading"}}</h3>
+      <p><strong>{{localize "SIMPLYPF2E.CreatureTools.Shift.PreviewName"}}:</strong> {{shiftPreview.name}}</p>
+      <p><strong>{{localize "SIMPLYPF2E.CreatureTools.Shift.PreviewSource"}}:</strong> {{shiftPreview.source.from}} → {{shiftPreview.source.to}}</p>
+      {{#if shiftPreview.problems.length}}
+        <ul>
+          {{#each shiftPreview.problems}}
+            <li class="notification error">{{this.code}}: {{this.message}}</li>
+          {{/each}}
+        </ul>
+      {{else}}
+        <p><strong>{{localize "SIMPLYPF2E.CreatureTools.PreviewChanges"}}:</strong></p>
+        <ul>
+          {{#each shiftPreview.rows}}
+            <li>{{this.label}}: {{this.before}} → {{this.after}}</li>
+          {{/each}}
+        </ul>
+      {{/if}}
+      <div class="spf-generate-row">
+        <button type="button" class="spf-primary" data-action="createShift" {{#unless shiftPrepared}}disabled{{/unless}} {{#if busy}}disabled{{/if}}>
+          {{localize "SIMPLYPF2E.CreatureTools.Create"}}
+        </button>
+        <button type="button" class="spf-secondary" data-action="discardShift" {{#if busy}}disabled{{/if}}>
+          {{localize "SIMPLYPF2E.CreatureTools.Discard"}}
+        </button>
+      </div>
+    </section>
+  {{/if}}
+
+  {{#if shiftCreated}}
+    <p class="notification info">
+      {{localize "SIMPLYPF2E.CreatureTools.CreatedNote"}} {{shiftCreated.name}}
+    </p>
+  {{/if}}
+
   {{#if lastRunCost}}<p class="spf-hint">{{lastRunCost}}</p>{{/if}}
 </div>
