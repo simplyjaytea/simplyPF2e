@@ -20,7 +20,7 @@ merge through a PR. Existing post-.70 QA and readiness notes are included.
   Node executable, discovers nested tests, fails when tests are missing, and
   retains failure output. Publication triggers, version computation, archive
   selection and draft-to-published release staging retain their behavior.
-- The [documentation map](README.md) distinguishes current evidence from
+- The [documentation map](../README.md) distinguishes current evidence from
   historical plans. The long [QA inventory](live-qa-inventory.md) moved intact
   out of HANDOFF.md, which now focuses on current work and native follow-up.
   Runtime tests remain colocated; maintenance tooling and fixtures remain
@@ -63,4 +63,4 @@ new plans' pricing, usage options and rune tiers; exercise overlapping
 Generator/Forge catalog requests. Same-object compendium edits and successful
 source-discovery lists retain their session cache lifetime, so reload after
 editing pack contents. Existing native acceptance limits in the
-[ship-readiness assessment](ship-readiness-2026-09-12.md) remain open.
+[ship-readiness assessment](../reviews/ship-readiness-2026-09-12.md) remain open.

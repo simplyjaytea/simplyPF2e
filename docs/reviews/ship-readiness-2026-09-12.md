@@ -27,6 +27,6 @@ These are existing acceptance/product limits, not failed local tests. Out-of-sco
 
 ## Evidence limits and next step
 
-The [consumer QA record](consumer-readiness-2026-09-08.md) and [NPC ability QA record](npc-automatic-abilities-2026-09-09.md) establish version-specific installed evidence on Foundry **14.365** / PF2e **8.5.0**. This session did not reconnect to Foundry, make provider requests, install updates, or mutate world documents. Its native conclusions come from those preserved records, not a fresh live run. The manifest's PF2e minimum is 8.4.1; the recorded .70 live evidence does not independently establish that older pair.
+The [consumer QA record](../evidence/consumer-readiness-2026-09-08.md) and [NPC ability QA record](../evidence/npc-automatic-abilities-2026-09-09.md) establish version-specific installed evidence on Foundry **14.365** / PF2e **8.5.0**. This session did not reconnect to Foundry, make provider requests, install updates, or mutate world documents. Its native conclusions come from those preserved records, not a fresh live run. The manifest's PF2e minimum is 8.4.1; the recorded .70 live evidence does not independently establish that older pair.
 
 Prioritize authoritative PC choices and successful Rogue acceptance before widening production claims. Then close the bounded native checks above. Keep Preview Plan and GM review prominent while those limits remain. Review notes stay on the named local branch; merging a documentation-only PR would still trigger an automatic public release.
