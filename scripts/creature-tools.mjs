@@ -41,7 +41,8 @@ export const CREATURE_CODES = Object.freeze({
   INVALID_TARGET: "invalid-target",
   NOT_ADJUSTABLE: "not-adjustable",
   VERIFICATION_FAILED: "verification-failed",
-  ROLLBACK_FAILED: "rollback-failed"
+  ROLLBACK_FAILED: "rollback-failed",
+  LEVEL_SHIFT_NOT_ISSUED: "level-shift-not-issued"
 });
 
 export class CreatureToolsError extends Error {
@@ -102,12 +103,6 @@ async function writeAdjustment(actor, choice) {
   await actor.applyAdjustment(nativeValue(choice));
 }
 
-/**
- * Apply elite, weak, or normal through PF2e's native applyAdjustment, which owns
- * every stat change. The adapter only selects the target, refuses non-world
- * NPCs, and verifies the persisted state. When the target does not persist, it
- * restores the captured state through the same native call and reports the result.
- */
 export { LEVEL_SHIFT_ERROR_CODES } from "./level-shift.mjs";
 
 const LEVEL_SHIFT_ERROR_KEYS = Object.freeze({
@@ -130,20 +125,33 @@ function mapLevelShiftError(error) {
   return error;
 }
 
+/** Prepared shifts issued by prepareCreatureLevelShift in this session. Creation accepts only these objects. */
+const issuedLevelShifts = new WeakSet();
+
+/** The typed refusal for a shift this module did not issue. */
+function notIssuedError() {
+  return new CreatureToolsError(CREATURE_CODES.LEVEL_SHIFT_NOT_ISSUED,
+    game.i18n.localize("SIMPLYPF2E.CreatureTools.Errors.LevelShiftNotIssued"));
+}
+
 /** Asserts the experimental gate, then prepares a level shift and its preview. */
 export async function prepareCreatureLevelShift(actor, targetLevel) {
   assertExperimentalToolAccess();
   try {
     const prepared = await prepareLevelShiftBackend(actor, targetLevel);
+    issuedLevelShifts.add(prepared);
     return { prepared, preview: describeLevelShift(prepared.plan) };
   } catch (error) {
     throw mapLevelShiftError(error);
   }
 }
 
-/** Asserts the experimental gate, then creates the level-shifted actor. */
+/** Asserts the experimental gate, then creates the level-shifted actor from an issued preview only. */
 export async function createCreatureLevelShift(prepared) {
   assertExperimentalToolAccess();
+  if (!issuedLevelShifts.has(prepared)) {
+    throw notIssuedError();
+  }
   try {
     return await createLevelShiftBackend(prepared);
   } catch (error) {
@@ -151,6 +159,12 @@ export async function createCreatureLevelShift(prepared) {
   }
 }
 
+/**
+ * Apply elite, weak, or normal through PF2e's native applyAdjustment, which owns
+ * every stat change. The adapter only selects the target, refuses non-world
+ * NPCs, and verifies the persisted state. When the target does not persist, it
+ * restores the captured state through the same native call and reports the result.
+ */
 export async function applyCreatureAdjustment(actor, target) {
   assertExperimentalToolAccess();
   const wanted = normalizeTarget(target);

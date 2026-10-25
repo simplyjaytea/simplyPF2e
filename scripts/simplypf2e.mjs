@@ -134,8 +134,13 @@ Hooks.once("ready", () => {
   // Macro/console API: game.modules.get("simplypf2e").api.open()
   // and .openItemForge() for the magic item forge; .openCreatureTools() for experimental creature tools.
   const module = game.modules.get(MODULE_ID);
-  // Both refuse when the experimental gate is closed.
-  module.api = { open: openGenerator, openItemForge, openCreatureTools, levelShift: { prepare: prepareCreatureLevelShift, create: createCreatureLevelShift } };
+  module.api = {
+    open: openGenerator,
+    openItemForge,
+    openCreatureTools,
+    // Both refuse when the experimental gate is closed.
+    levelShift: { prepare: prepareCreatureLevelShift, create: createCreatureLevelShift }
+  };
   // Registered only in PF2e: in other systems the module stays inert and
   // Foundry reports /forge as an unknown command.
   registerForgeChatCommand();
