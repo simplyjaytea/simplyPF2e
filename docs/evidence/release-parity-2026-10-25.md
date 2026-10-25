@@ -68,7 +68,7 @@ zip container bytes: not compared (timestamps/order); entry-level parity is the 
 
 Composition of the 63 entries: `lang` 1, `scripts` 50, `styles` 1, `templates` 8, and top-level `LICENSE`, `README.md`, `module.json`.
 
-Archive-vs-tree comparison result: **63 of 63 entries identical; 0 differing entries.** The only permitted difference (`module.json` `version`/`manifest`/`download` stamping) was applied and verified byte-identical.
+Archive-vs-tree comparison result: the comparison was made after applying the same `jq` stamp as `release.yml` (lines 97–100) to the tree's `module.json`. Against the raw tree (`d0ec85e:module.json`), `module.json` differs only by `version` (`0.3.5.52` to `0.3.5.74`) and `download` (the expected stamp); its `manifest` value is unchanged. All other 62 entries are identical. After the stamp, all 63 entries are byte-identical to the archive.
 
 ### 3.3 Limits
 
