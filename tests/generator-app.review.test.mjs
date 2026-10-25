@@ -1,0 +1,322 @@
+// Execute the unmodified production app with mocked imports/platform services.
+// No provider calls, Foundry documents, or test-only production hooks.
+import assert from "node:assert/strict";
+import * as identityHelpers from "../scripts/pc-identity.mjs";
+import { getBackgroundLoreOptions } from "../scripts/pc-background-lore.mjs";
+import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import vm from "node:vm";
+import { parseCoins } from "../scripts/builder.mjs";
+import { reviewUnresolvedChoices } from "../scripts/choice-set.mjs";
+import { normalizeSkillPriorities, skillPriorityOrder } from "../scripts/pc-skills.mjs";
+import { assertComplete, completionManifest, completionSummary } from "../scripts/completion.mjs";
+import { supportedClassCandidates } from "../scripts/pc-support.mjs";
+
+if (!vm.SourceTextModule) {
+  const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
+  process.exit(run.status ?? 1);
+}
+
+let actor, createFailure, verifyFailure, deleteFailure, skillReport, creates = 0, deleted = 0, sheetCalls = 0;
+let conceptCalls = 0, generatorLevel = 1;
+let previewLoot = [];
+let pcEquipmentOverride = null, pcWealthTarget = 0, pcEquipmentValue = 0, pcPurchaseCalls = 0;
+let lastBudgetTarget = null, budgetPending = null, budgetStarted = null;
+const notices = [];
+class App {
+  element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
+    : selector.includes('name="level"') ? { value: String(generatorLevel) }
+      : selector.includes('name="prompt"') ? { value: "A weathered courier" }
+      : selector.includes('name="allowSpellcasting"') ? { checked: false } : null, querySelectorAll: () => [] };
+  async render() { this.context = await this._prepareContext(); }
+  _beginProgress() { this.abort = new AbortController(); return this.abort.signal; }
+  async _setStep() {}
+  _skipStep() {}
+  _warnStep() {}
+  _recordTokens() {}
+  _progressCallback() { return () => {}; }
+  _lockCreation() { this._throwIfCancelled(); }
+  _buildTokenReport() { return null; }
+  _formatLastRunCost() { return null; }
+  _finishRun() { this._progress = null; }
+  _cancelGeneration() { this.abort?.abort(); }
+  _throwIfCancelled() {
+    if (this.abort?.signal.aborted) throw Object.assign(new Error("cancelled"), { cancelled: true });
+  }
+}
+const context = vm.createContext({
+  console: { log() {}, warn() {}, error() {} },
+  game: {
+    i18n: { localize: (key) => key, format: (key) => key },
+    actors: { get: (id) => id === actor?.id ? actor : null },
+    settings: { get: () => false }
+  },
+  ui: { notifications: Object.fromEntries(["info", "warn"].map((kind) => [kind, (text) => notices.push([kind, text])])) }
+});
+const pcEquipment = () => pcEquipmentOverride ?? [];
+const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fighter" },
+  backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [],
+  equipment: pcEquipment().map((item) => ({ ...item, entry: {} })), loot: previewLoot });
+const mocks = {
+  ...identityHelpers, getBackgroundLoreOptions, getDocument: async () => null, validatePCIdentityRequirements: async () => {},
+  SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
+  AI_TASK: {}, taskMaxTokens: () => 100,
+  assertComplete, completionManifest, completionSummary,
+  verifyCreatedActor: () => { if (verifyFailure) throw verifyFailure; },
+  supportedClassCandidates,
+  getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
+  BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
+  presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),
+  THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, randomBrief: () => "A dwarf",
+  generatePCConcept: async () => { conceptCalls++; return { concept: { name: "Test", level: 1, equipment: pcEquipment(), loot: [] } }; },
+  normalizePCConcept: (raw) => raw,
+  getAncestryCandidates: () => [], getBackgroundCandidates: () => [], getClassCandidates: () => [{ name: "Fighter", ref: { packId: "pf2e.classes", _id: "fighter" } }], getHeritageCandidates: () => [],
+  selectAncestryBackgroundClass: async () => ({ ancestry: "Dwarf", background: "Warrior", class: "Fighter" }),
+  resolvePCConcept: async () => resolved(), pcSpellcastingProfile: () => null, slugify: (name) => name.toLowerCase(),
+  generatePCLoot: async () => { pcPurchaseCalls++; return { loot: [] }; }, normalizeLoot: (loot) => loot,
+  getEquipmentCandidates: async () => [],
+  dedupeLootAgainstEquipment: (loot) => loot, enforceNamedLootBudget: (loot) => loot,
+  applyTreasureBudget: async (loot, target) => {
+    lastBudgetTarget = target;
+    budgetStarted?.();
+    if (budgetPending) await budgetPending;
+    return target <= 0 ? loot.filter((item) => !parseCoins(item?.name)) : loot;
+  },
+  pcStartingWealthGp: () => pcWealthTarget, equipmentValueGp: () => pcEquipmentValue,
+  lootValueGp: (loot) => (Array.isArray(loot) ? loot : []).reduce((sum, item) =>
+    sum + (parseCoins(item?.name) ? (Number(item?.resolvedValue ?? item?.value) || 1) * (Number(item?.quantity) || 1) : 0), 0),
+  parseCoins,
+  createCharacterActor: async () => { creates++; if (createFailure) throw createFailure; return { actor, skillReport }; },
+  validatePCEditCompletion: () => ({ complete: true, pending: [], errors: [], unresolved: [], manifest: {} }),
+  applyPCEdit: async (plan) => ({ plan, changed: [], invalidated: [], equipmentGp: 0 }),
+  pcEditFromControl: (control, value) => ({ control, value }),
+  pcEditorSelections: () => ({}), pcEditorInvalidatedControls: () => [],
+  heritageMatchesAncestry: () => true,
+};
+const source = await readFile(new URL("../scripts/generator-app.mjs", import.meta.url), "utf8");
+const appModule = new vm.SourceTextModule(source, { context });
+await appModule.link((specifier) => {
+  const imports = [...source.matchAll(/import\s*\{([^}]+)\}\s*from\s*"([^"]+)"/g)]
+    .filter((match) => match[2] === specifier).flatMap((match) => match[1].split(",").map((name) => name.trim()));
+  return new vm.SyntheticModule(imports, function () {
+    for (const name of imports) this.setExport(name, mocks[name] ?? (() => { throw new Error(`Unexpected dependency: ${name}`); }));
+  }, { context });
+});
+await appModule.evaluate();
+const { GeneratorApp } = appModule.namespace;
+const actions = GeneratorApp.DEFAULT_OPTIONS.actions;
+assert.equal(typeof actions.cancelGeneration, "function", "in-flight generation must expose Cancel");
+
+// A mode change re-renders the application. Foundry focuses the first hidden
+// radio during that render, so production must explicitly restore focus to
+// the checked radio instead of visually highlighting Monster as well.
+{
+  const modeApp = new GeneratorApp();
+  let changeHandler;
+  let focused = false;
+  const npcRadio = {
+    value: "npc", checked: true,
+    addEventListener: (type, handler) => { if (type === "change") changeHandler = handler; },
+    focus: ({ preventScroll } = {}) => { focused = preventScroll === true; }
+  };
+  modeApp.element = {
+    querySelector: (selector) => selector.includes('name="mode"') ? npcRadio : null,
+    querySelectorAll: (selector) => selector.includes('name="mode"') ? [npcRadio] : []
+  };
+  modeApp._onRender({}, {});
+  await changeHandler();
+  assert.equal(modeApp.context.npcMode, true, "the selected NPC mode must survive the re-render");
+  assert.equal(focused, true, "the checked mode radio must regain focus without scrolling");
+}
+
+async function generate() {
+  const app = new GeneratorApp();
+  app._preserveForm(); // model the preceding switch into Character mode
+  await actions.generateRandom.call(app);
+  assert.equal(app.context.error, null);
+  assert.ok(app.context.pcPreview, "real generation flow must seed the private PC draft");
+  return app;
+}
+
+// Exact scroll references carry identity only, not a spell display name.
+// Exercise the production private mapper through the real preview lifecycle.
+previewLoot = [
+  { name: "Scroll of Fear (Rank 2)", quantity: 2, scroll: { rank: 2 }, entry: { packId: "spells", _id: "fear" } },
+  { name: "Scroll of Draft (Rank 1)", quantity: 1, scroll: { rank: 1 }, entry: { name: "Heal" } }
+];
+const scrollPreview = await generate();
+assert.deepEqual(Array.from(scrollPreview.context.pcPreview.loot, ({ name, found }) => ({ name, found })), [
+  { name: "Scroll of Fear (Rank 2) ×2", found: true },
+  { name: "Scroll of Heal (Rank 1)", found: true }
+]);
+previewLoot = [];
+
+// The installed .67 Fighter preview that exposed the duplicate coin rows had
+// six ordinary equipment lines worth 18.9 gp against 15 gp starting wealth.
+// Exercise the real GeneratorApp PC path: the initial wishlist request is
+// allowed, but its zero remainder must not launch the bounded extra purchase
+// request. The builder regression separately checks the real budget helper's
+// currency stripping.
+pcEquipmentOverride = [
+  { name: "Steel Shield", value: 2 },
+  { name: "Chain Mail", value: 6 },
+  { name: "Adventurer's Pack", value: 1.5 },
+  { name: "Healer's Toolkit", value: 5 },
+  { name: "Rations", value: 0.4 },
+  { name: "Minor Healing Potion", value: 4 }
+];
+pcWealthTarget = 15;
+pcEquipmentValue = 18.9;
+previewLoot = [{ name: "Gold Pieces", quantity: 20, value: 1, resolvedValue: 1 }];
+const beforeZeroBudgetPurchases = pcPurchaseCalls;
+const zeroBudgetPreview = await generate();
+assert.equal(lastBudgetTarget, 0, "the over-budget six-item PC equipment set must leave a zero loot budget");
+assert.equal(pcPurchaseCalls, beforeZeroBudgetPurchases + 1,
+  "zero PC loot budget must make only the initial wishlist request, never an extra purchase request");
+assert.equal(zeroBudgetPreview.context.pcPreview.loot.length, 0,
+  "zero PC loot budget must strip the preserved coin row before preview");
+pcEquipmentOverride = null;
+pcWealthTarget = 0;
+pcEquipmentValue = 0;
+previewLoot = [];
+
+function setActor({ items = [], failSheet = false } = {}) {
+  actor = { id: "created", name: "<img src=x>", items: { contents: items }, async delete() {
+    deleted++;
+    if (deleteFailure) throw deleteFailure;
+  }, sheet: { async render() {
+    sheetCalls++;
+    if (failSheet) throw new Error("sheet failure");
+  } } };
+}
+setActor({ items: [{ id: "feature", name: "Feature", type: "feat", system: { rules: [{ key: "ChoiceSet", ignored: true }] } }], failSheet: true });
+const app = await generate();
+await actions.createActor.call(app);
+assert.equal(app.context.error, null, "a presentation error is not a creation failure");
+assert.equal(app.context.pcPreview, null);
+assert.equal(app.context.characterReview.choices.length, 1);
+assert.equal(app.context.characterReview.actorName, "<img src=x>");
+assert.equal(app.context.showEmptyState, false);
+assert.ok(notices.some(([, text]) => text.endsWith("CreatedPresentationFailed")));
+await actions.createActor.call(app);
+assert.equal(creates, 1, "a failed sheet must not allow duplicate creation");
+actor.sheet.render = async () => { sheetCalls++; };
+await actions.openReviewedCharacter.call(app);
+assert.equal(sheetCalls, 2);
+actor = null;
+await actions.openReviewedCharacter.call(app);
+assert.ok(notices.some(([, text]) => text.endsWith("ReviewUnavailable")));
+await actions.dismissCharacterReview.call(app);
+assert.equal(app.context.characterReview, null);
+assert.equal(creates, 1, "review actions never create or recreate actors");
+
+setActor();
+Object.defineProperty(actor, "items", { get() { throw new Error("unreadable items"); } });
+const unreadable = await generate();
+await actions.createActor.call(unreadable);
+assert.equal(unreadable.context.characterReview.incomplete, true);
+assert.equal(unreadable.context.pcPreview, null);
+
+const renderFailure = await generate();
+renderFailure.render = async function () {
+  await App.prototype.render.call(this);
+  if (this.context.characterReview && !this.context.busy) throw new Error("review template failed");
+};
+const warningCount = notices.filter(([, text]) => text.endsWith("CreatedPresentationFailed")).length;
+await actions.createActor.call(renderFailure);
+assert.equal(renderFailure.context.pcPreview, null);
+assert.equal(notices.filter(([, text]) => text.endsWith("CreatedPresentationFailed")).length, warningCount + 1);
+const afterRenderFailure = creates;
+await actions.createActor.call(renderFailure);
+assert.equal(creates, afterRenderFailure);
+
+setActor();
+const clean = await generate();
+await actions.createActor.call(clean);
+assert.equal(clean.context.characterReview, null, "no empty all-complete claim");
+assert.equal(clean.context.pcPreview, null);
+
+skillReport = { rows: [{ slug: "medicine", rank: 2, name: null }, { slug: "lore:owned", rank: 1, name: "<img src=x> Lore" }],
+  warnings: ["unspent-increases"], automatic: true, trainingBudget: 3, unspentTraining: 0, unspentIncreases: 1 };
+const skills = await generate();
+assert.equal(skills.context.pcPreview.automaticSkills, true);
+assert.equal(skills.context.pcPreview.skillPriorities.length, 16);
+await actions.createActor.call(skills);
+assert.equal(skills.context.characterReview.skills.rows[0].name, "medicine");
+assert.equal(skills.context.characterReview.skills.rows[0].rank, "SIMPLYPF2E.Skills.Rank2");
+assert.equal(skills.context.characterReview.skills.rows[1].name, "<img src=x> Lore");
+assert.deepEqual(Array.from(skills.context.characterReview.skills.warnings), ["SIMPLYPF2E.Skills.UnspentIncreases"]);
+assert.equal(skills.context.pcPreview, null);
+skillReport = undefined;
+
+createFailure = new Error("native creation rejected");
+const failed = await generate();
+await actions.createActor.call(failed);
+assert.equal(failed.context.error, createFailure.message);
+assert.ok(failed.context.pcPreview, "genuine creation failure retains the retryable draft");
+assert.equal(failed.context.busy, false);
+createFailure = undefined;
+
+setActor();
+verifyFailure = new Error("expected embedded feat was dropped");
+const unverified = await generate();
+await actions.createActor.call(unverified);
+assert.equal(unverified.context.error, verifyFailure.message, "post-create verification failure reaches the normal creation error state");
+assert.ok(unverified.context.pcPreview, "an unverified actor leaves the retryable plan intact");
+assert.equal(deleted, 1, "an unverified newly created character is rolled back before commit");
+verifyFailure = undefined;
+
+setActor();
+verifyFailure = new Error("expected embedded feat was dropped");
+deleteFailure = new Error("delete rejected");
+const stranded = await generate();
+await actions.createActor.call(stranded);
+assert.equal(stranded.context.pcPreview, null, "a failed rollback must discard the draft so retry cannot duplicate the actor");
+assert.match(stranded.context.error, /still exists/);
+verifyFailure = undefined;
+deleteFailure = undefined;
+
+setActor();
+const nativeStranded = new Error("native write rejected");
+nativeStranded.simplyPF2eRollbackActor = actor;
+createFailure = nativeStranded;
+const incomplete = await generate();
+await actions.createActor.call(incomplete);
+assert.equal(incomplete.context.pcPreview, null, "a builder-reported surviving actor also makes the draft non-retryable");
+assert.match(incomplete.context.error, /still exists/);
+createFailure = undefined;
+
+// Cancellation can arrive after the provider has finished, while the last
+// compendium/coin step is pending. One-click must not write that cancelled PC.
+setActor();
+let releaseBudget;
+budgetPending = new Promise((resolve) => { releaseBudget = resolve; });
+const budgetReady = new Promise((resolve) => { budgetStarted = resolve; });
+const cancelledApp = new GeneratorApp();
+cancelledApp._preserveForm(); // model the preceding switch into Character mode
+const createsBeforeCancel = creates;
+const cancelledRun = actions.generate.call(cancelledApp);
+await budgetReady;
+actions.cancelGeneration.call(cancelledApp);
+releaseBudget();
+await cancelledRun;
+assert.equal(creates, createsBeforeCancel, "a late cancelled one-click PC run must not create an actor");
+assert.equal(cancelledApp.context.pcPreview, null);
+assert.equal(cancelledApp.context.error, null, "cancellation is a neutral outcome");
+budgetPending = budgetStarted = null;
+
+// Re-entrant Generate is also rejected while a previous request owns the app.
+setActor();
+budgetPending = new Promise((resolve) => { releaseBudget = resolve; });
+const duplicateReady = new Promise((resolve) => { budgetStarted = resolve; });
+const duplicateApp = new GeneratorApp();
+duplicateApp._preserveForm();
+const callsBeforeDuplicate = conceptCalls;
+const firstRun = actions.generate.call(duplicateApp);
+await duplicateReady;
+const secondRun = actions.generate.call(duplicateApp);
+releaseBudget();
+await Promise.all([firstRun, secondRun]);
+assert.equal(conceptCalls, callsBeforeDuplicate + 1, "one active run owns the provider calls and cancellation signal");
+budgetPending = budgetStarted = null;
+console.log("generator-app.review.test.mjs: production generation/creation/review lifecycle passed");
