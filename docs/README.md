@@ -53,6 +53,6 @@ Users start with the root [README](../README.md) for installation, supported beh
 | [C12 — Acceptance and integration checks](evidence/chunks-2026-10-17/c12.md) | Integration checks and the N-row native checklist (§5) |
 | [C13 — Final documentation and release readiness](evidence/chunks-2026-10-17/c13.md) | Public and maintainer support boundaries and release-selection check |
 
-Runtime modules live under `scripts/`. Production templates, styles and translations live under `templates/`, `styles/` and `lang/`. Regression tests live under `tests/` (a parallel change is moving them there from `scripts/`). Published-source test fixtures live under `tests/fixtures/`; maintenance commands live under `tools/`. Tooling, tests and fixtures are excluded from the module archive.
+Runtime modules live under `scripts/`. Production templates, styles and translations live under `templates/`, `styles/` and `lang/`. Regression tests live under `tests/`. Published-source test fixtures live under `tests/fixtures/`; maintenance commands live under `tools/`. Tooling, tests and fixtures are excluded from the module archive.
 
 Run `node tools/check.mjs` with Node 22 to execute the same syntax, regression and JSON gates used in CI. Run `git diff --check` for local patch formatting. These checks do not establish live Foundry/PF2e acceptance.
