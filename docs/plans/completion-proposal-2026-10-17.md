@@ -2,7 +2,7 @@
 
 Status: proposed, awaiting user direction. This updates the execution order in the September 15 completion plan; its detailed acceptance criteria remain applicable. Planning does not begin implementation, publication, installation or paid generation.
 
-Independent review: Opus 5.5 at high effort returned **approve with changes** on October 17. This revision incorporates the parent's assessment in [the review record](completion-review-2026-10-17.md); the revised text has not had a second review. Proposed evidence-method changes and scope choices below are not silently treated as accepted deferrals.
+Independent review: Opus 5.5 at high effort returned **approve with changes** on October 17. This revision incorporates the parent's assessment in [the review record](../reviews/completion-review-2026-10-17.md); the revised text has not had a second review. Proposed evidence-method changes and scope choices below are not silently treated as accepted deferrals.
 
 ## Baseline and outcome
 

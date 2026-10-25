@@ -243,7 +243,7 @@ Shipped features and their versions are in the [release notes](https://github.co
 
 ## For maintainers
 
-Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](HISTORY.md). Use the [documentation map](docs/README.md) to find current acceptance records and historical plans.
+Development conventions, architecture, and the full bug history live in [CLAUDE.md](CLAUDE.md) and [HISTORY.md](docs/HISTORY.md). Use the [documentation map](docs/README.md) to find current acceptance records and historical plans.
 
 Runtime modules and their regression tests remain colocated in `scripts/`; source fixtures are under `tests/fixtures/`, and repository tooling is under `tools/`. Fixtures, tests and tooling are excluded from the release archive.
 
