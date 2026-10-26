@@ -8,7 +8,7 @@ import { slugify } from "./text.mjs";
  * staged ABC/grant snapshot before complete-only selection. Wizard remains
  * excluded pending class-owned spellbook/curriculum support.
  */
-export const COMPLETE_PC_CLASS_SLUGS = new Set(["fighter", "rogue", "investigator"]);
+const COMPLETE_PC_CLASS_SLUGS = new Set(["fighter", "rogue", "investigator"]);
 
 export function supportedClassCandidates(candidates) {
   return (Array.isArray(candidates) ? candidates : []).filter((candidate) =>

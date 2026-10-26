@@ -40,7 +40,7 @@ export const DEFAULT_PACKS = {
 export const EQUIPMENT_TYPES = new Set([
   "weapon", "armor", "equipment", "consumable", "ammo", "treasure", "backpack", "shield", "kit"
 ]);
-export const ABILITY_CANDIDATE_LIMIT = 96;
+const ABILITY_CANDIDATE_LIMIT = 96;
 
 /**
  * Convert a PF2e price-value denomination object ({pp, gp, sp, cp}, any
@@ -284,7 +284,7 @@ export async function getDocument(entry) {
  * Stable, opaque identifier for a candidate offered to the model. The model
  * never needs a pack name or document id; those stay in this local reference.
  */
-export function candidateId(entry) {
+function candidateId(entry) {
   const packId = String(entry?.packId ?? "");
   const documentId = String(entry?._id ?? "");
   return packId && documentId ? `c-${btoa(`${packId}\u0000${documentId}`).replaceAll("=", "")}` : null;
@@ -324,13 +324,13 @@ export async function getCandidateDocument(candidate, packIds = null) {
  * enough that installing another content pack cannot silently consume the
  * model's whole context window. */
 export const SPELL_CANDIDATE_LIMIT = 96;
-export const SPELL_CANDIDATES_PER_RANK = 12;
+const SPELL_CANDIDATES_PER_RANK = 12;
 export const SPELL_CANDIDATE_FLOOR = 40;
 export const EQUIPMENT_CANDIDATE_LIMIT = 120;
 export const LOOT_CANDIDATE_LIMIT = 120;
 export const EQUIPMENT_CANDIDATE_FLOOR = 48;
 export const FEAT_CANDIDATE_LIMIT = 16;
-export const FEAT_CANDIDATES_PER_LEVEL = 8;
+const FEAT_CANDIDATES_PER_LEVEL = 8;
 
 const normalizedKeywords = (keywords) => [...new Set(
   (Array.isArray(keywords) ? keywords : [])

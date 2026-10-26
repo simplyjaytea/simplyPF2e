@@ -15,7 +15,7 @@ export const THREATS = {
   extreme: { budget: 160, perPlayer: 40 }
 };
 
-export const XP_BY_RELATIVE_LEVEL = {
+const XP_BY_RELATIVE_LEVEL = {
   "-4": 10, "-3": 15, "-2": 20, "-1": 30, "0": 40, "1": 60, "2": 80, "3": 120, "4": 160
 };
 

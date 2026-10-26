@@ -37,7 +37,7 @@ export const RESKIN_CODES = Object.freeze({
  * AIRequestError so one error boundary serves both. Messages are developer
  * English, and C04 maps `code` to localized text.
  */
-export class ReskinError extends Error {
+class ReskinError extends Error {
   constructor(message, { code, cancelled = false, usage = null } = {}) {
     super(message);
     this.name = "ReskinError";

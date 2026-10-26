@@ -731,7 +731,7 @@ async function findScrollTemplate(rank) {
  * @param {number} rank        rank the scroll casts the spell at
  * @returns {Promise<object|null>} item data, or null when spell/template is missing
  */
-export async function buildScrollItem(spellEntry, rank) {
+async function buildScrollItem(spellEntry, rank) {
   const spellDoc = await getDocument(spellEntry);
   if (!spellDoc) return null;
   const template = await findScrollTemplate(rank);
@@ -753,7 +753,7 @@ export async function buildScrollItem(spellEntry, rank) {
  * Fallback for loot with no compendium match: a custom treasure item carrying
  * the AI's estimated value, so the haul keeps its worth instead of vanishing.
  */
-export function customTreasureItem(name, quantity, value) {
+function customTreasureItem(name, quantity, value) {
   const gp = Math.max(Math.round(Number(value) || 0), 0);
   const item = {
     name: capitalized(name),
@@ -773,7 +773,7 @@ export function customTreasureItem(name, quantity, value) {
  * (type "equipment", not "treasure") at the AI's estimated price, so gear the
  * creature should be carrying doesn't silently vanish or masquerade as coins.
  */
-export function customEquipmentItem(name, quantity, value) {
+function customEquipmentItem(name, quantity, value) {
   const gp = Math.max(Math.round(Number(value) || 0), 0);
   const item = {
     name: capitalized(name),
@@ -1063,86 +1063,6 @@ export function computeStats(concept) {
   };
 }
 
-const DAMAGE_TYPES =
-  "acid|bludgeoning|cold|electricity|fire|force|mental|piercing|poison|slashing|sonic|spirit|vitality|void|bleed|precision|untyped";
-const SAVE_TYPES = "fortitude|reflex|will";
-const CHECK_TYPES =
-  "acrobatics|arcana|athletics|crafting|deception|diplomacy|intimidation|medicine|nature|occultism|performance|religion|society|stealth|survival|thievery|perception|flat";
-
-/**
- * Turn conventional rules phrasing in AI ability text into PF2e inline
- * enrichers so damage, saves, checks, and area templates are all clickable
- * on the sheet and in chat ("just click" — no manual rolling). Scale words
- * (extreme/high/moderate/low) resolve to real numbers from the GM Core
- * tables for the creature's level.
- */
-export function enrichDescription(text, level) {
-  const dcFor = (scale) => T.lookup(T.SPELL_DC, level, scale.toLowerCase(), ["high", "moderate"]);
-  const damageFor = (scale) => T.lookup(T.STRIKE_DAMAGE, level, scale.toLowerCase());
-  let out = String(text);
-
-  // "2d6 fire damage", "1d4 persistent bleed damage" (literal dice + type)
-  out = out.replace(
-    new RegExp(`\\b(\\d+d\\d+(?:[+-]\\d+)?)\\s+(persistent\\s+)?(${DAMAGE_TYPES})\\s+damage\\b`, "gi"),
-    (_, dice, persistent, type) =>
-      `@Damage[${dice}[${persistent ? "persistent," : ""}${type.toLowerCase()}]] damage`
-  );
-
-  // "high damage", "moderate fire damage", "low persistent bleed damage"
-  out = out.replace(
-    new RegExp(`\\b(extreme|high|moderate|low)\\s+(persistent\\s+)?(?:(${DAMAGE_TYPES})\\s+)?damage\\b`, "gi"),
-    (_, scale, persistent, type) => {
-      const dice = damageFor(scale);
-      const damageType = type ? type.toLowerCase() : persistent ? "untyped" : null;
-      const suffix = damageType ? `[${persistent ? "persistent," : ""}${damageType}]` : "";
-      return `@Damage[${dice}${suffix}] damage`;
-    }
-  );
-
-  // "basic high Reflex save", "moderate Fortitude save"
-  out = out.replace(
-    new RegExp(`\\b(basic\\s+)?(extreme|high|moderate)\\s+(?:DC\\s+)?(${SAVE_TYPES})\\s+save\\b`, "gi"),
-    (_, basic, scale, save) =>
-      `@Check[type:${save.toLowerCase()}|dc:${dcFor(scale)}${basic ? "|basic:true" : ""}] save`
-  );
-
-  // "DC 21 basic Reflex save" (literal DC the model wrote anyway)
-  out = out.replace(
-    new RegExp(`\\bDC\\s+(\\d+)\\s+(basic\\s+)?(${SAVE_TYPES})\\s+save\\b`, "gi"),
-    (_, dc, basic, save) =>
-      `@Check[type:${save.toLowerCase()}|dc:${dc}${basic ? "|basic:true" : ""}] save`
-  );
-
-  // "high DC Athletics check"
-  out = out.replace(
-    new RegExp(`\\b(extreme|high|moderate)\\s+DC\\s+(${CHECK_TYPES})\\s+check\\b`, "gi"),
-    (_, scale, check) => `@Check[type:${check.toLowerCase()}|dc:${dcFor(scale)}] check`
-  );
-
-  // "DC 20 Athletics check", "DC 5 flat check" (literal DCs)
-  out = out.replace(
-    new RegExp(`\\bDC\\s+(\\d+)\\s+(${CHECK_TYPES})\\s+check\\b`, "gi"),
-    (_, dc, check) => `@Check[type:${check.toLowerCase()}|dc:${dc}] check`
-  );
-
-  // "regains 2d8+4 Hit Points", "2d8 healing" become clickable healing rolls
-  out = out.replace(
-    /\b(\d+d\d+(?:[+-]\d+)?)\s+(?:hit points|healing)\b/gi,
-    (_, dice) => `@Damage[${dice}[healing]] Hit Points`
-  );
-
-  // "30-foot cone" and friends become placeable templates
-  out = out.replace(
-    /\b(\d+)[-\s]foot\s+(cone|line|burst|emanation)\b/gi,
-    (_, distance, shape) => `@Template[type:${shape.toLowerCase()}|distance:${distance}]`
-  );
-
-  // Any leftover "<scale> DC" becomes a plain number so no scale words leak
-  out = out.replace(/\b(extreme|high|moderate)\s+DC\b/gi, (_, scale) => `DC ${dcFor(scale)}`);
-
-  return out;
-}
-
 /* Which skill identifies a creature, by creature-type trait (Recall Knowledge). */
 const RECALL_KNOWLEDGE_SKILLS = {
   aberration: "occultism", animal: "nature", astral: "occultism", beast: "nature",
@@ -1154,7 +1074,7 @@ const RECALL_KNOWLEDGE_SKILLS = {
 };
 
 /** The Recall Knowledge skill for a concept's creature-type traits. */
-export function recallKnowledgeSkill(traits) {
+function recallKnowledgeSkill(traits) {
   for (const trait of traits) {
     if (RECALL_KNOWLEDGE_SKILLS[trait]) return RECALL_KNOWLEDGE_SKILLS[trait];
   }

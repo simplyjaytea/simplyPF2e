@@ -45,7 +45,7 @@ export const PC_EDIT_CODES = Object.freeze({
   DUPLICATE: "PC_EDIT_DUPLICATE"
 });
 
-export const PC_EDIT_FIELDS = Object.freeze([
+const PC_EDIT_FIELDS = Object.freeze([
   "ancestry", "heritage", "background", "class", "classPath",
   "keyAbility", "backgroundLore", "feat", "equipment"
 ]);

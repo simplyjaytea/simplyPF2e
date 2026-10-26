@@ -276,7 +276,7 @@ function scanPackOrder() {
  *
  * @returns {Promise<Record<string, {rule: object, sourceName: string, sourceUuid: string}|null>>}
  */
-export async function findRuleExemplars() {
+async function findRuleExemplars() {
   const found = Object.fromEntries(ALL_KINDS.map((k) => [k, null]));
   const incomplete = () => ALL_KINDS.filter((k) => !found[k] || !isComplete(found[k].rule, k));
   for (const packId of scanPackOrder()) {
@@ -321,10 +321,4 @@ export async function findRuleExemplars() {
 export async function findRuleExemplar(kind) {
   const exemplars = await findRuleExemplars();
   return exemplars[kind] ?? null;
-}
-
-/** Effect kinds that actually have a real exemplar in this world. */
-export async function availableEffectKinds() {
-  const exemplars = await findRuleExemplars();
-  return EFFECT_KINDS.filter((kind) => exemplars[kind]);
 }
