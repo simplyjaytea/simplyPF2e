@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  HAZARD_DISABLE_SKILLS, HazardConceptError, buildHazardSource, describeHazard, normalizeHazardConcept
+  HAZARD_DISABLE_SKILLS, HazardConceptError, buildHazardSource, describeHazard, hazardProseProblem, normalizeHazardConcept
 } from "../scripts/hazard-builder.mjs";
 
 // The table functions are passed in through the tables override, so these tests never
@@ -36,7 +36,7 @@ function raw(overrides = {}) {
     complex: false,
     stealth: "high",
     disable: [{ skill: "thievery", scale: "high" }],
-    dispel: null,
+    dispel: false,
     ac: "high",
     saves: { fortitude: "high", reflex: "low", will: null },
     hasHP: true,
@@ -142,17 +142,20 @@ test("a disable entry with an unknown scale is dropped with a warning", () => {
 });
 
 test("no disable check and no dispel throws NO_DISABLE", () => {
-  assert.equal(codeOf(() => norm({ disable: [], dispel: null })), "NO_DISABLE");
+  assert.equal(codeOf(() => norm({ disable: [], dispel: false })), "NO_DISABLE");
 });
 
 test("Dispel Magic alone satisfies the disable requirement", () => {
-  assert.deepEqual(norm({ disable: [], dispel: { rank: 3 } }).dispel, { rank: 3 });
+  assert.equal(norm({ disable: [], dispel: true }).dispel, true);
 });
 
-test("a dispel rank outside 1 to 10 is dropped with a warning", () => {
-  const { value, seen } = warnings(() => norm({ dispel: { rank: 11 } }));
-  assert.equal(value.dispel, null);
-  assert.equal(seen.length, 1);
+test("a non-boolean dispel is dropped to false with a warning, and the rank is never read from it", () => {
+  for (const dispel of [{ rank: 3 }, "yes", 3]) {
+    const { value, seen } = warnings(() => norm({ dispel }));
+    assert.equal(value.dispel, false);
+    assert.equal(seen.length, 1);
+  }
+  assert.equal(codeOf(() => norm({ disable: [], dispel: { rank: 3 } })), "NO_DISABLE");
 });
 
 test("a strike with a damage type outside the catalog is dropped with a warning", () => {
@@ -216,7 +219,7 @@ test("a simple hazard with a strike and a save builds the exact disable, stealth
   assert.equal(actor.type, "hazard");
   assert.equal(actor.system.details.disable, "<p>@Check[thievery|dc:22|name:Disable Spear Launcher|traits:action:disable-a-device] (trained)</p>");
   assert.equal(actor.system.attributes.stealth.value, 12);
-  assert.equal(actor.system.attributes.stealth.details, "(trained)");
+  assert.equal(actor.system.attributes.stealth.details, "<p>(trained)</p>");
   assert.equal(actor.system.attributes.ac.value, 19);
   assert.deepEqual(actor.system.attributes.hp, { value: 24, max: 24, temp: 0, details: "" });
   assert.equal(actor.system.attributes.hardness, 7);
@@ -249,19 +252,26 @@ test("the built source writes no Rule Elements and no derived keys", async () =>
   }
 });
 
-test("a complex hazard adds a passive routine action and a complex-kind strike", async () => {
+test("a complex hazard keeps the routine text in details and emits only the reaction action and a complex-kind strike", async () => {
   const routine = { actions: 3, text: "The blade spins toward each adjacent creature.", strike: { name: "Spinning Blade", damageType: "slashing" } };
   const concept = norm({ complex: true, routine, reaction: { ...raw().reaction, strike: null } });
   const { actor, items } = await buildHazardSource(concept, { level: LEVEL, tables: FAKE });
-  assert.deepEqual(items.map((item) => item.name), ["Spear", "Routine", "Spinning Blade"]);
-  assert.equal(items[1].system.actionType.value, "passive");
-  assert.equal(items[1].system.description.value, "<p>(3 actions) The blade spins toward each adjacent creature.</p>");
+  assert.deepEqual(items.map((item) => [item.type, item.name]), [["action", "Spear"], ["melee", "Spinning Blade"]]);
+  assert.equal(items.some((item) => item.name === "Routine"), false, "no synthetic Routine item is published");
+  assert.equal(items[0].system.actionType.value, "reaction");
   assert.deepEqual(items[0].system.traits.value, []);
-  assert.equal(items[2].system.bonus.value, 14);
-  const [roll] = Object.values(items[2].system.damageRolls);
+  assert.equal(items[1].system.bonus.value, 14);
+  const [roll] = Object.values(items[1].system.damageRolls);
   assert.deepEqual([roll.damage, roll.damageType], ["2d10+5", "slashing"]);
   assert.equal(actor.system.details.isComplex, true);
   assert.equal(actor.system.details.routine, "<p>(3 actions) The blade spins toward each adjacent creature.</p>");
+});
+
+test("a complex hazard with no strike emits only the reaction action and still keeps the routine text", async () => {
+  const routine = { actions: 2, text: "The vents breathe out smoke.", strike: null };
+  const { actor, items } = await buildHazardSource(norm({ complex: true, routine, reaction: { ...raw().reaction, strike: null } }), { level: LEVEL, tables: FAKE });
+  assert.deepEqual(items.map((item) => item.type), ["action"]);
+  assert.equal(actor.system.details.routine, "<p>(2 actions) The vents breathe out smoke.</p>");
 });
 
 test("a hazard without HP has zero HP and zero hardness", async () => {
@@ -281,16 +291,30 @@ test("a null AC scale writes the LOW column of the AC table", async () => {
   assert.equal(actor.system.attributes.ac.value, 16);
 });
 
-test("a dispel-only hazard renders the Dispel Magic option with its ordinal and counteract DC", async () => {
-  const { actor } = await buildHazardSource(norm({ disable: [], dispel: { rank: 3 } }), { level: LEVEL, tables: FAKE });
-  assert.equal(actor.system.details.disable, "<p>@UUID[Compendium.pf2e.spells-srd.Item.Dispel Magic] (3rd rank; counteract DC 22)</p>");
+test("a dispel-only hazard renders the Dispel Magic option with its derived ordinal rank and counteract DC", async () => {
+  const { actor } = await buildHazardSource(norm({ disable: [], dispel: true }), { level: LEVEL, tables: FAKE });
+  assert.equal(actor.system.details.disable, "<p>@UUID[Compendium.pf2e.spells-srd.Item.Dispel Magic] (1st rank; counteract DC 22)</p>");
 });
 
 test("a disable check and Dispel Magic are joined with or", async () => {
-  const { actor } = await buildHazardSource(norm({ dispel: { rank: 4 } }), { level: LEVEL, tables: FAKE });
+  const { actor } = await buildHazardSource(norm({ dispel: true }, 7), { level: 7, tables: FAKE });
   assert.equal(actor.system.details.disable,
-    "<p>@Check[thievery|dc:22|name:Disable Spear Launcher|traits:action:disable-a-device] (trained)"
-    + " or @UUID[Compendium.pf2e.spells-srd.Item.Dispel Magic] (4th rank; counteract DC 22)</p>");
+    "<p>@Check[thievery|dc:27|name:Disable Spear Launcher|traits:action:disable-a-device] (trained)"
+    + " or @UUID[Compendium.pf2e.spells-srd.Item.Dispel Magic] (4th rank; counteract DC 27)</p>");
+});
+
+test("the Dispel Magic option names a derived rank with an ordinal, up to 10th", async () => {
+  const ordinals = [];
+  for (const level of [4, 5, 24]) {
+    const { actor } = await buildHazardSource(norm({ disable: [], dispel: true }, level), { level, tables: FAKE });
+    ordinals.push(/\((\w+) rank;/.exec(actor.system.details.disable)[1]);
+  }
+  assert.deepEqual(ordinals, ["2nd", "3rd", "10th"]);
+});
+
+test("a hazard without Dispel Magic renders no Dispel Magic option", async () => {
+  const { actor } = await buildHazardSource(norm({ dispel: false }), { level: LEVEL, tables: FAKE });
+  assert.equal(actor.system.details.disable.includes("Dispel Magic"), false);
 });
 
 test("description prose is escaped before it is wrapped in paragraphs", async () => {
@@ -314,7 +338,7 @@ test("describeHazard reports the simple hazard values and XP from the injected m
     stealth: { dc: 22, rank: "trained" },
     disable: [{ skill: "thievery", dc: 22, rank: "trained" }],
     dispel: null,
-    ac: 19,
+    ac: { value: 19, assumed: false },
     saves: { fortitude: 10, reflex: 6, will: null },
     hp: 24,
     hardness: 7,
@@ -332,4 +356,71 @@ test("describeHazard reports the complex routine and complex strike values", asy
   assert.equal(preview.routineActions, 3);
   assert.deepEqual(preview.strike, { name: "Spinning Blade", bonus: 14, formula: "2d10+5", average: 16, damageType: "slashing" });
   assert.equal(preview.xp, 221);
+});
+
+// The prose policy samples are shared with tests/ai.hazardConcept.test.mjs so both layers face the same text.
+const ALLOWED_PROSE = [
+  "The trap fills a 5-foot square.",
+  "Darts fly up to 10 feet.",
+  "Three darts hit the target.",
+  "The vents stay open for 2 rounds."
+];
+
+const REFUSED_PROSE = [
+  ["an explicit DC", "Anyone can open it with DC 18.", "NUMBER_IN_TEXT"],
+  ["an explicit AC", "The door has AC 17.", "NUMBER_IN_TEXT"],
+  ["a positive signed modifier", "The runes give a +14 bonus.", "NUMBER_IN_TEXT"],
+  ["a negative signed modifier", "A -2 penalty applies.", "NUMBER_IN_TEXT"],
+  ["dice notation", "It hits for 2d6 points.", "NUMBER_IN_TEXT"],
+  ["damage next to a number", "It deals 10 damage.", "NUMBER_IN_TEXT"],
+  ["damage with a type word between", "It deals 10 fire damage.", "NUMBER_IN_TEXT"],
+  ["HP next to a number", "The wall has 20 HP.", "NUMBER_IN_TEXT"],
+  ["hit points next to a number", "It has 15 hit points.", "NUMBER_IN_TEXT"],
+  ["an enricher token", "The gate makes a @Check[thievery|dc:18] roll.", "ENRICHER_IN_TEXT"],
+  ["an @ command", "See @UUID for details.", "ENRICHER_IN_TEXT"],
+  ["square brackets", "The note reads [secret].", "ENRICHER_IN_TEXT"],
+  ["curly braces", "The note reads {secret}.", "ENRICHER_IN_TEXT"],
+  ["a control character", "Bad" + String.fromCharCode(7) + "text.", "BAD_TEXT"]
+];
+
+test("hazardProseProblem accepts plain distances and counts and refuses statistics, enrichers and control characters", () => {
+  for (const text of ALLOWED_PROSE) assert.equal(hazardProseProblem(text), null, text);
+  for (const [label, text] of REFUSED_PROSE) assert.equal(typeof hazardProseProblem(text), "string", label);
+  assert.equal(typeof hazardProseProblem(42), "string", "non-text is refused");
+});
+
+test("normalizeHazardConcept applies the shared prose policy to prose fields and names", () => {
+  for (const text of ALLOWED_PROSE) {
+    assert.equal(norm({ description: text }).description, text);
+    assert.equal(norm({ reaction: { ...raw().reaction, effect: text } }).reaction.effect, text);
+    assert.equal(norm({ name: text }).name, text);
+  }
+  for (const [label, text, code] of REFUSED_PROSE) {
+    assert.equal(codeOf(() => norm({ description: text })), code, "description: " + label);
+    assert.equal(codeOf(() => norm({ reset: text })), code, "reset: " + label);
+    assert.equal(codeOf(() => norm({ name: text })), code === "BAD_TEXT" ? "BAD_NAME" : code, "name: " + label);
+  }
+});
+
+test("describeHazard reports ac as value and assumed, with assumed true only when the concept had no AC scale", async () => {
+  const xp = () => 0;
+  const given = await describeHazard(norm({ ac: "high" }), LEVEL, { tables: FAKE, xp });
+  assert.deepEqual(given.ac, { value: 19, assumed: false });
+  const assumed = await describeHazard(norm({ ac: null }), LEVEL, { tables: FAKE, xp });
+  assert.deepEqual(assumed.ac, { value: 16, assumed: true });
+  const { actor } = await buildHazardSource(norm({ ac: null }), { level: LEVEL, tables: FAKE });
+  assert.equal(actor.system.attributes.ac.value, assumed.ac.value, "the preview shows the stored value");
+});
+
+test("describeHazard reports dispel as rank and dc, with the rank derived from the level and clamped to 1 to 10", async () => {
+  const xp = () => 0;
+  assert.equal((await describeHazard(norm({ dispel: false }), LEVEL, { tables: FAKE, xp })).dispel, null);
+  const ranks = [];
+  for (const level of [-1, 0, 1, 2, 3, 7, 19, 20, 21, 24]) {
+    const preview = await describeHazard(norm({ dispel: true }, level), level, { tables: FAKE, xp });
+    ranks.push(preview.dispel.rank);
+  }
+  assert.deepEqual(ranks, [1, 1, 1, 1, 2, 4, 10, 10, 10, 10]);
+  const atSeven = await describeHazard(norm({ dispel: true }, 7), 7, { tables: FAKE, xp });
+  assert.deepEqual(atSeven.dispel, { rank: 4, dc: 27 });
 });

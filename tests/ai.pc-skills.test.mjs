@@ -8,7 +8,7 @@ const settings = new Map([[SETTINGS.apiBaseUrl, "http://localhost:11434/v1"], [S
   [SETTINGS.maxTokens, 8000], [SETTINGS.requestTimeout, 90]]);
 globalThis.game = { settings: { get: (_module, key) => settings.get(key) },
   i18n: { localize: (key) => key, format: (key) => key } };
-const { generatePCConcept } = await import("../scripts/ai.mjs");
+const { generatePCConcept, selectAncestryBackgroundClass } = await import("../scripts/ai.mjs");
 const fixture = {
   name: "Scout", ancestry: "Human", heritage: null, background: "Hunter", class: "Ranger", keyAbility: "dex",
   blurb: "A watchful scout", backstory: "A scout who protects travellers.", appearance: "", age: "", gender: "",
@@ -40,5 +40,29 @@ try {
     for (const slug of CORE_SKILLS) assert.ok(system.includes(slug));
     assert.deepEqual(normalizePCConcept(result.concept, { level: 5 }).skillPriorities, expected);
   }
+  // Required identity hint. Class paths are an object keyed by bridge name, so they must be listed as
+  // bridge name to candidate name in both prompts; reading value.name would drop them silently.
+  const requiredIdentity = { class: { name: "Wizard" }, classPaths: { "Arcane School": { name: "School of Mentalism" } } };
+  response = { ...fixture };
+  calls = [];
+  await generatePCConcept({ prompt: "Scout", level: 5, allowSpellcasting: true, requiredIdentity });
+  const conceptHint = calls[0].messages[1].content;
+  assert.match(conceptHint, /Arcane School/, "the bridge name is in the concept prompt");
+  assert.match(conceptHint, /School of Mentalism/, "the candidate name is in the concept prompt");
+  assert.match(conceptHint, /"class":"Wizard","classPaths":\{"Arcane School":"School of Mentalism"\}/);
+  response = { ancestryId: "A0", heritageId: null, backgroundId: "B0", classId: "C0", keyAbility: "int" };
+  calls = [];
+  const candidate = (id, name) => ({ id, name, ref: { packId: "pf2e.test", _id: id } });
+  const school = candidate("S0", "School of Mentalism");
+  await selectAncestryBackgroundClass({
+    concept: {
+      ...fixture, level: 5, requiredIdentity: { classPaths: { "Arcane School": school } },
+      classPaths: { "Arcane School": school.name }, classPathCandidates: { "Arcane School": school.ref }
+    },
+    ancestryCandidates: [candidate("A0", "Human")], backgroundCandidates: [candidate("B0", "Scholar")], classCandidates: [candidate("C0", "Wizard")]
+  });
+  const selectionHint = calls[0].messages[1].content;
+  assert.match(selectionHint, /Arcane School/, "the bridge name is in the selector prompt");
+  assert.match(selectionHint, /School of Mentalism/, "the candidate name is in the selector prompt");
 } finally { globalThis.fetch = originalFetch; }
-console.log("ai.pc-skills.test.mjs: existing request, enum priorities, and backwards compatibility passed");
+console.log("ai.pc-skills.test.mjs: existing request, enum priorities, backwards compatibility and the class-path identity hint passed");

@@ -5,11 +5,11 @@
  * closed: an unknown optional pick is dropped with console.warn, and a missing or
  * unsafe required field throws a HazardConceptError with a stable code. Every
  * number in the output comes from scripts/hazard-tables.mjs (loaded lazily unless
- * a `tables` override is passed) or from scripts/encounter.mjs (XP). AI prose is
- * escaped with esc() and rejected when it carries enricher syntax or game numbers
- * (reskin-policy.mjs).
+ * a `tables` override is passed), from dispelRank below, or from scripts/encounter.mjs
+ * (XP). AI prose is escaped with esc() and must pass hazardProseProblem, the prose
+ * number policy that ai.mjs also imports.
  */
-import { enricherTokens, reskinTextProblem } from "./reskin-policy.mjs";
+import { enricherTokens } from "./reskin-policy.mjs";
 import { esc, toHtml } from "./text.mjs";
 
 export const HAZARD_DISABLE_SKILLS = Object.freeze([
@@ -26,13 +26,34 @@ const SAVE_TYPES = Object.freeze(["fortitude", "reflex", "will"]);
 const RARITIES = Object.freeze(["common", "uncommon", "rare", "unique"]);
 const LEVEL_MIN = -1;
 const LEVEL_MAX = 24;
-const DISPEL_RANK_MAX = 10;
+const NAME_MAX = 80; // matches HAZARD_LIMITS.name in ai.mjs
+// Spell ranks for the Dispel Magic counteract rank (a module convention, see dispelRank).
+const SPELL_RANK = Object.freeze({ min: 1, max: 10 });
+// routine.actions is a structural count of actions per round, so the AI may choose it.
 const ROUTINE_ACTIONS = Object.freeze([1, 2, 3]);
 const HAZARD_IMG = "systems/pf2e/icons/default-icons/hazard.svg";
 const ID_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 // Custom content. builder.mjs writes no publication for NPCs, so Foundry's own
 // defaults apply there; these are the same defaults written out explicitly.
 const PUBLICATION = Object.freeze({ title: "", authors: "", license: "OGL", remaster: false });
+
+/*
+ * Prose policy (WP5 fix pass). Hazard prose is plain words. Plain distances and counts
+ * stay allowed ("a 5-foot square", "10 feet", "three darts", "2 rounds"). Refused:
+ * enricher syntax, square or curly brackets, "@" commands, control characters, dice
+ * notation, an explicit DC or AC, a signed modifier (+14, -2), and damage, HP or hit
+ * points written next to a number (one damage type word may sit between, as in "10 fire
+ * damage"). A signed number is a modifier only when no letter or digit precedes the sign.
+ */
+const PROSE_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+const PROSE_BRACKET = /[[\]{}]|@\w/;
+const PROSE_NUMBERS = Object.freeze([
+  [/\d+d\d+/i, "dice notation"],
+  [/\bDC\s*\d/i, "an explicit DC"],
+  [/\bAC\s*\d/i, "an explicit AC"],
+  [/(?<![A-Za-z\d])[+−-]\d+\b/, "a signed modifier"],
+  [/\b\d+\s*(?:[a-z]+\s+)?(?:damage|hp|hit\s+points?)\b|\b(?:damage|hp|hit\s+points?)\s*\d/i, "damage, HP or hit points next to a number"]
+]);
 
 export class HazardConceptError extends Error {
   constructor(code, message) {
@@ -73,30 +94,53 @@ function objectOf(value, field) {
   return value;
 }
 
-/** Optional prose: plain text, enricher-inert, and free of game numbers. Escaping happens at render time. */
+/*
+ * The one prose policy for hazard text (WP5 fix pass): proseFault returns a stable code and a
+ * short reason, or null. The AI layer (ai.mjs, through hazardProseProblem) and this module
+ * apply the same rules, so a reply that passes the retry gate is not rejected here.
+ * Brackets are a superset of the enricher tokens, but enricherTokens (reskin-policy.mjs) is
+ * still consulted so the detection stays shared with the reskin engine. Numbers are checked
+ * after NFKC folding so full-width digits cannot slip past.
+ */
+function proseFault(text) {
+  if (PROSE_CONTROL.test(text)) return { code: "BAD_TEXT", reason: "contains a control character" };
+  if (enricherTokens(text).length || PROSE_BRACKET.test(text)) {
+    return { code: "ENRICHER_IN_TEXT", reason: "contains Foundry enricher syntax, a bracket or an @ command" };
+  }
+  const folded = text.normalize("NFKC");
+  const number = PROSE_NUMBERS.find(([pattern]) => pattern.test(folded));
+  return number ? { code: "NUMBER_IN_TEXT", reason: "contains " + number[1] } : null;
+}
+
+/**
+ * Why a piece of hazard prose must be rejected, or null when it is acceptable. Pure. The
+ * AI retry gate in ai.mjs and normalizeHazardConcept both use this one function.
+ */
+export function hazardProseProblem(text) {
+  if (typeof text !== "string") return "is not text";
+  const found = proseFault(text);
+  return found ? found.reason : null;
+}
+
+/** Optional prose: plain text that passes hazardProseProblem. Escaping happens at render time. */
 function proseText(field, value) {
   if (value === undefined || value === null) return "";
   if (typeof value !== "string") throw fault("BAD_TEXT", `${field} must be text`);
   const text = value.trim();
   if (!text) return "";
-  if (enricherTokens(text).length || /[[\]]|@\w/.test(text)) {
-    throw fault("ENRICHER_IN_TEXT", `${field} contains Foundry enricher syntax`);
-  }
-  const problem = reskinTextProblem(field, text);
-  if (problem) throw fault(problem.includes("game statistic") ? "NUMBER_IN_TEXT" : "BAD_TEXT", `${field}: ${problem}`);
+  const found = proseFault(text);
+  if (found) throw fault(found.code, `${field} ${found.reason}`);
   return text;
 }
 
-/** Required single-line name. The pipe is refused because it separates @Check parameters. */
+/** Required single-line name under the same policy. The pipe is refused because it separates @Check parameters. */
 function nameText(field, value) {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) throw fault("MISSING_NAME", `${field} is required`);
-  if (enricherTokens(text).length || /[[\]]|@\w/.test(text)) {
-    throw fault("ENRICHER_IN_TEXT", `${field} contains Foundry enricher syntax`);
-  }
-  if (text.includes("|")) throw fault("BAD_NAME", `${field} must not contain the pipe character`);
-  const problem = reskinTextProblem("name", text);
-  if (problem) throw fault("BAD_NAME", `${field}: ${problem}`);
+  const found = proseFault(text);
+  if (found) throw fault(found.code === "BAD_TEXT" ? "BAD_NAME" : found.code, `${field} ${found.reason}`);
+  if (text.length > NAME_MAX) throw fault("BAD_NAME", `${field} must be at most ${NAME_MAX} characters`);
+  if (/[<>|\r\n\t]/.test(text)) throw fault("BAD_NAME", `${field} must be one plain line without markup or the pipe character`);
   return text;
 }
 
@@ -132,12 +176,11 @@ function saveOrNull(value, field) {
   return { type: raw.type, scale: raw.scale, effect: proseText(`${field}.effect`, raw.effect) };
 }
 
-function dispelOrNull(value) {
-  if (value === undefined || value === null) return null;
-  const rank = isPlainObject(value) ? value.rank : undefined;
-  if (Number.isInteger(rank) && rank >= 1 && rank <= DISPEL_RANK_MAX) return { rank };
-  warn(`dropped dispel: rank "${rank}" is not 1 to ${DISPEL_RANK_MAX}`);
-  return null;
+/** dispel is a boolean. Anything else is dropped to false with a warning; the counteract rank is derived from the level and never written by the AI. */
+function dispelFlag(value) {
+  if (typeof value === "boolean") return value;
+  if (value !== undefined) warn(`dropped dispel: ${JSON.stringify(value)} is not true or false`);
+  return false;
 }
 
 function routineOf(value, damageTypes) {
@@ -186,7 +229,7 @@ export function normalizeHazardConcept(raw, { level, traitsCatalog = [], damageT
     }
     return [{ skill, scale: entry.scale }];
   });
-  const dispel = dispelOrNull(raw.dispel);
+  const dispel = dispelFlag(raw.dispel);
   if (!disable.length && !dispel) throw fault("NO_DISABLE", "a hazard needs a disable check or a Dispel Magic option");
 
   const ac = scaleOrNull(raw.ac, "ac");
@@ -238,10 +281,20 @@ function strikeOf(concept) {
 }
 
 /**
- * attributes.ac.value has no schema initial, so a null concept.ac writes the LOW
- * column of Table 2-15. The stored number still comes from the table, never from the AI.
+ * AC convention. attributes.ac.value has no schema initial, so it is always written.
+ * When the concept ac is null (the AI said nothing can attack the hazard) the value is
+ * the LOW column of Table 2-15, and describeHazard reports ac.assumed as true. The
+ * stored number still comes from the table, never from the AI.
  */
 const acValue = (concept, level, T) => T.hazardAC(level, concept.ac || "low");
+
+/**
+ * Counteract rank of the Dispel Magic option. This is a module convention, not GM Core:
+ * GM Core gives hazards no counteract rank, so the module counteracts at half the
+ * hazard level, rounded up, within spell ranks 1 to 10. The AI only says whether Dispel
+ * Magic can end the hazard; it never writes the rank.
+ */
+const dispelRank = (level) => Math.min(SPELL_RANK.max, Math.max(SPELL_RANK.min, Math.ceil(level / 2)));
 
 const saveValue = (concept, type, level, T) => (concept.saves[type] ? T.hazardSave(level, concept.saves[type]) : null);
 
@@ -281,7 +334,7 @@ function disableHtml(concept, level, T) {
   ));
   if (concept.dispel) {
     const counteract = T.hazardDC(level, "high");
-    checks.push(`@UUID[Compendium.pf2e.spells-srd.Item.Dispel Magic] (${ordinal(concept.dispel.rank)} rank; counteract DC ${counteract})`);
+    checks.push(`@UUID[Compendium.pf2e.spells-srd.Item.Dispel Magic] (${ordinal(dispelRank(level))} rank; counteract DC ${counteract})`);
   }
   return checks.length ? `<p>${checks.join(" or ")}</p>` : "";
 }
@@ -336,20 +389,6 @@ export async function buildHazardSource(concept, { level, tables } = {}) {
       publication: publication()
     }
   }];
-  if (concept.routine) {
-    items.push({
-      type: "action",
-      name: "Routine",
-      system: {
-        actionType: { value: "passive" },
-        actions: { value: null },
-        category: null,
-        traits: { value: [] },
-        description: { value: routineHtml(concept.routine) },
-        publication: publication()
-      }
-    });
-  }
   if (pick) items.push(strikeItem(pick.strike, pick.kind, level, T));
 
   const actor = {
@@ -362,7 +401,7 @@ export async function buildHazardSource(concept, { level, tables } = {}) {
         ac: { value: acValue(concept, level, T) },
         hp: { value: hpMax, max: hpMax, temp: 0, details: "" },
         hardness: concept.hasHP ? T.hazardHardness(level) : 0,
-        stealth: { value: stealthDC === null ? null : stealthDC - 10, details: stealthDC === null ? "" : "(" + rank + ")" },
+        stealth: { value: stealthDC === null ? null : stealthDC - 10, details: stealthDC === null ? "" : "<p>(" + rank + ")</p>" },
         emitsSound: "encounter",
         immunities: [],
         weaknesses: [],
@@ -399,8 +438,8 @@ export async function describeHazard(concept, level, { tables, xp } = {}) {
     traits: [...concept.traits],
     stealth: concept.stealth ? { dc: T.hazardDC(level, concept.stealth), rank } : null,
     disable: concept.disable.map(({ skill, scale }) => ({ skill, dc: T.hazardDC(level, scale), rank })),
-    dispel: concept.dispel ? { rank: concept.dispel.rank, dc: T.hazardDC(level, "high") } : null,
-    ac: acValue(concept, level, T),
+    dispel: concept.dispel ? { rank: dispelRank(level), dc: T.hazardDC(level, "high") } : null,
+    ac: { value: acValue(concept, level, T), assumed: !concept.ac },
     saves: Object.fromEntries(SAVE_TYPES.map((type) => [type, saveValue(concept, type, level, T)])),
     hp: concept.hasHP ? T.hazardHP(level) : 0,
     hardness: concept.hasHP ? T.hazardHardness(level) : 0,

@@ -16,6 +16,8 @@ import { pcIdentityKey, assertPCIdentity } from "./pc-identity.mjs";
 import { CORE_SKILLS } from "./pc-skills.mjs";
 import { RESKIN_LIMITS } from "./reskin-policy.mjs";
 import { assertExperimentalToolAccess } from "./experimental-tools.mjs";
+import { hazardProseProblem } from "./hazard-builder.mjs";
+import { HAZARD_MIN_LEVEL, HAZARD_MAX_LEVEL } from "./hazard-tables.mjs";
 
 /**
  * Client for any OpenAI-compatible chat completions API (DeepSeek, OpenAI,
@@ -447,6 +449,21 @@ Design guidance:
 }
 
 /**
+ * The required identity as the model reads it. Each choice is listed by name. The class
+ * paths are an object keyed by bridge name (such as "Arcane School"), not a candidate, so
+ * reading value.name would silently drop them; list them as bridge name to candidate name.
+ */
+function requiredIdentityHint(identity) {
+  const nameOf = (value) => (value && typeof value === "object" ? value.name : value);
+  return Object.fromEntries(Object.entries(identity).map(([key, value]) => {
+    if (key === "classPaths" && value && typeof value === "object") {
+      return [key, Object.fromEntries(Object.entries(value).map(([bridge, candidate]) => [bridge, nameOf(candidate)]))];
+    }
+    return [key, nameOf(value)];
+  }));
+}
+
+/**
  * Ask the configured model for a player-character concept: ancestry,
  * heritage, background, class, key ability, personality/backstory prose, and
  * first-draft (ungrounded) feat/spell/equipment wishlists — the PC
@@ -456,9 +473,7 @@ Design guidance:
 export async function generatePCConcept({ prompt, level, allowSpellcasting, preset, requiredIdentity = {}, onProgress, signal }) {
   const userPrompt = [
     `Character level: ${level}`,
-    Object.keys(requiredIdentity).length ? `Required choices (take precedence over flavor/preset): ${JSON.stringify(Object.fromEntries(
-      Object.entries(requiredIdentity).map(([key, value]) => [key, value && typeof value === "object" ? value.name : value])
-    ))}` : null,
+    Object.keys(requiredIdentity).length ? `Required choices (take precedence over flavor/preset): ${JSON.stringify(requiredIdentityHint(requiredIdentity))}` : null,
     `Spellcasting allowed: ${allowSpellcasting ? "yes, if the class you choose casts spells" : "NO - choose a non-caster class, or a caster with spellcasting set to null"}`,
     // The build presets are written in NPC scale words ("high AC, moderate
     // HP"); for a PC they may only steer class/style choice — the system
@@ -910,7 +925,7 @@ export async function selectAncestryBackgroundClass({
     concept.blurb ? `Blurb: ${concept.blurb}` : null,
     concept.backstory ? `Backstory: ${concept.backstory}` : null,
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
-    Object.keys(identity).length ? `Required choices: ${JSON.stringify(Object.fromEntries(Object.entries(identity).map(([key, value]) => [key, value && typeof value === "object" ? value.name : value])))}. Keep these exactly; a required null heritage means no heritage.` : null,
+    Object.keys(identity).length ? `Required choices: ${JSON.stringify(requiredIdentityHint(identity))}. Keep these exactly; a required null heritage means no heritage.` : null,
     `First-draft ideas (use as inspiration, but the final picks MUST come from the lists below): ancestry "${concept.ancestry}", heritage "${concept.heritage ?? "none"}", background "${concept.background}", class "${concept.class}", key ability "${concept.keyAbility}"`,
     "",
     `Available ancestries (ID | name): ${ancestryCandidates.map((a) => `${a.id} | ${a.name}`).join("; ")}`,
@@ -1369,11 +1384,6 @@ const HAZARD_KEYS = Object.freeze([
   "ac", "saves", "hasHP", "reaction", "routine", "reset"
 ]);
 const HAZARD_LIMITS = Object.freeze({ name: 80, prose: 800 });
-const HAZARD_LEVEL = Object.freeze({ min: -1, max: 24 });
-const HAZARD_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
-// Enricher brackets, curly braces and "@" commands; prose with any digit is a number.
-const HAZARD_ENRICHER = /[[\]{}]|@\w/;
-const HAZARD_DIGIT = /\d/;
 const HAZARD_MARKUP = /[\r\n\t<>]/;
 
 const isPlainObject = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -1381,11 +1391,12 @@ const isPlainObject = (value) => Boolean(value && typeof value === "object" && !
 const hazardFieldProblem = (field) => game.i18n.format("SIMPLYPF2E.Hazard.Errors.Field", { field });
 
 /**
- * Why one prose field must be rejected, or null. Required prose is non-empty;
- * every prose field is plain words: no digits, no enricher syntax, no control
- * characters. A rejection uses the bounded retry, then fails closed.
+ * Why one text field must be rejected, or null. Required text is non-empty. Every field is
+ * plain words under the shared policy hazardProseProblem (hazard-builder.mjs), which the
+ * builder also applies; a name must also be a single line without angle brackets. A rejection
+ * uses the bounded retry, then fails closed.
  */
-function hazardProseProblem(field, value, options = {}) {
+function hazardTextProblem(field, value, options = {}) {
   const required = options.required ?? true;
   const max = options.max ?? HAZARD_LIMITS.prose;
   const singleLine = options.singleLine === true;
@@ -1393,16 +1404,15 @@ function hazardProseProblem(field, value, options = {}) {
   const text = value.trim();
   if (!text) return required ? hazardFieldProblem(field) : null;
   if (text.length > max) return hazardFieldProblem(field);
-  const markup = singleLine && HAZARD_MARKUP.test(text);
-  const unsafe = HAZARD_CONTROL.test(text) || HAZARD_ENRICHER.test(text) || HAZARD_DIGIT.test(text) || markup;
-  return unsafe ? game.i18n.format("SIMPLYPF2E.Hazard.Errors.Prose", { field }) : null;
+  const reason = hazardProseProblem(text) ?? (singleLine && HAZARD_MARKUP.test(text) ? "is not a single plain line" : null);
+  return reason ? game.i18n.format("SIMPLYPF2E.Hazard.Errors.Prose", { field, reason }) : null;
 }
 
 /** Optional prose: an absent or empty string is fine; anything else is checked. */
 function hazardOptionalProblem(field, value, options = {}) {
   if (typeof value !== "string") return null;
   if (value.trim() === "") return null;
-  return hazardProseProblem(field, value, options);
+  return hazardTextProblem(field, value, options);
 }
 
 const HAZARD_NAME = { singleLine: true, max: HAZARD_LIMITS.name };
@@ -1411,9 +1421,9 @@ function hazardReactionProblem(reaction) {
   if (!isPlainObject(reaction)) return hazardFieldProblem("reaction");
   const strikeName = isPlainObject(reaction.strike) ? reaction.strike.name : null;
   const saveEffect = isPlainObject(reaction.save) ? reaction.save.effect : null;
-  return hazardProseProblem("reaction.name", reaction.name, HAZARD_NAME)
-    ?? hazardProseProblem("reaction.trigger", reaction.trigger)
-    ?? hazardProseProblem("reaction.effect", reaction.effect)
+  return hazardTextProblem("reaction.name", reaction.name, HAZARD_NAME)
+    ?? hazardTextProblem("reaction.trigger", reaction.trigger)
+    ?? hazardTextProblem("reaction.effect", reaction.effect)
     ?? hazardOptionalProblem("reaction.strike.name", strikeName, HAZARD_NAME)
     ?? hazardOptionalProblem("reaction.save.effect", saveEffect);
 }
@@ -1426,7 +1436,7 @@ function hazardRoutineProblem(concept) {
   const actions = routine.actions;
   if (!Number.isInteger(actions) || actions < 1 || actions > 3) return hazardFieldProblem("routine.actions");
   const strikeName = isPlainObject(routine.strike) ? routine.strike.name : null;
-  return hazardProseProblem("routine.text", routine.text)
+  return hazardTextProblem("routine.text", routine.text)
     ?? hazardOptionalProblem("routine.strike.name", strikeName, HAZARD_NAME);
 }
 
@@ -1447,11 +1457,11 @@ function hazardConceptProblem(data) {
   const saves = data.saves;
   if (!isPlainObject(saves)) return hazardFieldProblem("saves");
   if (HAZARD_SAVE_TYPES.some((type) => !Object.hasOwn(saves, type))) return hazardFieldProblem("saves");
-  const nameProblem = hazardProseProblem("name", data.name, HAZARD_NAME);
+  const nameProblem = hazardTextProblem("name", data.name, HAZARD_NAME);
   if (nameProblem) return nameProblem;
-  const descriptionProblem = hazardProseProblem("description", data.description);
+  const descriptionProblem = hazardTextProblem("description", data.description);
   if (descriptionProblem) return descriptionProblem;
-  const resetProblem = hazardProseProblem("reset", data.reset, { required: false });
+  const resetProblem = hazardTextProblem("reset", data.reset, { required: false });
   if (resetProblem) return resetProblem;
   const reactionProblem = hazardReactionProblem(data.reaction);
   if (reactionProblem) return reactionProblem;
@@ -1489,12 +1499,11 @@ function normalizeHazardSave(value) {
   return null;
 }
 
-/** A dispel entry: a spell rank from 1 to 10, or null with a warning. */
+/** dispel is a boolean. Anything else becomes false with a warning; the module derives the counteract rank from the level. */
 function normalizeHazardDispel(value) {
-  if (value === null || value === undefined) return null;
-  if (isPlainObject(value) && Number.isInteger(value.rank) && value.rank >= 1 && value.rank <= 10) return { rank: value.rank };
-  console.warn("simplypf2e | hazard dispel dropped (needs a spell rank from 1 to 10):", value);
-  return null;
+  if (typeof value === "boolean") return value;
+  console.warn("simplypf2e | hazard dispel dropped (needs true or false):", value);
+  return false;
 }
 
 function normalizeHazardRoutine(data, lists) {
@@ -1545,7 +1554,7 @@ function hazardSystemPrompt(lists) {
     '  "complex": boolean, // true for a complex hazard (acts in rounds, has a routine); false for a simple hazard (one reaction)',
     '  "stealth": "extreme" | "high" | "low" | null, // how hard the hazard is to notice; null when it has no Stealth',
     '  "disable": [ { "skill": offered skill, "scale": "extreme" | "high" | "low" } ], // each way to disable it; [] when none',
-    '  "dispel": { "rank": 1 to 10 } | null, // only when the Dispel Magic spell can end it: the spell rank it needs; null otherwise',
+    '  "dispel": boolean, // true only when the Dispel Magic spell can end it; false otherwise. The module sets the spell rank',
     '  "ac": "extreme" | "high" | "low" | null, // how hard the hazard is to hit; null when nothing can attack it',
     '  "saves": { "fortitude": scale | null, "reflex": scale | null, "will": scale | null }, // null for a save it does not use',
     '  "hasHP": boolean, // true when it has hit points and can be broken',
@@ -1572,9 +1581,9 @@ function hazardSystemPrompt(lists) {
     "- Scale words: extreme (hardest to notice, disable or hit), high, low. A reaction save scale is extreme or high only.",
     "- Save types: fortitude, reflex, will.",
     "",
-    "Numbers: Never emit a number, DC, bonus, damage, dice formula, distance, or level. The only integers you may write are routine actions (1, 2 or 3) and dispel rank (1 to 10), which are closed choices. Describe amounts in words, for example a crushing blow or a hard-to-notice trigger.",
+    "Numbers: Never emit a number, DC, bonus, damage, dice formula, distance, or level. The only integer you may write is routine actions (1, 2 or 3), a count of actions rather than a statistic. Describe amounts in words, for example a crushing blow or a hard-to-notice trigger.",
     "",
-    "Text: every string is plain text in plain words. Write no digits in any string, no HTML, no Markdown, no @ commands (such as @Check, @Damage or @UUID), no square brackets, no curly braces and no inline rolls.",
+    "Text: every string is plain text in plain words. Write no dice notation, no DC or AC, no bonus or penalty numbers, no damage or hit point amounts, no HTML, no Markdown, no @ commands (such as @Check, @Damage or @UUID), no square brackets, no curly braces and no inline rolls. The one exception is incidental story detail inside prose, such as three darts or a 5-foot square.",
     "",
     "Routine: include a routine only when complex is true; set it to null when complex is false. The reaction is always present.",
     "",
@@ -1599,7 +1608,7 @@ function hazardSystemPrompt(lists) {
 export async function generateHazardConcept(brief, options = {}) {
   assertExperimentalToolAccess();
   const { level, traitsCatalog, damageTypes, disableSkills, signal, onProgress } = options;
-  if (!Number.isInteger(level) || level < HAZARD_LEVEL.min || level > HAZARD_LEVEL.max) throw new TypeError("generateHazardConcept needs an integer level from " + HAZARD_LEVEL.min + " to " + HAZARD_LEVEL.max);
+  if (!Number.isInteger(level) || level < HAZARD_MIN_LEVEL || level > HAZARD_MAX_LEVEL) throw new TypeError("generateHazardConcept needs an integer level from " + HAZARD_MIN_LEVEL + " to " + HAZARD_MAX_LEVEL);
   const traits = hazardOfferedList("traitsCatalog", traitsCatalog);
   const damage = hazardOfferedList("damageTypes", damageTypes);
   const skills = hazardOfferedList("disableSkills", disableSkills);
