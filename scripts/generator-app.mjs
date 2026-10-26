@@ -34,7 +34,7 @@ import { supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
 import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-ability-packages.mjs";
 
-import { pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "./pc-identity.mjs";
+import { classPathBridges, pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
 import { assertExperimentalToolAccess } from "./experimental-tools.mjs";
@@ -287,11 +287,12 @@ export class GeneratorApp extends SpfApp {
         ...path, className: candidate.name, classKey: pcIdentityKey(candidate)
       }));
     }));
-    // Different class sources may grant the same path. Issue each path once,
-    // retaining all class relations for the picker rather than duplicating its key.
+    // Different class sources may grant the same path. Issue each path once
+    // per bridge, retaining all class relations for the picker rather than
+    // duplicating its key.
     const paths = new Map();
     for (const path of pathGroups.flat()) {
-      const key = pcIdentityKey(path);
+      const key = `${path.bridge ?? ""}\u0000${pcIdentityKey(path)}`;
       const existing = paths.get(key);
       if (existing) {
         if (!existing.classKeys.includes(path.classKey)) existing.classKeys.push(path.classKey);
@@ -310,15 +311,30 @@ export class GeneratorApp extends SpfApp {
     try { catalogs = await this.#identityCatalogs(); }
     catch (err) { console.warn(`${MODULE_ID} | required-choice catalogs unavailable`, err); }
     const choices = this.#input.pcIdentity;
-    return PC_IDENTITY_FIELDS.map((field) => {
+    const pathOption = (candidate) => ({
+      value: pcIdentityKey(candidate),
+      label: `${candidate.name}${candidate.classNames ? ` (${candidate.classNames.join(", ")})` : ""} — ${game.packs?.get(candidate.ref.packId)?.title ?? candidate.ref.packId}`
+    });
+    return PC_IDENTITY_FIELDS.flatMap((field) => {
       const value = choices[field] ?? "";
       let candidates = catalogs[field] ?? [];
       if (field === "class") candidates = supportedClassCandidates(candidates);
       if (field === "classPath" && choices.class) candidates = candidates.filter((candidate) => candidate.classKeys.includes(choices.class));
-      let options = candidates.map((candidate) => ({
-        value: pcIdentityKey(candidate),
-        label: `${candidate.name}${candidate.classNames ? ` (${candidate.classNames.join(", ")})` : ""} — ${game.packs?.get(candidate.ref.packId)?.title ?? candidate.ref.packId}`
-      }));
+      // A class with several path bridges (Wizard) gets one control per
+      // bridge instead of one mixed list; the requirement is held per bridge.
+      const bridges = field === "classPath" && choices.class ? classPathBridges(candidates) : [];
+      const bridgeFields = bridges.length > 1 ? bridges.map((bridge) => {
+        const bridgeValue = choices.classPaths?.[bridge] ?? "";
+        const bridgeOptions = candidates.filter((candidate) => candidate.bridge === bridge).map(pathOption);
+        if (bridgeValue && !bridgeOptions.some((option) => option.value === bridgeValue)) {
+          bridgeOptions.unshift({ value: bridgeValue, label: game.i18n.localize("SIMPLYPF2E.Identity.Unavailable") });
+        }
+        const name = `classPaths.${bridge}`;
+        return { field: name, fieldId: `spf-identity-${name.replace(/[^A-Za-z0-9_-]+/g, "-")}`, value: bridgeValue, literal: false,
+          label: null, labelText: bridge, chooseLabel: "SIMPLYPF2E.Identity.Choose", hint: null,
+          options: bridgeOptions.map((option) => ({ ...option, selected: option.value === bridgeValue })) };
+      }) : [];
+      let options = candidates.map(pathOption);
       if (field === "keyAbility") options = ["str", "dex", "con", "int", "wis", "cha"].map((key) => ({
         value: key, label: game.i18n.localize(`SIMPLYPF2E.Identity.Ability.${key}`)
       }));
@@ -332,10 +348,14 @@ export class GeneratorApp extends SpfApp {
       if (field !== "name" && value && !options.some((option) => option.value === value)) {
         options.unshift({ value, label: game.i18n.localize("SIMPLYPF2E.Identity.Unavailable") });
       }
-      return { field, value, literal: field === "name", label: `SIMPLYPF2E.Identity.${field}`,
+      const single = { field, fieldId: `spf-identity-${field}`, value, literal: field === "name", label: `SIMPLYPF2E.Identity.${field}`,
         chooseLabel: field === "backgroundLore" ? "SIMPLYPF2E.Identity.ChooseLore" : "SIMPLYPF2E.Identity.Choose",
         hint: field === "backgroundLore" ? "SIMPLYPF2E.Identity.LoreHint" : null,
         options: options.map((option) => ({ ...option, selected: option.value === value })) };
+      // The single alias control stays visible only while it still holds a
+      // choice, so a stale selection from before the class change can be cleared.
+      if (bridgeFields.length) return value ? [...bridgeFields, single] : bridgeFields;
+      return single;
     }).filter(Boolean);
   }
 
@@ -399,7 +419,7 @@ export class GeneratorApp extends SpfApp {
       if (!list.some((item) => item.selected)) {
         list.unshift({ value: "", label: game.i18n.localize("SIMPLYPF2E.PCEdit.Choose"), selected: true });
       }
-      controls.push({ control, id: `pc-edit-${control.replace(/\./g, "-")}`, label: title, options: list, pending: pending.has(pendingField) });
+      controls.push({ control, id: `pc-edit-${control.replace(/[^A-Za-z0-9_-]+/g, "-")}`, label: title, options: list, pending: pending.has(pendingField) });
     };
     if (catalogs) {
       add("ancestry", label("ancestry"), catalogs.ancestry.map(option));
@@ -409,7 +429,11 @@ export class GeneratorApp extends SpfApp {
       add("background", label("background"), catalogs.background.map(option));
       add("class", label("class"), supportedClassCandidates(catalogs.class).map(option));
       const paths = catalogs.classPath.filter((path) => path.classKeys.includes(selections.class));
-      if (paths.length || pending.has("classPath")) add("classPath", label("classPath"), paths.map(option));
+      const bridges = classPathBridges(paths);
+      if (bridges.length > 1) {
+        // One control per path bridge (Wizard: Arcane School, Arcane Thesis).
+        for (const bridge of bridges) add(`classPath.${bridge}`, bridge, paths.filter((path) => path.bridge === bridge).map(option));
+      } else if (paths.length || pending.has("classPath")) add("classPath", label("classPath"), paths.map(option));
       const legal = plan.resolved.classDoc?.system?.keyAbility?.value;
       add("keyAbility", label("keyAbility"), (Array.isArray(legal) ? legal : ["str", "dex", "con", "int", "wis", "cha"])
         .map((key) => ({ value: key, label: game.i18n.localize(`SIMPLYPF2E.Identity.Ability.${key}`) })));
@@ -725,6 +749,17 @@ export class GeneratorApp extends SpfApp {
     for (const field of PC_IDENTITY_FIELDS) {
       const control = form.querySelector(`[name="pcIdentity.${field}"]`);
       if (control) pcIdentity[field] = control.value;
+    }
+    // Per-bridge class paths belong to the class they were chosen for: read
+    // them only while the identity section is on screen, and drop them when
+    // the class changes (the other class has different bridges).
+    if (form.querySelector('[name="pcIdentity.class"]')) {
+      const prefix = "pcIdentity.classPaths.";
+      const classChanged = (pcIdentity.class ?? "") !== (this.#input.pcIdentity.class ?? "");
+      const entries = classChanged ? [] : [...form.querySelectorAll(`[name^="${prefix}"]`)]
+        .map((control) => [control.name.slice(prefix.length), control.value]);
+      if (entries.length) pcIdentity.classPaths = Object.fromEntries(entries);
+      else delete pcIdentity.classPaths;
     }
     for (const control of form.querySelectorAll('[name^="pcEdit."]')) {
       this.#pcEditDrafts[control.name.slice("pcEdit.".length)] = control.value;

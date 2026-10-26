@@ -190,16 +190,32 @@ export async function validatePCIdentityRequirements(identity) {
       throw new Error(`simplypf2e | required key ability "${identity.keyAbility}" is illegal for required class`);
     }
   }
-  if (identity.classPath && !identity.class) {
+  // Required class paths: the single-bridge alias `classPath` plus one entry
+  // per bridge in `classPaths` (pc-identity.mjs). Each must be a current
+  // candidate of this class, and a per-bridge entry only of its own bridge.
+  if (identity.classPaths != null && (typeof identity.classPaths !== "object" || Array.isArray(identity.classPaths))) {
+    throw new Error("simplypf2e | required class paths must be an object keyed by bridge name");
+  }
+  const requiredPaths = [
+    ...(identity.classPath ? [[identity.classPath, null]] : []),
+    ...Object.entries(identity.classPaths ?? {}).map(([bridge, path]) => [path, bridge])
+  ];
+  if (requiredPaths.length && !identity.class) {
     throw new Error("simplypf2e | required class path requires an explicit class");
   }
-  if (identity.classPath) {
+  if (requiredPaths.length) {
     const candidates = await getClassPathCandidates(toItemData(docs.class));
-    if (!candidates.some((candidate) => {
-      const a = candidate?.ref; const b = identity.classPath?.ref ?? identity.classPath;
-      return a?.packId === b?.packId && a?._id === b?._id && candidate.uuid === identity.classPath?.uuid;
-    })) {
-      throw new Error(`simplypf2e | required class path "${identity.classPath.name ?? "?"}" is missing, wrong-class, or unsupported`);
+    for (const [path, bridge] of requiredPaths) {
+      // The alias constrains its bridge only when the candidate names one.
+      const wantedBridge = bridge ?? (typeof path?.bridge === "string" ? path.bridge : null);
+      const mislabelled = bridge !== null && typeof path?.bridge === "string" && path.bridge !== bridge;
+      if (mislabelled || !candidates.some((candidate) => {
+        const a = candidate?.ref; const b = path?.ref ?? path;
+        return a?.packId === b?.packId && a?._id === b?._id && candidate.uuid === path?.uuid
+          && (wantedBridge === null || candidate.bridge === wantedBridge);
+      })) {
+        throw new Error(`simplypf2e | required class path "${path?.name ?? "?"}" is missing, wrong-class, or unsupported`);
+      }
     }
   }
   if (identity.backgroundLore !== undefined && !docs.background) {
@@ -909,7 +925,8 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // class grants still flow through PF2e's normal class item.
   const stagedClassPaths = await stageClassPaths(classData, classId, {
     context: { keyAbility, names: conceptChoiceNames(concept, resolved) }, selectChoices,
-    requiredPath: concept.requiredIdentity?.classPath ?? null
+    requiredPath: concept.requiredIdentity?.classPath ?? null,
+    requiredPaths: concept.requiredIdentity?.classPaths ?? null
   });
   items.push(classData);
   items.push(...stagedClassPaths.items);

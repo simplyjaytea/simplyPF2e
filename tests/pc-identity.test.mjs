@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "../scripts/pc-identity.mjs";
+import { classPathBridges, pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "../scripts/pc-identity.mjs";
 
 const candidate = (name, packId, _id) => ({ name, ref: { packId, _id }, uuid: `Compendium.${packId}.Item.${_id}` });
 const catalogs = {
@@ -76,5 +76,82 @@ assert.equal(concept.requiredIdentity, "preserve");
 assert.equal(assertPCIdentity(concept, identity), true);
 error(() => assertPCIdentity({ ...concept, ancestry: "Android" }, identity), "PC_IDENTITY_ASSERT", "ancestry");
 error(() => assertPCIdentity({ ...concept, heritage: undefined }, identity), "PC_IDENTITY_ASSERT", "heritage");
+
+// Per-bridge class paths (Wizard): one required path per bridge, keyed by the
+// bridge feature's name; the single `classPath` stays for one-bridge classes.
+const pathCandidate = (name, bridge, id) => ({ ...candidate(name, "class-features", id), bridge });
+const wizardPaths = {
+  ...catalogs,
+  class: [...catalogs.class, candidate("Wizard", "classes", "wizard")],
+  classPath: [
+    pathCandidate("School of Mentalism", "Arcane School", "mentalism"),
+    pathCandidate("School of Battle Magic", "Arcane School", "battle-magic"),
+    pathCandidate("Staff Nexus", "Arcane Thesis", "staff-nexus"),
+    pathCandidate("Spell Blending", "Arcane Thesis", "spell-blending")
+  ]
+};
+const [mentalism, battleMagic, staffNexus, spellBlending] = wizardPaths.classPath;
+const wizardKey = pcIdentityKey(wizardPaths.class[2]);
+assert.deepEqual(classPathBridges(wizardPaths.classPath), ["Arcane School", "Arcane Thesis"]);
+assert.deepEqual(classPathBridges([candidate("Thief", "class-features", "thief")]), [], "a candidate without a bridge name has no bridge");
+assert.deepEqual(classPathBridges(undefined), []);
+
+const perBridge = resolvePCIdentity({
+  choices: { class: wizardKey, classPaths: { "Arcane School": pcIdentityKey(mentalism), "Arcane Thesis": pcIdentityKey(staffNexus) } },
+  catalogs: wizardPaths
+});
+assert.deepEqual(perBridge.classPaths, { "Arcane School": mentalism, "Arcane Thesis": staffNexus });
+assert.equal(Object.hasOwn(perBridge, "classPath"), false, "the single alias is not invented");
+assert.deepEqual(resolvePCIdentity({ choices: { classPaths: { "Arcane School": "", "Arcane Thesis": pcIdentityKey(spellBlending) } }, catalogs: wizardPaths }),
+  { classPaths: { "Arcane Thesis": spellBlending } }, "an empty control leaves its bridge unconstrained");
+assert.deepEqual(resolvePCIdentity({ choices: { classPaths: {} }, catalogs: wizardPaths }), {});
+
+// A key is accepted only for the bridge that offers it.
+error(() => resolvePCIdentity({ choices: { classPaths: { "Arcane School": pcIdentityKey(staffNexus) } }, catalogs: wizardPaths }), "PC_IDENTITY_UNKNOWN", "classPaths");
+error(() => resolvePCIdentity({ choices: { classPaths: { "Arcane Thesis": pcIdentityKey(mentalism) } }, catalogs: wizardPaths }), "PC_IDENTITY_UNKNOWN", "classPaths");
+error(() => resolvePCIdentity({ choices: { classPaths: { "Arcane Major": pcIdentityKey(mentalism) } }, catalogs: wizardPaths }), "PC_IDENTITY_UNKNOWN", "classPaths");
+error(() => resolvePCIdentity({ choices: { classPaths: "School of Mentalism" }, catalogs: wizardPaths }), "PC_IDENTITY_CONTROL", "classPaths");
+error(() => resolvePCIdentity({ choices: { classPaths: { "Arcane School": "class-features:missing" } }, catalogs: wizardPaths }), "PC_IDENTITY_UNKNOWN", "classPaths");
+
+// Declarations: school/arcane school and thesis/arcane thesis name their bridge.
+const declaredPaths = resolvePCIdentity({ prompt: "Class: Wizard; School: School of Mentalism; Thesis: Staff Nexus", catalogs: wizardPaths });
+assert.deepEqual(declaredPaths.classPaths, { "Arcane School": mentalism, "Arcane Thesis": staffNexus });
+assert.equal(declaredPaths.class, wizardPaths.class[2]);
+assert.deepEqual(resolvePCIdentity({ prompt: "arcane   school: school of battle magic\nArcane Thesis: spell blending", catalogs: wizardPaths }).classPaths,
+  { "Arcane School": battleMagic, "Arcane Thesis": spellBlending }, "labels and names are case- and space-tolerant like the other declarations");
+error(() => resolvePCIdentity({ prompt: "School: Staff Nexus", catalogs: wizardPaths }), "PC_IDENTITY_UNKNOWN", "classPaths");
+error(() => resolvePCIdentity({ prompt: "Thesis: School of Mentalism", catalogs: wizardPaths }), "PC_IDENTITY_UNKNOWN", "classPaths");
+error(() => resolvePCIdentity({ prompt: "School: School of Mentalism; Arcane School: School of Battle Magic", catalogs: wizardPaths }), "PC_IDENTITY_DUPLICATE", "classPaths");
+error(() => resolvePCIdentity({ prompt: "School: ", catalogs: wizardPaths }), "PC_IDENTITY_UNKNOWN", "classPaths");
+assert.deepEqual(resolvePCIdentity({ prompt: "Racket: Thief", catalogs }).classPath, catalogs.classPath[0], "racket and methodology still bind the single alias");
+error(() => resolvePCIdentity({ prompt: "School: School of Mentalism", choices: { classPaths: { "Arcane School": pcIdentityKey(battleMagic) } }, catalogs: wizardPaths }),
+  "PC_IDENTITY_CONFLICT", "classPaths");
+assert.deepEqual(resolvePCIdentity({ prompt: "School: School of Mentalism", choices: { classPaths: { "Arcane School": pcIdentityKey(mentalism) } }, catalogs: wizardPaths }).classPaths,
+  { "Arcane School": mentalism }, "a control and a declaration for the same path agree");
+
+// The alias and the per-bridge map must not disagree about one bridge.
+error(() => resolvePCIdentity({ choices: { classPath: pcIdentityKey(staffNexus), classPaths: { "Arcane Thesis": pcIdentityKey(spellBlending) } }, catalogs: wizardPaths }),
+  "PC_IDENTITY_CONFLICT", "classPath");
+assert.equal(resolvePCIdentity({ choices: { classPath: pcIdentityKey(staffNexus), classPaths: { "Arcane Thesis": pcIdentityKey(staffNexus) } }, catalogs: wizardPaths }).classPath, staffNexus);
+
+// Prose: a path's full name is ambiguous unless a control or declaration binds
+// it; ordinary uses of "school" and "thesis" are flavor, not requests.
+error(() => resolvePCIdentity({ prompt: "A scholar of the School of Mentalism", catalogs: wizardPaths }), "PC_IDENTITY_AMBIGUOUS", "classPath");
+assert.deepEqual(resolvePCIdentity({ prompt: "A scholar of the School of Mentalism", choices: { classPaths: { "Arcane School": pcIdentityKey(mentalism) } }, catalogs: wizardPaths }).classPaths,
+  { "Arcane School": mentalism }, "a per-bridge control resolves the prose mention");
+assert.deepEqual(resolvePCIdentity({ prompt: "An old-school duelist who finished a thesis on wards", catalogs: wizardPaths }), {});
+
+// Apply and assert keep every bridge's exact source.
+const wizardIdentity = resolvePCIdentity({ choices: { class: wizardKey, classPaths: { "Arcane School": pcIdentityKey(mentalism), "Arcane Thesis": pcIdentityKey(staffNexus) } }, catalogs: wizardPaths });
+const wizardConcept = applyPCIdentity({}, wizardIdentity);
+assert.deepEqual(wizardConcept.classPaths, { "Arcane School": "School of Mentalism", "Arcane Thesis": "Staff Nexus" });
+assert.deepEqual(wizardConcept.classPathCandidates, { "Arcane School": mentalism.ref, "Arcane Thesis": staffNexus.ref });
+assert.equal(Object.hasOwn(wizardConcept, "classPath"), false);
+assert.equal(assertPCIdentity(wizardConcept, wizardIdentity), true);
+error(() => assertPCIdentity({ ...wizardConcept, classPaths: { "Arcane School": "Staff Nexus", "Arcane Thesis": "Staff Nexus" } }, wizardIdentity), "PC_IDENTITY_ASSERT", "classPaths");
+error(() => assertPCIdentity({ ...wizardConcept, classPathCandidates: { ...wizardConcept.classPathCandidates, "Arcane School": staffNexus.ref } }, wizardIdentity), "PC_IDENTITY_ASSERT", "classPaths");
+error(() => assertPCIdentity({ ...wizardConcept, classPaths: { "Arcane Thesis": "Staff Nexus" } }, wizardIdentity), "PC_IDENTITY_ASSERT", "classPaths");
+error(() => assertPCIdentity({}, { classPaths: wizardIdentity.classPaths }), "PC_IDENTITY_ASSERT", "classPaths");
+error(() => applyPCIdentity({}, { classPaths: { "Arcane School": { name: "bad" } } }), "PC_IDENTITY_APPLY", "classPaths");
 
 console.log("pc-identity.test.mjs: bounded controls, declarations, ambiguity checks, and source retention passed");
