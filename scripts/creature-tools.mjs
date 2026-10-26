@@ -15,7 +15,7 @@ import { describeLevelShift } from "./level-shift-policy.mjs";
  */
 
 /** Authorization callback for the C03 reskin backend. Exactly true only while the gate is open. */
-export const experimentalAuthorize = () => experimentalToolRefusal() === null;
+const experimentalAuthorize = () => experimentalToolRefusal() === null;
 
 /** Enabled bestiary NPC sources the GM may reskin. Read-only. */
 export async function listCreatureReskinSources() {
@@ -45,7 +45,7 @@ export const CREATURE_CODES = Object.freeze({
   LEVEL_SHIFT_NOT_ISSUED: "level-shift-not-issued"
 });
 
-export class CreatureToolsError extends Error {
+class CreatureToolsError extends Error {
   constructor(code, message, { cause = null } = {}) {
     super(message, cause ? { cause } : undefined);
     this.name = "CreatureToolsError";
@@ -57,7 +57,7 @@ export class CreatureToolsError extends Error {
 export const CREATURE_ADJUSTMENTS = Object.freeze(["elite", "weak", "normal"]);
 
 /** The stored PF2e adjustment as one of the three choices. Any other stored value reads as normal. */
-export function currentAdjustment(actor) {
+function currentAdjustment(actor) {
   const stored = actor?.system?.attributes?.adjustment;
   return stored === "elite" || stored === "weak" ? stored : "normal";
 }

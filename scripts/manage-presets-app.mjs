@@ -16,7 +16,7 @@ const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
  * pre-filled from `initial`. Resolves to the entered values, or null if
  * cancelled or name/prompt were left empty.
  */
-export async function promptPresetDialog({
+async function promptPresetDialog({
   title = "SIMPLYPF2E.Presets.DialogTitle",
   name = "",
   prompt = "",
@@ -71,7 +71,7 @@ export async function promptPresetDialog({
 }
 
 /** Confirm-then-delete for a custom preset. Returns true if deleted. */
-export async function confirmDeletePreset(preset) {
+async function confirmDeletePreset(preset) {
   const confirmed = await DialogV2.confirm({
     window: { title: "SIMPLYPF2E.Presets.DeleteTitle" },
     content: `<p>${game.i18n.format("SIMPLYPF2E.Presets.DeleteConfirm", { name: esc(preset.name) })}</p>`,

@@ -41,20 +41,20 @@ export const MAX_ITEM_LEVEL = MAX_LEVEL;
 /* -------------------- activation (Phase 2) -------------------- */
 
 /* The four activated-effect templates the macro builder knows how to emit. */
-export const ACTIVATION_TEMPLATES = new Set(["damage", "heal", "condition", "selfBuff"]);
+const ACTIVATION_TEMPLATES = new Set(["damage", "heal", "condition", "selfBuff"]);
 
 /* Action costs an activation may declare. */
 const ACTION_COSTS = { single: 1, two: 2, three: 3, reaction: "reaction", free: "free" };
 const ACTIVATION_DURATIONS = { round: { rounds: 1, label: "1 round" }, minute: { minutes: 1, label: "1 minute" }, "ten-minutes": { minutes: 10, label: "10 minutes" } };
 const BULK_VALUES = { negligible: 0, light: 0.1, one: 1, two: 2 };
 /* The three PF2e saving throws an activation may call for. */
-export const SAVE_TYPES = new Set(["fortitude", "reflex", "will"]);
+const SAVE_TYPES = new Set(["fortitude", "reflex", "will"]);
 
 /* Conditions an activation may inflict — the standard PF2e condition slugs.
  * Kept to conditions that apply cleanly to a creature via increaseCondition /
  * toggleCondition; excludes book-keeping conditions (dying, wounded via death)
  * that need special handling. */
-export const CONDITION_SLUGS = new Set([
+const CONDITION_SLUGS = new Set([
   "blinded", "clumsy", "confused", "controlled", "dazzled", "deafened", "doomed",
   "drained", "enfeebled", "fascinated", "fatigued", "fleeing", "frightened",
   "grabbed", "immobilized", "off-guard", "paralyzed", "petrified", "prone",

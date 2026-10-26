@@ -327,7 +327,7 @@ ${body}
 /* -------------------- macro document creation -------------------- */
 
 /** Find (or create) the dedicated macro folder for forged-item companions. */
-export async function ensureForgeMacroFolder() {
+async function ensureForgeMacroFolder() {
   const existing = game.folders?.find((f) => f.type === "Macro" && f.name === MACRO_FOLDER_NAME);
   if (existing) return existing;
   try {

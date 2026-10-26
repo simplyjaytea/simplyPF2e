@@ -43,13 +43,3 @@ export async function findBestiaryScaffold(concept) {
     return null;
   }
 }
-
-/**
- * Find the bestiary creature that best matches this concept's
- * creature-type traits, size and level, and reuse its artwork.
- * @returns {Promise<string|null>}
- */
-export async function findBestiaryArt(concept) {
-  const scaffold = await findBestiaryScaffold(concept);
-  return scaffold?.img && !scaffold.img.includes("mystery-man") ? scaffold.img : null;
-}

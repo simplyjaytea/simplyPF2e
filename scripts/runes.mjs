@@ -16,15 +16,15 @@
  *     real component documents chosen by the AI.
  */
 
-import { getPacksFor, getAllEquipmentEntries, getEquipmentIndex, findEntry, issueCandidate } from "./compendium.mjs";
+import { getPacksFor, getAllEquipmentEntries, getEquipmentIndex, issueCandidate } from "./compendium.mjs";
 import { slugify, capitalized } from "./text.mjs";
 
 /* Catalog names of the fundamental rune items, exactly as published. */
-export const POTENCY_CATALOG_NAME = {
+const POTENCY_CATALOG_NAME = {
   weapon: (tier) => `Weapon Potency (+${tier})`,
   armor: (tier) => `Armor Potency (+${tier})`
 };
-export const SECONDARY_CATALOG_NAME = {
+const SECONDARY_CATALOG_NAME = {
   weapon: { 1: "Striking", 2: "Striking (Greater)", 3: "Striking (Major)" },
   armor: { 1: "Resilient", 2: "Resilient (Greater)", 3: "Resilient (Major)" }
 };
@@ -200,7 +200,7 @@ export function applyRunes(data, runes) {
  * (an odd content set) are simply absent.
  * @param {"weapon"|"armor"} kind
  */
-export async function fundamentalRunes(kind) {
+async function fundamentalRunes(kind) {
   const entries = await getAllEquipmentEntries();
   const byName = new Map(entries.map((e) => [slugify(e.name), e]));
   const lookup = (name) => byName.get(slugify(name)) ?? null;
@@ -374,18 +374,4 @@ export function prunePropertyRuneCandidates(candidates) {
     && !byKey.has(`major${title(key.replace(/^greater/, ""))}`)
     && !byKey.has(`true${title(key.replace(/^greater|^major/, ""))}`)
   ).map(([, candidate]) => candidate);
-}
-
-/**
- * Resolve one fundamental rune's compendium index entry, so the item forge can
- * load the real document and sum its actual price and level.
- * @param {"weapon"|"armor"} kind
- * @param {"potency"|"secondary"} slot
- * @param {number} tier
- */
-export function findFundamentalRune(kind, slot, tier) {
-  const name = slot === "potency"
-    ? POTENCY_CATALOG_NAME[kind](tier)
-    : SECONDARY_CATALOG_NAME[kind][tier];
-  return findEntry(getPacksFor("equipment"), name, (e) => e.type === "equipment");
 }
