@@ -50,6 +50,9 @@ import { pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } fr
 
 const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "backgroundLore", "keyAbility", "classPath"];
 
+/** Complete-only classes already reported as not offered, so a re-render does not repeat the warning. */
+const refusedClassWarnings = new Set();
+
 /* ---- Hazard mode (experimental, WP5 H3b). It exists only while the experimentalTools gate is open. ---- */
 
 /** Hazard previews this module issued. Create accepts only these objects. */
@@ -351,13 +354,39 @@ export class GeneratorApp extends SpfApp {
     };
   }
 
+  /**
+   * The complete-only classes the builder can stage. A class whose level-one
+   * bridges cannot be staged (master two-entry Arcane School filter) is not
+   * offered, so no run spends provider tokens on a build that must refuse at
+   * Create. The verdict is the one an explicit requirement gets from
+   * validatePCIdentityRequirements, so offering and requiring cannot disagree.
+   */
+  async #buildableClasses(candidates) {
+    const supported = supportedClassCandidates(candidates);
+    const verdicts = await Promise.all(supported.map(async (candidate) => {
+      try {
+        await validatePCIdentityRequirements({ class: candidate });
+        return true;
+      } catch (err) {
+        const note = `${candidate.name}|${err?.message}`;
+        if (!refusedClassWarnings.has(note)) {
+          refusedClassWarnings.add(note);
+          console.warn(`${MODULE_ID} | ${candidate.name} is not offered`, err);
+        }
+        return false;
+      }
+    }));
+    return supported.filter((_, index) => verdicts[index]);
+  }
+
   /** Rebuild source-derived views; compendium owners cache only their source loads. */
   async #identityCatalogs() {
     const [ancestry, heritage, background, classes] = await Promise.all([
       getAncestryCandidates(this.#input.rarityCap, { distinctSources: true }), getHeritageCandidates(this.#input.rarityCap, { distinctSources: true }),
       getBackgroundCandidates(this.#input.rarityCap, { distinctSources: true }), getClassCandidates({ distinctSources: true })
     ]);
-    const pathGroups = await Promise.all(supportedClassCandidates(classes).map(async (candidate) => {
+    const offeredClasses = await this.#buildableClasses(classes);
+    const pathGroups = await Promise.all(offeredClasses.map(async (candidate) => {
       const document = await getDocument(candidate.ref);
       if (!document) return [];
       return (await getClassPathCandidates(document.toObject())).map((path) => ({
@@ -376,7 +405,7 @@ export class GeneratorApp extends SpfApp {
         if (!existing.classNames.includes(path.className)) existing.classNames.push(path.className);
       } else paths.set(key, { ...path, classKeys: [path.classKey], classNames: [path.className] });
     }
-    return { ancestry, heritage, background, class: classes, classPath: [...paths.values()] };
+    return { ancestry, heritage, background, class: classes, offeredClass: offeredClasses, classPath: [...paths.values()] };
   }
 
   #identityInputSnapshot() {
@@ -395,7 +424,7 @@ export class GeneratorApp extends SpfApp {
     return PC_IDENTITY_FIELDS.flatMap((field) => {
       const value = choices[field] ?? "";
       let candidates = catalogs[field] ?? [];
-      if (field === "class") candidates = supportedClassCandidates(candidates);
+      if (field === "class") candidates = catalogs.offeredClass ?? [];
       if (field === "classPath" && choices.class) candidates = candidates.filter((candidate) => candidate.classKeys.includes(choices.class));
       // A class with several path bridges (Wizard) gets one control per
       // bridge instead of one mixed list; the requirement is held per bridge.
@@ -504,7 +533,7 @@ export class GeneratorApp extends SpfApp {
         { value: "", label: game.i18n.localize("SIMPLYPF2E.Identity.NoHeritage") }, ...catalogs.heritage.map(option)
       ]);
       add("background", label("background"), catalogs.background.map(option));
-      add("class", label("class"), supportedClassCandidates(catalogs.class).map(option));
+      add("class", label("class"), (catalogs.offeredClass ?? []).map(option));
       const paths = catalogs.classPath.filter((path) => path.classKeys.includes(selections.class));
       const bridges = classPathBridges(paths);
       if (bridges.length > 1) {
@@ -1092,7 +1121,7 @@ export class GeneratorApp extends SpfApp {
     // full candidate catalog for its grounded selection.
     if (this.#input.mode === "character") {
       const classes = await getClassCandidates();
-      if (!supportedClassCandidates(classes).length) {
+      if (!(await this.#buildableClasses(classes)).length) {
         ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.NoSupportedClasses"));
         return false;
       }
@@ -1513,8 +1542,7 @@ export class GeneratorApp extends SpfApp {
       // capping at Uncommon means a Rare pick like Fetchling can never be
       // offered — not just discouraged by prompt wording.
       const { ancestry: ancestryCandidates, background: backgroundCandidates,
-        class: allClassCandidates, heritage: heritageCandidates } = catalogs;
-      const classCandidates = supportedClassCandidates(allClassCandidates);
+        heritage: heritageCandidates, offeredClass: classCandidates } = catalogs;
       if (!classCandidates.length) throw new Error(game.i18n.localize("SIMPLYPF2E.Generator.NoSupportedClasses"));
       const abc = await selectAncestryBackgroundClass({
         concept, ancestryCandidates,

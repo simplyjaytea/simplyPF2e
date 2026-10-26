@@ -443,7 +443,7 @@ Design guidance:
 - Default to common ancestries (Human, Elf, Dwarf, Halfling, Gnome, Goblin, Orc, Leshy) unless the concept specifically calls for something exotic — use rare or uncommon ancestries sparingly, only when they genuinely fit.
 - "keyAbility" MUST be a legal key ability for the class you chose (e.g. Fighter is str or dex, Wizard is int, Cleric is wis).
 - Only include "spellcasting" for classes that actually cast spells (Wizard, Cleric, Druid, Sorcerer, Bard, Witch, Oracle, Magus, Summoner, ...) and only when spellcasting is allowed.
-- "focusSpells": Champion (e.g. Lay on Hands), Cleric (a domain spell, e.g. Fire Ray), Druid (an order spell, e.g. Tempest Surge), Sorcerer (a bloodline spell), Wizard (a curriculum spell), Monk (a ki spell), and Bard/Oracle/Witch/Psychic commonly have them — name 1-3 that plausibly fit this build; leave [] if the class/concept doesn't have any.
+- "focusSpells": Champion (e.g. Lay on Hands), Cleric (a domain spell, e.g. Fire Ray), Druid (an order spell, e.g. Tempest Surge), Sorcerer (a bloodline spell), Monk (a ki spell), and Bard/Oracle/Witch/Psychic commonly have them — name 1-3 that plausibly fit this build; leave [] if the class/concept doesn't have any.
 - Give the character real personality texture, not just combat stats: mannerisms, likes/dislikes, and at least one named ally, enemy, or organization tying them into a wider world — a blank or generic answer for these is a worse answer than a specific, concept-fitting one.
 - feats/spells/equipment are first drafts only — write plausible real names; a later grounding step selects the actual final picks from the real compendium.`;
 }

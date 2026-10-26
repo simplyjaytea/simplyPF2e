@@ -113,4 +113,25 @@ assert.deepEqual(pcEditorInvalidatedControls([
   { field: "classPath", reason: "class changed" }
 ]), ["classPath.Arcane School", "classPath"]);
 
+// A school required through the single alias is shown as selected in its own
+// Arcane School control: the identity moves a bridge-labelled alias of a
+// multi-bridge class into classPaths, which is where the control reads it.
+{
+  const { resolvePCIdentity, applyPCIdentity } = await import("../scripts/pc-identity.mjs");
+  const candidate = (name, id, extra = {}) => ({ name, ref: { packId: "test.pack", _id: id }, uuid: `Compendium.test.pack.Item.${id}`, ...extra });
+  const wizard = candidate("Wizard", "wizard");
+  const mentalism = candidate("School of Mentalism", "mentalism", { bridge: "Arcane School", classKeys: ["test.pack:wizard"] });
+  const staffNexus = candidate("Staff Nexus", "nexus", { bridge: "Arcane Thesis", classKeys: ["test.pack:wizard"] });
+  const catalogs = { class: [wizard], classPath: [mentalism, staffNexus] };
+  const shown = (concept) => pcEditorSelections({ concept, resolved: { feats: [], equipment: [] }, pending: [] });
+  const identity = resolvePCIdentity({ choices: { class: "test.pack:wizard", classPath: "test.pack:mentalism" }, catalogs });
+  const selections = shown(applyPCIdentity({}, identity));
+  assert.equal(selections["classPath.Arcane School"], "test.pack:mentalism", "the required school is selected in its control");
+  assert.equal(selections["classPath.Arcane Thesis"], undefined, "the other bridge has no selection");
+  assert.equal(selections.classPath, "", "and no stale single-path selection is left behind");
+  // The shape the alias used to leave behind: nothing selected in the bridge control.
+  const unnormalized = shown(applyPCIdentity({}, { class: wizard, classPath: mentalism }));
+  assert.equal(unnormalized["classPath.Arcane School"], undefined);
+}
+
 console.log("pc-editor.test.mjs: ok");

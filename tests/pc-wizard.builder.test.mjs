@@ -1,13 +1,16 @@
 // Production createCharacterActor over the real Wizard class and level-one
 // features (PF2e 8.5.0): both bridges are staged before Actor.create, required
 // school and thesis ride the identity contract, and master's unstageable
-// Arcane School filter refuses the build before any write.
+// Arcane School filter refuses the build before any write. AI-named focus spells
+// are dropped for Wizard (no focus entry, no pool), and an explicitly required
+// Wizard on master-shaped data fails identity validation itself.
 // Run: node tests/pc-wizard.builder.test.mjs
 import assert from "node:assert/strict";
 import { load, makeWorld, installWorld } from "./fixtures/pc-wizard/world.mjs";
 
 const events = [];
 let created = null;
+let actorData = null;
 // The Actor stand-in has no `clone`, so the builder's native-skill preview
 // degrades with a warning (the same limit the other builder regressions have).
 // Keep the output clean but fail on any other warning.
@@ -19,8 +22,9 @@ globalThis.CONST = { TOKEN_DISPLAY_MODES: { OWNER_HOVER: 50 } };
 globalThis.CONFIG = { PF2E: { languages: {} } };
 globalThis.game = { i18n: { localize: (label) => label } };
 globalThis.Actor = {
-  async create() {
+  async create(data) {
     events.push("actor-create");
+    actorData = data;
     return {
       system: { attributes: { hp: { max: 20 } }, abilities: { int: { mod: 0 } } },
       async createEmbeddedDocuments(type, items) { events.push("embedded-create"); created = items; return items; },
@@ -40,7 +44,10 @@ const features = await Promise.all([
 const arcaneSchoolMaster = await load("arcane-school-master");
 const classDoc = { id: "wizard", pack: "pf2e.classes", uuid: `Compendium.pf2e.classes.Item.${wizard._id}`, name: "Wizard", type: "class", system: wizard.system,
   toObject: () => structuredClone(wizard) };
-const world = makeWorld({ [CF]: features, "pf2e.classes": [wizard] });
+// Synthetic stand-in for a published focus spell, used only by regression 5: the
+// document shape and the focus trait are all the builder reads. Not a PF2e fixture.
+const focusSpell = { _id: "focusSpell0001", name: "Stand-in Focus Spell", type: "spell", system: { traits: { value: ["focus"] }, location: { value: null } } };
+const world = makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [focusSpell] });
 const masterWorld = makeWorld({
   [CF]: features.map((json) => (json._id === arcaneSchoolMaster._id ? arcaneSchoolMaster : json)), "pf2e.classes": [wizard]
 });
@@ -61,7 +68,7 @@ const resolved = () => ({
   backgroundDoc: doc("background", { boosts: {}, trainedSkills: { value: [] } }),
   classDoc, heritageDoc: null, feats: [], spells: [], focusSpells: [], equipment: [], loot: []
 });
-const reset = () => { events.length = 0; created = null; };
+const reset = () => { events.length = 0; created = null; actorData = null; };
 const chooser = (labels) => async (groups) => ({
   picks: groups.map((group) => ({ choice: group.id, option: (group.options.find((option) => labels.includes(option.label)) ?? group.options[0]).id }))
 });
@@ -123,10 +130,64 @@ const wizardCandidate = issueCandidate({ packId: "pf2e.classes", _id: wizard._id
     (error) => error.message === 'simplypf2e | class path "Arcane School" has an unsupported choice shape; refusing a one-click build');
   assert.deepEqual(events, [], "the build refuses before any actor write");
   worlds.use(world);
+
+// 5. Focus spells. Wizard has no modeled focus source (school spells are linked
+// from prose, no rule grants them), so AI-named focus spells are dropped with a
+// warning and neither a focus entry nor a focus pool is written.
+{
+  reset();
+  const first = warnings.length;
+  const focus = { name: focusSpell.name, entry: { packId: "pf2e.spells-srd", _id: focusSpell._id } };
+  const wizardConcept = { ...concept(), focusSpells: [{ name: focusSpell.name }] };
+  await createCharacterActor(wizardConcept, { ...resolved(), focusSpells: [focus] }, { selectChoices: chooser([]) });
+  assert.deepEqual(wizardConcept.focusSpells, [], "the AI-named focus spells are dropped from the concept");
+  assert.equal(created.some((item) => item.type === "spellcastingEntry"), false, "no focus spellcasting entry is written");
+  assert.equal(created.some((item) => item.type === "spell"), false, "no focus spell is embedded");
+  assert.equal(actorData.system.resources.focus.value, 0, "the focus pool stays at 0");
+  const fresh = warnings.splice(first);
+  assert.equal(fresh.filter((line) => /Wizard has no modeled focus-spell source/.test(line)).length, 1, "the drop is warned exactly once");
+  warnings.push(...fresh.filter((line) => !/modeled focus-spell source/.test(line)));
+
+  // Control: the same data for a class outside the complete-only registry keeps
+  // its focus entry and pool, so the assertions above can fail.
+  reset();
+  const mark = warnings.length;
+  const otherConcept = { ...concept(), focusSpells: [{ name: focusSpell.name }] };
+  // The focus-pool exemplar search walks game.packs, which the stand-in does not
+  // iterate; an empty walk finds none, so the entry embeds with a pool rule of []
+  // and a warning (the pool value itself is still written to the actor).
+  globalThis.game.packs[Symbol.iterator] = function* () {};
+  await createCharacterActor(otherConcept, { ...resolved(), classDoc: { ...classDoc, name: "Champion" }, focusSpells: [focus] }, { selectChoices: chooser([]) });
+  delete globalThis.game.packs[Symbol.iterator];
+  const focusEntry = created.find((item) => item.type === "spellcastingEntry");
+  assert.equal(focusEntry?.system.prepared.value, "focus", "a class with a focus source keeps its focus entry");
+  assert.equal(created.find((item) => item.type === "spell")?.system.location.value, focusEntry._id);
+  assert.equal(actorData.system.resources.focus.value, 1);
+  assert.equal(otherConcept.focusSpells.length, 1, "and its focus spells are not dropped");
+  // The exemplar search warns once per effect kind in this empty world; those are
+  // not what this regression asserts.
+  warnings.splice(mark);
+}
+
+// 6. An explicitly required Wizard on master-shaped data fails identity
+// validation itself, before ABC selection or any further provider call.
+{
+  const guard = (error) => {
+    assert.equal(error.message, "simplypf2e | class path \"Arcane School\" has an unsupported choice shape; refusing a one-click build");
+    return true;
+  };
+  worlds.use(masterWorld);
+  await assert.rejects(validatePCIdentityRequirements({ class: wizardCandidate }), guard);
+  await assert.rejects(validatePCIdentityRequirements({ class: wizardCandidate, classPaths: { "Arcane Thesis": named("Staff Nexus") } }), guard,
+    "a required thesis does not hide the unstageable school");
+  await validatePCIdentityRequirements({});
+  worlds.use(world);
+  await validatePCIdentityRequirements({ class: wizardCandidate });
+}
 }
 
 console.warn = warn;
 assert.deepEqual(warnings.filter((line) => !/provisional native skills|character skill review/.test(line)), [],
   "only the stand-in's native-skill preview limit is warned");
 
-console.log("pc-wizard.builder.test.mjs: Wizard bridges stage before Actor.create and master's Arcane School refuses the build");
+console.log("pc-wizard.builder.test.mjs: Wizard bridges stage before Actor.create, master Arcane School refuses the build, and no Wizard focus entry or pool is written");

@@ -154,4 +154,33 @@ error(() => assertPCIdentity({ ...wizardConcept, classPaths: { "Arcane Thesis": 
 error(() => assertPCIdentity({}, { classPaths: wizardIdentity.classPaths }), "PC_IDENTITY_ASSERT", "classPaths");
 error(() => applyPCIdentity({}, { classPaths: { "Arcane School": { name: "bad" } } }), "PC_IDENTITY_APPLY", "classPaths");
 
+// A path required through the single alias keeps its bridge. For a class with
+// several bridges (Wizard) the alias is normalized into the per-bridge map, where
+// the Arcane School and Arcane Thesis controls read it; a one-bridge class keeps
+// the alias unchanged. Catalog candidates relate to their classes through classKeys.
+const racket = { ...pathCandidate("Thief", "Rogue's Racket", "thief"), classKeys: [key("class")] };
+const related = {
+  ...wizardPaths,
+  classPath: [...wizardPaths.classPath.map((path) => ({ ...path, classKeys: [wizardKey] })), racket]
+};
+const byName = (name) => related.classPath.find((path) => path.name === name);
+const aliasIdentity = resolvePCIdentity({ choices: { class: wizardKey, classPath: pcIdentityKey(staffNexus) }, catalogs: related });
+assert.deepEqual(Object.keys(aliasIdentity.classPaths), ["Arcane Thesis"]);
+assert.equal(aliasIdentity.classPaths["Arcane Thesis"], byName("Staff Nexus"), "the alias is the requirement for its own bridge");
+assert.equal(Object.hasOwn(aliasIdentity, "classPath"), false, "and is no longer carried twice");
+const aliasConcept = applyPCIdentity({}, aliasIdentity);
+assert.deepEqual(aliasConcept.classPaths, { "Arcane Thesis": "Staff Nexus" });
+assert.deepEqual(aliasConcept.classPathCandidates, { "Arcane Thesis": staffNexus.ref });
+assert.equal(assertPCIdentity(aliasConcept, aliasIdentity), true);
+assert.equal(resolvePCIdentity({ prompt: "Class: Wizard; Class path: Spell Blending", catalogs: related }).classPaths["Arcane Thesis"], byName("Spell Blending"),
+  "a Class path declaration is normalized the same way");
+assert.deepEqual(Object.keys(resolvePCIdentity({ choices: { classPath: pcIdentityKey(mentalism) }, catalogs: related }).classPaths), ["Arcane School"],
+  "without a class control, the classes the candidate relates to decide");
+const rogueAlias = resolvePCIdentity({ choices: { class: key("class"), classPath: pcIdentityKey(racket) }, catalogs: related });
+assert.equal(rogueAlias.classPath, racket, "a one-bridge class keeps the single alias");
+assert.equal(Object.hasOwn(rogueAlias, "classPaths"), false);
+assert.deepEqual(resolvePCIdentity({ choices: { classPath: pcIdentityKey(racket) }, catalogs: related }), { classPath: racket });
+error(() => resolvePCIdentity({ choices: { class: wizardKey, classPath: pcIdentityKey(staffNexus), classPaths: { "Arcane Thesis": pcIdentityKey(spellBlending) } }, catalogs: related }),
+  "PC_IDENTITY_CONFLICT", "classPath");
+
 console.log("pc-identity.test.mjs: bounded controls, declarations, ambiguity checks, and source retention passed");

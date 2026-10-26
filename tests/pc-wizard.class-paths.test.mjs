@@ -29,7 +29,8 @@ const masterWorld = makeWorld({
 });
 const noFamiliarWorld = makeWorld({ [CF]: classFeatures });
 
-const { getClassPathCandidates, stageClassPaths } = await import("../scripts/class-paths.mjs");
+const { getClassPathCandidates, preflightClassPaths, stageClassPaths } = await import("../scripts/class-paths.mjs");
+const { getClassFeatureCandidates } = await import("../scripts/compendium.mjs");
 const { classPathBridges } = await import("../scripts/pc-identity.mjs");
 const { pcSpellSlots, pcSpellcastingProfile } = await import("../scripts/pc-tables.mjs");
 
@@ -84,6 +85,32 @@ const battleMagic = candidate("School of Battle Magic");
 const staffNexus = candidate("Staff Nexus");
 const spellBlending = candidate("Spell Blending");
 const attunement = candidate("Improved Familiar Attunement");
+
+// ---- Runelord and the Thassilonian school (Lost Omens Rival Academies) carry the
+// school tag but are open, so they are never offered. The real 8.5.0 files are in
+// the world, so only the closed-path check can be what keeps them out.
+{
+  const runelord = await load("runelord");
+  const thassilonian = await load("school-of-thassilonian-rune-magic");
+  assert.deepEqual(runelord.system.traits.otherTags, ["class-archetype", "wizard-arcane-school"]);
+  worlds.use(makeWorld({ [CF]: [...classFeatures, runelord, thassilonian], "pf2e.feats-srd": [familiar, pet] }));
+  const byTag = await getClassFeatureCandidates("wizard-arcane-school");
+  assert.ok(byTag.some((entry) => entry.name === "Runelord"), "the school tag does select Runelord");
+  const offered = await getClassPathCandidates(classCopy());
+  assert.ok(!offered.some((entry) => ["Runelord", "School of Thassilonian Rune Magic"].includes(entry.name)), "Runelord is never offered");
+  assert.deepEqual(names(offered, SCHOOL), ["School of Battle Magic", "School of Mentalism"], "the closed schools are unchanged");
+  // Staging with Runelord present offers the chooser the same two schools only.
+  const menus = [];
+  await stageClassPaths(classCopy(), "class-id", {
+    context: {},
+    selectChoices: async (groups) => {
+      menus.push(groups.map((group) => group.options.map((option) => option.label)));
+      return pickByLabel([])(groups);
+    }
+  });
+  assert.deepEqual(menus[0], [["School of Battle Magic", "School of Mentalism"]]);
+  worlds.use(wizardWorld);
+}
 
 // ---- Both bridges stage, each narrowed to its own closed candidates.
 {
@@ -189,6 +216,21 @@ const attunement = candidate("Improved Familiar Attunement");
   worlds.use(wizardWorld);
 }
 
+// ---- Preflight: the first pass alone, with no chooser and no writes.
+{
+  worlds.use(wizardWorld);
+  const untouched = classCopy();
+  assert.deepEqual(await preflightClassPaths(untouched), [SCHOOL, THESIS], "8.5.0 Wizard: both bridges are found");
+  assert.deepEqual(untouched, wizard, "the class source is not touched");
+  assert.deepEqual(await preflightClassPaths({}), [], "a class source without level-one entries has nothing to refuse");
+  worlds.use(masterWorld);
+  await assert.rejects(preflightClassPaths(classCopy()), (error) => {
+    assert.equal(error.message, "simplypf2e | class path \"Arcane School\" has an unsupported choice shape; refusing a one-click build");
+    return true;
+  }, "master two-entry Arcane School filter is refused up front");
+  worlds.use(wizardWorld);
+}
+
 // ---- Fighter, Rogue and Investigator: real level-one data, unaffected.
 {
   const precedent = Object.fromEntries(await Promise.all([
@@ -227,6 +269,11 @@ const attunement = candidate("Improved Familiar Attunement");
   assert.deepEqual(investigatorStaged.items.map((item) => item.name), ["Methodology"]);
   assert.equal(Object.keys(investigator.system.items).length, Object.keys(precedent["investigator-class"].system.items).length - 1,
     "On the Case, Devise a Stratagem and Strategic Strike stay in the native class");
+
+  // The preflight finds the same bridges without staging anything.
+  assert.deepEqual(await preflightClassPaths(copy("fighter-class")), [], "Fighter has no bridge");
+  assert.deepEqual(await preflightClassPaths(copy("rogue-class")), ["Rogue's Racket"]);
+  assert.deepEqual(await preflightClassPaths(copy("investigator-class")), ["Methodology"]);
 }
 
 // ---- The decision is the feature's shape, not the class's name: any class
@@ -241,6 +288,11 @@ const attunement = candidate("Improved Familiar Attunement");
   worlds.use(makeWorld({ [CF]: [sneak] }));
   assert.deepEqual(await stageClassPaths({ system: { items: { one: { level: 1, uuid: `Compendium.${CF}.Item.${sneak._id}` } } } }, "class-id", { context: {} }),
     { items: [], expectedPaths: [] }, "the same feature with its real, choice-free rules stays native");
+  const sneakClass = { system: { items: { one: { level: 1, uuid: `Compendium.${CF}.Item.${sneak._id}` } } } };
+  assert.deepEqual(await preflightClassPaths(sneakClass), [], "the choice-free feature passes the preflight");
+  worlds.use(makeWorld({ [CF]: [withChoice] }));
+  await assert.rejects(preflightClassPaths(sneakClass), /class path "Sneak Attack" has an unsupported choice shape; refusing a one-click build/,
+    "the preflight refuses the same shape that stageClassPaths refuses");
 }
 
 console.log("pc-wizard.class-paths.test.mjs: per-bridge discovery, staging, required-path isolation and the bridge guard passed");

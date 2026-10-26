@@ -10,6 +10,9 @@
  *   - `classPath`: the single-bridge alias (Rogue's Racket, Investigator's
  *     Methodology). One stable key, as before. It is the alias of
  *     `classPaths[candidate.bridge]` when the candidate names its bridge.
+ *     For a class with several bridges (Wizard) there is no single path
+ *     control, so resolvePCIdentity moves a bridge-labelled alias into
+ *     `classPaths[bridge]`, where the per-bridge control reads it.
  *   - `classPaths`: an object keyed by bridge name ("Arcane School",
  *     "Arcane Thesis"), one issued candidate per bridge. Controls supply
  *     `choices.classPaths = { "<bridge>": "<stable key>" }`; the key must be a
@@ -341,6 +344,20 @@ function proseAmbiguity(parsed, resolved, catalogs) {
   }
 }
 
+/**
+ * Whether a bridge-labelled alias belongs in the per-bridge map: its class has
+ * several path bridges (Wizard). The class is the resolved class, else the
+ * classes the catalog candidate is related to (`classKeys`); without either
+ * the class is unknown and the alias stays as given.
+ */
+function aliasBelongsToBridgeMap(alias, classCandidate, catalogs) {
+  const classKeys = classCandidate ? [pcIdentityKey(classCandidate)] : Array.isArray(alias.classKeys) ? alias.classKeys : null;
+  if (!classKeys) return false;
+  const scoped = catalog(catalogs, "classPath").filter((candidate) =>
+    !Array.isArray(candidate?.classKeys) || candidate.classKeys.some((key) => classKeys.includes(key)));
+  return classPathBridges(scoped).length > 1;
+}
+
 /** Resolve only explicit controls/declarations into a bounded PC identity. */
 export function resolvePCIdentity({ prompt = "", choices = {}, catalogs = {}, isRandom = false } = {}) {
   if (isRandom) return {};
@@ -352,6 +369,14 @@ export function resolvePCIdentity({ prompt = "", choices = {}, catalogs = {}, is
   if (alias && typeof alias.bridge === "string" && resolved.has(bridgeSlot(alias.bridge))
     && !sameValue("classPaths", resolved.get(bridgeSlot(alias.bridge)), alias)) {
     fail("PC_IDENTITY_CONFLICT", "classPath", `the class path conflicts with the class path required for ${alias.bridge}`);
+  }
+  // A bridge-labelled alias of a multi-bridge class (Wizard) is the requirement
+  // for that bridge: normalize it into the per-bridge map so the Arcane School
+  // or Arcane Thesis control, which reads only that map, shows it selected.
+  if (alias && typeof alias.bridge === "string" && alias.bridge && !resolved.has(bridgeSlot(alias.bridge))
+    && aliasBelongsToBridgeMap(alias, resolved.get("class") ?? null, catalogs)) {
+    resolved.set(bridgeSlot(alias.bridge), alias);
+    resolved.delete("classPath");
   }
   if (resolved.has("backgroundLore")) {
     if (!resolved.has("background") || !getBackgroundLoreOptions(resolved.get("background")).length) {

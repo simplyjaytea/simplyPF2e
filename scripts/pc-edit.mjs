@@ -4,7 +4,9 @@
  * is validated in memory. Each choice must be an offered, issued candidate.
  * Anything an edit invalidates is reported in `invalidated` and recorded in
  * `pending`, which blocks completion until the user re-picks. Spell editing is
- * deferred: spell-affecting edits are refused and no spell edit exists.
+ * deferred: spell-affecting edits are refused and no spell edit exists, so a
+ * class edit into a spellcasting class is refused too (a caster would have no
+ * spells while the plan still read as complete).
  *
  * Plan: { concept, resolved, pending: [{ field, reason }] }
  *   `concept` is the generator's normalized concept (with requiredIdentity);
@@ -29,7 +31,9 @@
  * offered only from that bridge's candidates (`candidate.bridge`, see
  * class-paths.mjs) and lands in concept.classPaths / classPathCandidates and
  * requiredIdentity.classPaths, each keyed by bridge name. A bridge-less edit of
- * a multi-bridge class is refused rather than guessed. Changing the class
+ * a multi-bridge class is refused rather than guessed; a bridge-less clear
+ * (key null) is not a guess and removes every path choice, alias and bridges,
+ * from the concept and from the required identity alike. Changing the class
  * drops every path choice.
  *
  * Services (injectable for tests): load(ref), classPaths(classDoc),
@@ -44,6 +48,7 @@ import { assertPCIdentity, classPathBridges, pcIdentityKey } from "./pc-identity
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { completionManifest } from "./completion.mjs";
 import { supportedClassCandidates } from "./pc-support.mjs";
+import { pcSpellcastingProfile } from "./pc-tables.mjs";
 import { slugify } from "./text.mjs";
 
 export const PC_EDIT_CODES = Object.freeze({
@@ -65,6 +70,11 @@ const DOC_TYPE = Object.freeze({ ancestry: "ancestry", heritage: "heritage", bac
 const NULLABLE = new Set(["heritage", "classPath"]);
 const ABILITIES = Object.freeze(["str", "dex", "con", "int", "wis", "cha"]);
 const SPELL_FIELDS = Object.freeze(["spells", "focusSpells", "spellcasting"]);
+
+/** Whether a class document casts spells: a modeled casting profile, or any spell proficiency in the class data. */
+function castsSpells(classDoc) {
+  return Boolean(pcSpellcastingProfile(classDoc)) || Number(classDoc?.system?.spellcasting) > 0;
+}
 
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const refKey = (ref) => pcIdentityKey({ ref });
@@ -173,6 +183,11 @@ function setOrDelete(target, field, value) {
 
 const bridgeOf = (map, bridge) => (isObject(map) && Object.hasOwn(map, bridge) ? map[bridge] : undefined);
 
+/** Whether any per-bridge path choice is held, in the concept or in the required identity. */
+function hasBridgePaths(concept) {
+  return [concept.classPaths, concept.requiredIdentity?.classPaths].some((map) => isObject(map) && Object.keys(map).length > 0);
+}
+
 function currentKey(concept, field, bridge) {
   if (field === "classPath" && bridge !== undefined) return refKey(bridgeOf(concept.classPathCandidates, bridge));
   return refKey(field === "classPath" ? concept.classPathCandidate : concept[`${field}Candidate`]);
@@ -191,6 +206,10 @@ function writeChoice(concept, field, chosen, bridge) {
     } else {
       delete concept.classPath;
       delete concept.classPathCandidate;
+      // A bridge-less clear drops every path choice, the same scope as the
+      // required identity (deleteRequired), so the two cannot disagree.
+      delete concept.classPaths;
+      delete concept.classPathCandidates;
     }
     return;
   }
@@ -292,7 +311,11 @@ async function applyCatalogEdit(next, edit, catalogs, deps, changed, invalidated
     fail(PC_EDIT_CODES.INVALID, field, "a bridge applies only to a class path and must be a bridge name");
   }
   const pendingField = bridge === undefined ? field : `${field}.${bridge}`;
-  if ((key ?? "") === currentKey(concept, field, bridge) && !isPending(next, pendingField)) return;
+  // A bridge-less clear removes every path choice (alias and each bridge), so it
+  // still applies when only per-bridge choices remain.
+  const clearsEveryPath = field === "classPath" && bridge === undefined && key === null;
+  if ((key ?? "") === currentKey(concept, field, bridge) && !isPending(next, pendingField)
+    && !(clearsEveryPath && hasBridgePaths(concept))) return;
   assertNoSpellState(next, field);
 
   let chosen = null;
@@ -325,6 +348,11 @@ async function applyCatalogEdit(next, edit, catalogs, deps, changed, invalidated
       }
       if (field === "class" && supportedClassCandidates([chosen]).length === 0) {
         fail(PC_EDIT_CODES.INVALID, field, `"${chosen.name}" is not a supported PC class`);
+      }
+      // Spell editing does not exist yet, so a class that casts would leave a
+      // caster with no spells and a plan that still reads as complete.
+      if (field === "class" && castsSpells(doc)) {
+        fail(PC_EDIT_CODES.DEFERRED, field, `"${chosen.name}" casts spells; spell editing is deferred, so the class cannot change to a spellcasting class`);
       }
     }
   }

@@ -218,4 +218,68 @@ async function expectCode(promise, code) {
   assert.ok(validatePCEditCompletion(drifted).errors.some((message) => /Class path/.test(message)));
 }
 
+// A class edit into a spellcasting class is refused until spell editing exists:
+// the character would be a caster with no spells while the plan still read as complete.
+{
+  const { load } = await import("./fixtures/pc-wizard/world.mjs");
+  const wizardJson = await load("wizard");
+  docsById.set("test.pack:wizard", doc("class", "Wizard", wizardJson.system));
+  docsById.set("test.pack:oddcaster", doc("class", "Rogue", { keyAbility: { value: ["dex"] }, spellcasting: 1 }));
+  const casterCatalogs = { ...catalogs, class: [...catalogs.class, classCandidate("wizard", "Wizard")] };
+  const plan = basePlan();
+  await assert.rejects(applyPCEdit(plan, { field: "class", key: "test.pack:wizard" }, { services, catalogs: casterCatalogs }), (error) => {
+    assert.equal(error.code, PC_EDIT_CODES.DEFERRED);
+    assert.equal(error.field, "class");
+    assert.match(error.message, /"Wizard" casts spells; spell editing is deferred, so the class cannot change to a spellcasting class/);
+    return true;
+  }, "the real Wizard class data (spellcasting 1) is refused");
+  assert.equal(plan.concept.class, "Fighter", "the plan is untouched");
+  const odd = { ...casterCatalogs, class: [...casterCatalogs.class, classCandidate("oddcaster", "Rogue")] };
+  await expectCode(applyPCEdit(plan, { field: "class", key: "test.pack:oddcaster" }, { services, catalogs: odd }), PC_EDIT_CODES.DEFERRED);
+  const rogueEdit = await applyPCEdit(plan, { field: "class", key: "test.pack:rogue" }, { services, catalogs: casterCatalogs });
+  assert.equal(rogueEdit.plan.resolved.classDoc.name, "Rogue", "a class without spellcasting still edits");
+}
+
+// A bridge-less clear removes every path choice, in the concept and in the required
+// identity alike (it used to wipe the required map and leave the school and thesis).
+{
+  const path = (id, name, bridge) => candidate(id, name, { bridge });
+  const school = path("school-a", "School of Mentalism", "Arcane School");
+  const thesis = path("thesis-a", "Staff Nexus", "Arcane Thesis");
+  const wizardPlan = () => {
+    const plan = basePlan();
+    Object.assign(plan.concept, {
+      classPath: "Staff Nexus", classPathCandidate: thesis.ref,
+      classPaths: { "Arcane School": "School of Mentalism", "Arcane Thesis": "Staff Nexus" },
+      classPathCandidates: { "Arcane School": school.ref, "Arcane Thesis": thesis.ref },
+      requiredIdentity: { classPath: thesis, classPaths: { "Arcane School": school, "Arcane Thesis": thesis } }
+    });
+    return plan;
+  };
+  const clear = (plan) => applyPCEdit(plan, { field: "classPath", key: null }, { services, catalogs });
+  const assertCleared = (result) => {
+    assert.deepEqual(result.changed, ["classPath"]);
+    for (const field of ["classPath", "classPathCandidate", "classPaths", "classPathCandidates"]) {
+      assert.equal(Object.hasOwn(result.plan.concept, field), false, `concept.${field} is cleared`);
+    }
+    for (const field of ["classPath", "classPaths"]) {
+      assert.equal(Object.hasOwn(result.plan.concept.requiredIdentity, field), false, `requiredIdentity.${field} is cleared`);
+    }
+    assert.deepEqual(validatePCEditCompletion(result.plan).errors, [], "concept and required identity agree");
+  };
+  const input = wizardPlan();
+  assertCleared(await clear(input));
+  assert.equal(input.concept.classPaths["Arcane School"], "School of Mentalism", "the input plan is not mutated");
+  assert.equal(input.concept.requiredIdentity.classPaths["Arcane Thesis"].name, "Staff Nexus");
+
+  // Only per-bridge choices remain (no single alias): the clear still applies.
+  const bridgesOnly = wizardPlan();
+  for (const field of ["classPath", "classPathCandidate"]) delete bridgesOnly.concept[field];
+  delete bridgesOnly.concept.requiredIdentity.classPath;
+  assertCleared(await clear(bridgesOnly));
+
+  // Nothing to clear is still a no-op.
+  assert.deepEqual((await clear(basePlan())).changed, []);
+}
+
 console.log("pc-edit tests passed");
