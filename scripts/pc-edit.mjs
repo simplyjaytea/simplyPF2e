@@ -16,10 +16,21 @@
  *   { field: "ancestry" | "background" | "class", key }   key = "packId:_id" of an offered candidate
  *   { field: "heritage", key: string | null }             null = no heritage
  *   { field: "classPath", key: string | null }            null clears the path
+ *   { field: "classPath", bridge, key: string | null }    one path of a multi-bridge class
  *   { field: "keyAbility", value }                        must be a key ability of the class
  *   { field: "backgroundLore", value }                    must be an option of the background
  *   { field: "feat", slot, key }                          slot = zero-based index into featSlots
  *   { field: "equipment", index, key }                    index into concept.equipment
+ *
+ * Class paths. A class with one level-one bridge (Rogue, Investigator) edits
+ * `classPath` as before: concept.classPath / classPathCandidate and
+ * requiredIdentity.classPath. A class with several bridges (Wizard) edits one
+ * bridge at a time with `bridge` = the bridge feature's name; the choice is
+ * offered only from that bridge's candidates (`candidate.bridge`, see
+ * class-paths.mjs) and lands in concept.classPaths / classPathCandidates and
+ * requiredIdentity.classPaths, each keyed by bridge name. A bridge-less edit of
+ * a multi-bridge class is refused rather than guessed. Changing the class
+ * drops every path choice.
  *
  * Services (injectable for tests): load(ref), classPaths(classDoc),
  * recompute(concept), resolveEquipmentLine(concept), equipmentValue(equipment).
@@ -29,7 +40,7 @@ import { resolvePCConcept, heritageMatchesAncestry } from "./pc-builder.mjs";
 import { resolveEquipment, equipmentValueGp } from "./builder.mjs";
 import { getBackgroundLoreOptions, resolveBackgroundLore } from "./pc-background-lore.mjs";
 import { multiclassAbilityBlocker, multiclassBlockers } from "./pc-multiclass.mjs";
-import { assertPCIdentity, pcIdentityKey } from "./pc-identity.mjs";
+import { assertPCIdentity, classPathBridges, pcIdentityKey } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { completionManifest } from "./completion.mjs";
 import { supportedClassCandidates } from "./pc-support.mjs";
@@ -100,7 +111,13 @@ function assertPlan(plan) {
 
 function clonePlan(plan) {
   const concept = { ...plan.concept, equipment: plan.concept.equipment.map((line) => ({ ...line })) };
-  if (isObject(plan.concept.requiredIdentity)) concept.requiredIdentity = { ...plan.concept.requiredIdentity };
+  if (isObject(plan.concept.requiredIdentity)) {
+    concept.requiredIdentity = { ...plan.concept.requiredIdentity };
+    if (isObject(concept.requiredIdentity.classPaths)) concept.requiredIdentity.classPaths = { ...concept.requiredIdentity.classPaths };
+  }
+  for (const field of ["classPaths", "classPathCandidates"]) {
+    if (isObject(concept[field])) concept[field] = { ...concept[field] };
+  }
   return {
     concept,
     resolved: {
@@ -137,14 +154,36 @@ function setPending(next, field, reason) {
 }
 
 function deleteRequired(concept, field) {
-  if (isObject(concept.requiredIdentity)) delete concept.requiredIdentity[field];
+  if (!isObject(concept.requiredIdentity)) return;
+  delete concept.requiredIdentity[field];
+  if (field === "classPath") delete concept.requiredIdentity.classPaths;
 }
 
-function currentKey(concept, field) {
+/** A copy of a bridge-keyed map with one bridge set (or removed); undefined when it ends up empty. */
+function withBridge(map, bridge, value) {
+  const entries = Object.entries(isObject(map) ? map : {}).filter(([name]) => name !== bridge);
+  if (value !== undefined) entries.push([bridge, value]);
+  return entries.length ? Object.fromEntries(entries) : undefined;
+}
+
+function setOrDelete(target, field, value) {
+  if (value === undefined) delete target[field];
+  else target[field] = value;
+}
+
+const bridgeOf = (map, bridge) => (isObject(map) && Object.hasOwn(map, bridge) ? map[bridge] : undefined);
+
+function currentKey(concept, field, bridge) {
+  if (field === "classPath" && bridge !== undefined) return refKey(bridgeOf(concept.classPathCandidates, bridge));
   return refKey(field === "classPath" ? concept.classPathCandidate : concept[`${field}Candidate`]);
 }
 
-function writeChoice(concept, field, chosen) {
+function writeChoice(concept, field, chosen, bridge) {
+  if (field === "classPath" && bridge !== undefined) {
+    setOrDelete(concept, "classPaths", withBridge(concept.classPaths, bridge, chosen?.name));
+    setOrDelete(concept, "classPathCandidates", withBridge(concept.classPathCandidates, bridge, chosen?.ref));
+    return;
+  }
   if (field === "classPath") {
     if (chosen) {
       concept.classPath = chosen.name;
@@ -161,7 +200,20 @@ function writeChoice(concept, field, chosen) {
 
 // Required identity is what the generator and createCharacterActor read back.
 // classPath is always declared there (stageClassPaths reads requiredIdentity).
-function syncRequired(concept, field, chosen) {
+function syncRequired(concept, field, chosen, bridge) {
+  if (field === "classPath" && bridge !== undefined) {
+    if (!chosen && !isObject(concept.requiredIdentity)) return;
+    const required = isObject(concept.requiredIdentity) ? concept.requiredIdentity : {};
+    concept.requiredIdentity = { ...required };
+    setOrDelete(concept.requiredIdentity, "classPaths", withBridge(required.classPaths, bridge, chosen ?? undefined));
+    // The per-bridge entry supersedes a single-path alias for the same bridge.
+    if (required.classPath?.bridge === bridge) {
+      delete concept.requiredIdentity.classPath;
+      delete concept.classPath;
+      delete concept.classPathCandidate;
+    }
+    return;
+  }
   if (field === "classPath") {
     if (chosen) concept.requiredIdentity = { ...(concept.requiredIdentity ?? {}), classPath: chosen };
     else deleteRequired(concept, "classPath");
@@ -179,8 +231,19 @@ function dropField(next, field, reason, invalidated) {
     concept.heritageCandidate = null;
     resolved.heritageDoc = null;
   } else if (field === "classPath") {
+    // Every path choice belongs to the previous class: the single alias and
+    // each bridge. One invalidation per cleared choice, so the editor can
+    // discard exactly those drafts.
+    const bridges = Object.keys(isObject(concept.classPaths) ? concept.classPaths : {});
+    const hadAlias = Boolean(concept.classPath);
     delete concept.classPath;
     delete concept.classPathCandidate;
+    delete concept.classPaths;
+    delete concept.classPathCandidates;
+    deleteRequired(concept, field);
+    if (hadAlias || !bridges.length) invalidated.push({ field, reason });
+    for (const bridge of bridges) invalidated.push({ field, bridge, reason: `${reason} (${bridge})` });
+    return;
   } else if (field === "backgroundLore") {
     delete concept.backgroundLore;
   }
@@ -208,7 +271,7 @@ function settleBackgroundLore(next, invalidated) {
 
 function settleClass(next, invalidated) {
   const { concept, resolved } = next;
-  if (concept.classPath) {
+  if (concept.classPath || Object.keys(isObject(concept.classPaths) ? concept.classPaths : {}).length) {
     dropField(next, "classPath", "class changed; the path belongs to the previous class", invalidated);
   }
   const legal = resolved.classDoc?.system?.keyAbility?.value ?? [];
@@ -221,17 +284,36 @@ function settleClass(next, invalidated) {
 }
 
 async function applyCatalogEdit(next, edit, catalogs, deps, changed, invalidated) {
-  const { field, key } = edit;
+  const { field, key, bridge } = edit;
   const { concept, resolved } = next;
   if (key !== null && typeof key !== "string") fail(PC_EDIT_CODES.INVALID, field, "key must be a candidate key or null");
   if (key === null && !NULLABLE.has(field)) fail(PC_EDIT_CODES.INVALID, field, "this field cannot be cleared");
-  if ((key ?? "") === currentKey(concept, field) && !isPending(next, field)) return;
+  if (bridge !== undefined && (field !== "classPath" || typeof bridge !== "string" || !bridge)) {
+    fail(PC_EDIT_CODES.INVALID, field, "a bridge applies only to a class path and must be a bridge name");
+  }
+  const pendingField = bridge === undefined ? field : `${field}.${bridge}`;
+  if ((key ?? "") === currentKey(concept, field, bridge) && !isPending(next, pendingField)) return;
   assertNoSpellState(next, field);
 
   let chosen = null;
   let doc = null;
   if (key !== null) {
-    const list = field === "classPath" ? await deps.classPaths(resolved.classDoc) : catalogs[field];
+    let list;
+    if (field === "classPath") {
+      const all = await deps.classPaths(resolved.classDoc);
+      const bridges = classPathBridges(all);
+      if (bridge === undefined) {
+        if (bridges.length > 1) {
+          fail(PC_EDIT_CODES.INVALID, field, `this class has several path bridges (${bridges.join(", ")}); name the bridge`);
+        }
+        list = all;
+      } else {
+        if (!bridges.includes(bridge)) fail(PC_EDIT_CODES.INVALID, field, `"${bridge}" is not a path bridge of this class`);
+        list = all.filter((candidate) => candidate?.bridge === bridge);
+      }
+    } else {
+      list = catalogs[field];
+    }
     chosen = offered(list, key, field);
     if (field !== "classPath") {
       doc = await deps.load(chosen.ref);
@@ -247,11 +329,11 @@ async function applyCatalogEdit(next, edit, catalogs, deps, changed, invalidated
     }
   }
 
-  writeChoice(concept, field, chosen);
-  syncRequired(concept, field, chosen);
+  writeChoice(concept, field, chosen, bridge);
+  syncRequired(concept, field, chosen, bridge);
   if (field !== "classPath") resolved[`${field}Doc`] = doc;
-  setPending(next, field, null);
-  changed.push(field);
+  setPending(next, pendingField, null);
+  changed.push(pendingField);
 
   if (field === "ancestry") await settleHeritage(next, deps, invalidated);
   if (field === "background") settleBackgroundLore(next, invalidated);

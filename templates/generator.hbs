@@ -195,16 +195,16 @@
       <div class="spf-row">
         {{#each pcIdentityFields}}
         <div class="form-group">
-          <label for="spf-identity-{{field}}">{{localize label}}</label>
+          <label for="{{fieldId}}">{{#if labelText}}{{labelText}}{{else}}{{localize label}}{{/if}}</label>
           {{#if literal}}
-          <input id="spf-identity-{{field}}" name="pcIdentity.{{field}}" type="text" value="{{value}}" maxlength="120" aria-describedby="spf-identity-hint" placeholder="{{localize 'SIMPLYPF2E.Identity.Choose'}}">
+          <input id="{{fieldId}}" name="pcIdentity.{{field}}" type="text" value="{{value}}" maxlength="120" aria-describedby="spf-identity-hint" placeholder="{{localize 'SIMPLYPF2E.Identity.Choose'}}">
           {{else}}
-          <select id="spf-identity-{{field}}" name="pcIdentity.{{field}}" aria-describedby="spf-identity-hint{{#if hint}} spf-identity-{{field}}-hint{{/if}}">
+          <select id="{{fieldId}}" name="pcIdentity.{{field}}" aria-describedby="spf-identity-hint{{#if hint}} {{fieldId}}-hint{{/if}}">
             <option value="">{{localize chooseLabel}}</option>
             {{#each options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
           </select>
           {{/if}}
-          {{#if hint}}<p id="spf-identity-{{field}}-hint" class="spf-field-note">{{localize hint}}</p>{{/if}}
+          {{#if hint}}<p id="{{fieldId}}-hint" class="spf-field-note">{{localize hint}}</p>{{/if}}
         </div>
         {{/each}}
       </div>

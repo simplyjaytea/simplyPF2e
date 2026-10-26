@@ -103,7 +103,7 @@
       "ChooseLore": "Choose Lore",
       "LoreHint": "Choose the Lore granted by this background before generating. This choice does not use AI.",
       "keyAbility": "Key ability",
-      "classPath": "Racket / methodology",
+      "classPath": "Racket / methodology / school / thesis",
       "Ability": { "str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma" }
     },
     "PCEdit": {
@@ -151,7 +151,7 @@
       "EncounterThemeHint": "Leave this blank for a random encounter theme.",
       "CharacterPrompt": "Describe the character",
       "CharacterPromptPlaceholder": "e.g. A gruff dwarven artillerist who left the family forge to hunt the beast that killed her mentor...",
-      "CharacterRestriction": "Complete one-click characters currently support Fighter, Rogue, and Investigator.",
+      "CharacterRestriction": "Complete one-click characters currently support Fighter, Rogue, Investigator, and Wizard.",
       "Character": "Character",
       "Creature": "Creature",
       "CreatedAll": "Created {count} actors in folder \"{name}\".",
@@ -227,7 +227,7 @@
       "None": "— No preset —",
       "StandardGroup": "Standard classes",
       "CustomGroup": "Custom presets",
-      "FlavorGuide": "Standard class presets are flavor guides only. Complete one-click Character generation still finishes Fighter, Rogue, and Investigator — Magus, Witch, and the other Standard classes do not unlock that path.",
+      "FlavorGuide": "Standard class presets are flavor guides only. Complete one-click Character generation still finishes Fighter, Rogue, Investigator, and Wizard — Magus, Witch, and the other Standard classes do not unlock that path.",
       "Alchemist": "Alchemist",
       "Barbarian": "Barbarian",
       "Bard": "Bard",

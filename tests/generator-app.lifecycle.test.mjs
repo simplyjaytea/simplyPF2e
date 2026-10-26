@@ -23,7 +23,7 @@ let identityBackgrounds = [];
 let offeredBackgrounds = [];
 let npcFeats = [], npcFeatFailure = null, gmPrompt = "test brief", encounterDesigns = 0, encounterMemberCount = 1;
 let pcEditGate = { complete: true, pending: [], errors: [], unresolved: [], manifest: {} };
-let pcEditRefusal = null, pcEditInvalidated = [];
+let pcEditRefusal = null, pcEditInvalidated = [], pcEditSelections = {};
 class Application {
   render() { return this; }
   async close() {}
@@ -62,8 +62,10 @@ RealSpfApp.prototype._lockCreation = function (...args) { locked++; return origi
 
 let mode = "npc";
 let progressRows = null;
+let identityControls = null;
 const form = {
   querySelector(selector) {
+    if (identityControls && selector.startsWith('[name="pcIdentity.')) return identityControls.find((control) => `[name="${control.name}"]` === selector) ?? null;
     if (selector.includes('mode')) return { value: mode };
     if (selector.includes('prompt')) return { value: gmPrompt };
     if (selector.includes('level')) return { value: "1" };
@@ -71,7 +73,9 @@ const form = {
     if (selector.includes('threat')) return { value: "moderate" };
     if (selector.includes('allowSpellcasting')) return { checked: false };
     return null;
-  }, querySelectorAll: (selector) => selector === ".spf-progress-steps li" ? (progressRows ?? []) : [], contains: () => false
+  }, querySelectorAll: (selector) => selector === ".spf-progress-steps li" ? (progressRows ?? [])
+    : identityControls && selector.startsWith('[name^="pcIdentity.classPaths."]') ? identityControls.filter((control) => control.name.startsWith("pcIdentity.classPaths.")) : [],
+  contains: () => false
 };
 const concept = () => ({ name: "Test", level: 1, rarity: "common", spellcasting: null, focusSpells: [], specialAbilities: [], feats: [...npcFeats], equipment: [{ name: "Lantern" }], loot: [{ name: "Silver Ring", quantity: 1 }], strikes: [] });
 const actor = () => {
@@ -131,7 +135,7 @@ const mocks = {
   validatePCEditCompletion: () => pcEditGate,
   applyPCEdit: async (plan) => { if (pcEditRefusal) throw pcEditRefusal; return { plan, changed: ["classPath"], invalidated: pcEditInvalidated, equipmentGp: 0 }; },
   pcEditFromControl: (control, value) => ({ control, value }),
-  pcEditorSelections: () => ({}), pcEditorInvalidatedControls: (items = []) => items.map((item) => (item.field === "feat" ? `feat.${item.slot}` : item.field)),
+  pcEditorSelections: () => pcEditSelections, pcEditorInvalidatedControls: (items = []) => items.map((item) => (item.field === "feat" ? `feat.${item.slot}` : item.field)),
   heritageMatchesAncestry: () => true,
   normalizeSkillPriorities: () => [], skillPriorityOrder: () => [], slugify: (x) => x.toLowerCase(),
   getEquipmentCandidates: async () => [{ id: "equipment", name: "Lantern", ref: {} }], getLootCandidates: async () => [{ id: "loot", name: "Silver Ring", ref: {} }], getSpellCandidates: async () => [], getScrollSpellCandidates: async () => [], getFocusSpellCandidates: async () => [], getFeatCandidates: async () => [], getAbilityCandidates: async () => [],
@@ -468,6 +472,65 @@ assert.equal(sharedIdentity.class.ref.packId, "module.classes");
 assert.equal(sharedIdentity.classPath.ref._id, "thief");
 pathDiscovery = null;
 
+// A class whose paths come from two bridges (Wizard) gets one identity control
+// per bridge, held under pcIdentity.classPaths; the single control stays for
+// one-bridge classes and while it still holds a stale choice.
+identityClasses = [{ name: "Wizard", ref: { packId: "pf2e.classes", _id: "wizard" } }, { name: "Rogue", ref: { packId: "pf2e.classes", _id: "rogue" } }];
+const bridgePath = (name, bridge, id) => ({ name, bridge, ref: { packId: "pf2e.classfeatures", _id: id }, uuid: `Compendium.pf2e.classfeatures.Item.${id}` });
+const schoolPath = bridgePath("School of Mentalism", "Arcane School", "mentalism");
+const thesisPath = bridgePath("Staff Nexus", "Arcane Thesis", "staff-nexus");
+pathDiscovery = [schoolPath, bridgePath("School of Battle Magic", "Arcane School", "battle-magic"), thesisPath];
+appUnderTest = app();
+const wizardKey = identityHelpers.pcIdentityKey(identityClasses[0]);
+appUnderTest._test_input.pcIdentity = { class: wizardKey, classPaths: { "Arcane School": identityHelpers.pcIdentityKey(schoolPath) } };
+let bridgeFields = await appUnderTest._test_identityFields();
+assert.equal(bridgeFields.some((field) => field.field === "classPath"), false, "the mixed single control is replaced");
+const schoolField = bridgeFields.find((field) => field.field === "classPaths.Arcane School");
+const thesisField = bridgeFields.find((field) => field.field === "classPaths.Arcane Thesis");
+assert.equal(schoolField.labelText, "Arcane School");
+assert.equal(schoolField.fieldId, "spf-identity-classPaths-Arcane-School", "the element id has no space");
+assert.deepEqual(Array.from(schoolField.options, (option) => option.value), [identityHelpers.pcIdentityKey(schoolPath), "pf2e.classfeatures:battle-magic"],
+  "each bridge offers only its own paths");
+assert.deepEqual(Array.from(thesisField.options, (option) => option.value), [identityHelpers.pcIdentityKey(thesisPath)]);
+assert.equal(schoolField.options.find((option) => option.selected).value, identityHelpers.pcIdentityKey(schoolPath));
+assert.equal(thesisField.options.some((option) => option.selected), false);
+const idsAreUnique = new Set(bridgeFields.map((field) => field.fieldId)).size === bridgeFields.length;
+assert.equal(idsAreUnique, true);
+appUnderTest._test_input.pcIdentity.classPath = identityHelpers.pcIdentityKey(thesisPath);
+assert.ok((await appUnderTest._test_identityFields()).some((field) => field.field === "classPath"), "a stale single choice stays visible so it can be cleared");
+// The nested choices reach the identity contract as per-bridge requirements.
+appUnderTest._test_input.pcIdentity = { class: wizardKey, classPaths: { "Arcane School": identityHelpers.pcIdentityKey(schoolPath), "Arcane Thesis": "" } };
+const bridgeIdentity = identityHelpers.resolvePCIdentity({ choices: appUnderTest._test_input.pcIdentity, catalogs: await appUnderTest._test_identityCatalogs() });
+assert.deepEqual(Object.keys(bridgeIdentity.classPaths), ["Arcane School"]);
+assert.equal(bridgeIdentity.classPaths["Arcane School"].ref._id, "mentalism");
+// The same catalog serves a one-bridge class with the single control.
+pathDiscovery = [bridgePath("Thief", "Rogue's Racket", "thief")];
+appUnderTest._test_input.pcIdentity = { class: identityHelpers.pcIdentityKey(identityClasses[1]) };
+assert.deepEqual(Array.from((await appUnderTest._test_identityFields()).filter((field) => field.field.startsWith("classPath")), (field) => field.field), ["classPath"]);
+
+// Reading the form: per-bridge controls are kept for the class they belong to
+// and dropped when the class changes or the identity section is not shown.
+pathDiscovery = null;
+mode = "character";
+appUnderTest = app();
+appUnderTest._test_input.pcIdentity = { class: wizardKey };
+identityControls = [
+  { name: "pcIdentity.class", value: wizardKey },
+  { name: "pcIdentity.classPaths.Arcane School", value: "pf2e.classfeatures:mentalism" },
+  { name: "pcIdentity.classPaths.Arcane Thesis", value: "" }
+];
+appUnderTest._test_readForm();
+assert.deepEqual({ ...appUnderTest._test_input.pcIdentity.classPaths }, { "Arcane School": "pf2e.classfeatures:mentalism", "Arcane Thesis": "" });
+identityControls[0].value = identityHelpers.pcIdentityKey(identityClasses[1]);
+appUnderTest._test_readForm();
+assert.equal(Object.hasOwn(appUnderTest._test_input.pcIdentity, "classPaths"), false, "a class change discards the previous class's bridge choices");
+appUnderTest._test_input.pcIdentity.classPaths = { "Arcane School": "pf2e.classfeatures:mentalism" };
+identityControls = [];
+appUnderTest._test_readForm();
+assert.deepEqual({ ...appUnderTest._test_input.pcIdentity.classPaths }, { "Arcane School": "pf2e.classfeatures:mentalism" }, "an absent identity section does not erase the choices");
+identityControls = null;
+identityClasses = [{ name: "Fighter", ref: { packId: "pf2e.classes", _id: "fighter" } }];
+
 // Background Lore choices belong to the exact selected background source.
 identityBackgrounds = [
   { name: "Guard", ref: { packId: "pf2e.backgrounds", _id: "6UmhTxOQeqFnppxx" } },
@@ -520,6 +583,26 @@ assert.ok(appUnderTest._test_pcConcept, "PC editor has a plan to edit");
 const editable = await appUnderTest._test_buildPCEditorContext();
 assert.equal(editable.blocked, false, "a complete plan leaves Create enabled");
 assert.equal(editable.blockers.length, 0, "a complete plan lists no blockers");
+
+// The editor offers one control per path bridge of a multi-bridge class, with element ids free of spaces.
+{
+  const wizardRef = { name: "Wizard", ref: { packId: "pf2e.classes", _id: "wizard" } };
+  const bridged = (name, bridge, id) => ({ name, bridge, ref: { packId: "pf2e.classfeatures", _id: id }, uuid: `Compendium.pf2e.classfeatures.Item.${id}` });
+  identityClasses = [wizardRef];
+  pathDiscovery = [bridged("School of Mentalism", "Arcane School", "mentalism"), bridged("Staff Nexus", "Arcane Thesis", "staff-nexus")];
+  pcEditSelections = { class: identityHelpers.pcIdentityKey(wizardRef), "classPath.Arcane School": "pf2e.classfeatures:mentalism" };
+  const bridgeEditor = await appUnderTest._test_buildPCEditorContext();
+  const bridgeControls = bridgeEditor.controls.filter((control) => control.control.startsWith("classPath"));
+  assert.deepEqual(Array.from(bridgeControls, (control) => control.control), ["classPath.Arcane School", "classPath.Arcane Thesis"]);
+  assert.deepEqual(Array.from(bridgeControls, (control) => control.label), ["Arcane School", "Arcane Thesis"]);
+  assert.deepEqual(Array.from(bridgeControls, (control) => control.id), ["pc-edit-classPath-Arcane-School", "pc-edit-classPath-Arcane-Thesis"]);
+  assert.deepEqual(Array.from(bridgeControls[0].options, (option) => option.value), ["pf2e.classfeatures:mentalism"], "a bridge control offers only its own paths");
+  assert.equal(bridgeControls[0].options[0].selected, true);
+  assert.equal(bridgeControls[1].options[0].value, "", "an unchosen bridge shows the placeholder");
+  identityClasses = [{ name: "Fighter", ref: { packId: "pf2e.classes", _id: "fighter" } }];
+  pathDiscovery = null;
+  pcEditSelections = {};
+}
 
 // Success: the applied control's draft is consumed and an invalidated slot's draft is cleared.
 pcEditInvalidated = [{ field: "feat", slot: 1, reason: "slot no longer exists" }];

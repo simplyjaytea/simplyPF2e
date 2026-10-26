@@ -19,6 +19,10 @@ docs.set(uuid("closed"), doc("closed", "Empiricism", { category: "classfeature",
 docs.set(uuid("open"), doc("open", "Unsupported Methodology", { category: "classfeature", traits: { otherTags: ["investigator-methodology"] }, rules: [
   { key: "ChoiceSet", flag: "other", choices: { filter: ["item:tag:another-choice"] } }
 ] }));
+docs.set(uuid("ordinary-plain"), doc("ordinary-plain", "Plain Feature", { category: "classfeature", rules: [{ key: "GrantItem", uuid: uuid("simple") }] }));
+docs.set(uuid("ordinary-choice"), doc("ordinary-choice", "Choosy Feature", { category: "classfeature", rules: [
+  { key: "ChoiceSet", flag: "grade", choices: [{ value: "a", label: "A" }, { value: "b", label: "B" }] }
+] }));
 docs.set(uuid("simple"), doc("simple", "Simple Methodology", { category: "classfeature", traits: { otherTags: ["investigator-methodology"] }, rules: [] }));
 
 const pack = {
@@ -66,17 +70,44 @@ assert.deepEqual(staged.expectedPaths, [{ name: "Empiricism", type: "feat", _sta
 const exactCandidates = await getClassPathCandidates({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } });
 const requiredPath = exactCandidates.find((candidate) => candidate.name === "Simple Methodology");
 assert.ok(requiredPath, "the requested path is present in the closed catalog");
+assert.ok(exactCandidates.every((candidate) => candidate.bridge === "Methodology"), "every candidate names the bridge feature that offers it");
 const forced = await stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } }, "class-id", {
   context: {}, requiredPath,
   selectChoices: async (groups) => ({ picks: [{ choice: groups[0].id, option: groups[0].options[0].id }] })
 });
 assert.equal(forced.items[0].system.rules[0].selection, requiredPath.uuid, "required path overrides chooser preference");
+// The single-bridge alias also works as a bare reference and as a per-bridge map.
+for (const options of [
+  { requiredPath: { name: requiredPath.name, uuid: requiredPath.uuid, ref: requiredPath.ref } },
+  { requiredPaths: { Methodology: requiredPath } }
+]) {
+  const keyed = await stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } }, "class-id", {
+    context: {}, ...options, selectChoices: async (groups) => ({ picks: [{ choice: groups[0].id, option: groups[0].options[0].id }] })
+  });
+  assert.equal(keyed.items[0].system.rules[0].selection, requiredPath.uuid);
+}
+await assert.rejects(stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } }, "class-id", {
+  context: {}, requiredPaths: { "Racket": requiredPath },
+  selectChoices: async (groups) => ({ picks: [{ choice: groups[0].id, option: groups[0].options[0].id }] })
+}), /names bridge "Racket", which this class does not have/, "a required path keyed to another bridge never matches this one");
 await assert.rejects(stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } }, "class-id", {
   context: {}, requiredPath: { name: "Wrong class", uuid: uuid("missing"), ref: { packId: "pf2e.classfeatures", _id: "missing" } }
 }), /missing, wrong-class, or unsupported/, "stale or wrong-class path is rejected before write");
 
 await assert.rejects(stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } }, "class-id", { context: {} }),
   /was not selected/, "an omitted mandatory path choice blocks before Actor.create");
+
+// Guard: a level-one entry that is not a bridge may not carry a ChoiceSet, or PF2e
+// would prompt after the one-click build; a choice-free entry stays native.
+const plainClass = { system: { items: { plain: { level: 1, uuid: uuid("ordinary-plain") }, later: { level: 5, uuid: uuid("ordinary-choice") } } } };
+assert.deepEqual(await stageClassPaths(plainClass, "class-id", { context: {} }), { items: [], expectedPaths: [] },
+  "choice-free level-one features and later-level choices do not trip the guard");
+await assert.rejects(stageClassPaths({ system: { items: { choice: { level: 1, uuid: uuid("ordinary-choice") } } } }, "class-id", { context: {} }),
+  (error) => error.message === 'simplypf2e | class path "Choosy Feature" has an unsupported choice shape; refusing a one-click build',
+  "an unstaged level-one ChoiceSet refuses the build");
+await assert.rejects(stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") }, choice: { level: 1, uuid: uuid("ordinary-choice") } } } }, "class-id", {
+  context: {}, selectChoices: async (groups) => ({ picks: [{ choice: groups[0].id, option: groups[0].options[0].id }] })
+}), /Choosy Feature" has an unsupported choice shape/, "a staged bridge does not excuse a second, unstaged choice");
 
 configuredSources = { classFeatures: ["module.other-features"] };
 await assert.rejects(stageClassPaths({ system: { items: { bridge: { level: 1, uuid: uuid("bridge") } } } }, "class-id", { context: {}, selectChoices: async () => ({ picks: [] }) }),
