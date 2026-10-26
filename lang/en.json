@@ -636,6 +636,18 @@
     "Hazard": {
       "Mode": "Hazard",
       "Level": "Level",
+      "Legend": "Hazard Concept",
+      "Prompt": "Describe the hazard",
+      "PromptPlaceholder": "e.g. A pressure plate in a crypt corridor that releases a swinging scythe blade...",
+      "Generate": "Generate hazard preview",
+      "Create": "Create hazard",
+      "EmptyHint": "Describe a hazard, then choose Generate hazard preview. Nothing is created until you review the preview and choose Create hazard.",
+      "NoBrief": "Describe the hazard first.",
+      "PreviewChanged": "The level or brief changed after this preview. Generate the hazard again before creating it.",
+      "Progress": {
+        "Concept": "Hazard concept",
+        "Tables": "GM Core hazard tables"
+      },
       "Complexity": {
         "Simple": "Simple",
         "Complex": "Complex"
@@ -647,13 +659,23 @@
         "Reaction": "Reaction",
         "Routine": "Routine",
         "Reset": "Reset",
-        "XP": "XP"
+        "XP": "XP",
+        "AC": "AC",
+        "HP": "HP",
+        "Hardness": "Hardness",
+        "Trigger": "Trigger",
+        "DCLine": "DC {dc} ({rank})",
+        "DispelLine": "Dispel Magic, rank {rank}, counteract DC {dc}",
+        "SaveLine": "{save} DC {dc}",
+        "RoutineActions": "Actions per round: {count}",
+        "XPNote": "for a party of the same level"
       },
       "Gated": "Hazard generation is experimental. Turn on Enable experimental tools in Module Settings → SimplyPF2e to use it. Nothing is created while it is off.",
       "Errors": {
         "Field": "The AI hazard concept has a missing or malformed {field}. Generate the hazard again.",
         "Prose": "The AI hazard text for {field} was rejected ({reason}). Hazard text must be plain words without game statistics, dice, DCs or Foundry enricher syntax. Generate the hazard again.",
-        "Routine": "A complex hazard needs a routine with one to three actions. Generate the hazard again."
+        "Routine": "A complex hazard needs a routine with one to three actions. Generate the hazard again.",
+        "Catalog": "The PF2e hazard trait or damage type list is unavailable, so a hazard cannot be generated."
       }
     },
     "Chat": {

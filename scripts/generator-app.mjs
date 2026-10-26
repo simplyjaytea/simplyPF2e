@@ -4,7 +4,8 @@ import {
 } from "./settings.mjs";
 import {
   generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
-  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCreatureFeats, selectCreatureAbilities, selectCharacterChoices
+  generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCreatureFeats, selectCreatureAbilities, selectCharacterChoices,
+  generateHazardConcept
 } from "./ai.mjs";
 import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import {
@@ -29,7 +30,7 @@ import { SourcesConfigApp } from "./sources-app.mjs";
 import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryScaffold } from "./art.mjs";
 import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
-import { verifyCreatedActor } from "./post-create.mjs";
+import { verifyCreatedActor, persistedExpectedItems } from "./post-create.mjs";
 import { supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
 import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-ability-packages.mjs";
@@ -37,13 +38,78 @@ import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-abi
 import { classPathBridges, pcIdentityKey, resolvePCIdentity, applyPCIdentity, assertPCIdentity } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
-import { assertExperimentalToolAccess } from "./experimental-tools.mjs";
+import { assertExperimentalToolAccess, experimentalToolRefusal } from "./experimental-tools.mjs";
+import { HAZARD_DISABLE_SKILLS, HazardConceptError, normalizeHazardConcept, buildHazardSource, describeHazard } from "./hazard-builder.mjs";
+import { HAZARD_MIN_LEVEL, HAZARD_MAX_LEVEL, hazardSaveDC } from "./hazard-tables.mjs";
+import { HAZARD_LABEL_KEYS } from "./hazard-labels.mjs";
+import { esc } from "./text.mjs";
 import { validateForgeRequest } from "./forge-command.mjs";
 import { heritageMatchesAncestry } from "./pc-builder.mjs";
 import { applyPCEdit, validatePCEditCompletion } from "./pc-edit.mjs";
 import { pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } from "./pc-editor.mjs";
 
 const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "backgroundLore", "keyAbility", "classPath"];
+
+/* ---- Hazard mode (experimental, WP5 H3b). It exists only while the experimentalTools gate is open. ---- */
+
+/** Hazard previews this module issued. Create accepts only these objects. */
+const issuedHazards = new WeakSet();
+
+/** Hazard items are module-built from the GM Core tables, so there is nothing to resolve in a compendium. */
+const HAZARD_MANIFEST = Object.freeze({ complete: true });
+
+const HAZARD_RANK_KEYS = Object.freeze({
+  untrained: "SIMPLYPF2E.Skills.Rank0", trained: "SIMPLYPF2E.Skills.Rank1", expert: "SIMPLYPF2E.Skills.Rank2",
+  master: "SIMPLYPF2E.Skills.Rank3", legendary: "SIMPLYPF2E.Skills.Rank4"
+});
+const HAZARD_RARITY_KEYS = Object.freeze({
+  common: "SIMPLYPF2E.Rarity.Common", uncommon: "SIMPLYPF2E.Rarity.Uncommon",
+  rare: "SIMPLYPF2E.Rarity.Rare", unique: "SIMPLYPF2E.Rarity.Unique"
+});
+const HAZARD_SAVE_KEYS = Object.freeze({
+  fortitude: "SIMPLYPF2E.Preview.Fort", reflex: "SIMPLYPF2E.Preview.Ref", will: "SIMPLYPF2E.Preview.Will"
+});
+/** Builder codes for AI text the module refused: a number, enricher syntax or markup in prose. */
+const HAZARD_PROSE_CODES = new Set(["ENRICHER_IN_TEXT", "NUMBER_IN_TEXT", "BAD_TEXT", "BAD_NAME"]);
+const HAZARD_ROUTINE_CODES = new Set(["ROUTINE_REQUIRED", "BAD_ROUTINE_ACTIONS"]);
+const HAZARD_FIELD_BY_CODE = Object.freeze({ NO_DISABLE: "disable", MISSING_REACTION: "reaction", BAD_LEVEL: "level" });
+
+/** True only while the experimental gate is open. Any failure to read the gate stays closed. */
+function hazardGateOpen() {
+  try { return experimentalToolRefusal() === null; } catch { return false; }
+}
+
+/** The level range of a mode. Hazards use the table range; creatures go -1 to 24 and PCs 1 to 20. */
+function levelRangeFor(mode) {
+  if (mode === "hazard") return [HAZARD_MIN_LEVEL, HAZARD_MAX_LEVEL];
+  return ["monster", "npc"].includes(mode) ? [-1, 24] : [1, 20];
+}
+
+/** Trait and damage type slugs the running pf2e system offers, or null when either list is empty. */
+function hazardCatalogs() {
+  const config = globalThis.CONFIG?.PF2E;
+  const traitsCatalog = Object.keys(config?.hazardTraits ?? {});
+  const damageTypes = Object.keys(config?.damageTypes ?? {});
+  return traitsCatalog.length && damageTypes.length ? { traitsCatalog, damageTypes } : null;
+}
+
+/** Register a reviewed hazard as issued by this module, and freeze it. */
+function issueHazard(draft) {
+  const issued = Object.freeze({ ...draft });
+  issuedHazards.add(issued);
+  return issued;
+}
+
+/** The message for a failed hazard run. A refused concept maps to the Hazard error keys; other errors speak for themselves. */
+function hazardErrorText(err) {
+  if (err instanceof HazardConceptError) {
+    if (HAZARD_ROUTINE_CODES.has(err.code)) return game.i18n.localize("SIMPLYPF2E.Hazard.Errors.Routine");
+    const field = HAZARD_FIELD_BY_CODE[err.code] ?? /^[\w.]+/.exec(String(err.message))?.[0] ?? "concept";
+    const key = HAZARD_PROSE_CODES.has(err.code) ? "SIMPLYPF2E.Hazard.Errors.Prose" : "SIMPLYPF2E.Hazard.Errors.Field";
+    return game.i18n.format(key, { field });
+  }
+  return err?.message ?? String(err);
+}
 
 const creatureFeatRefKey = (ref) => `${ref?.packId ?? ""}:${ref?._id ?? ""}`;
 
@@ -175,13 +241,19 @@ export class GeneratorApp extends SpfApp {
   #manifest = null;
   /** True when the current monster draft came from /forge; creation and reroll re-check the gate. */
   #experimentalDraft = false;
+  /** Hazard mode (experimental): the reviewed hazard {concept, level, brief, preview}. Memory only; never persisted. */
+  #hazard = null;
   /** Cycles the example placeholder; starts randomly so reopening varies. */
   #exampleTick = Math.floor(Math.random() * 5);
 
   async _prepareContext() {
+    // Hazard mode exists only while the experimental gate is open. A closed gate
+    // drops any hazard draft and leaves the mode before anything renders.
+    const hazardAvailable = hazardGateOpen();
+    if (!hazardAvailable) this.#leaveHazard();
     const authState = getProviderRequestConfig();
     const authWarningKey = getProviderAuthWarningKey(authState);
-    const sources = globalThis.game?.packs ? sourceReadiness(this.#input.mode, {
+    const sources = globalThis.game?.packs && this.#input.mode !== "hazard" ? sourceReadiness(this.#input.mode, {
       allowSpellcasting: this.#input.allowSpellcasting
     }) : null;
     const presetGroups = presetPickerGroups(this.#input.preset, getCustomPresets());
@@ -237,14 +309,17 @@ export class GeneratorApp extends SpfApp {
       characterMode: this.#input.mode === "character",
       monsterMode: this.#input.mode === "monster",
       npcMode: this.#input.mode === "npc",
+      hazardMode: this.#input.mode === "hazard",
+      hazardAvailable,
+      hazardLabels: HAZARD_LABEL_KEYS,
       randomTooltipKey: {
         monster: "SIMPLYPF2E.Generator.RandomTooltip",
         npc: "SIMPLYPF2E.Generator.RandomNpcTooltip",
         encounter: "SIMPLYPF2E.Generator.RandomEncounterTooltip",
         character: "SIMPLYPF2E.Generator.RandomCharacterTooltip"
       }[this.#input.mode] ?? "SIMPLYPF2E.Generator.RandomTooltip",
-      levelMin: ["monster", "npc"].includes(this.#input.mode) ? -1 : 1,
-      levelMax: ["monster", "npc"].includes(this.#input.mode) ? 24 : 20,
+      levelMin: levelRangeFor(this.#input.mode)[0],
+      levelMax: levelRangeFor(this.#input.mode)[1],
       threats: Object.keys(THREATS).map((key) => ({
         value: key,
         label: `SIMPLYPF2E.Threat.${key.charAt(0).toUpperCase()}${key.slice(1)}`,
@@ -261,9 +336,10 @@ export class GeneratorApp extends SpfApp {
       encounterPreview: this.#input.mode === "encounter" ? this.#buildEncounterPreviewContext() : null,
       pcPreview: this.#input.mode === "character" ? this.#buildPCPreviewContext() : null,
       pcEditor: this.#pcConcept && this.#input.mode === "character" ? await this.#buildPCEditorContext() : null,
+      hazardPreview: this.#input.mode === "hazard" ? this.#buildHazardPreviewContext() : null,
       characterReview: this.#characterReview,
       created: this.#created,
-      hasPreview: Boolean(this.#concept || this.#encounter || this.#pcConcept),
+      hasPreview: Boolean(this.#concept || this.#encounter || this.#pcConcept || this.#hazard),
       tokenReport: this._buildTokenReport(),
       // Presentation only: show the getting-started panel when the active
       // mode has no result (busy/error states render their own blocks).
@@ -271,6 +347,7 @@ export class GeneratorApp extends SpfApp {
         && !(["monster", "npc"].includes(this.#input.mode) && this.#concept)
         && !(this.#input.mode === "encounter" && this.#encounter)
         && !(this.#input.mode === "character" && this.#pcConcept)
+        && !(this.#input.mode === "hazard" && this.#hazard)
     };
   }
 
@@ -725,7 +802,7 @@ export class GeneratorApp extends SpfApp {
     // only Single mode's creature level goes -1..24, and a level left over
     // from a previous mode would otherwise be sent verbatim to the AI prompt
     // (the concept is clamped later; the prompt text was not).
-    const [levelMin, levelMax] = ["monster", "npc"].includes(mode) ? [-1, 24] : [1, 20];
+    const [levelMin, levelMax] = levelRangeFor(mode);
     const rawLevel = Number(form.querySelector('[name="level"]')?.value ?? 1);
     const level = Math.min(levelMax, Math.max(levelMin, Number.isNaN(rawLevel) ? 1 : Math.round(rawLevel)));
     const rarity = form.querySelector('[name="rarity"]')?.value ?? this.#input.rarity;
@@ -797,6 +874,10 @@ export class GeneratorApp extends SpfApp {
         this.#readForm();
         this.render();
       });
+    }
+    // A changed level or brief spends the reviewed hazard: the GM must generate it again.
+    for (const field of ["level", "prompt"]) {
+      this.element.elements?.namedItem?.(field)?.addEventListener("change", () => this.#dropStaleHazard());
     }
     for (const radio of this.element.querySelectorAll('input[name="mode"]')) {
       radio.addEventListener("change", async () => {
@@ -885,8 +966,11 @@ export class GeneratorApp extends SpfApp {
     const current = Number.parseInt(input.value, 10);
     // Party Level (encounter mode) and Character level are both PC levels,
     // 1-20; only Single mode's creature Level goes -1..24.
-    const [min, max] = ["monster", "npc"].includes(this.#input.mode) ? [-1, 24] : [1, 20];
+    const [min, max] = levelRangeFor(this.#input.mode);
     input.value = Math.min(max, Math.max(min, (Number.isNaN(current) ? 1 : current) + delta));
+    if (this.#hazard) {
+      this.#dropStaleHazard().catch((err) => console.warn(MODULE_ID + " | hazard preview check failed", err));
+    }
   }
 
   static #onPartyUp() {
@@ -991,6 +1075,8 @@ export class GeneratorApp extends SpfApp {
       ui.notifications.warn(game.i18n.localize(warning));
       return false;
     }
+    // Hazards use no compendium content; the provider check above is the only readiness they need.
+    if (this.#input.mode === "hazard") return true;
     // Isolated production-path tests intentionally do not construct Foundry's
     // pack collection; a live world always has it and receives this preflight.
     if (!globalThis.game?.packs) return true;
@@ -1033,6 +1119,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#hazard = null;
     this.#resetPCEdit();
     this.#experimentalDraft = false;
     this._tokenUsage = [];
@@ -1130,6 +1217,12 @@ export class GeneratorApp extends SpfApp {
       // A /forge request already captured the drafts and chose the Monster
       // view. Re-reading the form here would revert that selection.
       if (!request) this.#readForm();
+      // Hazard mode: the gate is checked before readiness or any provider work.
+      if (this.#input.mode === "hazard" && this.#refusedHazardNow()) {
+        this.#busy = false;
+        await this.render();
+        return;
+      }
       if (!await this.#assertGenerationReady()) {
         this.#busy = false;
         await this.render();
@@ -1151,6 +1244,8 @@ export class GeneratorApp extends SpfApp {
       return this.#runPCGeneration(isRandom, { create });
     }
     if (this.#input.mode === "encounter") return this.#runEncounterGeneration(isRandom, { create });
+    // Hazards are always a reviewed preview: Create is a separate, explicit action.
+    if (this.#input.mode === "hazard") return this.#runHazardGeneration(isRandom);
     // A /forge request supplies its own brief and level for this run only.
     const brief = request ? request.prompt : this.#input.prompt;
     const level = request ? request.level : this.#input.level;
@@ -1167,6 +1262,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#hazard = null;
     this.#resetPCEdit();
     this.#experimentalDraft = request !== null;
     this._tokenUsage = [];
@@ -1913,6 +2009,7 @@ export class GeneratorApp extends SpfApp {
   static async #onCreateActor({ reuseRunId = null } = {}) {
     const reuseRun = reuseRunId === this._runId && this._runActive;
     if (this.#busy && !reuseRun) return "error";
+    if (this.#hazard) return this.#createHazardActor();
     if (this.#encounter) return this.#createEncounterActors({ reuseRunId });
     if (this.#pcConcept) return this.#createCharacterActor({ reuseRunId });
     if (!this.#concept) return "error";
@@ -2330,6 +2427,236 @@ export class GeneratorApp extends SpfApp {
     }
   }
 
+  /** Leave Hazard mode: drop the draft and restore the Monster view with its own brief. */
+  #leaveHazard() {
+    this.#hazard = null;
+    if (this.#input.mode !== "hazard") return;
+    this.#input.mode = "monster";
+    this.#input.prompt = this.#modePrompts.monster ?? "";
+  }
+
+  /**
+   * True when the experimental gate is closed. The GM is told why, the hazard
+   * draft is dropped and the Monster view returns, so a closed gate leaves
+   * nothing hazard-related behind.
+   */
+  #refusedHazardNow() {
+    let refusal;
+    try { refusal = experimentalToolRefusal(); } catch { refusal = undefined; }
+    if (refusal === null) return false;
+    ui.notifications.warn(game.i18n.localize(refusal?.localizeKey ?? "SIMPLYPF2E.Experimental.Disabled"));
+    this.#leaveHazard();
+    return true;
+  }
+
+  /** True while the reviewed hazard still matches the level and brief currently in the form. */
+  #hazardMatchesForm(hazard) {
+    return hazard.level === this.#input.level && hazard.brief === String(this.#input.prompt).trim();
+  }
+
+  /** A changed level or brief spends the reviewed hazard: it must be generated again. */
+  async #dropStaleHazard() {
+    if (!this.#hazard || this.#busy) return;
+    this.#readForm();
+    if (this.#hazardMatchesForm(this.#hazard)) return;
+    this.#hazard = null;
+    await this.render();
+  }
+
+  #noteHazardFailure(err) {
+    if (err?.cancelled) {
+      console.warn(MODULE_ID + " | hazard generation cancelled");
+      this.#error = null;
+      return;
+    }
+    console.error(MODULE_ID + " | hazard generation failed", err);
+    this.#error = hazardErrorText(err);
+  }
+
+  /**
+   * Hazard mode: one provider call for the concept, then local normalization
+   * and the table-built preview. Nothing is written to the world. The gate is
+   * checked at entry and again before the preview is kept, because the GM can
+   * switch the setting off while the provider call is waiting.
+   */
+  async #runHazardGeneration(isRandom) {
+    const brief = this.#input.prompt.trim();
+    const catalogs = hazardCatalogs();
+    let stopped = isRandom;
+    // There is no random hazard brief, so the dice button has nothing to roll.
+    if (!stopped && !brief) {
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Hazard.NoBrief"));
+      stopped = true;
+    }
+    if (!stopped && !catalogs) {
+      this.#error = game.i18n.localize("SIMPLYPF2E.Hazard.Errors.Catalog");
+      stopped = true;
+    }
+    if (stopped) {
+      this.#busy = false;
+      await this.render();
+      return;
+    }
+    const level = this.#input.level;
+    this.#resetGenerationState();
+    const conceptLabel = game.i18n.localize("SIMPLYPF2E.Hazard.Progress.Concept");
+    const signal = this._beginProgress([
+      ["concept", conceptLabel, taskMaxTokens(AI_TASK.HAZARD_CONCEPT)],
+      ["match", game.i18n.localize("SIMPLYPF2E.Hazard.Progress.Tables"), 400]
+    ]);
+    const runId = this._runId;
+    let outcome = "success";
+    try {
+      await this._setStep("concept");
+      const { concept: raw, usage } = await generateHazardConcept(brief, {
+        level, ...catalogs, disableSkills: HAZARD_DISABLE_SKILLS, signal, onProgress: this._progressCallback(conceptLabel)
+      });
+      this._recordTokens(conceptLabel, usage);
+      this._throwIfCancelled();
+      await this._setStep("match");
+      const concept = normalizeHazardConcept(raw, { level, ...catalogs });
+      const preview = await describeHazard(concept, level);
+      this._throwIfCancelled();
+      assertExperimentalToolAccess();
+      this.#hazard = issueHazard({ concept, level, brief, preview });
+    } catch (err) {
+      this._recordTokens(
+        this._progress?.steps.find((step) => step.state === "active")?.label ?? conceptLabel, err?.usage
+      );
+      this.#hazard = null;
+      this.#noteHazardFailure(err);
+      outcome = err?.cancelled ? "cancelled" : "error";
+    } finally {
+      this.#busy = false;
+      this._finishRun(outcome, runId);
+      await this.render();
+    }
+  }
+
+  /**
+   * Create the reviewed hazard. Only a preview this module issued, for the
+   * level and brief still in the form, can be created, and only while the
+   * experimental gate is open: it is checked on entry and once more right
+   * before the native write. The source is built from the reviewed concept and
+   * checked with the same post-create survival check the NPC path uses.
+   */
+  async #createHazardActor() {
+    const hazard = this.#hazard;
+    if (!hazard || this.#busy) return "error";
+    if (this.#refusedHazardNow()) {
+      await this.render();
+      return "error";
+    }
+    this.#readForm();
+    if (!issuedHazards.has(hazard) || !this.#hazardMatchesForm(hazard)) {
+      this.#hazard = null;
+      ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Hazard.PreviewChanged"));
+      await this.render();
+      return "error";
+    }
+    this.#busy = true;
+    this.#error = null;
+    this._beginProgress([["apply", game.i18n.localize("SIMPLYPF2E.Progress.Apply"), 2400]], { cancellable: false });
+    const runId = this._runId;
+    let actor = null;
+    let committed = false;
+    let outcome = "success";
+    try {
+      await this._setStep("apply");
+      const source = await buildHazardSource(hazard.concept, { level: hazard.level });
+      const expectedItems = await persistedExpectedItems(source.items);
+      assertExperimentalToolAccess();
+      this._lockCreation();
+      actor = await Actor.create({ ...source.actor, items: source.items });
+      verifyCreatedActor(actor, HAZARD_MANIFEST, expectedItems);
+      this.#hazard = null;
+      this.#created = { name: actor.name, actorId: actor.id, count: 1, grounding: { total: 0, rows: [] } };
+      committed = true;
+      try {
+        ui.notifications.info(game.i18n.format("SIMPLYPF2E.Generator.Created", { name: esc(actor.name) }));
+        await actor.sheet.render(true);
+      } catch (err) {
+        outcome = "warning";
+        console.warn(MODULE_ID + " | hazard created, but its sheet could not be displayed", err);
+        try { ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.Generator.CreatedPresentationFailed")); }
+        catch (notificationErr) { console.warn(MODULE_ID + " | could not show creation presentation warning", notificationErr); }
+      }
+    } catch (err) {
+      outcome = err?.cancelled ? "cancelled" : "error";
+      if (!committed) {
+        const survivor = await rollbackActor(actor, "unverified hazard");
+        // A survivor means the retry would duplicate it: the draft is discarded.
+        if (survivor) this.#hazard = null;
+        console.error(MODULE_ID + " | hazard creation failed", err);
+        this.#error = survivor ? err.message + " " + survivor : hazardErrorText(err);
+      } else {
+        outcome = "warning";
+        console.warn(MODULE_ID + " | hazard committed, but completion presentation failed", err);
+      }
+    } finally {
+      this.#busy = false;
+      this._finishRun(outcome, runId);
+      await this.render();
+    }
+    return outcome;
+  }
+
+  /**
+   * The reviewed hazard as display rows. Every number comes from describeHazard
+   * (the GM Core tables); the AI contributes words only. The template escapes
+   * each value, so nothing here is raw HTML.
+   */
+  #buildHazardPreviewContext() {
+    const hazard = this.#hazard;
+    if (!hazard) return null;
+    const { concept, preview } = hazard;
+    const i18n = game.i18n;
+    const config = globalThis.CONFIG?.PF2E;
+    const named = (entry, slug) => i18n.localize(typeof entry === "string" ? entry : entry?.label ?? slug);
+    const rankName = (rank) => (HAZARD_RANK_KEYS[rank] ? i18n.localize(HAZARD_RANK_KEYS[rank]) : String(rank));
+    const dcLine = ({ dc, rank }) => i18n.format("SIMPLYPF2E.Hazard.Preview.DCLine", { dc, rank: rankName(rank) });
+    const signed = (value) => (value >= 0 ? "+" + value : String(value));
+    const strike = preview.strike;
+    const save = concept.reaction.save;
+    return {
+      name: preview.name,
+      level: preview.level,
+      complexity: preview.complex ? HAZARD_LABEL_KEYS.complexityComplex : HAZARD_LABEL_KEYS.complexitySimple,
+      rarity: HAZARD_RARITY_KEYS[preview.rarity] ?? HAZARD_RARITY_KEYS.common,
+      traits: preview.traits.map((slug) => named(config?.hazardTraits?.[slug], slug)),
+      description: concept.description,
+      stealth: preview.stealth ? dcLine(preview.stealth) : null,
+      disable: preview.disable.map((entry) => ({
+        skill: named(config?.skills?.[entry.skill], entry.skill), text: dcLine(entry)
+      })),
+      dispel: preview.dispel ? i18n.format("SIMPLYPF2E.Hazard.Preview.DispelLine", preview.dispel) : null,
+      ac: preview.ac,
+      saves: Object.entries(HAZARD_SAVE_KEYS).filter(([type]) => preview.saves[type] !== null)
+        .map(([type, key]) => ({ label: i18n.localize(key), value: signed(preview.saves[type]) })),
+      hp: preview.hp,
+      hardness: preview.hardness,
+      strike: strike ? {
+        name: strike.name, bonus: signed(strike.bonus), formula: strike.formula, average: strike.average,
+        damageType: named(config?.damageTypes?.[strike.damageType], strike.damageType)
+      } : null,
+      reaction: {
+        name: preview.reactionName, trigger: concept.reaction.trigger, effect: concept.reaction.effect,
+        save: save ? {
+          text: i18n.format("SIMPLYPF2E.Hazard.Preview.SaveLine", {
+            save: i18n.localize(HAZARD_SAVE_KEYS[save.type]), dc: hazardSaveDC(hazard.level, save.scale)
+          }),
+          effect: save.effect
+        } : null
+      },
+      routine: preview.routineActions === null ? null : {
+        actions: i18n.format("SIMPLYPF2E.Hazard.Preview.RoutineActions", { count: preview.routineActions }),
+        text: concept.routine.text
+      },
+      reset: concept.reset,
+      xp: preview.xp
+    };
+  }
+
   static async #onDiscard() {
     if (this.#busy) return;
     this.#readForm();
@@ -2338,6 +2665,7 @@ export class GeneratorApp extends SpfApp {
     this.#encounter = null;
     this.#pcConcept = null;
     this.#pcResolved = null;
+    this.#hazard = null;
     this.#resetPCEdit();
     this.#manifest = null;
     this.#error = null;
