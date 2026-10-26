@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { hazardTraitCandidates, HAZARD_TRAIT_LIMIT } from '../scripts/hazard-candidates.mjs';
+const small = ['trap', 'fire', 'trap', 'mechanical'];
+assert.deepEqual(hazardTraitCandidates(small), ['fire', 'mechanical', 'trap']);
+assert.deepEqual(hazardTraitCandidates(['@Check', '', null, 'trap', '<b>']), ['trap']);
+const large = [...Array.from({ length: 200 }, (_, i) => `ancestry-${i}`), 'trap', 'mechanical', 'haunt', 'incorporeal', 'clockwork', 'water', 'zyx'];
+const ghost = hazardTraitCandidates(large, 'An incorporeal ghost haunt');
+assert.equal(ghost.length, HAZARD_TRAIT_LIMIT);
+assert.ok(ghost.includes('incorporeal'));
+assert.ok(ghost.includes('haunt'));
+assert.ok(ghost.every((slug) => large.includes(slug)), 'only runtime-issued slugs');
+assert.deepEqual(ghost, hazardTraitCandidates([...large].reverse(), 'An incorporeal ghost haunt'));
+assert.ok(hazardTraitCandidates(large, 'A clockwork trap').includes('clockwork'));
+assert.ok(hazardTraitCandidates(large, 'zyx').includes('zyx'), 'explicit runtime slug outranks defaults');
+assert.deepEqual(small, ['trap', 'fire', 'trap', 'mechanical'], 'input is unchanged');
+console.log('Hazard trait candidate bounds passed');

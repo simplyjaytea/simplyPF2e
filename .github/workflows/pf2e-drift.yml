@@ -1,0 +1,43 @@
+name: PF2e source drift
+
+# Read-only upstream audit. PR execution exercises the merge tree before the
+# schedule becomes active on main; it has no release or publication capability.
+on:
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/pf2e-drift.yml'
+      - 'tools/check-pf2e-drift.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: [pf2e-8.5.0, master]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Compare module references with upstream
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PF2E_REF: ${{ matrix.ref }}
+        run: node tools/check-pf2e-drift.mjs --ref "$PF2E_REF" --json > pf2e-drift.json
+      - name: Preserve audit output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pf2e-drift-${{ matrix.ref }}
+          path: pf2e-drift.json
+          if-no-files-found: warn
