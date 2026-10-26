@@ -144,7 +144,9 @@ const mocks = {
   parseCoins: () => null, parseScroll: () => null, normalizeSkillPriorities: () => [], skillPriorityOrder: () => [],
   THREATS: {}, TREASURE_AMOUNT_MULTIPLIER: {}, ManagePresetsApp: class {}, SourcesConfigApp: class {},
   computeStats: () => ({}), completionSummary: () => ({}), pcSpellPlan: () => ({ picks: [], slots: {} }),
-  authorizeApiKeyForCurrentBaseUrl: async () => {}, reviewUnresolvedChoices: () => ({ choices: [], incomplete: false })
+  authorizeApiKeyForCurrentBaseUrl: async () => {},
+  HAZARD_MIN_LEVEL: -1, HAZARD_MAX_LEVEL: 24,
+  generateHazardConcept: async () => { providerCalls++; throw new Error("hazard provider must not be reached"); }, reviewUnresolvedChoices: () => ({ choices: [], incomplete: false })
 };
 let appUnderTest;
 const generatorSource = (await readFile(new URL("../scripts/generator-app.mjs", import.meta.url), "utf8")).replace(/#([A-Za-z]\w*)/g, "_test_$1");
@@ -640,3 +642,15 @@ await appUnderTest._test_createCharacterActor();
 assert.equal(writes, writesBeforeGate, "an incomplete plan never reaches native create");
 assert.match(appUnderTest._test_error, /PCEdit\.CreateBlocked/);
 pcEditGate = { complete: true, pending: [], errors: [], unresolved: [], manifest: {} };
+
+// Hazard mode is experimental. This harness stubs the gate as not open, so a hazard selection is
+// refused before readiness, the provider or any write, and the Monster view returns.
+mode = "hazard"; appUnderTest = app();
+const beforeHazard = { providerCalls, writes, starts, finishes };
+await actions.generate.call(appUnderTest);
+await actions.previewPlan.call(appUnderTest);
+await actions.generateRandom.call(appUnderTest);
+assert.deepEqual({ providerCalls, writes, starts, finishes }, beforeHazard, "a closed gate reaches no provider, write or progress run");
+assert.equal(appUnderTest._test_input.mode, "monster", "a refused hazard selection returns to the Monster view");
+assert.equal(appUnderTest._test_hazard, null);
+mode = "npc";
