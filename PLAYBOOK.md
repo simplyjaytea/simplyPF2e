@@ -186,6 +186,8 @@ Live QA runs on the user's Foundry (Foundry 14.365 / PF2e 8.5.0, world `test`) a
 - Git identity for this repo: `user.name "jt"`, `user.email "jt_f@ymail.com"` (the checkout may show a different global identity; set it per-repo before committing).
 - Prior sessions' worktrees lived under `/home/jtf/.t3/worktrees/` (Codex "T3"); remote branches `codex/*` are historical and may be pruned only with the user's say-so.
 
+**Drift check:** `node tools/check-pf2e-drift.mjs [--ref <git-ref>] [--json]` compares the module's pf2e pack ids, `Compendium.pf2e` UUIDs, catalog names and fixtures with upstream `foundryvtt/pf2e` at `--ref` (default `master`; a tag such as `pf2e-8.5.0` pins a version). It needs network access and is deliberately kept out of `node tools/check.mjs`, which stays offline; exit 2 means the check could not run (network or rate limit), not that drift was found. Run it before every release and whenever pf2e ships a new version.
+
 ## 8. Current state — 2026-10-25
 
 - **Latest release: v0.3.5.74**, published 2026-10-17 from PR #114 (`d0ec85e`, "Integrate completion chunks C01–C13" plus six P2 fixes from a consolidated Opus review). Auto Release run 39051396149 succeeded. Release-asset parity for .74 was verified on 2026-10-25: both digests match the API and all 63 archive entries are byte-identical to `d0ec85e` ([record](docs/evidence/release-parity-2026-10-25.md)).
