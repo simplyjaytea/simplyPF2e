@@ -12,9 +12,9 @@ Scope: the in-module AI returns a hazard concept made of words and scale words o
 
 ## What the AI returns
 
-One JSON object with these keys: name, description, traits, rarity, complex, stealth, disable (skill and scale pairs), dispel (rank or null), ac, saves (fortitude, reflex, will), hasHP, reaction (name, trigger, effect, strike, save), routine (actions, text, strike, or null), reset.
+One JSON object with these keys: name, description, traits, rarity, complex, stealth, disable (skill and scale pairs), dispel (boolean), ac, saves (fortitude, reflex, will), hasHP, reaction (name, trigger, effect, strike, save), routine (actions, text, strike, or null), reset.
 
-Scale words are extreme, high and low; a reaction save uses extreme or high only. Traits, damage types and disable skills come from the caller's lists. The only integers the AI may write are routine actions (1 to 3) and dispel rank (1 to 10). Those are closed choices, not statistics.
+Scale words are extreme, high and low; a reaction save uses extreme or high only. Traits, damage types and disable skills come from the caller lists. The only integer the AI may write is routine actions (1 to 3), an AI-chosen bounded enum. It is a structural count of actions per round, not a statistic. Dispel is a boolean; the AI never writes a spell rank.
 
 ## What the module fills (not in this package)
 
@@ -23,25 +23,27 @@ Scale words are extreme, high and low; a reaction save uses extreme or high only
 - Reaction save DC: Table 2-16 EDC or HDC.
 - Strike bonus: Table 2-16 S. Atk for simple hazards, C. Atk for complex. Damage: Table 2-16 dice.
 - XP: the simple hazard map for simple hazards, creatureXP for complex ones (H1 and encounter.mjs).
+- Dispel Magic option: the AI only says whether Dispel Magic can end the hazard (a boolean). The builder derives the counteract rank as Math.min(10, Math.max(1, Math.ceil(level / 2))). That is a module convention, not a GM Core rule, because GM Core gives hazards no counteract rank. The counteract DC is the High column of Table 2-13.
+- Published shape: the actor carries the reaction action and the melee strike only. The routine text lives in details.routine; the module writes no synthetic Routine item. Stealth details is the proficiency in a paragraph, for example <p>(trained)</p>, like the published hazards.
 
 ## Validation policy (fail closed)
 
 - Missing keys, wrong types, an invalid rarity, a missing reaction, or a complex hazard without a routine or with a routine whose actions are not 1 to 3: the existing single retry runs, then the call throws AIRequestError with the hazard detail.
-- Prose (name, description, reset, reaction and routine text, nested strike and save text): any digit, square or curly bracket, @ command or control character is rejected through the same retry. Numbers belong in the tables, not in prose.
-- Optional values: unoffered traits, skills, damage types or scale words, a dispel rank outside 1 to 10, a malformed strike or save, unknown keys, and a routine on a simple hazard are dropped with console.warn. A number in a scale slot is an unoffered value and is dropped. No value is guessed.
+- Prose (name, description, reset, reaction and routine text, nested strike and save text): one policy for both layers, hazardProseProblem in hazard-builder.mjs, applied by the retry gate in ai.mjs and again by normalizeHazardConcept. Rejected: enricher tokens, @ commands, square or curly brackets, control characters, dice notation, an explicit DC or AC, a signed modifier (such as +14 or -2), and damage, HP or hit points written next to a number (at most one damage type word may sit between). Plain counts and distances ("a 5-foot square", "10 feet", "three darts", "2 rounds") stay allowed. It is a conservative filter, not a rules validator. A rejection goes through the same retry. Game statistics belong in the tables, not in prose.
+- Optional values: unoffered traits, skills, damage types or scale words, a non-boolean dispel (it becomes false), a malformed strike or save, unknown keys, and a routine on a simple hazard are dropped with console.warn. A number in a scale slot is an unoffered value and is dropped. No value is guessed.
 - Caller lists must be non-empty, and level must be an integer from -1 to 24; otherwise a TypeError is thrown before any request.
 - Gate closed: no provider request is made.
 
-Consequence for H2: a dropped ac leaves AC null. hazard-builder must refuse such a concept rather than default it.
+AC convention: attributes.ac.value has no schema initial, so hazard-builder always writes it. When the concept ac is null (the AI said nothing can attack the hazard, or the pick was dropped), the builder writes the LOW column of Table 2-15 and describeHazard reports ac as { value, assumed: true }, so the preview can say the AC was assumed. When the AI chose a scale, assumed is false. The number comes from the table either way, never from the AI.
 
 ## Unverified
 
 - No live Foundry run. Native rendering, Actor.create acceptance and PF2e acceptance of the hazard source are unverified (PLAYBOOK invariant 7).
-- Provider behavior: the tests use a stub provider. Whether a real model keeps prose free of digits, and how often the single retry is needed, is not measured.
-- Table transcription (H1), hazard-builder (H2) and the Dispel counteract DC (not generated here) are other packages.
+- Provider behavior: the tests use a stub provider. Whether a real model keeps prose free of game statistics (dice, DC, AC, modifiers, damage or hit point amounts), and how often the single retry is needed, is not measured.
+- Table transcription (H1) and hazard-builder (H2) are other packages. The Dispel Magic counteract rank and DC are filled by the builder, never by the AI.
 
 ## Ledger row to add later
 
 When H3b wires the mode, add an experimental hazard row to the acceptance ledger: AI concept, builder and actor create on Foundry 14 with PF2e 8.5. Status: OPEN, no native evidence. This package does not add that row.
 
-Test: tests/ai.hazardConcept.test.mjs.
+Tests: tests/ai.hazardConcept.test.mjs (the AI layer) and tests/hazard-builder.test.mjs (the builder layer and the shared prose policy). The identity-hint assertion for class paths is in tests/ai.pc-skills.test.mjs.
