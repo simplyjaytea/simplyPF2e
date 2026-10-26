@@ -839,12 +839,15 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
  * @param {"scroll"|"wand"} args.kind
  * @param {{id: string, name: string, rank: number, traits?: string[], ref?: object}[]} args.candidates issued spell candidates
  * @param {number} [args.count=6] most picks to keep
+ * @param {number} [args.maxRank] highest rank the item level allows; the kind ceiling (scroll 10, wand 9) applies when omitted
  * @returns {Promise<{picks: {spellId: string, name: string, rank: number, kind: string, candidate: object}[], usage: object|null}>}
  */
-export async function selectSpellConsumables(brief, { level, kind, candidates = [], count = 6, signal, onProgress } = {}) {
+export async function selectSpellConsumables(brief, { level, kind, candidates = [], count = 6, maxRank = null, signal, onProgress } = {}) {
   const offered = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.id);
   if (!["scroll", "wand"].includes(kind)) throw new TypeError(`Unknown spell consumable kind: ${String(kind)}`);
   const maximum = Number.isInteger(count) && count > 0 ? count : 6;
+  const kindCeiling = kind === "wand" ? 9 : 10;
+  const ceiling = Number.isInteger(maxRank) && maxRank >= 1 ? Math.min(maxRank, kindCeiling) : kindCeiling;
   // Nothing to choose from: no provider request, and no picks.
   if (!offered.length) return { picks: [], usage: null };
 
@@ -855,11 +858,12 @@ export async function selectSpellConsumables(brief, { level, kind, candidates = 
 
   const system = `You are choosing spells for a Pathfinder 2e ${kind} that a GM is forging. Each pick is one ${kind} of a spell from the list, cast at a rank. Choose ONLY spell IDs from the provided list. Respond with a single JSON object and nothing else:
 { "picks": [ { "spellId": string, "rank": integer, "kind": "${kind}" } ] }
-Return at most ${maximum} picks. "rank" is a whole number at or above the base rank of that spell. Do not emit any prices, item levels, DCs, damage, or other numbers beyond the rank: the module supplies every other value. Never write code. Return an empty "picks" array when nothing in the list fits the brief.`;
+Return at most ${maximum} picks. "rank" is a whole number from the base rank of that spell up to ${ceiling}. Do not emit any prices, item levels, DCs, damage, or other numbers beyond the rank: the module supplies every other value. Never write code. Return an empty "picks" array when nothing in the list fits the brief.`;
 
   const user = [
     `Item kind: ${kind}`,
     `Item level: ${level}`,
+    `Highest rank allowed: ${ceiling}`,
     `GM brief: ${String(brief ?? "")}`,
     "",
     "Available spells (ID | name | base rank | traits):",

@@ -95,6 +95,11 @@ assert.equal(scroll.system.level.value, 1, "level comes from the template");
 assert.equal(scroll.system.bulk.value, 0.1);
 assert.deepEqual(scroll.system.rules, [], "no Rule Elements (invariant 2)");
 assert.equal(scroll.system.traits.rarity, "common", "rarity is the spell's rarity");
+const uncommonScroll = buildSpellConsumable({
+  kind: "scroll", rank: 1, templateData: SCROLL_1,
+  spellData: withSource({ ...HEAL, system: { ...HEAL.system, traits: { ...HEAL.system.traits, rarity: "uncommon" } } }, HEAL_UUID)
+});
+assert.equal(uncommonScroll.system.traits.rarity, "uncommon", "an uncommon spell makes an uncommon scroll on the common template");
 // Native union, sorted. "magical" stays: the only magic-tradition words are the spell's traditions
 // (system.traits.traditions), which the native check does not read. The published Wand of the Spider
 // keeps "magical" while its embedded Web lists arcane and primal under system.traits.traditions.
@@ -114,6 +119,15 @@ assert.notEqual(
   buildSpellConsumable({ kind: "scroll", rank: 1, templateData: SCROLL_1, spellData: withSource(HEAL, HEAL_UUID) }).system.spell._id,
   scroll.system.spell._id, "every build draws a fresh embedded _id"
 );
+
+// The link label is enricher text: HTML metacharacters are escaped and braces become entities,
+// so a spell name cannot end the label early or inject markup.
+const escapedLink = buildSpellConsumable({
+  kind: "scroll", rank: 1, templateData: SCROLL_1,
+  spellData: withSource({ ...HEAL, name: "Fire & <Ice> {Bolt}" }, HEAL_UUID)
+});
+assert.ok(escapedLink.system.description.value.startsWith(`<p>@UUID[${HEAL_UUID}]{Fire &amp; &lt;Ice&gt; &#123;Bolt&#125;}</p><hr>`),
+  "the link label escapes HTML and braces");
 
 // Without a source UUID the native code appends the spell text instead of a link (escaped on serialization).
 const unsourced = buildSpellConsumable({
@@ -274,4 +288,13 @@ const focusConcept = {
 };
 const [focusLoot] = await resolveLoot(focusConcept);
 assert.equal(focusLoot.entry, null, "NPC loot never resolves a focus spell to a scroll");
+// Review P3-8: a configured equipment set without the pinned template pack leaves the scroll unresolved,
+// so the preview fails closed instead of failing at Create.
+game.packs.set("test.equipment-only", pack([], []));
+settingsStub.get = () => ({ equipment: ["test.equipment-only"] });
+const [unpinned] = await resolveLoot({ level: 1, loot: [healRequest] });
+assert.equal(unpinned.entry, null, "without the pinned template pack the scroll stays unresolved");
+assert.equal(unpinned.scroll.rank, 1);
+settingsStub.get = () => ({});
+game.packs.delete("test.equipment-only");
 console.log("spell-consumables.test.mjs: template table, rank rules, scroll and wand field map, and loot migration passed");

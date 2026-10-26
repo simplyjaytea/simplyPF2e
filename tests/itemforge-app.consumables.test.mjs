@@ -1,74 +1,83 @@
-// Exercise the production Item Forge scroll and wand path with stubbed compendium,
-// AI and spell-consumable modules. Proves that generation writes nothing, that
-// previews carry the pinned template level and price, that a rank-problem pick
-// is reported and skipped, and that Create calls Item.create once with the plan.
+// Exercise the production Item Forge scroll and wand path. The spell-consumable builder,
+// the rank rules and toItemData are the real modules; the AI call, the candidate lookups,
+// fromUuid and Item.create are stubbed. Proves: a real pinned template that arrives as raw
+// toObject() data (no compendium source, the review P1) builds through toItemData; a pick
+// whose build throws is dropped with a DroppedPick warning while the others build; the Forge
+// level caps the rank; a level too low for any rank is refused; a repeated pick is planned once;
+// generation writes nothing and Create writes once.
 // Run: node tests/itemforge-app.consumables.test.mjs
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import vm from "node:vm";
+import * as consumables from "../scripts/spell-consumables.mjs";
+import { priceToGp, toItemData } from "../scripts/compendium.mjs";
 
 if (!vm.SourceTextModule) {
   const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
   process.exit(run.status ?? 1);
 }
-const source = await readFile(new URL("../scripts/itemforge-app.mjs", import.meta.url), "utf8");
-const notices = [];
-const warnings = [];
-let createCalls = 0;
-let createdWith = null;
-let forgeKind = "scroll";
-let forgeRarity = "common";
-let candidatePool = null;
+const source = readFileSync(new URL("../scripts/itemforge-app.mjs", import.meta.url), "utf8");
+const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/consumables/${name}`, import.meta.url), "utf8"));
+const plain = (value) => JSON.parse(JSON.stringify(value));
+
+const RANK_1_SCROLL = fixture("scroll-of-1st-rank-spell.json");
+const RANK_4_WAND = fixture("magic-wand-4th-rank-spell.json");
+const HEAL = fixture("heal.json");
+const WEB = fixture("wand-of-the-spider-4th-rank-spell.json").system.spell;
+const { SPELL_CONSUMABLE_TEMPLATES } = consumables;
+const SCROLL_1 = SPELL_CONSUMABLE_TEMPLATES.scroll[1];
+const SCROLL_2 = SPELL_CONSUMABLE_TEMPLATES.scroll[2];
+const WAND_4 = SPELL_CONSUMABLE_TEMPLATES.wand[4];
+const FIREBALL = { ...plain(HEAL), _id: "fireballStub00001", name: "Fireball", system: { ...plain(HEAL.system), level: { value: 3 } } };
+const spellUuid = (spell) => `Compendium.pf2e.spells-srd.Item.${spell._id}`;
+
+// Pinned template documents. toObject() is the raw source with no compendium source; toItemData()
+// must supply it. The rank 2 template carries a Rule Element, so its build throws after the source check.
+const brokenRank2 = { ...plain(RANK_1_SCROLL), _id: SCROLL_2.split(".").pop(), system: { ...plain(RANK_1_SCROLL.system), level: { value: 3 }, rules: [{ key: "Note" }] } };
+const templates = new Map([
+  [SCROLL_1, { uuid: SCROLL_1, toObject: () => plain(RANK_1_SCROLL) }],
+  [SCROLL_2, { uuid: SCROLL_2, toObject: () => plain(brokenRank2) }],
+  [WAND_4, { uuid: WAND_4, toObject: () => plain(RANK_4_WAND) }]
+]);
+const fromUuidCalls = [];
+async function fromUuid(uuid) {
+  fromUuidCalls.push(uuid);
+  return templates.get(uuid) ?? null;
+}
+
+const spellDocs = new Map([
+  ["c-heal", { name: HEAL.name, uuid: spellUuid(HEAL), source: HEAL }],
+  ["c-fire", { name: FIREBALL.name, uuid: spellUuid(FIREBALL), source: FIREBALL }],
+  ["c-web", { name: WEB.name, uuid: spellUuid(WEB), source: WEB }]
+]);
+async function getCandidateDocument(candidate) {
+  const spell = spellDocs.get(candidate?.id);
+  if (!spell) return null;
+  return { name: spell.name, uuid: spell.uuid, toObject: () => plain(spell.source) };
+}
+
+// Candidates as a common plan would see them. The real query drops focus, cantrip and rarer spells;
+// compendium.scrollCandidates.test.mjs covers that filter.
+const POOL = [
+  { id: "c-heal", name: HEAL.name, rank: HEAL.system.level.value, traits: [], rarity: "common" },
+  { id: "c-fire", name: FIREBALL.name, rank: 3, traits: [], rarity: "common" },
+  { id: "c-web", name: WEB.name, rank: WEB.system.level.value, traits: [], rarity: "common" }
+];
+let candidatePool = POOL;
+const candidateCalls = [];
+async function getScrollSpellCandidates(maxRank, keywords, options) {
+  candidateCalls.push({ maxRank, keywords, options });
+  return candidatePool;
+}
 let picksForCall = [];
 const aiCalls = [];
-const candidateCalls = [];
-
-// Values built inside the vm realm differ in prototype; compare plain data.
-const plain = (value) => JSON.parse(JSON.stringify(value));
-const spell = (id, name, rank, extra = {}) => ({ id, name, rank, traits: [], rarity: "common", ref: { packId: "pf2e.spells-srd", _id: id }, ...extra });
-const fullPool = [
-  spell("c-fire", "Fireball", 3, { traits: ["fire"] }),
-  spell("c-heal", "Heal", 1, { traits: ["healing"] }),
-  spell("c-focus", "Healing Font", 1, { traits: ["focus", "healing"] }),
-  spell("c-rare", "Ancient Ward", 2, { rarity: "rare" }),
-  spell("c-ten", "Wish", 10)
-];
-
-const templateData = (kind, rank) => ({
-  system: { level: { value: 2 * rank - 1 }, price: { value: { gp: 10 * rank } } }
-});
-async function fromUuid(uuid) {
-  const match = /Item\.(scroll|wand)-(\d+)$/.exec(uuid);
-  if (!match) return null;
-  const rank = Number(match[2]);
-  return { toObject: () => templateData(match[1], rank) };
-}
-const spellConsumableTemplateUuid = (kind, rank) => {
-  if (rank < 1 || rank > (kind === "wand" ? 9 : 10)) return null;
-  return "Compendium.pf2e.equipment-srd.Item." + kind + "-" + rank;
-};
-const spellConsumableRankProblem = (spellData, kind, rank) => (rank < spellData.system.level.value ? "rank below base rank" : null);
-const spellConsumableName = (kind, name, rank) => (kind === "wand" ? "Wand" : "Scroll") + " of " + name + " (Rank " + rank + ")";
-const buildSpellConsumable = ({ kind, rank, templateData: template, spellData }) => ({
-  name: spellConsumableName(kind, spellData.name, rank),
-  type: "consumable",
-  system: { category: kind, level: template.system.level, price: template.system.price, spell: spellData }
-});
-async function getScrollSpellCandidates(maxRank, keywords) {
-  candidateCalls.push({ maxRank, keywords });
-  return candidatePool ?? fullPool;
-}
-async function getCandidateDocument(candidate) {
-  const found = fullPool.find((entry) => entry.id === candidate?.id);
-  if (!found) return null;
-  return { name: found.name, toObject: () => ({ name: found.name, system: { level: { value: found.rank }, traits: { value: found.traits, rarity: found.rarity } } }) };
-}
 async function selectSpellConsumables(brief, options) {
   aiCalls.push({ brief, options });
   return { picks: picksForCall, usage: { prompt: 5, completion: 5, total: 10, estimated: false } };
 }
-
+// A pick as the real selectSpellConsumables returns it.
+const pick = (id, rank, kind) => ({ spellId: id, name: spellDocs.get(id).name, rank, kind, candidate: POOL.find((entry) => entry.id === id) });
 class MockSpfApp {
   _tokenUsage = [];
   _progress = null;
@@ -90,14 +99,21 @@ const mocks = {
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
   AI_TASK: { MAGIC_ITEM_CONCEPT: "magic", RUNED_ITEM_CONCEPT: "runed", SPELL_CONSUMABLE_CONCEPT: "consumable" },
   taskMaxTokens: () => 100,
-  RUNED_ITEM_KINDS: new Set(["weapon", "armor"]), MIN_ITEM_LEVEL: 0, MAX_ITEM_LEVEL: 20,
+  RUNED_ITEM_KINDS: new Set(["weapon", "armor"]), MIN_ITEM_LEVEL: 1, MAX_ITEM_LEVEL: 24,
   getProviderRequestConfig: () => ({ provider: {}, connections: [] }),
   getProviderAuthWarningKey: () => null,
-  getScrollSpellCandidates, getCandidateDocument, selectSpellConsumables,
-  priceToGp: (value) => Number(value?.gp) || 0,
-  RARITY_RANK: { common: 0, uncommon: 1, rare: 2, unique: 3 },
-  spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName
+  getScrollSpellCandidates, getCandidateDocument, selectSpellConsumables, toItemData, priceToGp,
+  spellConsumableTemplateUuid: consumables.spellConsumableTemplateUuid,
+  spellConsumableRankProblem: consumables.spellConsumableRankProblem,
+  buildSpellConsumable: consumables.buildSpellConsumable,
+  spellConsumableName: consumables.spellConsumableName
 };
+let createCalls = 0;
+let createdWith = null;
+let forgeKind = "scroll";
+let forgeLevel = "5";
+const notices = [];
+const warnings = [];
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
   game: { i18n: { localize: (key) => key, format: (key, data) => key + ":" + JSON.stringify(data ?? {}) } },
@@ -124,80 +140,98 @@ const actions = App.DEFAULT_OPTIONS.actions;
 function forgeApp() {
   const instance = new App();
   const controls = {
-    prompt: { value: "fire and healing scrolls" }, level: { value: "5" },
-    rarity: { value: forgeRarity }, kind: { value: forgeKind }
+    prompt: { value: "fire and healing scrolls" }, level: { value: forgeLevel },
+    rarity: { value: "common" }, kind: { value: forgeKind }
   };
   instance.element = { querySelector: (selector) => controls[selector.match(/name="(\w+)"/)?.[1]] ?? null };
   return instance;
 }
+// 1. A raw pinned template (no compendium source in toObject) is refused by the builder on its own,
+// which is what the review P1 found. The Forge loads it through toItemData, so it builds below.
+assert.equal(plain(templates.get(SCROLL_1).toObject())._stats, undefined, "the raw template carries no compendium source");
+assert.throws(() => consumables.buildSpellConsumable({ kind: "scroll", rank: 1, templateData: templates.get(SCROLL_1).toObject(), spellData: HEAL }),
+  /not the pinned rank template/, "the raw template is refused");
 
-// 1. A scroll plan offers only real, eligible spells and writes nothing until Create.
-picksForCall = [
-  { spellId: "c-fire", name: "Fireball", rank: 4, kind: "scroll", candidate: fullPool[0] },
-  { spellId: "c-heal", name: "Heal", rank: 0, kind: "scroll", candidate: fullPool[1] },
-  { spellId: "c-heal", name: "Heal", rank: 2, kind: "scroll", candidate: fullPool[1] }
-];
+// 2. A scroll plan at level 5 (rank cap 3). Heal at rank 1 builds from the real template. The broken
+// rank 2 template is dropped with its build error, rank 4 is above the cap, and the repeated Heal
+// is planned once. Generation writes nothing.
+picksForCall = [pick("c-heal", 1, "scroll"), pick("c-heal", 2, "scroll"), pick("c-fire", 4, "scroll"), pick("c-heal", 1, "scroll")];
 const scroll = forgeApp();
 await actions.generate.call(scroll);
 assert.equal(createCalls, 0, "generation writes nothing");
-assert.equal(candidateCalls.at(-1).maxRank, 10, "scrolls may use spell ranks up to 10");
-assert.deepEqual(plain(aiCalls.at(-1).options.candidates.map((candidate) => candidate.id)), ["c-fire", "c-heal", "c-ten"],
-  "focus spells and spells rarer than the chosen rarity are never offered");
+assert.equal(candidateCalls.at(-1).maxRank, 3, "level 5 caps the scroll rank at 3");
+assert.deepEqual(plain(candidateCalls.at(-1).options), { maxRarity: "common" }, "the rarity filter goes to the candidate query, before its cut");
+assert.equal(aiCalls.at(-1).options.maxRank, 3, "the cap is passed to the AI call");
 assert.equal(aiCalls.at(-1).options.kind, "scroll");
 assert.equal(aiCalls.at(-1).options.count, 6, "the plan asks for at most six consumables");
 let prepared = await scroll._prepareContext();
-assert.equal(prepared.preview.consumable, true);
 assert.deepEqual(plain(prepared.preview.items.map(({ name, rank, level, price }) => ({ name, rank, level, price }))), [
-  { name: "Scroll of Fireball (Rank 4)", rank: 4, level: 7, price: "40 gp" },
-  { name: "Scroll of Heal (Rank 2)", rank: 2, level: 3, price: "20 gp" }
-], "each row carries the built name and the pinned template level and price");
-assert.equal(prepared.preview.warnings.length, 1, "the rank-problem pick is reported, not built");
-assert.ok(prepared.preview.warnings[0].includes("DroppedPick"));
+  { name: "Scroll of Heal (Rank 1)", rank: 1, level: 1, price: "4 gp" }
+], "the built row carries the pinned template level and price");
+assert.equal(prepared.preview.warnings.length, 2, "the broken template and the rank above the cap are each reported once");
+assert.ok(prepared.preview.warnings[0].includes("DroppedPick") && prepared.preview.warnings[0].includes("Rule Elements"), "a build that throws is one dropped pick");
+assert.ok(prepared.preview.warnings[1].includes("RankAboveLevel"), "a rank above the level cap is dropped with that reason");
 assert.equal(prepared.hasPreview, true);
 
-// Create writes the planned sources in one call, in plan order, then consumes the draft.
+// Create writes the planned source once, with the pinned template and a link to the real spell.
 await actions.createItem.call(scroll);
 assert.equal(createCalls, 1, "Create writes exactly once");
-assert.deepEqual(plain(createdWith.map((source) => source.name)), ["Scroll of Fireball (Rank 4)", "Scroll of Heal (Rank 2)"]);
+assert.deepEqual(plain(createdWith.map((source) => source.name)), ["Scroll of Heal (Rank 1)"]);
+assert.equal(createdWith[0]._stats.compendiumSource, SCROLL_1, "the scroll records its pinned template");
+assert.ok(createdWith[0].system.description.value.startsWith(`<p>@UUID[${spellUuid(HEAL)}]{Heal}</p><hr>`), "the description links the real spell by UUID");
+assert.deepEqual(plain(createdWith[0].system.rules), [], "no Rule Elements are created");
 prepared = await scroll._prepareContext();
 assert.equal(prepared.preview, null, "a committed plan is consumed");
-assert.deepEqual(plain(prepared.created.names), ["Scroll of Fireball (Rank 4)", "Scroll of Heal (Rank 2)"], "the completion card names every created item");
+assert.deepEqual(plain(prepared.created.names), ["Scroll of Heal (Rank 1)"], "the completion card names the created item");
 await actions.createItem.call(scroll);
 assert.equal(createCalls, 1, "a second Create does not write again");
 
-// 2. A wand plan stops at rank 9 and refuses a rank-10 pick (no pinned template).
+// 3. A wand plan at level 9 (rank cap 4). Web at rank 4 builds from the pinned wand template.
+// Rank 10 is refused as a dropped pick before any template is loaded.
 forgeKind = "wand";
-picksForCall = [
-  { spellId: "c-ten", name: "Wish", rank: 10, kind: "wand", candidate: fullPool[4] },
-  { spellId: "c-fire", name: "Fireball", rank: 9, kind: "wand", candidate: fullPool[0] }
-];
+forgeLevel = "9";
+picksForCall = [pick("c-web", 4, "wand"), pick("c-web", 10, "wand")];
+fromUuidCalls.length = 0;
 const wand = forgeApp();
 await actions.generate.call(wand);
 assert.equal(createCalls, 1, "generating a wand plan writes nothing");
-assert.equal(candidateCalls.at(-1).maxRank, 9, "wands stop at spell rank 9");
+assert.equal(candidateCalls.at(-1).maxRank, 4, "level 9 caps the wand rank at 4");
 prepared = await wand._prepareContext();
-assert.deepEqual(plain(prepared.preview.items.map((item) => item.name)), ["Wand of Fireball (Rank 9)"]);
-assert.ok(prepared.preview.warnings.some((text) => text.includes("TemplateMissing")), "a rank-10 wand has no template and is refused");
+assert.deepEqual(plain(prepared.preview.items.map(({ name, level, price }) => ({ name, level, price }))), [
+  { name: "Wand of Web (Rank 4)", level: 9, price: "700 gp" }
+]);
+assert.equal(prepared.preview.warnings.length, 1, "only the rank 10 pick is reported");
+assert.ok(prepared.preview.warnings[0].includes("DroppedPick"), "rank 10 is a dropped pick, not a missing template");
+assert.deepEqual(fromUuidCalls, [WAND_4], "only the rank 4 template is loaded");
 
-// 3. Nothing buildable is an error, never an empty completion card.
+// 4. A wand at item level 2 has no rank that fits, so it is refused before any AI request.
+forgeLevel = "2";
+const callsBeforeLow = aiCalls.length;
+const lowWand = forgeApp();
+await actions.generate.call(lowWand);
+assert.ok((await lowWand._prepareContext()).error.includes("LevelTooLow"), "a wand below item level 3 is refused");
+assert.equal(aiCalls.length, callsBeforeLow, "no provider request when no rank fits");
+
+// 5. Nothing buildable is an error, never an empty completion card.
 forgeKind = "scroll";
-picksForCall = [{ spellId: "c-heal", name: "Heal", rank: 0, kind: "scroll", candidate: fullPool[1] }];
+forgeLevel = "5";
+picksForCall = [pick("c-heal", 0, "scroll")];
 const unbuildable = forgeApp();
 await actions.generate.call(unbuildable);
 prepared = await unbuildable._prepareContext();
 assert.equal(prepared.preview, null);
 assert.ok(prepared.error.includes("NoPicks"), "a plan with nothing buildable reports an error");
 
-// 4. No spell candidates means no provider request at all.
+// 6. No spell candidates means no provider request at all.
 candidatePool = [];
 const barren = forgeApp();
-const callsBefore = aiCalls.length;
+const callsBeforeBarren = aiCalls.length;
 await actions.generate.call(barren);
 assert.ok((await barren._prepareContext()).error.includes("NoCandidates"));
-assert.equal(aiCalls.length, callsBefore, "no provider request without spell candidates");
-candidatePool = null;
+assert.equal(aiCalls.length, callsBeforeBarren, "no provider request without spell candidates");
+candidatePool = POOL;
 
-// 5. The kind tiles select scroll or wand, and unknown kinds keep the selection.
+// 7. The kind tiles select scroll or wand, and unknown kinds keep the selection.
 const picker = forgeApp();
 await actions.selectKind.call(picker, null, { dataset: { kind: "wand" } });
 prepared = await picker._prepareContext();
@@ -207,4 +241,4 @@ assert.equal(prepared.promptLabel, "SIMPLYPF2E.ItemForge.Consumables.PromptLabel
 await actions.selectKind.call(picker, null, { dataset: { kind: "potion" } });
 assert.equal((await picker._prepareContext()).input.kind, "wand", "unknown kinds keep the selection");
 
-console.log("itemforge-app.consumables.test.mjs: scroll and wand plans, rank drops, deferred write and commit passed");
+console.log("itemforge-app.consumables.test.mjs: real template build, per-pick drops, level cap, wand and plan refusals, deferred write and commit passed");

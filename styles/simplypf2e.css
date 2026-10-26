@@ -1773,3 +1773,20 @@
     white-space: normal;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Item Forge scroll and wand plan (spell consumables)
+   -------------------------------------------------------------------------- */
+.simplypf2e .spf-consumables {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--spf-space-xs) 0;
+  font-size: var(--spf-text-sm);
+}
+
+.simplypf2e .spf-consumables th,
+.simplypf2e .spf-consumables td {
+  padding: 0.2rem 0.4rem;
+  text-align: left;
+  border-bottom: 1px solid var(--spf-brand-accent);
+}
