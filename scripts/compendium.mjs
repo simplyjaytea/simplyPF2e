@@ -17,7 +17,8 @@ export const CATEGORIES = [
 export const DEFAULT_PACKS = {
   // PF2e 8 removed the `-srd` suffix from the family glossary collection.
   // Keep both identifiers so the supported PF2e 6+ range selects whichever
-  // version its installed system exposes.
+  // version its installed system exposes. Ids named in LEGACY_PACK_IDS (below)
+  // are legacy aliases: the drift check warns, not fails, when upstream drops one.
   abilities: [
     "pf2e.bestiary-ability-glossary-srd",
     "pf2e.bestiary-family-ability-glossary",
@@ -37,10 +38,16 @@ export const DEFAULT_PACKS = {
   bestiaryActors: ["pf2e.pathfinder-monster-core", "pf2e.pathfinder-bestiary"]
 };
 
+// Ids kept in DEFAULT_PACKS only for older worlds (PF2e 6 and 7). PF2e 8 dropped them, so
+// tools/check-pf2e-drift.mjs reports a missing legacy id as a WARN and any other missing id as a FAIL.
+export const LEGACY_PACK_IDS = Object.freeze(new Set([
+  "pf2e.bestiary-family-ability-glossary-srd"
+]));
+
 export const EQUIPMENT_TYPES = new Set([
   "weapon", "armor", "equipment", "consumable", "ammo", "treasure", "backpack", "shield", "kit"
 ]);
-export const ABILITY_CANDIDATE_LIMIT = 96;
+const ABILITY_CANDIDATE_LIMIT = 96;
 
 /**
  * Convert a PF2e price-value denomination object ({pp, gp, sp, cp}, any
@@ -284,7 +291,7 @@ export async function getDocument(entry) {
  * Stable, opaque identifier for a candidate offered to the model. The model
  * never needs a pack name or document id; those stay in this local reference.
  */
-export function candidateId(entry) {
+function candidateId(entry) {
   const packId = String(entry?.packId ?? "");
   const documentId = String(entry?._id ?? "");
   return packId && documentId ? `c-${btoa(`${packId}\u0000${documentId}`).replaceAll("=", "")}` : null;
@@ -324,13 +331,13 @@ export async function getCandidateDocument(candidate, packIds = null) {
  * enough that installing another content pack cannot silently consume the
  * model's whole context window. */
 export const SPELL_CANDIDATE_LIMIT = 96;
-export const SPELL_CANDIDATES_PER_RANK = 12;
+const SPELL_CANDIDATES_PER_RANK = 12;
 export const SPELL_CANDIDATE_FLOOR = 40;
 export const EQUIPMENT_CANDIDATE_LIMIT = 120;
 export const LOOT_CANDIDATE_LIMIT = 120;
 export const EQUIPMENT_CANDIDATE_FLOOR = 48;
 export const FEAT_CANDIDATE_LIMIT = 16;
-export const FEAT_CANDIDATES_PER_LEVEL = 8;
+const FEAT_CANDIDATES_PER_LEVEL = 8;
 
 const normalizedKeywords = (keywords) => [...new Set(
   (Array.isArray(keywords) ? keywords : [])
@@ -551,11 +558,20 @@ export async function getSpellCandidates(tradition, maxRank, keywords = [], plan
 }
 
 /**
- * Bounded exact candidates for spell scrolls. Scroll legality is independent
- * of a creature's casting tradition, but it still excludes cantrips/rituals
- * and carries the published base rank for local validation.
+ * True when a spell rarity is no rarer than max.
  */
-export async function getScrollSpellCandidates(maxRank = 10, keywords = []) {
+function rarityAtMost(rarity, max) {
+  return Object.hasOwn(RARITY_RANK, rarity) && RARITY_RANK[rarity] <= (RARITY_RANK[max] ?? 0);
+}
+
+/**
+ * Bounded exact candidates for spell scrolls and wands. Scroll legality is
+ * independent of a creature casting tradition, but it excludes cantrips, focus
+ * spells and rituals (spell-consumables.mjs refuses the same), and it carries
+ * the published base rank for local validation. maxRarity drops rarer spells
+ * before the bounded cut, so the cap is never spent on spells a plan cannot use.
+ */
+export async function getScrollSpellCandidates(maxRank = 10, keywords = [], { maxRarity = null } = {}) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("spells")) {
@@ -564,9 +580,11 @@ export async function getScrollSpellCandidates(maxRank = 10, keywords = []) {
     for (const entry of entries) {
       if (entry.type !== "spell" || entry.system?.ritual) continue;
       const traits = entry.system?.traits?.value ?? [];
-      if (traits.includes("cantrip")) continue;
+      if (traits.includes("cantrip") || traits.includes("focus")) continue;
       const rank = entry.system?.level?.value ?? 1;
       if (rank > maxRank || seen.has(entry.normalized)) continue;
+      const rarity = entry.system?.traits?.rarity ?? "common";
+      if (maxRarity && !rarityAtMost(rarity, maxRarity)) continue;
       seen.add(entry.normalized);
       candidates.push(candidateRecord(entry, { name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity }));
     }

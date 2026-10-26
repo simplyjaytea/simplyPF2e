@@ -135,4 +135,151 @@ async function expectCode(promise, code) {
   assert.equal(pending.pending[0].field, "heritage");
 }
 
+// Class paths of a multi-bridge class (Wizard): one edit per bridge, offered only
+// from that bridge's candidates, kept in concept.classPaths / requiredIdentity.classPaths.
+{
+  const path = (id, name, bridge) => candidate(id, name, { bridge });
+  const wizardPaths = [
+    path("school-a", "School of Mentalism", "Arcane School"), path("school-b", "School of Battle Magic", "Arcane School"),
+    path("thesis-a", "Staff Nexus", "Arcane Thesis"), path("thesis-b", "Spell Blending", "Arcane Thesis")
+  ];
+  const wizardServices = { ...services, classPaths: async () => wizardPaths };
+  const SCHOOL = "Arcane School";
+  const THESIS = "Arcane Thesis";
+  const edit = (plan, bridge, key) => applyPCEdit(plan, { field: "classPath", bridge, key }, { services: wizardServices, catalogs });
+  const plan = basePlan();
+
+  const withSchool = await edit(plan, SCHOOL, "test.pack:school-a");
+  assert.deepEqual(withSchool.changed, ["classPath.Arcane School"]);
+  assert.deepEqual(withSchool.plan.concept.classPaths, { [SCHOOL]: "School of Mentalism" });
+  assert.deepEqual(withSchool.plan.concept.classPathCandidates, { [SCHOOL]: ref("school-a") });
+  assert.equal(withSchool.plan.concept.requiredIdentity.classPaths[SCHOOL].name, "School of Mentalism");
+  assert.equal(Object.hasOwn(withSchool.plan.concept, "classPath"), false, "the single alias is not written for a bridge edit");
+  assert.equal(plan.concept.classPaths, undefined, "input plan must not mutate");
+  assert.equal(plan.concept.requiredIdentity.classPaths, undefined);
+
+  const both = await edit(withSchool.plan, THESIS, "test.pack:thesis-b");
+  assert.deepEqual(both.plan.concept.classPaths, { [SCHOOL]: "School of Mentalism", [THESIS]: "Spell Blending" }, "editing one bridge keeps the other");
+  assert.deepEqual(Object.keys(both.plan.concept.requiredIdentity.classPaths), [SCHOOL, THESIS]);
+  assert.equal(withSchool.plan.concept.classPaths[THESIS], undefined, "the earlier plan is not mutated");
+  assert.equal(validatePCEditCompletion(both.plan).errors.length, 0, "the edited identity satisfies the required identity");
+
+  const swapped = await edit(both.plan, SCHOOL, "test.pack:school-b");
+  assert.equal(swapped.plan.concept.classPaths[SCHOOL], "School of Battle Magic");
+  assert.equal(swapped.plan.concept.classPaths[THESIS], "Spell Blending");
+  const unchanged = await edit(both.plan, SCHOOL, "test.pack:school-a");
+  assert.deepEqual(unchanged.changed, []);
+
+  const cleared = await edit(both.plan, SCHOOL, null);
+  assert.deepEqual(cleared.plan.concept.classPaths, { [THESIS]: "Spell Blending" }, "clearing a bridge removes only that bridge");
+  assert.deepEqual(Object.keys(cleared.plan.concept.requiredIdentity.classPaths), [THESIS]);
+  const none = await edit(cleared.plan, THESIS, null);
+  assert.equal(none.plan.concept.classPaths, undefined);
+  assert.equal(none.plan.concept.classPathCandidates, undefined);
+  assert.equal(none.plan.concept.requiredIdentity.classPaths, undefined, "an empty requirement map is dropped");
+
+  // A path is never taken from another bridge, and the bridge must be named.
+  await expectCode(edit(plan, SCHOOL, "test.pack:thesis-a"), PC_EDIT_CODES.INVALID);
+  await expectCode(edit(plan, THESIS, "test.pack:school-a"), PC_EDIT_CODES.INVALID);
+  await expectCode(edit(plan, "Arcane Major", "test.pack:school-a"), PC_EDIT_CODES.INVALID);
+  await expectCode(applyPCEdit(plan, { field: "classPath", key: "test.pack:school-a" }, { services: wizardServices, catalogs }), PC_EDIT_CODES.INVALID);
+  await expectCode(applyPCEdit(plan, { field: "heritage", bridge: SCHOOL, key: null }, { services: wizardServices, catalogs }), PC_EDIT_CODES.INVALID);
+  await expectCode(edit(plan, "", "test.pack:school-a"), PC_EDIT_CODES.INVALID);
+
+  // A single-bridge class keeps the unchanged bridge-less edit.
+  const oneBridge = { ...services, classPaths: async () => [path("racket", "Thief", "Rogue's Racket")] };
+  const single = await applyPCEdit(plan, { field: "classPath", key: "test.pack:racket" }, { services: oneBridge, catalogs });
+  assert.equal(single.plan.concept.classPath, "Thief");
+  assert.equal(single.plan.concept.requiredIdentity.classPath.name, "Thief");
+  assert.equal(single.plan.concept.classPaths, undefined);
+
+  // A per-bridge choice supersedes a single alias for the same bridge.
+  const aliased = await applyPCEdit(plan, { field: "classPath", key: "test.pack:thesis-a" }, { services: { ...services, classPaths: async () => [wizardPaths[2]] }, catalogs });
+  const superseded = await edit(aliased.plan, THESIS, "test.pack:thesis-b");
+  assert.equal(superseded.plan.concept.classPath, undefined);
+  assert.equal(superseded.plan.concept.requiredIdentity.classPath, undefined);
+  assert.equal(superseded.plan.concept.classPaths[THESIS], "Spell Blending");
+
+  // Spell-bearing characters defer every identity edit, including a bridge.
+  await expectCode(edit(basePlan({ resolved: { ...basePlan().resolved, spells: [{ entry: ref("x") }] } }), SCHOOL, "test.pack:school-a"), PC_EDIT_CODES.DEFERRED);
+
+  // Changing the class drops every path choice, one invalidation per cleared choice.
+  const classChanged = await applyPCEdit(both.plan, { field: "class", key: "test.pack:rogue" }, { services: wizardServices, catalogs });
+  const concept = classChanged.plan.concept;
+  assert.equal(concept.classPaths, undefined);
+  assert.equal(concept.classPathCandidates, undefined);
+  assert.equal(concept.requiredIdentity.classPaths, undefined);
+  assert.deepEqual(classChanged.invalidated.filter((item) => item.field === "classPath").map((item) => item.bridge), [SCHOOL, THESIS]);
+  assert.equal(both.plan.concept.classPaths[SCHOOL], "School of Mentalism", "the earlier plan is not mutated");
+
+  // Completion notices a concept that drifted from its required bridge choice.
+  const drifted = structuredClone(both.plan);
+  drifted.concept.classPaths[SCHOOL] = "Staff Nexus";
+  assert.ok(validatePCEditCompletion(drifted).errors.some((message) => /Class path/.test(message)));
+}
+
+// A class edit into a spellcasting class is refused until spell editing exists:
+// the character would be a caster with no spells while the plan still read as complete.
+{
+  const { load } = await import("./fixtures/pc-wizard/world.mjs");
+  const wizardJson = await load("wizard");
+  docsById.set("test.pack:wizard", doc("class", "Wizard", wizardJson.system));
+  docsById.set("test.pack:oddcaster", doc("class", "Rogue", { keyAbility: { value: ["dex"] }, spellcasting: 1 }));
+  const casterCatalogs = { ...catalogs, class: [...catalogs.class, classCandidate("wizard", "Wizard")] };
+  const plan = basePlan();
+  await assert.rejects(applyPCEdit(plan, { field: "class", key: "test.pack:wizard" }, { services, catalogs: casterCatalogs }), (error) => {
+    assert.equal(error.code, PC_EDIT_CODES.DEFERRED);
+    assert.equal(error.field, "class");
+    assert.match(error.message, /"Wizard" casts spells; spell editing is deferred, so the class cannot change to a spellcasting class/);
+    return true;
+  }, "the real Wizard class data (spellcasting 1) is refused");
+  assert.equal(plan.concept.class, "Fighter", "the plan is untouched");
+  const odd = { ...casterCatalogs, class: [...casterCatalogs.class, classCandidate("oddcaster", "Rogue")] };
+  await expectCode(applyPCEdit(plan, { field: "class", key: "test.pack:oddcaster" }, { services, catalogs: odd }), PC_EDIT_CODES.DEFERRED);
+  const rogueEdit = await applyPCEdit(plan, { field: "class", key: "test.pack:rogue" }, { services, catalogs: casterCatalogs });
+  assert.equal(rogueEdit.plan.resolved.classDoc.name, "Rogue", "a class without spellcasting still edits");
+}
+
+// A bridge-less clear removes every path choice, in the concept and in the required
+// identity alike (it used to wipe the required map and leave the school and thesis).
+{
+  const path = (id, name, bridge) => candidate(id, name, { bridge });
+  const school = path("school-a", "School of Mentalism", "Arcane School");
+  const thesis = path("thesis-a", "Staff Nexus", "Arcane Thesis");
+  const wizardPlan = () => {
+    const plan = basePlan();
+    Object.assign(plan.concept, {
+      classPath: "Staff Nexus", classPathCandidate: thesis.ref,
+      classPaths: { "Arcane School": "School of Mentalism", "Arcane Thesis": "Staff Nexus" },
+      classPathCandidates: { "Arcane School": school.ref, "Arcane Thesis": thesis.ref },
+      requiredIdentity: { classPath: thesis, classPaths: { "Arcane School": school, "Arcane Thesis": thesis } }
+    });
+    return plan;
+  };
+  const clear = (plan) => applyPCEdit(plan, { field: "classPath", key: null }, { services, catalogs });
+  const assertCleared = (result) => {
+    assert.deepEqual(result.changed, ["classPath"]);
+    for (const field of ["classPath", "classPathCandidate", "classPaths", "classPathCandidates"]) {
+      assert.equal(Object.hasOwn(result.plan.concept, field), false, `concept.${field} is cleared`);
+    }
+    for (const field of ["classPath", "classPaths"]) {
+      assert.equal(Object.hasOwn(result.plan.concept.requiredIdentity, field), false, `requiredIdentity.${field} is cleared`);
+    }
+    assert.deepEqual(validatePCEditCompletion(result.plan).errors, [], "concept and required identity agree");
+  };
+  const input = wizardPlan();
+  assertCleared(await clear(input));
+  assert.equal(input.concept.classPaths["Arcane School"], "School of Mentalism", "the input plan is not mutated");
+  assert.equal(input.concept.requiredIdentity.classPaths["Arcane Thesis"].name, "Staff Nexus");
+
+  // Only per-bridge choices remain (no single alias): the clear still applies.
+  const bridgesOnly = wizardPlan();
+  for (const field of ["classPath", "classPathCandidate"]) delete bridgesOnly.concept[field];
+  delete bridgesOnly.concept.requiredIdentity.classPath;
+  assertCleared(await clear(bridgesOnly));
+
+  // Nothing to clear is still a no-op.
+  assert.deepEqual((await clear(basePlan())).changed, []);
+}
+
 console.log("pc-edit tests passed");

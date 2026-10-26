@@ -80,4 +80,58 @@ assert.deepEqual(pcEditorInvalidatedControls([
 ]), ["feat.3", "classPath"]);
 assert.deepEqual(pcEditorInvalidatedControls(undefined), []);
 
+// Per-bridge class paths (Wizard): one control per bridge, named by the bridge feature.
+assert.deepEqual(pcEditFromControl("classPath.Arcane School", "test.pack:school"), { field: "classPath", bridge: "Arcane School", key: "test.pack:school" });
+assert.deepEqual(pcEditFromControl("classPath.Arcane Thesis", " test.pack:thesis "), { field: "classPath", bridge: "Arcane Thesis", key: "test.pack:thesis" });
+assert.deepEqual(pcEditFromControl("classPath.Arcane School", ""), { field: "classPath", bridge: "Arcane School", key: null },
+  "an empty bridge control clears only that bridge");
+assert.deepEqual(pcEditFromControl("classPath.Rogue's Racket.Variant", "k"), { field: "classPath", bridge: "Rogue's Racket.Variant", key: "k" },
+  "everything after the first dot is the bridge name");
+for (const control of ["classPath.", "classPaths.Arcane School", "classPath .x"]) {
+  assert.throws(() => pcEditFromControl(control, "k"), (error) => error.code === PC_EDIT_CODES.INVALID, control);
+}
+
+const wizardPlan = {
+  ...plan,
+  concept: {
+    ...plan.concept,
+    classPaths: { "Arcane School": "School of Mentalism", "Arcane Thesis": "Staff Nexus" },
+    classPathCandidates: { "Arcane School": { packId: "test.pack", _id: "school" }, "Arcane Thesis": { packId: "test.pack", _id: "thesis" } }
+  }
+};
+const bridged = pcEditorSelections(wizardPlan);
+assert.equal(bridged["classPath.Arcane School"], "test.pack:school");
+assert.equal(bridged["classPath.Arcane Thesis"], "test.pack:thesis");
+assert.equal(bridged.classPath, "test.pack:path", "the single alias keeps its own selection");
+const pendingBridge = pcEditorSelections({ ...wizardPlan, pending: [{ field: "classPath.Arcane Thesis", reason: "re-pick" }] });
+assert.equal(pendingBridge["classPath.Arcane Thesis"], "");
+assert.equal(pendingBridge["classPath.Arcane School"], "test.pack:school", "other bridges keep their selection");
+assert.equal(Object.keys(pcEditorSelections(plan)).some((name) => name.startsWith("classPath.")), false, "a plan without bridge choices adds no bridge controls");
+
+assert.deepEqual(pcEditorInvalidatedControls([
+  { field: "classPath", bridge: "Arcane School", reason: "class changed" },
+  { field: "classPath", reason: "class changed" }
+]), ["classPath.Arcane School", "classPath"]);
+
+// A school required through the single alias is shown as selected in its own
+// Arcane School control: the identity moves a bridge-labelled alias of a
+// multi-bridge class into classPaths, which is where the control reads it.
+{
+  const { resolvePCIdentity, applyPCIdentity } = await import("../scripts/pc-identity.mjs");
+  const candidate = (name, id, extra = {}) => ({ name, ref: { packId: "test.pack", _id: id }, uuid: `Compendium.test.pack.Item.${id}`, ...extra });
+  const wizard = candidate("Wizard", "wizard");
+  const mentalism = candidate("School of Mentalism", "mentalism", { bridge: "Arcane School", classKeys: ["test.pack:wizard"] });
+  const staffNexus = candidate("Staff Nexus", "nexus", { bridge: "Arcane Thesis", classKeys: ["test.pack:wizard"] });
+  const catalogs = { class: [wizard], classPath: [mentalism, staffNexus] };
+  const shown = (concept) => pcEditorSelections({ concept, resolved: { feats: [], equipment: [] }, pending: [] });
+  const identity = resolvePCIdentity({ choices: { class: "test.pack:wizard", classPath: "test.pack:mentalism" }, catalogs });
+  const selections = shown(applyPCIdentity({}, identity));
+  assert.equal(selections["classPath.Arcane School"], "test.pack:mentalism", "the required school is selected in its control");
+  assert.equal(selections["classPath.Arcane Thesis"], undefined, "the other bridge has no selection");
+  assert.equal(selections.classPath, "", "and no stale single-path selection is left behind");
+  // The shape the alias used to leave behind: nothing selected in the bridge control.
+  const unnormalized = shown(applyPCIdentity({}, { class: wizard, classPath: mentalism }));
+  assert.equal(unnormalized["classPath.Arcane School"], undefined);
+}
+
 console.log("pc-editor.test.mjs: ok");

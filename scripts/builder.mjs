@@ -3,6 +3,7 @@ import { getPacksFor, findEntry, getDocument, toItemData, priceToGp, isIssuedCan
 import { slugify, capitalized, esc, toHtml } from "./text.mjs";
 import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
 import { persistedExpectedItems } from "./post-create.mjs";
+import { buildSpellConsumable, spellConsumableTemplateRef } from "./spell-consumables.mjs";
 import {
   resolveNpcAbilityPackages, revalidateNpcAbilityPackages, npcPackageUnarmedStrike,
   registerNpcAbilityExpectations
@@ -568,20 +569,26 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
       let entry = null;
       if (isIssuedCandidate(scrollCandidate, getPacksFor("spells"))) {
         const doc = await getDocument(scrollCandidate);
-        if (doc?.type === "spell" && !(doc.system?.traits?.value ?? []).includes("cantrip") && !doc.system?.ritual) {
+        if (doc?.type === "spell" && !(doc.system?.traits?.value ?? []).includes("cantrip") && !(doc.system?.traits?.value ?? []).includes("focus") && !doc.system?.ritual) {
           entry = scrollCandidate;
         }
       } else if (!exactContent) {
         entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
-          e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !e.system?.ritual
+          e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !(e.system?.traits?.value ?? []).includes("focus") && !e.system?.ritual
         );
       }
       const baseRank = entry?.system?.level?.value ?? 1;
       const rank = Math.min(Math.max(scroll.rank ?? baseRank, baseRank), 10);
       // A scroll's real price lives on the rank template it will be built
       // from at creation (there is no premade scroll item to price).
+      // Without that template the scroll cannot be built, so it stays unresolved
+      // and the preview fails closed instead of failing at Create.
       const templateDoc = await getDocument(await findScrollTemplate(rank));
-      const templateGp = priceToGp(templateDoc?.system?.price?.value);
+      if (!templateDoc) {
+        loot.push({ name, quantity, value, runes: parseRunes(name), entry: null, scroll: { rank }, resolvedValue: value });
+        continue;
+      }
+      const templateGp = priceToGp(templateDoc.system?.price?.value);
       loot.push({
         name, quantity, value, runes: parseRunes(name), entry, scroll: { rank },
         resolvedValue: templateGp > 0 ? templateGp : value
@@ -714,46 +721,41 @@ export function heightenedLevelFor(spellSystemData, assignedRank) {
   return assignedRank;
 }
 
-const RANK_ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
-
-/** Find the blank "Scroll of Nth-rank Spell" template item for a rank. */
+/**
+ * The blank "Scroll of Nth-rank Spell" template for a rank, pinned by UUID
+ * (spell-consumables.mjs, pf2e 8.5.0 config). The configured equipment packs
+ * only guard that the template's pack is enabled; they no longer pick the template.
+ */
 async function findScrollTemplate(rank) {
-  const ordinal = RANK_ORDINALS[rank - 1] ?? "1st";
-  // Remaster naming first, pre-remaster "level" naming as fallback
-  return (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-rank Spell`, (e) => e.type === "consumable"))
-    ?? (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-level Spell`, (e) => e.type === "consumable"));
+  const ref = spellConsumableTemplateRef("scroll", rank);
+  return ref && getPacksFor("equipment").includes(ref.packId) ? ref : null;
 }
 
 /**
- * Assemble a scroll consumable the way the PF2e system does on spell drag:
- * clone the "Scroll of Nth-rank Spell" template and embed the real spell.
+ * Assemble a scroll consumable the way the PF2e system does on spell drag
+ * (spell-consumables.mjs mirrors createConsumableFromSpell): the pinned rank
+ * template plus the real spell, with native traits, rarity and description.
+ * Throws when the spell cannot become a scroll at this rank (cantrip, focus, ritual, rank out of range).
  * @param {object} spellEntry  index entry of the spell (from resolveLoot)
  * @param {number} rank        rank the scroll casts the spell at
  * @returns {Promise<object|null>} item data, or null when spell/template is missing
  */
-export async function buildScrollItem(spellEntry, rank) {
+async function buildScrollItem(spellEntry, rank) {
   const spellDoc = await getDocument(spellEntry);
   if (!spellDoc) return null;
-  const template = await findScrollTemplate(rank);
-  const templateDoc = await getDocument(template);
+  const templateDoc = await getDocument(await findScrollTemplate(rank));
   if (!templateDoc) return null;
-  const data = toItemData(templateDoc);
-  const spell = spellDoc.toObject();
-  delete spell._id;
-  spell.system.location = { ...(spell.system.location ?? {}), heightenedLevel: rank };
-  data.name = `Scroll of ${spellDoc.name} (Rank ${rank})`;
-  data.system.spell = spell;
-  const traditions = spellDoc.system?.traits?.traditions ?? [];
-  data.system.traits ??= { value: [] };
-  data.system.traits.value = [...new Set([...(data.system.traits.value ?? []), ...traditions])];
-  return data;
+  const spellData = spellDoc.toObject();
+  // A compendium spell's sourceId is its own UUID (pf2e base/document.ts 86-89).
+  spellData._stats = { ...(spellData._stats ?? {}), compendiumSource: spellDoc.uuid };
+  return buildSpellConsumable({ kind: "scroll", rank, templateData: toItemData(templateDoc), spellData });
 }
 
 /**
  * Fallback for loot with no compendium match: a custom treasure item carrying
  * the AI's estimated value, so the haul keeps its worth instead of vanishing.
  */
-export function customTreasureItem(name, quantity, value) {
+function customTreasureItem(name, quantity, value) {
   const gp = Math.max(Math.round(Number(value) || 0), 0);
   const item = {
     name: capitalized(name),
@@ -773,7 +775,7 @@ export function customTreasureItem(name, quantity, value) {
  * (type "equipment", not "treasure") at the AI's estimated price, so gear the
  * creature should be carrying doesn't silently vanish or masquerade as coins.
  */
-export function customEquipmentItem(name, quantity, value) {
+function customEquipmentItem(name, quantity, value) {
   const gp = Math.max(Math.round(Number(value) || 0), 0);
   const item = {
     name: capitalized(name),
@@ -1063,86 +1065,6 @@ export function computeStats(concept) {
   };
 }
 
-const DAMAGE_TYPES =
-  "acid|bludgeoning|cold|electricity|fire|force|mental|piercing|poison|slashing|sonic|spirit|vitality|void|bleed|precision|untyped";
-const SAVE_TYPES = "fortitude|reflex|will";
-const CHECK_TYPES =
-  "acrobatics|arcana|athletics|crafting|deception|diplomacy|intimidation|medicine|nature|occultism|performance|religion|society|stealth|survival|thievery|perception|flat";
-
-/**
- * Turn conventional rules phrasing in AI ability text into PF2e inline
- * enrichers so damage, saves, checks, and area templates are all clickable
- * on the sheet and in chat ("just click" — no manual rolling). Scale words
- * (extreme/high/moderate/low) resolve to real numbers from the GM Core
- * tables for the creature's level.
- */
-export function enrichDescription(text, level) {
-  const dcFor = (scale) => T.lookup(T.SPELL_DC, level, scale.toLowerCase(), ["high", "moderate"]);
-  const damageFor = (scale) => T.lookup(T.STRIKE_DAMAGE, level, scale.toLowerCase());
-  let out = String(text);
-
-  // "2d6 fire damage", "1d4 persistent bleed damage" (literal dice + type)
-  out = out.replace(
-    new RegExp(`\\b(\\d+d\\d+(?:[+-]\\d+)?)\\s+(persistent\\s+)?(${DAMAGE_TYPES})\\s+damage\\b`, "gi"),
-    (_, dice, persistent, type) =>
-      `@Damage[${dice}[${persistent ? "persistent," : ""}${type.toLowerCase()}]] damage`
-  );
-
-  // "high damage", "moderate fire damage", "low persistent bleed damage"
-  out = out.replace(
-    new RegExp(`\\b(extreme|high|moderate|low)\\s+(persistent\\s+)?(?:(${DAMAGE_TYPES})\\s+)?damage\\b`, "gi"),
-    (_, scale, persistent, type) => {
-      const dice = damageFor(scale);
-      const damageType = type ? type.toLowerCase() : persistent ? "untyped" : null;
-      const suffix = damageType ? `[${persistent ? "persistent," : ""}${damageType}]` : "";
-      return `@Damage[${dice}${suffix}] damage`;
-    }
-  );
-
-  // "basic high Reflex save", "moderate Fortitude save"
-  out = out.replace(
-    new RegExp(`\\b(basic\\s+)?(extreme|high|moderate)\\s+(?:DC\\s+)?(${SAVE_TYPES})\\s+save\\b`, "gi"),
-    (_, basic, scale, save) =>
-      `@Check[type:${save.toLowerCase()}|dc:${dcFor(scale)}${basic ? "|basic:true" : ""}] save`
-  );
-
-  // "DC 21 basic Reflex save" (literal DC the model wrote anyway)
-  out = out.replace(
-    new RegExp(`\\bDC\\s+(\\d+)\\s+(basic\\s+)?(${SAVE_TYPES})\\s+save\\b`, "gi"),
-    (_, dc, basic, save) =>
-      `@Check[type:${save.toLowerCase()}|dc:${dc}${basic ? "|basic:true" : ""}] save`
-  );
-
-  // "high DC Athletics check"
-  out = out.replace(
-    new RegExp(`\\b(extreme|high|moderate)\\s+DC\\s+(${CHECK_TYPES})\\s+check\\b`, "gi"),
-    (_, scale, check) => `@Check[type:${check.toLowerCase()}|dc:${dcFor(scale)}] check`
-  );
-
-  // "DC 20 Athletics check", "DC 5 flat check" (literal DCs)
-  out = out.replace(
-    new RegExp(`\\bDC\\s+(\\d+)\\s+(${CHECK_TYPES})\\s+check\\b`, "gi"),
-    (_, dc, check) => `@Check[type:${check.toLowerCase()}|dc:${dc}] check`
-  );
-
-  // "regains 2d8+4 Hit Points", "2d8 healing" become clickable healing rolls
-  out = out.replace(
-    /\b(\d+d\d+(?:[+-]\d+)?)\s+(?:hit points|healing)\b/gi,
-    (_, dice) => `@Damage[${dice}[healing]] Hit Points`
-  );
-
-  // "30-foot cone" and friends become placeable templates
-  out = out.replace(
-    /\b(\d+)[-\s]foot\s+(cone|line|burst|emanation)\b/gi,
-    (_, distance, shape) => `@Template[type:${shape.toLowerCase()}|distance:${distance}]`
-  );
-
-  // Any leftover "<scale> DC" becomes a plain number so no scale words leak
-  out = out.replace(/\b(extreme|high|moderate)\s+DC\b/gi, (_, scale) => `DC ${dcFor(scale)}`);
-
-  return out;
-}
-
 /* Which skill identifies a creature, by creature-type trait (Recall Knowledge). */
 const RECALL_KNOWLEDGE_SKILLS = {
   aberration: "occultism", animal: "nature", astral: "occultism", beast: "nature",
@@ -1154,7 +1076,7 @@ const RECALL_KNOWLEDGE_SKILLS = {
 };
 
 /** The Recall Knowledge skill for a concept's creature-type traits. */
-export function recallKnowledgeSkill(traits) {
+function recallKnowledgeSkill(traits) {
   for (const trait of traits) {
     if (RECALL_KNOWLEDGE_SKILLS[trait]) return RECALL_KNOWLEDGE_SKILLS[trait];
   }

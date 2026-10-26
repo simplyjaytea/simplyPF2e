@@ -6,12 +6,16 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
-| [Acceptance ledger](acceptance-ledger.md) | The single live native-QA ledger (R01–R25 and N01–N08). Rows are updated in place when native evidence lands. |
+| [Acceptance ledger](acceptance-ledger.md) | The single live native-QA ledger (R01–R25 and N01–N11). Rows are updated in place when native evidence lands. |
 
 ## Plans
 
 | Record | Purpose |
 | --- | --- |
+| [Sprint plan, October 26](plans/sprint-2026-10-26.md) | Six work packages: hygiene tooling, drift check, Wizard class, Hazard generator, scrolls and wands; merge/review/fix ladder |
+| [Wizard research, October 26](plans/wizard-research-2026-10-26.md) | Verified pf2e 8.5.0/master facts behind the Wizard complete-only class |
+| [Hazard research, October 26](plans/hazard-research-2026-10-26.md) | pf2e hazard schema, GM Core Building Hazards tables, hazard XP, sample hazards |
+| [Spell consumables research, October 26](plans/consumables-research-2026-10-26.md) | Native scroll/wand path, template table, field map, module scroll path comparison |
 | [Sprint plan, October 25](plans/sprint-2026-10-25.md) | Three work packages: integrity gate, gated level-shift UI, .74 parity + Batch A runbook; integration/review protocol |
 | [QA Batch A runbook, October 25](plans/qa-batch-a-2026-10-25.md) | Operator script for R01/N01/R06/R02/R07/R21 on v0.3.5.74 with ceilings, stop rule and ledger paste-back |
 | [Completion execution, October 17](plans/completion-execution-2026-10-17.md) | Execution ledger defining chunks C01–C13, their dependencies and integration status |
@@ -23,6 +27,7 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
+| [Sprint review, October 26](reviews/sprint-review-2026-10-26.md) | Opus 5.5 independent review of the 2026-10-26 sprint: 1 P1, 5 P2, 12 P3, APPROVE WITH FIXES; resolution per finding |
 | [Completion-plan review, October 17](reviews/completion-review-2026-10-17.md) | Opus 5.5 high review, parent assessment and outstanding scope decisions |
 | [Ship readiness, September 12](reviews/ship-readiness-2026-09-12.md) | Assessment of v0.3.5.70 and prioritized acceptance gaps |
 | [Forge/generator audit](reviews/audit-2026-09-05.md) | Historical defects and the .63 baseline audit; later records supersede pending-release statements |
@@ -33,6 +38,7 @@ Users start with the root [README](../README.md) for installation, supported beh
 | --- | --- |
 | [Release parity, v0.3.5.74](evidence/release-parity-2026-10-25.md) | Asset digests and 63/63 archive entries verified against the PR #114 merge |
 | [Level-shift UI](evidence/level-shift-ui-2026-10-25.md) | Gated Creature Tools level-shift section and `api.levelShift`; confirmed policy; open native rows |
+| [Hazard generator design](evidence/hazard-generator-2026-10-26.md) | WP5 H3a: AI hazard concept contract, fail-closed validation and experimental gate; no live Foundry run |
 | [Required PC identity](evidence/pc-identity-2026-09-15.md) | First completion slice, source evidence, independent review and pending native QA |
 | [NPC automatic abilities](evidence/npc-automatic-abilities-2026-09-09.md) | Implemented package boundary, source evidence and bounded .70 native QA |
 | [Consumer readiness](evidence/consumer-readiness-2026-09-08.md) | UI/generation changes and version-specific .65–.69 QA |

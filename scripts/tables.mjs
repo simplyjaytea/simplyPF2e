@@ -107,7 +107,7 @@ export const SPELL_ATTACK = {
 };
 
 /* Level-based DCs (GM Core), used for Recall Knowledge checks. */
-export const LEVEL_DC = {
+const LEVEL_DC = {
   dc: [13, 14, 15, 16, 18, 19, 20, 22, 23, 24, 26, 27, 28, 30, 31, 32, 34, 35, 36, 38, 39, 40, 42, 44, 46, 48]
 };
 
@@ -185,7 +185,7 @@ export const RARITY_TREASURE_MULTIPLIER = { common: 1, uncommon: 1.5, rare: 2.5,
  * fights. Medium confidence, unverified against the book — if loot still
  * feels thin after this fix, check that table before nudging this constant
  * back up. */
-export const ENCOUNTERS_PER_LEVEL = 1000 / 80;
+const ENCOUNTERS_PER_LEVEL = 1000 / 80;
 
 /* The per-generation "Treasure amount" control (Stingy/Standard/Generous),
  * applied on top of the level + rarity budget. */

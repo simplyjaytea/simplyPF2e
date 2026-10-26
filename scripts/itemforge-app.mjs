@@ -2,7 +2,7 @@ import {
   MODULE_ID, getProviderAuthWarningKey, getProviderRequestConfig,
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
-import { generateMagicItemConcept, generateRunedItemConcept } from "./ai.mjs";
+import { generateMagicItemConcept, generateRunedItemConcept, selectSpellConsumables } from "./ai.mjs";
 import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import { getForgeEffectCatalog, EFFECT_KINDS } from "./rule-templates.mjs";
 import {
@@ -14,6 +14,31 @@ import {
 import { createActivationMacro } from "./macro-templates.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
+import { getScrollSpellCandidates, getCandidateDocument, priceToGp, toItemData } from "./compendium.mjs";
+import {
+  spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName
+} from "./spell-consumables.mjs";
+
+/** Item Forge kinds that build real spells into scrolls or wands (spell-consumables.mjs). */
+const CONSUMABLE_KINDS = new Set(["scroll", "wand"]);
+/** Most spell consumables one plan may hold. */
+const CONSUMABLE_PICK_LIMIT = 6;
+
+/**
+ * Highest spell rank a scroll or wand may hold at this item level. The pinned rank
+ * templates sit at level 2r-1 for scrolls and 2r+1 for wands, so the level caps the
+ * rank at (level+1)/2 or (level-1)/2 rounded down, and the native ceilings (10 for
+ * scrolls, 9 for wands) still apply. Returns 0 when no rank fits.
+ */
+function consumableMaxRank(kind, level) {
+  const byLevel = kind === "wand" ? Math.floor((level - 1) / 2) : Math.floor((level + 1) / 2);
+  return Math.max(0, Math.min(kind === "wand" ? 9 : 10, byLevel));
+}
+
+/** Words from the GM's brief that rank spell candidates by name and trait. */
+function briefKeywords(brief) {
+  return [...new Set(String(brief ?? "").toLowerCase().split(/[^a-z]+/).filter((word) => word.length >= 4))];
+}
 
 /**
  * The item forge: describe a wondrous magic item → AI concept constrained to
@@ -71,6 +96,8 @@ export class ItemForgeApp extends SpfApp {
   #created = null;
   /** Effect kinds with no real exemplar in this world (set after first scan). */
   #unavailableKinds = null;
+  /** Planned scroll/wand items: { items: [{ source, name, rank, level, priceGp }], warnings: string[] }. */
+  #consumables = null;
 
   async _prepareContext() {
     const authState = getProviderRequestConfig();
@@ -102,6 +129,14 @@ export class ItemForgeApp extends SpfApp {
         { value: "weapon", label: "SIMPLYPF2E.ItemForge.KindWeapon", hint: "SIMPLYPF2E.ItemForge.KindWeaponHint", icon: "fa-sword" },
         { value: "armor", label: "SIMPLYPF2E.ItemForge.KindArmor", hint: "SIMPLYPF2E.ItemForge.KindArmorHint", icon: "fa-shield-halved" }
       ].map((kind) => ({ ...kind, selected: kind.value === this.#input.kind })),
+      consumableKinds: [
+        { value: "scroll", label: "SIMPLYPF2E.ItemForge.Consumables.KindScroll", hint: "SIMPLYPF2E.ItemForge.Consumables.KindScrollHint", icon: "fa-scroll" },
+        { value: "wand", label: "SIMPLYPF2E.ItemForge.Consumables.KindWand", hint: "SIMPLYPF2E.ItemForge.Consumables.KindWandHint", icon: "fa-wand-sparkles" }
+      ].map((kind) => ({ ...kind, selected: kind.value === this.#input.kind })),
+      promptLabel: CONSUMABLE_KINDS.has(this.#input.kind)
+        ? "SIMPLYPF2E.ItemForge.Consumables.PromptLabel" : "SIMPLYPF2E.ItemForge.Prompt",
+      promptPlaceholder: CONSUMABLE_KINDS.has(this.#input.kind)
+        ? "SIMPLYPF2E.ItemForge.Consumables.PromptPlaceholder" : "SIMPLYPF2E.ItemForge.PromptPlaceholder",
       rarities: [
         { value: "common", label: "SIMPLYPF2E.Rarity.Common" },
         { value: "uncommon", label: "SIMPLYPF2E.Rarity.Uncommon" },
@@ -111,13 +146,12 @@ export class ItemForgeApp extends SpfApp {
       unavailableNote: this.#unavailableKinds?.length
         ? game.i18n.format("SIMPLYPF2E.ItemForge.KindsUnavailable", { kinds: this.#unavailableKinds.join(", ") })
         : null,
-      preview: this.#kind === "wondrous" ? this.#buildPreviewContext() : this.#buildRunedPreviewContext(),
-      hasPreview: Boolean(this.#kind === "wondrous" ? this.#concept : this.#itemData),
+      preview: this.#buildActivePreview(),
+      hasPreview: Boolean(this.#hasDraft()),
       created: this.#created,
       tokenReport: this._buildTokenReport(),
       // Presentation only: getting-started panel when there is no result yet.
-      showEmptyState: !this.#busy && !this.#error && !this.#created
-        && !(this.#kind === "wondrous" ? this.#concept : this.#itemData)
+      showEmptyState: !this.#busy && !this.#error && !this.#created && !this.#hasDraft()
     };
   }
 
@@ -149,7 +183,8 @@ export class ItemForgeApp extends SpfApp {
     // The kind tiles are buttons, so preserve the authoritative selected kind
     // when no form control for it exists in the current render.
     const rawKind = form.querySelector('[name="kind"]:checked')?.value ?? this.#input.kind;
-    const kind = rawKind === "wondrous" || RUNED_ITEM_KINDS.has(rawKind) ? rawKind : "wondrous";
+    const kind = rawKind === "wondrous" || RUNED_ITEM_KINDS.has(rawKind) || CONSUMABLE_KINDS.has(rawKind)
+      ? rawKind : "wondrous";
     this.#input = { prompt, level, rarity, kind };
   }
 
@@ -218,7 +253,7 @@ export class ItemForgeApp extends SpfApp {
   static async #onSelectKind(_event, target) {
     if (this.#busy) return;
     const kind = target?.dataset?.kind;
-    if (kind !== "wondrous" && !RUNED_ITEM_KINDS.has(kind)) return;
+    if (kind !== "wondrous" && !RUNED_ITEM_KINDS.has(kind) && !CONSUMABLE_KINDS.has(kind)) return;
     this.#readForm();
     this.#input = { ...this.#input, kind };
     await this.render();
@@ -254,13 +289,14 @@ export class ItemForgeApp extends SpfApp {
       ["templates", game.i18n.localize(this.#kind === "wondrous"
         ? "SIMPLYPF2E.ItemForge.ProgressTemplates" : "SIMPLYPF2E.ItemForge.ProgressCandidates"), 900],
       ["concept", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), taskMaxTokens(
-        this.#kind === "wondrous" ? AI_TASK.MAGIC_ITEM_CONCEPT : AI_TASK.RUNED_ITEM_CONCEPT
+        this.#conceptTask()
       )],
       ["assemble", game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressAssemble"), 900]
     ]);
     let outcome = "success";
     try {
       if (this.#kind === "wondrous") await this.#generateWondrous(signal);
+      else if (CONSUMABLE_KINDS.has(this.#kind)) await this.#generateConsumables(this.#kind, signal);
       else await this.#generateRuned(this.#kind, signal);
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
     } catch (err) {
@@ -371,9 +407,195 @@ export class ItemForgeApp extends SpfApp {
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
   }
 
+  /** AI task profile for the concept call of the current kind. */
+  #conceptTask() {
+    if (this.#kind === "wondrous") return AI_TASK.MAGIC_ITEM_CONCEPT;
+    return CONSUMABLE_KINDS.has(this.#kind) ? AI_TASK.SPELL_CONSUMABLE_CONCEPT : AI_TASK.RUNED_ITEM_CONCEPT;
+  }
+
+  /** Preview context for the draft of the current kind. */
+  #buildActivePreview() {
+    if (this.#kind === "wondrous") return this.#buildPreviewContext();
+    return CONSUMABLE_KINDS.has(this.#kind) ? this.#buildConsumablePreviewContext() : this.#buildRunedPreviewContext();
+  }
+
+  /** Whether a generated draft of the current kind is waiting for Create. */
+  #hasDraft() {
+    if (this.#kind === "wondrous") return Boolean(this.#concept);
+    return CONSUMABLE_KINDS.has(this.#kind) ? Boolean(this.#consumables) : Boolean(this.#itemData);
+  }
+
+  #buildConsumablePreviewContext() {
+    if (!this.#consumables) return null;
+    return {
+      consumable: true,
+      heading: game.i18n.localize("SIMPLYPF2E.ItemForge.Consumables.PreviewHeading"),
+      items: this.#consumables.items.map((item) => ({
+        name: item.name,
+        rank: item.rank,
+        level: item.level,
+        price: `${item.priceGp.toLocaleString()} gp`
+      })),
+      warnings: this.#consumables.warnings
+    };
+  }
+
+  /**
+   * Scroll or wand plan. Real spells come only from the configured spell packs and the
+   * AI chooses only from them. The Forge level caps the rank, and the chosen rarity
+   * filters the candidates before the bounded cut. Every template, price and level comes
+   * from the pinned pf2e consumable template. Nothing is written here: Create writes the
+   * planned items in one call.
+   */
+  async #generateConsumables(kind, signal) {
+    // 1. Ground truth first: eligible spells from the configured packs.
+    await this._setStep("templates");
+    const maxRank = consumableMaxRank(kind, this.#input.level);
+    if (maxRank < 1) {
+      throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.LevelTooLow", { kind, minLevel: kind === "wand" ? 3 : 1 }));
+    }
+    const offered = await getScrollSpellCandidates(maxRank, briefKeywords(this.#input.prompt), { maxRarity: this.#input.rarity });
+    if (!offered.length) {
+      throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoCandidates", { kind }));
+    }
+
+    // 2. One AI call, constrained to those real spells.
+    await this._setStep("concept");
+    const { picks, usage } = await selectSpellConsumables(this.#input.prompt, {
+      level: this.#input.level,
+      kind,
+      maxRank,
+      candidates: offered,
+      count: CONSUMABLE_PICK_LIMIT,
+      onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")),
+      signal
+    });
+    this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
+
+    // 3. Resolve each pick to its real spell and pinned template. A pick that
+    // cannot be built is dropped and reported, never approximated.
+    await this._setStep("assemble");
+    const items = [];
+    const warnings = [];
+    const planned = new Set();
+    for (const pick of picks) {
+      this._throwIfCancelled();
+      const label = spellConsumableName(kind, pick.name, pick.rank);
+      const dropped = (reason) => warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.DroppedPick", { name: label, reason }));
+      // The same spell at the same rank and kind is one planned item.
+      const key = JSON.stringify([pick.spellId, pick.rank, kind]);
+      if (planned.has(key)) continue;
+      planned.add(key);
+      if (pick.rank > maxRank) {
+        dropped(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.RankAboveLevel", { rank: pick.rank, max: maxRank }));
+        continue;
+      }
+      const spellDoc = await getCandidateDocument(pick.candidate);
+      if (!spellDoc) {
+        warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.SpellMissing", { name: label }));
+        continue;
+      }
+      const spellData = spellDoc.toObject();
+      // The spell keeps its own UUID as its source, so the description links to it.
+      // This mirrors builder.mjs buildScrollItem.
+      spellData._stats = { ...(spellData._stats ?? {}), compendiumSource: spellDoc.uuid };
+      const problem = spellConsumableRankProblem(spellData, kind, pick.rank);
+      if (problem) {
+        dropped(problem);
+        continue;
+      }
+      // The template goes through toItemData, which records the pinned table UUID that the build checks.
+      // A build that throws drops only this pick.
+      let source;
+      let templateData;
+      try {
+        const templateUuid = spellConsumableTemplateUuid(kind, pick.rank);
+        const templateDoc = templateUuid ? await fromUuid(templateUuid) : null;
+        if (!templateDoc) {
+          warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.TemplateMissing", { name: label }));
+          continue;
+        }
+        templateData = toItemData(templateDoc);
+        source = buildSpellConsumable({ kind, rank: pick.rank, templateData, spellData });
+      } catch (err) {
+        dropped(err?.message ?? String(err));
+        continue;
+      }
+      items.push({
+        source,
+        name: source.name,
+        rank: pick.rank,
+        level: templateData.system?.level?.value ?? 0,
+        priceGp: priceToGp(templateData.system?.price?.value)
+      });
+    }
+    if (!items.length) {
+      throw new Error([game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoPicks", { kind }), ...warnings].join(" "));
+    }
+    this.#consumables = { items, warnings };
+    this._throwIfCancelled();
+  }
+
+  /**
+   * Create the planned scrolls or wands as world Items in one write. Nothing
+   * is written before this point.
+   */
+  async #createConsumables() {
+    this.#busy = true;
+    this.#error = null;
+    const applyLabel = game.i18n.localize("SIMPLYPF2E.Progress.Apply");
+    this._beginProgress([["apply", applyLabel, 1800]], { cancellable: true });
+    let outcome = "success";
+    let committed = false;
+    try {
+      await this._setStep("apply");
+      await this.render();
+      const sources = this.#consumables.items.map((item) => item.source);
+      this._lockCreation();
+      const written = await Item.create(sources);
+      const created = (Array.isArray(written) ? written : [written]).filter((item) => item?.id);
+      if (!created.length) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.CreateFailed"));
+      // The items are committed. Consume the draft before any presentation work.
+      this.#clearPreview();
+      committed = true;
+      const names = created.map((item) => item.name);
+      const partial = created.length < sources.length;
+      this.#created = {
+        name: names.join(", "),
+        names,
+        itemId: created.length === 1 ? created[0].id : null,
+        warning: partial,
+        macroId: null
+      };
+      ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Created", { name: this.#created.name }));
+      if (partial) {
+        ui.notifications.warn(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.PartialCreate", {
+          created: created.length, total: sources.length
+        }));
+      }
+      outcome = partial ? "warning" : "success";
+    } catch (err) {
+      if (committed) {
+        outcome = "warning";
+        this.#error = null;
+        console.warn(`${MODULE_ID} | consumables committed, but completion presentation failed`, err);
+      } else {
+        outcome = err?.cancelled ? "cancelled" : "error";
+        if (err?.cancelled) console.warn(`${MODULE_ID} | item creation cancelled`);
+        else console.error(`${MODULE_ID} | item creation failed`, err);
+        this.#error = err?.cancelled ? null : err.message;
+      }
+    } finally {
+      this.#busy = false;
+      this._finishRun(outcome);
+      await this.render();
+    }
+  }
+
   static async #onCreateItem() {
     if (this.#busy) return;
-    if (this.#kind === "wondrous" ? !this.#concept : !this.#itemData) return;
+    if (!this.#hasDraft()) return;
+    if (CONSUMABLE_KINDS.has(this.#kind)) return this.#createConsumables();
     this.#busy = true;
     this.#error = null;
     const applyLabel = game.i18n.localize("SIMPLYPF2E.Progress.Apply");
@@ -468,5 +690,6 @@ export class ItemForgeApp extends SpfApp {
     this.#concept = null;
     this.#itemData = null;
     this.#runedPreview = null;
+    this.#consumables = null;
   }
 }

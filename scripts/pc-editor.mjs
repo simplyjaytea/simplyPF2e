@@ -5,9 +5,17 @@
  * documents or actors.
  *
  * Control names: ancestry | heritage | background | class | classPath |
- * keyAbility | backgroundLore | feat.<slot> | equipment.<index>.
+ * classPath.<bridge> | keyAbility | backgroundLore | feat.<slot> |
+ * equipment.<index>.
  * An empty heritage or classPath value means "none" (cleared); any other empty
  * value is refused, so a placeholder option can never be applied.
+ *
+ * A class with one path bridge (Rogue, Investigator) uses the single
+ * `classPath` control. A class with several (Wizard) uses one
+ * `classPath.<bridge>` control per bridge, where <bridge> is the bridge
+ * feature's name exactly ("classPath.Arcane School"); it maps to the edit
+ * { field: "classPath", bridge, key } of pc-edit.mjs. The current selection of
+ * a bridge comes from concept.classPathCandidates[bridge].
  */
 import { PC_EDIT_CODES } from "./pc-edit.mjs";
 import { pcIdentityKey } from "./pc-identity.mjs";
@@ -17,6 +25,7 @@ const KEY_FIELDS = new Set(["ancestry", "background", "class"]);
 const VALUE_FIELDS = new Set(["keyAbility", "backgroundLore"]);
 const FEAT_CONTROL = /^feat\.(\d+)$/;
 const EQUIPMENT_CONTROL = /^equipment\.(\d+)$/;
+const CLASS_PATH_CONTROL = /^classPath\.(.+)$/s;
 
 function editError(control, detail) {
   const error = new Error(`PC edit (${control}): ${detail}`);
@@ -41,6 +50,11 @@ export function pcEditFromControl(control, value) {
   if (feat) return { field: "feat", slot: Number(feat[1]), key: requireText(control, value) };
   const equipment = EQUIPMENT_CONTROL.exec(control);
   if (equipment) return { field: "equipment", index: Number(equipment[1]), key: requireText(control, value) };
+  const classPath = CLASS_PATH_CONTROL.exec(control);
+  if (classPath) {
+    const text = typeof value === "string" ? value.trim() : "";
+    return { field: "classPath", bridge: classPath[1], key: text || null };
+  }
   if (NULLABLE.has(control)) {
     const text = typeof value === "string" ? value.trim() : "";
     return { field: control, key: text || null };
@@ -70,6 +84,9 @@ export function pcEditorSelections(plan) {
     keyAbility: pick("keyAbility", concept.keyAbility ?? ""),
     backgroundLore: pick("backgroundLore", concept.backgroundLore ?? "")
   };
+  for (const [bridge, ref] of Object.entries(concept.classPathCandidates ?? {})) {
+    selections[`classPath.${bridge}`] = pick(`classPath.${bridge}`, keyOf(ref));
+  }
   (resolved.feats ?? []).forEach((slot, index) => {
     selections[`feat.${index}`] = keyOf(slot?.entry);
   });
@@ -81,5 +98,8 @@ export function pcEditorSelections(plan) {
 
 /** Editor control names whose drafts are stale after these invalidations. */
 export function pcEditorInvalidatedControls(invalidated = []) {
-  return invalidated.map((item) => (item.field === "feat" ? `feat.${item.slot}` : item.field));
+  return invalidated.map((item) => {
+    if (item.field === "feat") return `feat.${item.slot}`;
+    return item.field === "classPath" && typeof item.bridge === "string" ? `classPath.${item.bridge}` : item.field;
+  });
 }

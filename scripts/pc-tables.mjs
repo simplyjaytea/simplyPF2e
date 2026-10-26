@@ -54,10 +54,10 @@ export const PC_WEALTH_BY_LEVEL = [
 ];
 
 export const ABILITY_BOOST_LEVELS = [1, 5, 10, 15, 20];
-export const GENERAL_FEAT_LEVELS = [3, 7, 11, 15, 19];
-export const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
+const GENERAL_FEAT_LEVELS = [3, 7, 11, 15, 19];
+const ANCESTRY_FEAT_LEVELS = [1, 5, 9, 13, 17];
 export const CLASS_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
-export const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
+const SKILL_FEAT_LEVELS = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
 
 /**
  * The ordered feat slots a PC of `level` has earned, one entry per slot in

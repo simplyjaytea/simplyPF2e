@@ -37,7 +37,7 @@ const TOLERANCE = 2;
 const DAMAGE_TOLERANCE = 4;
 
 /** What a shift deliberately leaves alone. Verified by content in verifyShiftedActorData. */
-export const LEVEL_SHIFT_EXCLUSIONS = Object.freeze([
+const LEVEL_SHIFT_EXCLUSIONS = Object.freeze([
   "ability modifiers (system.abilities)",
   "traits, speed, senses (system.traits, system.attributes.speed, system.attributes.senses)",
   "resistances, weaknesses, immunities",
@@ -110,7 +110,7 @@ function classify({ table, level, target, value, measure = Number, tolerance, un
 }
 
 /** Level name written into the shifted actor. */
-export function shiftedActorName(name, targetLevel) {
+function shiftedActorName(name, targetLevel) {
   return `${name} (Level ${targetLevel})`;
 }
 

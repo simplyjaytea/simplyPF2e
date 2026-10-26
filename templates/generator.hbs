@@ -1,5 +1,6 @@
 <div class="simplypf2e-generator">
   {{> simplypf2e-provider-header}}
+  {{#unless hazardMode}}
   <section class="spf-provider-summary spf-sources-summary {{#if sourcesReady}}spf-provider-ready{{else}}spf-provider-attention{{/if}}" aria-label="{{localize 'SIMPLYPF2E.Generator.CompendiumContent'}}">
     <span class="spf-provider-name"><i class="fa-solid fa-book-atlas" aria-hidden="true"></i> <strong>{{localize "SIMPLYPF2E.Generator.CompendiumContent"}}</strong></span>
     <span class="spf-source-status">
@@ -11,6 +12,7 @@
     </span>
     <span class="spf-provider-actions"><button type="button" data-action="configureSources" data-tooltip="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" aria-label="{{localize 'SIMPLYPF2E.Generator.ConfigureSources'}}" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-gear" aria-hidden="true"></i></button></span>
   </section>
+  {{/unless}}
 
   <fieldset class="spf-inputs spf-card" {{#if busy}}disabled{{/if}}>
     <legend>
@@ -18,6 +20,8 @@
         {{localize "SIMPLYPF2E.Generator.EncounterLegend"}}
       {{else if characterMode}}
         {{localize "SIMPLYPF2E.Generator.CharacterLegend"}}
+      {{else if hazardMode}}
+        {{localize "SIMPLYPF2E.Hazard.Legend"}}
       {{else if npcMode}}
         {{localize "SIMPLYPF2E.Generator.NpcLegend"}}
       {{else}}
@@ -41,6 +45,12 @@
         <input type="radio" name="mode" value="character" {{#if characterMode}}checked{{/if}}>
         <i class="fa-solid fa-user" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Mode.Character"}}
       </label>
+      {{#if hazardAvailable}}
+      <label class="{{#if hazardMode}}spf-mode-active{{/if}}">
+        <input type="radio" name="mode" value="hazard" {{#if hazardMode}}checked{{/if}}>
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {{localize hazardLabels.mode}}
+      </label>
+      {{/if}}
     </div>
     <div class="form-group stacked">
       {{#if encounterMode}}
@@ -51,6 +61,9 @@
         <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.CharacterPrompt"}}</label>
         <textarea id="spf-generator-prompt" name="prompt" rows="3" aria-describedby="spf-character-mode-note" placeholder="{{localize 'SIMPLYPF2E.Generator.CharacterPromptPlaceholder'}}">{{input.prompt}}</textarea>
         <p id="spf-character-mode-note" class="spf-field-note" role="note">{{localize "SIMPLYPF2E.Generator.CharacterRestriction"}}</p>
+      {{else if hazardMode}}
+        <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Hazard.Prompt"}}</label>
+        <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{localize "SIMPLYPF2E.Hazard.PromptPlaceholder"}}">{{input.prompt}}</textarea>
       {{else if npcMode}}
         <label for="spf-generator-prompt">{{localize "SIMPLYPF2E.Generator.NpcPrompt"}}</label>
         <textarea id="spf-generator-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.Generator.NpcPromptPlaceholder'}}">{{input.prompt}}</textarea>
@@ -95,6 +108,7 @@
         </div>
       {{/if}}
     </div>
+    <div class="spf-advanced-slot" {{#if hazardMode}}hidden{{/if}}>
     <details class="spf-advanced">
       <summary>{{localize "SIMPLYPF2E.Generator.Advanced"}}</summary>
       <div class="spf-advanced-content">
@@ -188,6 +202,7 @@
       {{/unless}}
       </div>
     </details>
+    </div>
     {{#if characterMode}}
     <details class="spf-options" open>
       <summary>{{localize "SIMPLYPF2E.Identity.Title"}}</summary>
@@ -195,22 +210,28 @@
       <div class="spf-row">
         {{#each pcIdentityFields}}
         <div class="form-group">
-          <label for="spf-identity-{{field}}">{{localize label}}</label>
+          <label for="{{fieldId}}">{{#if labelText}}{{labelText}}{{else}}{{localize label}}{{/if}}</label>
           {{#if literal}}
-          <input id="spf-identity-{{field}}" name="pcIdentity.{{field}}" type="text" value="{{value}}" maxlength="120" aria-describedby="spf-identity-hint" placeholder="{{localize 'SIMPLYPF2E.Identity.Choose'}}">
+          <input id="{{fieldId}}" name="pcIdentity.{{field}}" type="text" value="{{value}}" maxlength="120" aria-describedby="spf-identity-hint" placeholder="{{localize 'SIMPLYPF2E.Identity.Choose'}}">
           {{else}}
-          <select id="spf-identity-{{field}}" name="pcIdentity.{{field}}" aria-describedby="spf-identity-hint{{#if hint}} spf-identity-{{field}}-hint{{/if}}">
+          <select id="{{fieldId}}" name="pcIdentity.{{field}}" aria-describedby="spf-identity-hint{{#if hint}} {{fieldId}}-hint{{/if}}">
             <option value="">{{localize chooseLabel}}</option>
             {{#each options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
           </select>
           {{/if}}
-          {{#if hint}}<p id="spf-identity-{{field}}-hint" class="spf-field-note">{{localize hint}}</p>{{/if}}
+          {{#if hint}}<p id="{{fieldId}}-hint" class="spf-field-note">{{localize hint}}</p>{{/if}}
         </div>
         {{/each}}
       </div>
     </details>
     {{/if}}
     <div class="spf-generate-row">
+      {{#if hazardMode}}
+      <button type="button" class="{{#unless hasPreview}}{{#unless created}}spf-primary{{/unless}}{{/unless}} spf-generate-action" data-action="generate" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-wand-sparkles" aria-hidden="true"></i>
+        {{localize "SIMPLYPF2E.Hazard.Generate"}}
+      </button>
+      {{else}}
       <button type="button" class="{{#unless hasPreview}}{{#unless created}}spf-primary{{/unless}}{{/unless}} spf-generate-action" data-action="generate" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-wand-sparkles" aria-hidden="true"></i>
         {{#if monsterMode}}{{localize "SIMPLYPF2E.Generator.GenerateCreateMonster"}}{{else if npcMode}}{{localize "SIMPLYPF2E.Generator.GenerateCreateNpc"}}{{else if encounterMode}}{{localize "SIMPLYPF2E.Generator.GenerateCreateEncounter"}}{{else}}{{localize "SIMPLYPF2E.Generator.GenerateCreateCharacter"}}{{/if}}
@@ -220,6 +241,7 @@
         <i class="fa-solid fa-dice-d20" aria-hidden="true"></i>
         <span class="spf-button-label">{{localize "SIMPLYPF2E.Generator.RandomPreview"}}</span>
       </button>
+      {{/if}}
     </div>
   </fieldset>
 
@@ -255,7 +277,7 @@
   {{/if}}
 
   {{#if showEmptyState}}
-    <p class="spf-empty">{{localize "SIMPLYPF2E.Generator.EmptyHint"}}</p>
+    <p class="spf-empty">{{#if hazardMode}}{{localize "SIMPLYPF2E.Hazard.EmptyHint"}}{{else}}{{localize "SIMPLYPF2E.Generator.EmptyHint"}}{{/if}}</p>
   {{/if}}
 
   {{#if preview}}
@@ -595,6 +617,79 @@
     <footer class="spf-actions">
       <button type="button" class="spf-primary" data-action="createActor" {{#if busy}}disabled{{else}}{{#if pcEditor.blocked}}disabled aria-describedby="pc-edit-blockers"{{/if}}{{/if}}>
         <i class="fa-solid fa-user-plus" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Generator.CreateCharacter"}}
+      </button>
+      <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-trash" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Generator.Discard"}}
+      </button>
+    </footer>
+  </section>
+  {{/if}}
+  {{#if hazardPreview}}
+  <section class="spf-preview spf-card spf-hazard" aria-label="{{hazardPreview.name}}">
+    <header class="spf-statblock-header">
+      <h2>{{hazardPreview.name}}</h2>
+      <span class="spf-level">{{localize hazardLabels.level}} {{hazardPreview.level}}</span>
+      <span class="spf-level">{{localize hazardPreview.complexity}}</span>
+    </header>
+    <div class="spf-traits">
+      <span class="spf-trait">{{localize hazardPreview.rarity}}</span>
+      {{#each hazardPreview.traits}}<span class="spf-trait">{{this}}</span>{{/each}}
+    </div>
+    {{#if hazardPreview.description}}<p class="spf-description">{{hazardPreview.description}}</p>{{/if}}
+    <div class="spf-statline">
+      {{#if hazardPreview.stealth}}<span><strong>{{localize hazardLabels.stealth}}</strong> {{hazardPreview.stealth}}</span>{{/if}}
+      {{#if hazardPreview.disable.length}}
+        <span><strong>{{localize hazardLabels.disable}}</strong>
+          {{#each hazardPreview.disable}}{{this.skill}} {{this.text}}{{#unless @last}}; {{/unless}}{{/each}}
+        </span>
+      {{/if}}
+      {{#if hazardPreview.dispel}}<span>{{hazardPreview.dispel}}</span>{{/if}}
+    </div>
+    <div class="spf-statline spf-defenses">
+      <span><strong>{{localize hazardLabels.defenses}}</strong></span>
+      <span><strong>{{localize "SIMPLYPF2E.Hazard.Preview.AC"}}</strong> {{hazardPreview.ac}}{{#if hazardPreview.acAssumed}} ({{localize "SIMPLYPF2E.Hazard.Preview.ACAssumed"}}){{/if}}</span>
+      {{#each hazardPreview.saves}}<span><strong>{{this.label}}</strong> {{this.value}}</span>{{/each}}
+      {{#if hazardPreview.hp}}
+        <span><strong>{{localize "SIMPLYPF2E.Hazard.Preview.HP"}}</strong> {{hazardPreview.hp}}</span>
+        <span><strong>{{localize "SIMPLYPF2E.Hazard.Preview.Hardness"}}</strong> {{hazardPreview.hardness}}</span>
+      {{/if}}
+    </div>
+    {{#if hazardPreview.strike}}
+      <div class="spf-strikes">
+        <div class="spf-strike">
+          <strong>{{localize "SIMPLYPF2E.Preview.Melee"}}</strong>
+          {{hazardPreview.strike.name}} {{hazardPreview.strike.bonus}},
+          <strong>{{localize "SIMPLYPF2E.Preview.Damage"}}</strong> {{hazardPreview.strike.formula}} {{hazardPreview.strike.damageType}}
+          {{#if hazardPreview.strike.average}}(avg {{hazardPreview.strike.average}}){{/if}}
+        </div>
+      </div>
+    {{/if}}
+    <h3>{{localize hazardLabels.reaction}}: {{hazardPreview.reaction.name}}</h3>
+    <p><strong>{{localize "SIMPLYPF2E.Hazard.Preview.Trigger"}}</strong> {{hazardPreview.reaction.trigger}}</p>
+    <p>{{hazardPreview.reaction.effect}}</p>
+    {{#if hazardPreview.reaction.save}}<p><strong>{{hazardPreview.reaction.save.text}}</strong> {{hazardPreview.reaction.save.effect}}</p>{{/if}}
+    {{#if hazardPreview.routine}}
+      <h3>{{localize hazardLabels.routine}}</h3>
+      <p><strong>{{hazardPreview.routine.actions}}</strong></p>
+      <p>{{hazardPreview.routine.text}}</p>
+    {{/if}}
+    {{#if hazardPreview.reset}}<p><strong>{{localize hazardLabels.reset}}</strong> {{hazardPreview.reset}}</p>{{/if}}
+    <p><strong>{{localize hazardLabels.xp}}</strong> {{hazardPreview.xp}} <span class="spf-hint">({{localize "SIMPLYPF2E.Hazard.Preview.XPNote"}})</span></p>
+
+    {{#if tokenReport}}
+      <details class="spf-token-report">
+        <summary><span>{{localize "SIMPLYPF2E.Tokens.Heading"}}</span><strong>{{tokenReport.totalText}}</strong></summary>
+        <ul>
+          {{#each tokenReport.steps}}
+            <li><strong>{{this.label}}</strong> — {{this.text}}</li>
+          {{/each}}
+        </ul>
+      </details>
+    {{/if}}
+
+    <footer class="spf-actions">
+      <button type="button" class="spf-primary" data-action="createActor" {{#if busy}}disabled{{/if}}>
+        <i class="fa-solid fa-user-plus" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Hazard.Create"}}
       </button>
       <button type="button" data-action="discard" {{#if busy}}disabled{{/if}}>
         <i class="fa-solid fa-trash" aria-hidden="true"></i> {{localize "SIMPLYPF2E.Generator.Discard"}}

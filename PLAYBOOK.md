@@ -21,11 +21,12 @@ Four generator modes plus a forge, all GM-only, all requiring the pf2e system:
 | --- | --- | --- |
 | **Monster / NPC** | One creature; numbers from GM Core "Building Creatures" tables; abilities, spells, gear cloned from compendiums | Stable, most battle-tested |
 | **Encounter** | A themed group within an XP budget; the NPC pipeline per member | Stable (multi-member native checks still open) |
-| **Player Character** | A level-N PC built from real Ancestry/Background/Class/heritage/feat items so pf2e derives the math itself | GM-reviewed beta; complete-only classes Fighter, Rogue, Investigator |
-| **Item Forge** | Magic items: passive wondrous items from cloned Rule Elements, 1/day activations via prewritten macros, runed weapons/armor | Core flows live-verified |
+| **Player Character** | A level-N PC built from real Ancestry/Background/Class/heritage/feat items so pf2e derives the math itself | GM-reviewed beta; complete-only classes Fighter, Rogue, Investigator, Wizard (Wizard added 2026-10-26, zero live evidence) |
+| **Item Forge** | Magic items: passive wondrous items from cloned Rule Elements, 1/day activations via prewritten macros, runed weapons/armor; scrolls and wands of real spells cloned from the pf2e blank rank templates | Core flows live-verified; scrolls/wands built 2026-10-26, **not live-verified** |
 | **Experimental tools** (off by default) | `/forge <brief> <level>` chat command; Creature Tools reskin + native elite/weak | Built, reviewed, **not native-accepted** |
 | **Ordinary multiclass** (off by default) | Noncaster dedication catalog for PCs (`multiclassArchetypes`); Free Archetype slots (`freeArchetype`); both settings default off | Built, **not native-accepted** |
 | **Level shifting** (off by default) | New NPC at level ±1/±2 via GM Core benchmark deltas; source unchanged | Built behind `experimentalTools` (Creature Tools section + `api.levelShift`), **not native-accepted** |
+| **Hazard generator** (off by default) | A simple or complex `hazard` actor; every number from GM Core "Building Hazards" tables (`hazard-tables.mjs`); the AI picks scale words, enum slugs and prose only | Built behind `experimentalTools` (generator Hazard mode) 2026-10-26, **not native-accepted** |
 
 Repo: `simplyjaytea/simplyPF2e`. Public install manifest: `https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json`. **Every merge to `main` auto-publishes a release that every install is offered immediately.**
 
@@ -101,13 +102,14 @@ Three pipelines over shared compendium/table infrastructure, plus the experiment
 | Entry & apps | `simplypf2e.mjs` (hooks, `module.api = { open, openItemForge, openCreatureTools }`), `app-base.mjs`, `generator-app.mjs`, `itemforge-app.mjs`, `creature-tools-app.mjs`, `provider-setup-app.mjs`, `sources-app.mjs`, `manage-presets-app.mjs`, `progress.mjs`, `tokens.mjs` |
 | AI | `ai.mjs`, `ai-task-profiles.mjs`, `ai-candidate-format.mjs`, `ai-response-validation.mjs`, `presets.mjs` |
 | Settings & gates | `settings.mjs` (`freeArchetype`, `multiclassArchetypes`, `experimentalTools`; client-local connection bank), `experimental-tools.mjs` |
-| NPC | `builder.mjs`, `encounter.mjs`, `npc-ability-packages.mjs`, `art.mjs`, `tables.mjs` |
+| NPC | `builder.mjs`, `encounter.mjs` (creature and hazard XP), `npc-ability-packages.mjs`, `art.mjs`, `tables.mjs` |
+| Hazard | `hazard-tables.mjs` (GM Core Building Hazards tables), `hazard-builder.mjs` (concept normalization, prose policy, actor source), `hazard-labels.mjs` |
 | PC | `pc-builder.mjs`, `pc-identity.mjs`, `pc-background-lore.mjs`, `pc-support.mjs`, `class-paths.mjs`, `pc-prerequisites.mjs`, `pc-skills.mjs`, `pc-loadout.mjs`, `pc-tables.mjs`, `choice-set.mjs`, `pc-multiclass.mjs`, `pc-edit.mjs`, `pc-editor.mjs` |
-| Forge | `item-builder.mjs`, `rule-templates.mjs`, `macro-templates.mjs`, `runes.mjs` |
+| Forge | `item-builder.mjs`, `rule-templates.mjs`, `macro-templates.mjs`, `runes.mjs`, `spell-consumables.mjs` (pinned scroll/wand templates; also used by NPC loot scrolls) |
 | Experimental | `forge-command.mjs`, `reskin.mjs`, `reskin-policy.mjs`, `creature-tools.mjs`, `level-shift.mjs`, `level-shift-policy.mjs` |
 | Shared | `compendium.mjs`, `completion.mjs`, `post-create.mjs`, `async-cache.mjs`, `text.mjs` |
 
-Modules named `*-policy.mjs`, `pc-edit.mjs`, `pc-editor.mjs`, `pc-skills.mjs`, `progress.mjs`, `text.mjs`, `encounter.mjs` are pure (no Foundry globals) and node-testable without stubs.
+Modules named `*-policy.mjs`, `pc-edit.mjs`, `pc-editor.mjs`, `pc-skills.mjs`, `progress.mjs`, `text.mjs`, `encounter.mjs`, `hazard-tables.mjs`, `hazard-builder.mjs`, `spell-consumables.mjs` are pure (no Foundry globals) and node-testable without stubs.
 
 ## 5. Repository layout
 
@@ -120,7 +122,8 @@ module.json          manifest (version is stamped by CI; source value is a place
 scripts/             runtime ES modules (shipped)
 templates/ styles/ lang/   Handlebars, CSS, en.json (shipped)
 tests/               *.test.mjs regressions + tests/fixtures/ (real pf2e JSON) — not shipped
-tools/check.mjs      the CI gate: syntax, every regression, JSON — not shipped
+tools/check.mjs      the CI gate: syntax, check-integrity.mjs (ESM linking, templates, i18n), check-links.mjs (Markdown links), every regression, JSON — not shipped
+tools/check-pf2e-drift.mjs   opt-in, network: module's pf2e references vs upstream at a ref (see §7) — not shipped
 docs/                README.md (map) · HISTORY.md · acceptance-ledger.md · plans/ · reviews/ · evidence/
 .github/workflows/   pull-request.yml (gate), auto-release.yml → release.yml (publish on main)
 ```
@@ -147,13 +150,22 @@ Release archive = `module.json LICENSE README.md lang scripts styles templates` 
 - Add a `tests/*.test.mjs` for genuinely pure logic behind any bug-shaped change. Do not add tests that merely restate implementation.
 - Live Foundry behavior (rendering, derived stats, grant chains, dialogs) is **not** self-checkable from this machine. Say so in the PR body and in HANDOFF.md, and open/keep the ledger row.
 
-### Orchestration roster (user's standing instruction, 2026-10-25)
+### Orchestration roster (user's standing instruction, revised 2026-10-26)
 
-- **Coordinator: Claude Fable.** Understands scope, plans, writes briefs, delegates, verifies, integrates, owns HANDOFF.md and the final report. Decides which tool to use; Codex, opencode and omp are available and may be used at the coordinator's judgment.
-- **Workers: Claude Haiku 5.5 at high effort** for bounded, already-specified execution (apply a mapped fix, write a test mirroring an existing one, mechanical moves/renames, doc synthesis from named sources).
-- **Fixers: Claude Sonnet 5.5 at high effort** for anything a review flags.
-- **Opus 5.5 / Fable** for open-ended design, hard debugging, and *independent review* of schema-dependent or balance-sensitive diffs.
-- **Parallel work always uses git worktrees** (`isolation: worktree`, one worker per worktree, one owner per shared file). When the pieces are done: merge the worktrees into the integration branch, run the gate, then review the **merged** result, then fix with Sonnet.
+This is the user's standing rule. Follow it without being told again; change it only when the user says so.
+
+- **Orchestrator: Claude Fable 5.5 at high thinking.** Plans, writes briefs, delegates, verifies, integrates, owns HANDOFF.md and the final report. Does not do bulk execution itself. May spin up as many subagents as the work needs. Codex, opencode and omp are available at the orchestrator's judgment.
+- **Workers**, one of:
+  - **Claude Haiku 5.5 at very high thinking** (`effort: xhigh`) for bounded, already-specified execution (apply a mapped fix, write a test mirroring an existing one, mechanical moves/renames, doc synthesis from named sources).
+  - **opencode on a free model, `opencode/glm-5.3-flash-free` or `opencode/beam-free`, at very high thinking** (match the Haiku level; see §7 for how the model is set).
+- **Escalation:** if the orchestrator judges a task needs more reasoning than a Haiku worker can give, it may upgrade that worker to **Claude Sonnet 5.5** (same brief, same worktree rules). Say so in the brief and in the report.
+- **Parallel work always uses git worktrees** (`isolation: worktree`, one worker per worktree, one owner per shared file).
+- **Merge, review, fix ladder (addendum 2026-10-26):**
+  1. **Merge.** When a worktree's work is complete, merge it into a local integration branch (`claude/<topic>-<date>`). Every finished worktree lands there; nothing goes to `main` directly.
+  2. **Gate** the integration branch: `node tools/check.mjs` and `git diff --check`.
+  3. **Review.** Claude Opus 5.5 at high thinking reviews the integration branch with fresh context (not a builder). The orchestrator verifies each finding technically before acting on it.
+  4. **Fix, escalating one step at a time.** Each confirmed finding is first attempted by **Haiku 5.5 at very high thinking**. If Haiku fails (wrong fix, gate still red, or the reviewer rejects it), hand the same finding to **Sonnet 5.5 at very high thinking**. If Sonnet fails, hand it to **Opus 5.5 at very high thinking**. Record in the report which rung fixed each finding.
+  5. **Re-gate and re-review** after fixes. Repeat from step 3 until the reviewer has no open findings, then the user decides whether to open or merge the PR.
 - Never delegate without the brief stating: the exact files owned, what not to touch, the verification command, the commit message, and the report shape. Never delegate the two things that bite this repo: pf2e schema verification (the delegate must fetch real source and quote it; the coordinator spot-checks), and release/workflow `.yml` reasoning.
 - Every schema-dependent or balance-sensitive diff gets an independent reviewer with fresh context (not the builder) before the PR is called done — this has caught real bugs on three separate occasions.
 - Review handling: verify technically before accepting a reviewer finding; one fix PR per merged PR if the user merged mid-review.
@@ -172,19 +184,24 @@ Live QA runs on the user's Foundry (Foundry 14.365 / PF2e 8.5.0, world `test`) a
 
 - No local Foundry. No local pf2e checkout; fetch files from GitHub raw as needed (reachable).
 - `gh` CLI hangs on this machine. Read GitHub via `curl https://api.github.com/repos/simplyjaytea/simplyPF2e/...`; push/PR only with the user's authorization.
+- opencode model selection: Orca cannot pass a model at worker launch. Set `"model"` in `~/.config/opencode/opencode.json` (e.g. `opencode/beam-free` with high thinking) before launching, confirm the TUI footer shows the model and effort, then restore the user's default `opencode/glm-5.3-flash-free`.
 - Node via mise: only 26.12.1 is installed; Node 22 (used by CI) is NOT installed locally, and `mise exec node@22 -- node tools/check.mjs` would first download it. Gate takes ~7 s.
 - Git identity for this repo: `user.name "jt"`, `user.email "jt_f@ymail.com"` (the checkout may show a different global identity; set it per-repo before committing).
 - Prior sessions' worktrees lived under `/home/jtf/.t3/worktrees/` (Codex "T3"); remote branches `codex/*` are historical and may be pruned only with the user's say-so.
 
-## 8. Current state — 2026-10-25
+**Drift check:** `node tools/check-pf2e-drift.mjs [--ref <git-ref>] [--json]` compares the module's pf2e pack ids, `Compendium.pf2e` UUIDs, catalog names and fixtures with upstream `foundryvtt/pf2e` at `--ref` (default `master`; a tag such as `pf2e-8.5.0` pins a version). It needs network access and is deliberately kept out of `node tools/check.mjs`, which stays offline; exit 2 means the check could not run (network or rate limit), not that drift was found. Run it before every release and whenever pf2e ships a new version.
 
-- **Latest release: v0.3.5.75**, published 2026-10-25 from PR #115 (`1248382`: playbook, test relocation, docs reorg, link-based integrity gate, gated level-shift UI, .74 parity, Batch A runbook). Auto Release succeeded; both asset digests match the API and all 63 archive entries are byte-identical to the merge except the stamped `module.json`. Previous: v0.3.5.74 (PR #114, 2026-10-17; parity [record](docs/evidence/release-parity-2026-10-25.md)).
-- **Last recorded installation: v0.3.5.72.** Nothing from .73, .74 or .75 has been installed or natively exercised. The Guard Lore fix (.73), all experimental tools, the PC editor, multiclass, Free Archetype and level shifting have zero live evidence.
-- **Local gate:** 50 runtime modules, 112 regression files, plus the link-based static integrity check (`tools/check-integrity.mjs`: real ESM linking of every module, template paths, localization keys), exit 0 on Node 22.23.4 and 26.12.1.
-- **Native ledger:** R01–R25 (22 OPEN, 3 BLOCKED: R20 PC focus path, R22 screen-reader operator, R24 isolated PF2e 8.4.1 instance) and N01–N08 all OPEN. Zero PASS rows. Known provider spend lower bound 333,213 tokens.
-- **Decided 2026-10-25:** level shifting has a gated Creature Tools section and `module.api.levelShift` (preview, then create); the C11 policy (deltas ±1/±2, narrow caster rule, abilities unchanged, skills shifted, first-instance Strike damage shifted, `<name> (Level T)`) is confirmed. Its native rows (N08) stay OPEN.
-- **Open decisions the user owns:** (c) a QA spending envelope for Batch A — the runbook is ready ([qa-batch-a](docs/plans/qa-batch-a-2026-10-25.md)); (d) screen-reader operator and isolated 8.4.1 environment, or explicit deferral.
-- Historical narrative and the full bug log: [docs/HISTORY.md](docs/HISTORY.md). Last large plans: [completion proposal](docs/plans/completion-proposal-2026-10-17.md), [execution ledger](docs/plans/completion-execution-2026-10-17.md), [consolidated review record](docs/reviews/completion-review-2026-10-17.md).
+## 8. Current state — 2026-10-26
+
+- **Latest release: v0.3.5.76**, published 2026-10-25T11:30:48Z from the PR #116 merge (`29add59`, post-release docs only). v0.3.5.75 (11:27:30Z) came from the PR #115 merge (`1248382`: playbook, test relocation, docs reorg, integrity gate, gated level-shift UI, .74 parity, Batch A runbook) and was parity-verified (digests match; 63/63 archive entries identical except the stamped manifest). **The 2026-10-26 sprint on `claude/sprint-2026-10-26` merges to `main` next by the user's explicit instruction (direct merge, no PR), publishing v0.3.5.77.**
+- **Shipped in the 2026-10-26 sprint** ([plan](docs/plans/sprint-2026-10-26.md)): Wizard as a complete-only PC class with a per-bridge class-path contract and a fail-closed bridge-shape guard; Hazard generator mode behind `experimentalTools`; scrolls and wands in the Item Forge, with NPC loot scrolls migrated to the same pinned-template builder (rarity from the spell, `@UUID` description line, focus spells excluded); dead-code and lang-key sweep (0 unused keys); Markdown link check in the gate; opt-in pf2e drift check.
+- **Last recorded installation: v0.3.5.72.** Nothing from .73 onward has been installed or natively exercised. Level shifting, Wizard, hazards, scrolls/wands, the PC editor, multiclass and Free Archetype have zero live evidence.
+- **Local gate:** 54 runtime modules, 124 regression files, 4 tooling files; `Integrity passed: 316 imports, 817 exports, 15 templates, 580 localization keys; 0 unused keys`; `Links passed: 146 links in 51 files`; exit 0 on Node 26.12.1 (Node 22 not re-run this sprint).
+- **Drift check** (`node tools/check-pf2e-drift.mjs --ref master`, 2026-10-26): 0 failures, 37 warnings (legacy alias; 16 `equipment-srd` UUIDs beyond the unauthenticated fetch budget; 13 fixtures that pin 8.5.0 and differ on master; 2 display-name literals).
+- **Native ledger:** R01–R25 (22 OPEN, 3 BLOCKED) and N01–N11 all OPEN (N09 Wizard, N10 hazard, N11 scrolls/wands added 2026-10-26). Zero PASS rows. Known provider spend lower bound 333,213 tokens.
+- **Decided 2026-10-26:** Wizard v1 = prepared arcane caster + closed school + closed thesis + Arcane Bond; curriculum extras, school focus spells and familiar actors stay manual. Hazard scale words are extreme/high/low; HP and hardness ranges resolve to the floor of the midpoint; the Low DC range resolves to its upper value; the Dispel Magic counteract rank is derived as `ceil(level/2)` clamped 1..10 (module convention). Scroll/wand templates are pinned by UUID; wand rank 10 is refused; cantrips, focus spells and rituals are refused.
+- **Open decisions the user owns:** a QA spending envelope for Batch A ([runbook](docs/plans/qa-batch-a-2026-10-25.md), which must be re-based on v0.3.5.77); screen-reader operator and isolated 8.4.1 environment, or explicit deferral.
+- Historical narrative and the full bug log: [docs/HISTORY.md](docs/HISTORY.md). Research records for this sprint: [Wizard](docs/plans/wizard-research-2026-10-26.md), [hazards](docs/plans/hazard-research-2026-10-26.md), [spell consumables](docs/plans/consumables-research-2026-10-26.md).
 
 ## 9. Backlog — what to do next
 
@@ -192,23 +209,29 @@ Ordered. Pick the top item whose prerequisites are met; move finished items to �
 
 ### Ready now — local only, no spend, no live world, no publication
 
-1. **Dead code and localization sweep** (flagged by C12 §3.5, never done): exports with no production consumer (`findFundamentalRune`, `availableEffectKinds`, others) and the 10 unused `lang/en.json` keys the integrity check now reports as warnings. Haiku worker; verify each with grep across `scripts/ templates/`; keep anything a test uses; gate must stay green.
-2. **Link check in the gate**: add a dependency-free relative-link checker for `*.md` to `tools/check-integrity.mjs` (or a sibling) so the reorganized docs cannot rot.
+1. **Hazards inside Encounter mode**: `composeEncounter` admits simple/complex hazards within the XP budget using `hazardXP`; the Encounter pipeline runs the hazard builder for those members. Needs a design note first (which share of the budget, how the AI requests a hazard member).
+2. **Loot actor container for Forge consumables**: create a pf2e `loot` actor holding a scroll/wand batch (fetch and quote the loot actor schema first). Bridge to a Treasure-parcel generator (GM Core Treasure by Level).
+3. **Wizard school focus spell**: resolve the chosen school's "School Spells initial" `@UUID` link from its description into `focusSpells` (fail closed when unparseable); see research §4.
+4. **Cantrip deck** in the Forge (template pinned already; builder refuses it today).
+5. **Drift check with `GITHUB_TOKEN`** in CI on a schedule, so the 16 `equipment-srd` UUIDs are actually resolved; consider pinning `--ref` to the installed pf2e tag.
+6. **Wizard preflight completeness**: extend `preflightClassPaths` to require at least one closed candidate per bridge so a world with no enabled closed school fails before provider spend.
+7. **Review leftovers (P3, 2026-10-26)**: filter casters out of the Character editor's class control (pc-edit refuses them); skip focus candidates in the spell step when `classModelsFocusSpells` is false; make the hazard AI gate require `strike.name` like the builder; assert the Forge TemplateMissing label.
+8. **Hazard prompt breadth**: expose `CONFIG.PF2E.hazardTraits` subsets by theme to keep the prompt short on large worlds; measure prompt size first.
 
-Done in the 2026-10-25 sprint ([plan](docs/plans/sprint-2026-10-25.md)): static integrity check in the gate; gated level-shift UI + `api.levelShift`; v0.3.5.74 release parity; Batch A runbook.
+Done in the 2026-10-26 sprint ([plan](docs/plans/sprint-2026-10-26.md)): dead-code and lang-key sweep; Markdown link check; pf2e drift check; Wizard complete-only class; Hazard generator (gated); scrolls and wands. Done in the 2026-10-25 sprint ([plan](docs/plans/sprint-2026-10-25.md)): static integrity check in the gate; gated level-shift UI + `api.levelShift`; v0.3.5.74 release parity; Batch A runbook.
 
 ### Needs user authorization — live world and/or provider spend
 
-5. **Install .74 module-only** in the `test` world (R01), then **Batch A** (R02: level-1 Guard/Thief with Legal Lore, ceiling 1 generation / 40,000 tokens) plus the zero-spend windows R06, R07, R21.
-6. **Batch B** (R03 Guard/Fighter Warfare Lore, R04 higher-level Rogue, R05 Investigator boundary) only after Batch A passes.
-7. **N01–N08** experimental/multiclass/editor native rows — enable the gates in the test world only for the session; disable afterwards.
-8. **Batch C/D** (encounter R11–R13 with the rollback harness, NPC focus R19, forge activations R15–R18, source switch R08–R09).
+7. **Install the latest release module-only** in the `test` world (R01), then **Batch A** (R02: level-1 Guard/Thief with Legal Lore, ceiling 1 generation / 40,000 tokens) plus the zero-spend windows R06, R07, R21.
+8. **Batch B** (R03 Guard/Fighter Warfare Lore, R04 higher-level Rogue, R05 Investigator boundary) only after Batch A passes.
+9. **N01–N11** experimental/multiclass/editor/Wizard/hazard/consumable native rows — enable the gates in the test world only for the session; disable afterwards.
+10. **Batch C/D** (encounter R11–R13 with the rollback harness, NPC focus R19, forge activations R15–R18, source switch R08–R09).
 
 ### Needs a decision or an external resource
 
-9. Screen-reader session (R22) and isolated PF2e 8.4.1 smoke (R24): obtain operator/environment or record an explicit deferral in the ledger and README.
-10. Caster multiclass dedications and PC spell editing: blocked until a supported casting/grant path is identified and accepted.
-11. Enabling any experimental or multiclass gate by default: a separate reviewed change after its N rows pass.
+11. Screen-reader session (R22) and isolated PF2e 8.4.1 smoke (R24): obtain operator/environment or record an explicit deferral in the ledger and README.
+12. Caster multiclass dedications and PC spell editing: blocked until a supported casting/grant path is identified and accepted.
+13. Enabling any experimental or multiclass gate by default: a separate reviewed change after its N rows pass.
 
 ### Standing hygiene
 
@@ -223,9 +246,11 @@ Condensed from the former `CLAUDE.md` "Known gaps". User-facing wording lives in
 - **Skill completion limits:** unknown grant timing, non-floor native rank transformations and missing class data are warned, not inferred. Duplicate native feat grants and arbitrary new Lore replacements stay manual. Not a full feat-prerequisite validator or historical level-up simulator.
 - **Native acceptance limits:** only bounded native checks exist (see [PC identity evidence](docs/evidence/pc-identity-2026-09-15.md), [consumer readiness](docs/evidence/consumer-readiness-2026-09-08.md) and the [acceptance ledger](docs/acceptance-ledger.md)). Nested backpack quantities/container links, multi-member encounters, duplicate-copy activation and screen-reader behavior are unverified; complete supported-PC acceptance is not established.
 - **PC casting coverage:** seven supported Remaster casting profiles (Bard, Cleric, Druid, Oracle, Sorcerer, Witch, Wizard) are regression-checked against all 140 rows of the PF2e 8.4.1 class tables; ordinary signatures for the three qualified spontaneous classes are selected in the spell pass. Legacy/complex profiles, subclass-granted spells, restricted font/curriculum slots, bonus signature feats, variable-tradition consistency and full spellbook/familiar inventories are manual. Empty or invalid plans never invent preparations. Live casting acceptance is outstanding.
-- **Wizard excluded:** complete-only class selection stays Fighter, Rogue, Investigator; Wizard waits on class-owned spellbook/curriculum support.
+- **Wizard limits (v1, 2026-10-26):** complete-only on pf2e 8.5.0 data. Two level-1 bridges (Arcane School, Arcane Thesis) resolve to closed candidates only (14 schools, 4 theses at 8.5.0; Runelord, Rooted Wisdom, Unified Magical Theory and Experimental Spellshaping fail closed). The spellbook equals the prepared spells; curriculum extra cantrip and restricted slots, school focus spells and familiar actors are manual. Text-only theses and schools are created without automated effects. Any class whose level-1 item carries an unstaged ChoiceSet (master's two-entry Arcane School filter, for example) refuses the one-click build with a named error instead of opening a native dialog. Name-form uuid resolution (`Compendium.pf2e.feats-srd.Item.Familiar`) is unverified live; if it fails, Improved Familiar Attunement drops out. A chooser-free preflight (`preflightClassPaths`) removes a class from the offered list and fails identity validation before any provider call when a bridge shape is unsupported; it does not yet check that each bridge has at least one closed candidate, so that case still fails closed at Create. Wizard focus spells from the AI are dropped with a warning (no modeled school focus source). Record: [wizard-research-2026-10-26](docs/plans/wizard-research-2026-10-26.md).
+- **Hazard generator limits (v1, gated):** numbers come from Archives of Nethys' transcription of GM Core Tables 2-13 to 2-16 (not in the pf2e repo; not checked against print). Published hazards sit off-table more often than on (research §3.7), so output is table-faithful, not sample-faithful. One melee strike per hazard; routine text is prose in `details.routine`; no immunities/weaknesses/resistances; no art lookup; Foundry's acceptance of the `hazard` source on 8.5 is unverified. Record: [hazard-research-2026-10-26](docs/plans/hazard-research-2026-10-26.md).
+- **Scrolls and wands limits:** the native `createConsumableFromSpell` is unreachable from a module, so the module clones the pinned blank templates and mirrors the native field map; `magical` is kept unless `traits.value` holds a tradition word (native rule). Wand rank 10, cantrips, focus spells and rituals are refused; no cantrip deck, no staves, no mystified state; the Forge prompt lists traits but not traditions. Record: [consumables-research-2026-10-26](docs/plans/consumables-research-2026-10-26.md).
 - **Free Archetype is catalog-only:** archetype slots take only the proven catalog, with dedication ability and lock checks at pick time and in the PC edit path. Native ChoiceSet prompts and live slot rendering are unverified.
 - **Focus spells, v1 scope:** focus-only NPCs (no tradition, no DC) are unsupported; the pool size convention (spell count, capped at 3) is a module default. Both are signed-off decisions.
 - **Rarity cap covers ancestry/background/heritage only.** `getFullCandidates()`'s `maxRarity` + `RARITY_RANK` exist if extending is wanted.
 - **Item forge Phase 3:** no rune prerequisite/exclusivity validation; shield and ammunition runes are out of scope. Armor property runes are gated to the base armor's category (`propertyRuneFitsBase` in `runes.mjs`), but the material-constrained usages `etched-onto-metal-armor`, `etched-onto-lm-nonmetal-armor` and `etched-onto-medium-heavy-metal-armor` are excluded because an armor's metal-ness is not in the index data.
-- **Roadmap gates:** `/forge`, Creature Tools reskin and elite/weak are behind default-off `experimentalTools`; noncaster multiclass behind `multiclassArchetypes`; none native-accepted. Level shifting is behind the same `experimentalTools` gate since the 2026-10-25 sprint. Caster multiclass dedications are unbuilt. See [completion proposal](docs/plans/completion-proposal-2026-10-17.md).
+- **Roadmap gates:** `/forge`, Creature Tools reskin and elite/weak are behind default-off `experimentalTools`; noncaster multiclass behind `multiclassArchetypes`; none native-accepted. Level shifting is behind the same `experimentalTools` gate since the 2026-10-25 sprint, and the Hazard generator mode since 2026-10-26. Caster multiclass dedications are unbuilt. See [completion proposal](docs/plans/completion-proposal-2026-10-17.md).

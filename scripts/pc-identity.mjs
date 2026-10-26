@@ -3,6 +3,28 @@
  * source keys, and declaration-shaped prose can bind exact catalog names.
  * Other free prose can only make a request ambiguous; it can never select an
  * ABC document by itself.
+ *
+ * Class paths. A class has one required-path slot per level-one bridge
+ * feature (class-paths.mjs). Every catalog candidate carries `bridge`, the
+ * bridge feature's name. Two shapes carry a requirement:
+ *   - `classPath`: the single-bridge alias (Rogue's Racket, Investigator's
+ *     Methodology). One stable key, as before. It is the alias of
+ *     `classPaths[candidate.bridge]` when the candidate names its bridge.
+ *     For a class with several bridges (Wizard) there is no single path
+ *     control, so resolvePCIdentity moves a bridge-labelled alias into
+ *     `classPaths[bridge]`, where the per-bridge control reads it.
+ *   - `classPaths`: an object keyed by bridge name ("Arcane School",
+ *     "Arcane Thesis"), one issued candidate per bridge. Controls supply
+ *     `choices.classPaths = { "<bridge>": "<stable key>" }`; the key must be a
+ *     candidate of that very bridge, so a thesis can never fill the school.
+ * Declarations: "racket", "methodology" and "class path" bind `classPath`;
+ * "school" and "arcane school" bind `classPaths["Arcane School"]`; "thesis"
+ * and "arcane thesis" bind `classPaths["Arcane Thesis"]`. Bridge names are
+ * matched exactly, so a localized compendium that renames the features
+ * resolves no declaration rather than a wrong one. Applied concepts hold
+ * `classPaths` (bridge -> name) and `classPathCandidates` (bridge -> ref).
+ * Prose never selects a path; a prose mention of a path's full name without a
+ * control or declaration is ambiguous, like every other identity mention.
  */
 
 import { getBackgroundLoreOptions } from "./pc-background-lore.mjs";
@@ -22,11 +44,17 @@ const DECLARATION_FIELDS = Object.freeze({
   methodology: "classPath", "class path": "classPath",
   "background lore": "backgroundLore"
 });
+// Declarations that bind one named bridge of a multi-bridge class (Wizard).
+const BRIDGE_DECLARATIONS = Object.freeze({
+  school: "Arcane School", "arcane school": "Arcane School",
+  thesis: "Arcane Thesis", "arcane thesis": "Arcane Thesis"
+});
+const BRIDGE_SLOT = "classPaths\u0000";
 
 const has = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const text = (value) => typeof value === "string" ? value.trim() : "";
-const fieldLabel = (field) => ({ classPath: "class path", keyAbility: "key ability", backgroundLore: "background Lore" })[field] ?? field;
+const fieldLabel = (field) => ({ classPath: "class path", classPaths: "class path", keyAbility: "key ability", backgroundLore: "background Lore" })[field] ?? field;
 const displayField = (field) => {
   const label = field === "keyAbility" ? "key ability" : fieldLabel(field);
   return label.charAt(0).toLocaleUpperCase() + label.slice(1);
@@ -55,6 +83,23 @@ export function pcIdentityKey(candidate) {
 function candidateUsable(candidate) {
   return isObject(candidate) && typeof candidate.name === "string" && candidate.name.trim().length > 0
     && pcIdentityKey(candidate) !== "";
+}
+
+/** Names of the bridges that offer these class-path candidates, in first-seen order. */
+export function classPathBridges(candidates) {
+  const names = [];
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    if (typeof candidate?.bridge === "string" && candidate.bridge && !names.includes(candidate.bridge)) names.push(candidate.bridge);
+  }
+  return names;
+}
+
+const bridgeSlot = (bridge) => `${BRIDGE_SLOT}${bridge}`;
+const isBridgeSlot = (slot) => typeof slot === "string" && slot.startsWith(BRIDGE_SLOT);
+
+/** Catalog candidates offered by exactly this bridge. */
+function bridgeCatalog(catalogs, bridge) {
+  return catalog(catalogs, "classPath").filter((candidate) => candidate?.bridge === bridge);
 }
 
 function catalog(catalogs, field) {
@@ -113,7 +158,7 @@ function declarationParts(prompt) {
   const free = [];
   const declarations = [];
   const parts = String(prompt ?? "").split(/[;\n]+/);
-  const labels = Object.keys(DECLARATION_FIELDS).map((label) => label.replaceAll(" ", "\\s+"));
+  const labels = [...Object.keys(DECLARATION_FIELDS), ...Object.keys(BRIDGE_DECLARATIONS)].map((label) => label.replaceAll(" ", "\\s+"));
   const declarationPattern = new RegExp(`^\\s*(${labels.join("|")})\\s*:\\s*(.*?)\\s*$`, "iu");
   for (const part of parts) {
     const match = part.match(declarationPattern);
@@ -122,7 +167,11 @@ function declarationParts(prompt) {
       continue;
     }
     const label = match[1].replace(/\s+/g, " ").toLocaleLowerCase();
-    declarations.push({ field: DECLARATION_FIELDS[label], value: match[2] });
+    if (Object.hasOwn(BRIDGE_DECLARATIONS, label)) {
+      declarations.push({ field: "classPaths", bridge: BRIDGE_DECLARATIONS[label], value: match[2] });
+    } else {
+      declarations.push({ field: DECLARATION_FIELDS[label], value: match[2] });
+    }
   }
   return { freeText: free.join(" "), declarations };
 }
@@ -173,16 +222,28 @@ function explicitControls(choices, catalogs) {
     }
     result.set(field, candidateByKey(catalog(catalogs, field), choices[field], field));
   }
+  if (has(choices, "classPaths") && choices.classPaths !== undefined && choices.classPaths !== null) {
+    if (!isObject(choices.classPaths)) {
+      fail("PC_IDENTITY_CONTROL", "classPaths", "set per-bridge class paths as an object keyed by bridge name");
+    }
+    for (const [bridge, key] of Object.entries(choices.classPaths)) {
+      if (typeof key === "string" && !key.trim()) continue;
+      result.set(bridgeSlot(bridge), candidateByKey(bridgeCatalog(catalogs, bridge), key, "classPaths"));
+    }
+  }
   return result;
 }
 
 function declarationValues(parsed, catalogs) {
   const result = new Map();
   for (const declaration of parsed.declarations) {
-    const { field, value } = declaration;
-    if (result.has(field)) fail("PC_IDENTITY_DUPLICATE", field, "duplicate identity declarations are ambiguous");
+    const { field, bridge, value } = declaration;
+    const slot = bridge === undefined ? field : bridgeSlot(bridge);
+    if (result.has(slot)) fail("PC_IDENTITY_DUPLICATE", field, "duplicate identity declarations are ambiguous");
     if (!text(value)) fail("PC_IDENTITY_UNKNOWN", field, "the declaration needs a value");
-    if (field === "name") {
+    if (bridge !== undefined) {
+      result.set(slot, candidateByName(bridgeCatalog(catalogs, bridge), value, field));
+    } else if (field === "name") {
       if (value.trim().length > 120) fail("PC_IDENTITY_CONTROL", field, "literal names are limited to 120 characters");
       result.set(field, value.trim());
     } else if (field === "keyAbility") {
@@ -208,7 +269,7 @@ function combine(explicit, declared) {
   const result = new Map(explicit);
   for (const [field, value] of declared) {
     if (result.has(field) && !sameValue(field, result.get(field), value)) {
-      fail("PC_IDENTITY_CONFLICT", field, "Required choices conflict with the declared constraint");
+      fail("PC_IDENTITY_CONFLICT", isBridgeSlot(field) ? "classPaths" : field, "Required choices conflict with the declared constraint");
     }
     if (!result.has(field)) result.set(field, value);
   }
@@ -250,8 +311,10 @@ function proseAmbiguity(parsed, resolved, catalogs) {
   for (const mention of allMentions) {
     if (!chosenMentions.some((chosen) => overlapping(chosen, mention))) chosenMentions.push(mention);
   }
+  const pathResolved = (mention) => mention.field === "classPath"
+    && mention.candidates.some((candidate) => typeof candidate.bridge === "string" && resolved.has(bridgeSlot(candidate.bridge)));
   for (const mention of chosenMentions) {
-    if (resolved.has(mention.field)) continue;
+    if (resolved.has(mention.field) || pathResolved(mention)) continue;
     if (mention.candidates.length > 1) {
       fail("PC_IDENTITY_DUPLICATE", mention.field, `prose names duplicate offered candidates; set Required choices for ${fieldLabel(mention.field)}`);
     }
@@ -264,8 +327,12 @@ function proseAmbiguity(parsed, resolved, catalogs) {
     ["heritage", /\bheritage\b/iu], ["background", /\bbackground\b/iu],
     ["name", /\b(?:named|called)\b/iu], ["keyAbility", /\bkey\s+ability\b/iu]
   ];
+  // Only "racket", "methodology" and "class path" mark a class-path request in
+  // prose. "school" and "thesis" are ordinary backstory words, so they bind
+  // only through a control or a declaration.
+  const anyPath = resolved.has("classPath") || [...resolved.keys()].some(isBridgeSlot);
   for (const [field, pattern] of markerChecks) {
-    if (!resolved.has(field) && pattern.test(freeText)) {
+    if (!(field === "classPath" ? anyPath : resolved.has(field)) && pattern.test(freeText)) {
       fail("PC_IDENTITY_AMBIGUOUS", field, `prose marks an identity request; set Required choices for ${fieldLabel(field)}`);
     }
   }
@@ -277,6 +344,20 @@ function proseAmbiguity(parsed, resolved, catalogs) {
   }
 }
 
+/**
+ * Whether a bridge-labelled alias belongs in the per-bridge map: its class has
+ * several path bridges (Wizard). The class is the resolved class, else the
+ * classes the catalog candidate is related to (`classKeys`); without either
+ * the class is unknown and the alias stays as given.
+ */
+function aliasBelongsToBridgeMap(alias, classCandidate, catalogs) {
+  const classKeys = classCandidate ? [pcIdentityKey(classCandidate)] : Array.isArray(alias.classKeys) ? alias.classKeys : null;
+  if (!classKeys) return false;
+  const scoped = catalog(catalogs, "classPath").filter((candidate) =>
+    !Array.isArray(candidate?.classKeys) || candidate.classKeys.some((key) => classKeys.includes(key)));
+  return classPathBridges(scoped).length > 1;
+}
+
 /** Resolve only explicit controls/declarations into a bounded PC identity. */
 export function resolvePCIdentity({ prompt = "", choices = {}, catalogs = {}, isRandom = false } = {}) {
   if (isRandom) return {};
@@ -284,6 +365,19 @@ export function resolvePCIdentity({ prompt = "", choices = {}, catalogs = {}, is
   const parsed = declarationParts(prompt);
   const declared = declarationValues(parsed, catalogs);
   const resolved = combine(controls, declared);
+  const alias = resolved.get("classPath");
+  if (alias && typeof alias.bridge === "string" && resolved.has(bridgeSlot(alias.bridge))
+    && !sameValue("classPaths", resolved.get(bridgeSlot(alias.bridge)), alias)) {
+    fail("PC_IDENTITY_CONFLICT", "classPath", `the class path conflicts with the class path required for ${alias.bridge}`);
+  }
+  // A bridge-labelled alias of a multi-bridge class (Wizard) is the requirement
+  // for that bridge: normalize it into the per-bridge map so the Arcane School
+  // or Arcane Thesis control, which reads only that map, shows it selected.
+  if (alias && typeof alias.bridge === "string" && alias.bridge && !resolved.has(bridgeSlot(alias.bridge))
+    && aliasBelongsToBridgeMap(alias, resolved.get("class") ?? null, catalogs)) {
+    resolved.set(bridgeSlot(alias.bridge), alias);
+    resolved.delete("classPath");
+  }
   if (resolved.has("backgroundLore")) {
     if (!resolved.has("background") || !getBackgroundLoreOptions(resolved.get("background")).length) {
       fail("PC_IDENTITY_CONFLICT", "backgroundLore", "Background Lore requires the exact published Guard background");
@@ -295,6 +389,8 @@ export function resolvePCIdentity({ prompt = "", choices = {}, catalogs = {}, is
   for (const field of ["name", "keyAbility", "backgroundLore", ...CATALOG_FIELDS]) {
     if (resolved.has(field)) identity[field] = resolved.get(field);
   }
+  const paths = [...resolved].filter(([slot]) => isBridgeSlot(slot)).map(([, candidate]) => [candidate.bridge, candidate]);
+  if (paths.length) identity.classPaths = Object.fromEntries(paths);
   return identity;
 }
 
@@ -318,6 +414,15 @@ export function applyPCIdentity(concept, identity = {}) {
     } else {
       applyCandidate(concept, field, identity[field]);
     }
+  }
+  if (has(identity, "classPaths")) {
+    if (!isObject(identity.classPaths)) fail("PC_IDENTITY_APPLY", "classPaths", "identity class paths must be an object keyed by bridge name");
+    const entries = Object.entries(identity.classPaths);
+    if (!entries.every(([, candidate]) => candidateUsable(candidate))) {
+      fail("PC_IDENTITY_APPLY", "classPaths", "identity contains an invalid candidate record");
+    }
+    concept.classPaths = Object.fromEntries(entries.map(([bridge, candidate]) => [bridge, candidate.name]));
+    concept.classPathCandidates = Object.fromEntries(entries.map(([bridge, candidate]) => [bridge, candidate.ref]));
   }
   return concept;
 }
@@ -352,6 +457,18 @@ export function assertPCIdentity(concept, identity = {}) {
       || concept[field] !== expected.name
       || pcIdentityKey({ ref: conceptRef(concept[`${field}Candidate`]) }) !== pcIdentityKey(expected)) {
       fail("PC_IDENTITY_ASSERT", field, "concept candidate does not retain the required source identity");
+    }
+  }
+  if (has(identity, "classPaths")) {
+    if (!isObject(identity.classPaths)) fail("PC_IDENTITY_ASSERT", "classPaths", "identity class paths must be an object keyed by bridge name");
+    const names = isObject(concept.classPaths) ? concept.classPaths : {};
+    const refs = isObject(concept.classPathCandidates) ? concept.classPathCandidates : {};
+    for (const [bridge, expected] of Object.entries(identity.classPaths)) {
+      if (!candidateUsable(expected)
+        || !Object.hasOwn(names, bridge) || names[bridge] !== expected.name
+        || !Object.hasOwn(refs, bridge) || pcIdentityKey({ ref: conceptRef(refs[bridge]) }) !== pcIdentityKey(expected)) {
+        fail("PC_IDENTITY_ASSERT", "classPaths", `concept class path for ${bridge} does not retain the required source identity`);
+      }
     }
   }
   return true;

@@ -103,7 +103,7 @@
       "ChooseLore": "Choose Lore",
       "LoreHint": "Choose the Lore granted by this background before generating. This choice does not use AI.",
       "keyAbility": "Key ability",
-      "classPath": "Racket / methodology",
+      "classPath": "Racket / methodology / school / thesis",
       "Ability": { "str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma" }
     },
     "PCEdit": {
@@ -151,10 +151,9 @@
       "EncounterThemeHint": "Leave this blank for a random encounter theme.",
       "CharacterPrompt": "Describe the character",
       "CharacterPromptPlaceholder": "e.g. A gruff dwarven artillerist who left the family forge to hunt the beast that killed her mentor...",
-      "CharacterRestriction": "Complete one-click characters currently support Fighter, Rogue, and Investigator.",
+      "CharacterRestriction": "Complete one-click characters currently support Fighter, Rogue, Investigator, and Wizard.",
       "Character": "Character",
       "Creature": "Creature",
-      "CreateAll": "Create All Actors",
       "CreatedAll": "Created {count} actors in folder \"{name}\".",
       "LevelUp": "Increase level",
       "LevelDown": "Decrease level",
@@ -172,11 +171,6 @@
       "IncludeEquipment": "Include equipment",
       "IncludeTreasure": "Include treasure",
       "HoldingsHint": "Turn off a category to enforce none of that type. When enabled, describe the desired gear or treasure in the prompt.",
-      "Generate": "Generate",
-      "GenerateMonster": "Generate Monster",
-      "GenerateNpc": "Generate NPC",
-      "GenerateEncounter": "Generate Encounter",
-      "GenerateCharacter": "Generate Character",
       "GenerateCreateMonster": "Generate & Create Monster",
       "GenerateCreateNpc": "Generate & Create NPC",
       "GenerateCreateEncounter": "Generate & Create Encounter",
@@ -187,10 +181,8 @@
       "CreateCharacter": "Create Character",
       "PreviewPlan": "Preview Plan",
       "RandomPreview": "Random preview",
-      "Regenerate": "Regenerate",
       "Busy": "Consulting the forge...",
       "ChoicesNeedInput": "Some character choices could not be selected automatically. Complete any PF2e choice dialogs to continue.",
-      "CreateActor": "Create Actor",
       "RerollLoot": "Reroll Loot",
       "RerollLootTooltip": "Generate different loot without changing the creature",
       "Discard": "Discard",
@@ -235,7 +227,7 @@
       "None": "— No preset —",
       "StandardGroup": "Standard classes",
       "CustomGroup": "Custom presets",
-      "FlavorGuide": "Standard class presets are flavor guides only. Complete one-click Character generation still finishes Fighter, Rogue, and Investigator — Magus, Witch, and the other Standard classes do not unlock that path.",
+      "FlavorGuide": "Standard class presets are flavor guides only. Complete one-click Character generation still finishes Fighter, Rogue, Investigator, and Wizard — Magus, Witch, and the other Standard classes do not unlock that path.",
       "Alchemist": "Alchemist",
       "Barbarian": "Barbarian",
       "Bard": "Bard",
@@ -259,10 +251,6 @@
       "Thaumaturge": "Thaumaturge",
       "Witch": "Witch",
       "Wizard": "Wizard",
-      "SaveTooltip": "Save a custom preset (edits the selected custom preset in place)",
-      "DuplicateTooltip": "Duplicate the selected preset into a new custom preset",
-      "DeleteTooltip": "Delete the selected custom preset",
-      "ManageTooltip": "Manage custom presets",
       "Manage": "Manage Presets",
       "New": "New Preset",
       "DialogTitle": "New Custom Preset",
@@ -280,8 +268,6 @@
       "ManageTitle": "Manage Custom Presets",
       "ManageHint": "Create reusable guidance for the generator. Each action below names the preset it will affect.",
       "ManageEmpty": "No custom presets yet. Save one from the generator window.",
-      "EditTooltip": "Edit this preset",
-      "ExportTooltip": "Export this preset as JSON",
       "EditLabel": "Edit {name}",
       "DuplicateLabel": "Duplicate {name}",
       "ExportLabel": "Export {name} as JSON",
@@ -298,7 +284,6 @@
     "Mode": {
       "Monster": "Monster",
       "Npc": "NPC",
-      "Single": "Single",
       "Encounter": "Encounters",
       "Character": "Player Character"
     },
@@ -495,7 +480,6 @@
       "CreatedPresentationFailed": "The item was created, but its sheet could not be displayed. Open it from the Items directory; do not create it again.",
       "CreatedWarning": "The item was created, but its activation macro or sheet could not be prepared. Open the item to review it before use.",
       "NoPrompt": "Describe the magic item first.",
-      "NoExemplars": "No rule exemplars could be harvested from this world's compendiums — is the PF2e equipment compendium installed?",
       "KindsUnavailable": "No supported published passive effects match this level and rarity for: {kinds}. These effect kinds are not offered.",
       "ProgressTemplates": "Finding published passive effects",
       "ProgressConcept": "Item concept",
@@ -526,7 +510,28 @@
       "CreatedSummary": "{name} is ready in the Items directory.",
       "OpenItem": "Open Item",
       "ForgeAnother": "Forge Another",
-      "EmptyHint": "Nothing forged yet — describe a magic item above, then choose Generate Item Plan to review it before creating the item."
+      "EmptyHint": "Nothing forged yet — describe a magic item above, then choose Generate Item Plan to review it before creating the item.",
+      "Consumables": {
+        "PromptLabel": "Describe the spells to inscribe",
+        "PromptPlaceholder": "e.g. Fire and healing spells for a battlefield medic, up to six scrolls",
+        "KindScroll": "Scroll",
+        "KindScrollHint": "Real spells cast from a scroll at a chosen rank",
+        "KindWand": "Wand",
+        "KindWandHint": "Real spells in a wand, ranks 1 to 9",
+        "PreviewHeading": "Planned spell consumables",
+        "Spell": "Spell",
+        "Rank": "Rank",
+        "Price": "Price",
+        "Level": "Level",
+        "DroppedPick": "Dropped {name}: {reason}",
+        "SpellMissing": "Dropped {name}: the spell is no longer in the configured spell packs.",
+        "TemplateMissing": "Dropped {name}: its pinned pf2e template could not be loaded.",
+        "NoCandidates": "No spells in the configured spell packs can become a {kind}. Cantrips, focus spells, and rituals are never offered.",
+        "NoPicks": "No chosen spell could be built as a {kind} at a legal rank. Regenerate or describe different spells.",
+        "RankAboveLevel": "rank {rank} is above the highest rank this item level allows ({max})",
+        "LevelTooLow": "A {kind} needs item level {minLevel} or higher, so this level allows no rank",
+        "PartialCreate": "Only {created} of {total} items were created. Check the Items directory before forging again."
+      }
     },
     "Loot": {
       "CustomItem": "Generated by SimplyPF2e. No compendium match was found for this item, so it stands in as treasure with an estimated value — replace it with the real item if you have it."
@@ -629,6 +634,51 @@
     "Experimental": {
       "GMOnly": "Only a GM can use experimental SimplyPF2e tools.",
       "Disabled": "Experimental tools are turned off. Turn on Enable experimental tools in Module Settings → SimplyPF2e, then try again."
+    },
+    "Hazard": {
+      "Mode": "Hazard",
+      "Level": "Level",
+      "Legend": "Hazard Concept",
+      "Prompt": "Describe the hazard",
+      "PromptPlaceholder": "e.g. A pressure plate in a crypt corridor that releases a swinging scythe blade...",
+      "Generate": "Generate hazard preview",
+      "Create": "Create hazard",
+      "EmptyHint": "Describe a hazard, then choose Generate hazard preview. Nothing is created until you review the preview and choose Create hazard.",
+      "NoBrief": "Describe the hazard first.",
+      "PreviewChanged": "The level or brief changed after this preview. Generate the hazard again before creating it.",
+      "Progress": {
+        "Concept": "Hazard concept",
+        "Tables": "GM Core hazard tables"
+      },
+      "Complexity": {
+        "Simple": "Simple",
+        "Complex": "Complex"
+      },
+      "Preview": {
+        "Stealth": "Stealth",
+        "Disable": "Disable",
+        "Defenses": "Defenses",
+        "Reaction": "Reaction",
+        "Routine": "Routine",
+        "Reset": "Reset",
+        "XP": "XP",
+        "AC": "AC",
+        "ACAssumed": "assumed low value; the concept gave no AC",
+        "HP": "HP",
+        "Hardness": "Hardness",
+        "Trigger": "Trigger",
+        "DCLine": "DC {dc} ({rank})",
+        "DispelLine": "Dispel Magic, rank {rank}, counteract DC {dc}",
+        "SaveLine": "{save} DC {dc}",
+        "RoutineActions": "Actions per round: {count}",
+        "XPNote": "for a party of the same level"
+      },
+      "Errors": {
+        "Field": "The AI hazard concept has a missing or malformed {field}. Generate the hazard again.",
+        "Prose": "The AI hazard text for {field} was rejected ({reason}). Hazard text must be plain words without game statistics, dice, DCs or Foundry enricher syntax. Generate the hazard again.",
+        "Routine": "A complex hazard needs a routine with one to three actions. Generate the hazard again.",
+        "Catalog": "The PF2e hazard trait or damage type list is unavailable, so a hazard cannot be generated."
+      }
     },
     "Chat": {
       "ForgeUsage": "Usage: /forge [--preview] <brief> <level>. The level is a whole number from {min} to {max} and comes last. --preview validates the creature without creating an actor.",
