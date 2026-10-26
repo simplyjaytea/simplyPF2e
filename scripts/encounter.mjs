@@ -27,6 +27,22 @@ export function creatureXP(level, partyLevel) {
   return XP_BY_RELATIVE_LEVEL[String(rel)];
 }
 
+// Simple-hazard XP (GM Core pg. 56, Simple Hazard column), keyed by relative level.
+const SIMPLE_HAZARD_XP_BY_RELATIVE_LEVEL = {
+  "-4": 2, "-3": 3, "-2": 4, "-1": 6, "0": 8, "1": 12, "2": 16, "3": 24, "4": 32
+};
+
+/** XP one simple hazard of `level` is worth against a party of `partyLevel`. */
+export function simpleHazardXP(level, partyLevel) {
+  const rel = Math.min(4, Math.max(-4, level - partyLevel));
+  return SIMPLE_HAZARD_XP_BY_RELATIVE_LEVEL[String(rel)];
+}
+
+/** XP for a hazard: complex hazards are worth a creature of the same level. */
+export function hazardXP(level, partyLevel, isComplex) {
+  return isComplex ? creatureXP(level, partyLevel) : simpleHazardXP(level, partyLevel);
+}
+
 export function encounterBudget(threat, partySize) {
   const t = THREATS[threat] ?? THREATS.moderate;
   return Math.max(t.budget + (partySize - 4) * t.perPlayer, 0);
