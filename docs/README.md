@@ -27,6 +27,7 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
+| [Sprint review, October 26](reviews/sprint-review-2026-10-26.md) | Opus 5.5 independent review of the 2026-10-26 sprint: 1 P1, 5 P2, 12 P3, APPROVE WITH FIXES; resolution per finding |
 | [Completion-plan review, October 17](reviews/completion-review-2026-10-17.md) | Opus 5.5 high review, parent assessment and outstanding scope decisions |
 | [Ship readiness, September 12](reviews/ship-readiness-2026-09-12.md) | Assessment of v0.3.5.70 and prioritized acceptance gaps |
 | [Forge/generator audit](reviews/audit-2026-09-05.md) | Historical defects and the .63 baseline audit; later records supersede pending-release statements |
