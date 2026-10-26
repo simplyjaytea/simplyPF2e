@@ -671,7 +671,6 @@
         "RoutineActions": "Actions per round: {count}",
         "XPNote": "for a party of the same level"
       },
-      "Gated": "Hazard generation is experimental. Turn on Enable experimental tools in Module Settings → SimplyPF2e to use it. Nothing is created while it is off.",
       "Errors": {
         "Field": "The AI hazard concept has a missing or malformed {field}. Generate the hazard again.",
         "Prose": "The AI hazard text for {field} was rejected ({reason}). Hazard text must be plain words without game statistics, dice, DCs or Foundry enricher syntax. Generate the hazard again.",

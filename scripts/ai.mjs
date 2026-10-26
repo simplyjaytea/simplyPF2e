@@ -16,7 +16,7 @@ import { pcIdentityKey, assertPCIdentity } from "./pc-identity.mjs";
 import { CORE_SKILLS } from "./pc-skills.mjs";
 import { RESKIN_LIMITS } from "./reskin-policy.mjs";
 import { assertExperimentalToolAccess } from "./experimental-tools.mjs";
-import { hazardProseProblem } from "./hazard-builder.mjs";
+import { hazardNameProblem, hazardProseProblem } from "./hazard-builder.mjs";
 import { HAZARD_MIN_LEVEL, HAZARD_MAX_LEVEL } from "./hazard-tables.mjs";
 
 /**
@@ -1384,7 +1384,6 @@ const HAZARD_KEYS = Object.freeze([
   "ac", "saves", "hasHP", "reaction", "routine", "reset"
 ]);
 const HAZARD_LIMITS = Object.freeze({ name: 80, prose: 800 });
-const HAZARD_MARKUP = /[\r\n\t<>]/;
 
 const isPlainObject = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
 
@@ -1393,7 +1392,7 @@ const hazardFieldProblem = (field) => game.i18n.format("SIMPLYPF2E.Hazard.Errors
 /**
  * Why one text field must be rejected, or null. Required text is non-empty. Every field is
  * plain words under the shared policy hazardProseProblem (hazard-builder.mjs), which the
- * builder also applies; a name must also be a single line without angle brackets. A rejection
+ * builder also applies; a name must also pass hazardNameProblem (one plain line, no markup or pipe). A rejection
  * uses the bounded retry, then fails closed.
  */
 function hazardTextProblem(field, value, options = {}) {
@@ -1404,7 +1403,7 @@ function hazardTextProblem(field, value, options = {}) {
   const text = value.trim();
   if (!text) return required ? hazardFieldProblem(field) : null;
   if (text.length > max) return hazardFieldProblem(field);
-  const reason = hazardProseProblem(text) ?? (singleLine && HAZARD_MARKUP.test(text) ? "is not a single plain line" : null);
+  const reason = singleLine ? (hazardNameProblem(text)?.reason ?? null) : hazardProseProblem(text);
   return reason ? game.i18n.format("SIMPLYPF2E.Hazard.Errors.Prose", { field, reason }) : null;
 }
 

@@ -104,9 +104,9 @@ function issueHazard(draft) {
 function hazardErrorText(err) {
   if (err instanceof HazardConceptError) {
     if (HAZARD_ROUTINE_CODES.has(err.code)) return game.i18n.localize("SIMPLYPF2E.Hazard.Errors.Routine");
-    const field = HAZARD_FIELD_BY_CODE[err.code] ?? /^[\w.]+/.exec(String(err.message))?.[0] ?? "concept";
-    const key = HAZARD_PROSE_CODES.has(err.code) ? "SIMPLYPF2E.Hazard.Errors.Prose" : "SIMPLYPF2E.Hazard.Errors.Field";
-    return game.i18n.format(key, { field });
+    const field = err.field ?? HAZARD_FIELD_BY_CODE[err.code] ?? /^[\w.]+/.exec(String(err.message))?.[0] ?? "concept";
+    if (HAZARD_PROSE_CODES.has(err.code)) return game.i18n.format("SIMPLYPF2E.Hazard.Errors.Prose", { field, reason: err.reason ?? "is not plain words" });
+    return game.i18n.format("SIMPLYPF2E.Hazard.Errors.Field", { field });
   }
   return err?.message ?? String(err);
 }

@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import {
-  HAZARD_DISABLE_SKILLS, HazardConceptError, buildHazardSource, describeHazard, hazardProseProblem, normalizeHazardConcept
+  HAZARD_DISABLE_SKILLS, HazardConceptError, buildHazardSource, describeHazard, hazardNameProblem, hazardProseProblem, normalizeHazardConcept
 } from "../scripts/hazard-builder.mjs";
+
+// The Dispel Magic link is built from the pinned pf2e 8.5.0 _id (review P2-5). The fixture is that file, unchanged.
+const DISPEL = JSON.parse(await readFile(new URL("./fixtures/hazards/dispel-magic.json", import.meta.url), "utf8"));
+const DISPEL_UUID = "@UUID[Compendium.pf2e.spells-srd.Item." + DISPEL._id + "]{Dispel Magic}";
 
 // The table functions are passed in through the tables override, so these tests never
 // depend on scripts/hazard-tables.mjs. Every expected number below is worked out from
@@ -108,6 +113,20 @@ test("enricher syntax in a reaction trigger throws ENRICHER_IN_TEXT", () => {
 test("a game number in prose throws NUMBER_IN_TEXT", () => {
   const effect = "The trap deals 2d6 damage to the creature on the tile.";
   assert.equal(codeOf(() => norm({ reaction: { ...raw().reaction, effect } })), "NUMBER_IN_TEXT");
+});
+
+test("a refused prose field carries its field and reason on the error", () => {
+  const effect = "The trap deals 2d6 damage to the creature on the tile.";
+  assert.throws(() => norm({ reaction: { ...raw().reaction, effect } }), (error) => error instanceof HazardConceptError
+    && error.code === "NUMBER_IN_TEXT" && error.field === "reaction.effect" && error.reason === "contains dice notation");
+});
+
+test("a name is one plain line: a pipe, markup or an over-long name throws BAD_NAME with its reason", () => {
+  assert.equal(hazardNameProblem("Spear Launcher"), null);
+  assert.equal(hazardNameProblem("Spear | Launcher").code, "BAD_NAME");
+  assert.throws(() => norm({ name: "Spear | Launcher" }), (error) => error instanceof HazardConceptError && error.code === "BAD_NAME" && error.field === "name" && /pipe character/.test(error.reason));
+  assert.equal(codeOf(() => norm({ name: "<b>Spear</b>" })), "BAD_NAME");
+  assert.equal(codeOf(() => norm({ name: "x".repeat(81) })), "BAD_NAME");
 });
 
 test("unknown traits are dropped with a warning", () => {
@@ -293,14 +312,22 @@ test("a null AC scale writes the LOW column of the AC table", async () => {
 
 test("a dispel-only hazard renders the Dispel Magic option with its derived ordinal rank and counteract DC", async () => {
   const { actor } = await buildHazardSource(norm({ disable: [], dispel: true }), { level: LEVEL, tables: FAKE });
-  assert.equal(actor.system.details.disable, "<p>@UUID[Compendium.pf2e.spells-srd.Item.Dispel Magic] (1st rank; counteract DC 22)</p>");
+  assert.equal(actor.system.details.disable, "<p>" + DISPEL_UUID + " (1st rank; counteract DC 22)</p>");
+});
+
+test("the Dispel Magic link names the pinned pf2e _id, not the spell name", async () => {
+  assert.equal(DISPEL.name, "Dispel Magic");
+  assert.match(DISPEL._id, /^[A-Za-z0-9]{16}$/);
+  const { actor } = await buildHazardSource(norm({ disable: [], dispel: true }), { level: LEVEL, tables: FAKE });
+  assert.equal(actor.system.details.disable.includes("Item.Dispel Magic"), false, "no name-form uuid");
+  assert.equal(actor.system.details.disable.includes(DISPEL_UUID), true, "the id-form uuid from the fixture");
 });
 
 test("a disable check and Dispel Magic are joined with or", async () => {
   const { actor } = await buildHazardSource(norm({ dispel: true }, 7), { level: 7, tables: FAKE });
   assert.equal(actor.system.details.disable,
     "<p>@Check[thievery|dc:27|name:Disable Spear Launcher|traits:action:disable-a-device] (trained)"
-    + " or @UUID[Compendium.pf2e.spells-srd.Item.Dispel Magic] (4th rank; counteract DC 27)</p>");
+    + " or " + DISPEL_UUID + " (4th rank; counteract DC 27)</p>");
 });
 
 test("the Dispel Magic option names a derived rank with an ordinal, up to 10th", async () => {

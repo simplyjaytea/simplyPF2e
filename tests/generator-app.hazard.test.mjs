@@ -474,11 +474,12 @@ formState.level = "3";
 
 // ---- A refused concept is shown as an error and writes nothing. ----
 const field = (key, name) => key + " " + JSON.stringify({ field: name });
+const prose = (name, reason) => "SIMPLYPF2E.Hazard.Errors.Prose " + JSON.stringify({ field: name, reason });
 const refusals = [
   ["enricher syntax in prose", { ...simpleRaw(), description: "Check @Check[reflex] before you step." },
-    field("SIMPLYPF2E.Hazard.Errors.Prose", "description")],
+    prose("description", "contains Foundry enricher syntax, a bracket or an @ command")],
   ["a game number in prose", { ...simpleRaw(), reset: "The blade deals 2d6 damage again." },
-    field("SIMPLYPF2E.Hazard.Errors.Prose", "reset")],
+    prose("reset", "contains dice notation")],
   ["no way to disable it", { ...simpleRaw(), disable: [], dispel: false },
     field("SIMPLYPF2E.Hazard.Errors.Field", "disable")],
   ["a malformed required flag", { ...simpleRaw(), complex: "yes" },

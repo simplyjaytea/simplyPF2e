@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { SETTINGS } from "../scripts/settings.mjs";
 import { AI_TASK, completionOptionsFor } from "../scripts/ai-task-profiles.mjs";
 import { HAZARD_LABEL_KEYS } from "../scripts/hazard-labels.mjs";
-import { hazardProseProblem } from "../scripts/hazard-builder.mjs";
+import { hazardNameProblem, hazardProseProblem } from "../scripts/hazard-builder.mjs";
 import { readFile } from "node:fs/promises";
 const settings = new Map();
 settings.set(SETTINGS.apiBaseUrl, "http://localhost:11434/v1");
@@ -169,6 +169,13 @@ for (const dispel of [{ rank: 3 }, "yes", null, 3]) {
   assert.equal(nonBoolean.concept.dispel, false, "a non-boolean dispel becomes false: " + JSON.stringify(dispel));
 }
 assert.equal(warnings.filter((w) => /hazard dispel dropped/.test(w)).length, 4, "each non-boolean dispel warns");
+const pipeName = { ...structuredClone(complex), name: "Spike | Gate" };
+replies.push(structuredClone(pipeName), structuredClone(pipeName));
+const beforePipe = requests.length;
+await assert.rejects(generateHazardConcept(BRIEF, LISTS), (error) => error instanceof AIRequestError && /Hazard\.Errors\.Prose/.test(error.message) && /pipe character/.test(error.message), "a pipe in a name is refused at the AI layer");
+assert.equal(requests.length - beforePipe, 2, "a name with a pipe is retried once, then rejected, so it never reaches the builder");
+assert.equal(hazardNameProblem("Spike Gate"), null, "a plain name passes the shared name check");
+assert.notEqual(hazardNameProblem("Spike | Gate"), null, "the builder layer refuses the same name");
 const lang = JSON.parse(await readFile(new URL("../lang/en.json", import.meta.url), "utf8"));
 for (const key of Object.values(HAZARD_LABEL_KEYS)) assert.equal(typeof key.split(".").reduce((node, part) => node[part], lang), "string", key);
 for (const key of ["Field", "Prose", "Routine"]) assert.equal(typeof lang.SIMPLYPF2E.Hazard.Errors[key], "string", key);
