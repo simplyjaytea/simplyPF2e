@@ -147,13 +147,22 @@ Release archive = `module.json LICENSE README.md lang scripts styles templates` 
 - Add a `tests/*.test.mjs` for genuinely pure logic behind any bug-shaped change. Do not add tests that merely restate implementation.
 - Live Foundry behavior (rendering, derived stats, grant chains, dialogs) is **not** self-checkable from this machine. Say so in the PR body and in HANDOFF.md, and open/keep the ledger row.
 
-### Orchestration roster (user's standing instruction, 2026-10-25)
+### Orchestration roster (user's standing instruction, revised 2026-10-26)
 
-- **Coordinator: Claude Fable.** Understands scope, plans, writes briefs, delegates, verifies, integrates, owns HANDOFF.md and the final report. Decides which tool to use; Codex, opencode and omp are available and may be used at the coordinator's judgment.
-- **Workers: Claude Haiku 5.5 at high effort** for bounded, already-specified execution (apply a mapped fix, write a test mirroring an existing one, mechanical moves/renames, doc synthesis from named sources).
-- **Fixers: Claude Sonnet 5.5 at high effort** for anything a review flags.
-- **Opus 5.5 / Fable** for open-ended design, hard debugging, and *independent review* of schema-dependent or balance-sensitive diffs.
-- **Parallel work always uses git worktrees** (`isolation: worktree`, one worker per worktree, one owner per shared file). When the pieces are done: merge the worktrees into the integration branch, run the gate, then review the **merged** result, then fix with Sonnet.
+This is the user's standing rule. Follow it without being told again; change it only when the user says so.
+
+- **Orchestrator: Claude Fable 5.5 at high thinking.** Plans, writes briefs, delegates, verifies, integrates, owns HANDOFF.md and the final report. Does not do bulk execution itself. May spin up as many subagents as the work needs. Codex, opencode and omp are available at the orchestrator's judgment.
+- **Workers**, one of:
+  - **Claude Haiku 5.5 at very high thinking** (`effort: xhigh`) for bounded, already-specified execution (apply a mapped fix, write a test mirroring an existing one, mechanical moves/renames, doc synthesis from named sources).
+  - **opencode on a free model, `opencode/glm-5.3-flash-free` or `opencode/beam-free`, at very high thinking** (match the Haiku level; see §7 for how the model is set).
+- **Escalation:** if the orchestrator judges a task needs more reasoning than a Haiku worker can give, it may upgrade that worker to **Claude Sonnet 5.5** (same brief, same worktree rules). Say so in the brief and in the report.
+- **Parallel work always uses git worktrees** (`isolation: worktree`, one worker per worktree, one owner per shared file).
+- **Merge, review, fix ladder (addendum 2026-10-26):**
+  1. **Merge.** When a worktree's work is complete, merge it into a local integration branch (`claude/<topic>-<date>`). Every finished worktree lands there; nothing goes to `main` directly.
+  2. **Gate** the integration branch: `node tools/check.mjs` and `git diff --check`.
+  3. **Review.** Claude Opus 5.5 at high thinking reviews the integration branch with fresh context (not a builder). The orchestrator verifies each finding technically before acting on it.
+  4. **Fix, escalating one step at a time.** Each confirmed finding is first attempted by **Haiku 5.5 at very high thinking**. If Haiku fails (wrong fix, gate still red, or the reviewer rejects it), hand the same finding to **Sonnet 5.5 at very high thinking**. If Sonnet fails, hand it to **Opus 5.5 at very high thinking**. Record in the report which rung fixed each finding.
+  5. **Re-gate and re-review** after fixes. Repeat from step 3 until the reviewer has no open findings, then the user decides whether to open or merge the PR.
 - Never delegate without the brief stating: the exact files owned, what not to touch, the verification command, the commit message, and the report shape. Never delegate the two things that bite this repo: pf2e schema verification (the delegate must fetch real source and quote it; the coordinator spot-checks), and release/workflow `.yml` reasoning.
 - Every schema-dependent or balance-sensitive diff gets an independent reviewer with fresh context (not the builder) before the PR is called done — this has caught real bugs on three separate occasions.
 - Review handling: verify technically before accepting a reviewer finding; one fix PR per merged PR if the user merged mid-review.
@@ -172,6 +181,7 @@ Live QA runs on the user's Foundry (Foundry 14.365 / PF2e 8.5.0, world `test`) a
 
 - No local Foundry. No local pf2e checkout; fetch files from GitHub raw as needed (reachable).
 - `gh` CLI hangs on this machine. Read GitHub via `curl https://api.github.com/repos/simplyjaytea/simplyPF2e/...`; push/PR only with the user's authorization.
+- opencode model selection: Orca cannot pass a model at worker launch. Set `"model"` in `~/.config/opencode/opencode.json` (e.g. `opencode/beam-free` with high thinking) before launching, confirm the TUI footer shows the model and effort, then restore the user's default `opencode/glm-5.3-flash-free`.
 - Node via mise: only 26.12.1 is installed; Node 22 (used by CI) is NOT installed locally, and `mise exec node@22 -- node tools/check.mjs` would first download it. Gate takes ~7 s.
 - Git identity for this repo: `user.name "jt"`, `user.email "jt_f@ymail.com"` (the checkout may show a different global identity; set it per-repo before committing).
 - Prior sessions' worktrees lived under `/home/jtf/.t3/worktrees/` (Codex "T3"); remote branches `codex/*` are historical and may be pruned only with the user's say-so.
