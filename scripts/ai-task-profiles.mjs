@@ -25,7 +25,8 @@ export const AI_TASK = Object.freeze({
   MAGIC_ITEM_CONCEPT: "magicItemConcept",
   RUNED_ITEM_CONCEPT: "runedItemConcept",
   ENCOUNTER_DESIGN: "encounterDesign",
-  RESKIN_FLAVOR: "reskinFlavor"
+  RESKIN_FLAVOR: "reskinFlavor",
+  HAZARD_CONCEPT: "hazardConcept"
 });
 
 const TASK_PROFILES = Object.freeze({
@@ -47,7 +48,9 @@ const TASK_PROFILES = Object.freeze({
   [AI_TASK.RUNED_ITEM_CONCEPT]: { maxTokens: 2000, deterministic: false, disableReasoning: true },
   [AI_TASK.ENCOUNTER_DESIGN]: { maxTokens: 1024, deterministic: false, disableReasoning: true },
   // Flavor needs a name, two sentences, and a bounded biography (2000 chars).
-  [AI_TASK.RESKIN_FLAVOR]: { maxTokens: 1200, deterministic: false, disableReasoning: true }
+  [AI_TASK.RESKIN_FLAVOR]: { maxTokens: 1200, deterministic: false, disableReasoning: true },
+  // A hazard is a name, flavor, one reaction, an optional routine and scale words: roughly 700 tokens of JSON.
+  [AI_TASK.HAZARD_CONCEPT]: { maxTokens: 2000, deterministic: false, disableReasoning: true }
 });
 
 const finiteNumber = (value, fallback) => {

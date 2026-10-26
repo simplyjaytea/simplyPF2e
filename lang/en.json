@@ -614,6 +614,29 @@
       "GMOnly": "Only a GM can use experimental SimplyPF2e tools.",
       "Disabled": "Experimental tools are turned off. Turn on Enable experimental tools in Module Settings → SimplyPF2e, then try again."
     },
+    "Hazard": {
+      "Mode": "Hazard",
+      "Level": "Level",
+      "Complexity": {
+        "Simple": "Simple",
+        "Complex": "Complex"
+      },
+      "Preview": {
+        "Stealth": "Stealth",
+        "Disable": "Disable",
+        "Defenses": "Defenses",
+        "Reaction": "Reaction",
+        "Routine": "Routine",
+        "Reset": "Reset",
+        "XP": "XP"
+      },
+      "Gated": "Hazard generation is experimental. Turn on Enable experimental tools in Module Settings → SimplyPF2e to use it. Nothing is created while it is off.",
+      "Errors": {
+        "Field": "The AI hazard concept has a missing or malformed {field}. Generate the hazard again.",
+        "Prose": "The AI hazard text for {field} has a number, Foundry enricher syntax or a control character. Hazard text must be plain words. Generate the hazard again.",
+        "Routine": "A complex hazard needs a routine with one to three actions. Generate the hazard again."
+      }
+    },
     "Chat": {
       "ForgeUsage": "Usage: /forge [--preview] <brief> <level>. The level is a whole number from {min} to {max} and comes last. --preview validates the creature without creating an actor.",
       "ForgeNoBrief": "/forge needs a creature description before the level.",

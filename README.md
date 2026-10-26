@@ -78,6 +78,7 @@ In Character mode, **Generate spell lists** controls generated spell lists. Turn
 | **Ordinary multiclass (noncaster)** | Behind the default-off world setting **Ordinary multiclass archetypes (noncaster)**. Only the noncaster catalog is offered; no live Foundry acceptance is recorded. |
 | **Experimental tools** | Behind the default-off **Enable experimental tools** setting, GM only. Includes the `/forge` chat command, the Creature Tools reskin and elite/weak flows, and `openCreatureTools`. Not native-accepted; may create actors or fail differently from the stable generator. |
 | **Level shifting** | Behind the default-off **Enable experimental tools** setting, GM only. Creates a new NPC shifted by one or two levels using GM Core benchmark deltas; the source is unchanged. Not native-accepted. |
+| **Hazard** | In development behind `experimentalTools` (the **Enable experimental tools** setting, GM only). The AI concept step exists; no Generator mode, preview or actor is wired yet. Not native-accepted. |
 
 ## What's new
 
@@ -236,6 +237,7 @@ Built, not native-accepted, and off by default:
 Not yet available as user-facing features:
 
 - **Level shifting** is available behind the default-off **Enable experimental tools** setting, GM only, through the Creature Tools app and `module.api.levelShift`. Not native-accepted.
+- **Hazard generator** (GM Core Building Hazards, simple and complex) is in development behind the default-off **Enable experimental tools** setting. The Generator mode, preview and actor creation are not wired yet.
 - **Caster multiclass dedications** and spell editing in the Character editor.
 - **Native acceptance** of every experimental and multiclass row listed under Remaining live-acceptance gaps.
 
