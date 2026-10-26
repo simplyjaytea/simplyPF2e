@@ -86,6 +86,17 @@ const entries = [
   }
 ];
 
+// Spell index for the scroll candidate query: a focus spell, a cantrip, a rare spell and a rank 9 spell.
+const spellEntries = [
+  { _id: "heal000000000001", name: "Heal", type: "spell", system: { level: { value: 1 }, traits: { value: ["healing"], rarity: "common" } } },
+  { _id: "font00000000002", name: "Healing Font", type: "spell", system: { level: { value: 1 }, traits: { value: ["focus", "healing"], rarity: "common" } } },
+  { _id: "light0000000003", name: "Light", type: "spell", system: { level: { value: 0 }, traits: { value: ["cantrip"], rarity: "common" } } },
+  { _id: "ward000000000004", name: "Ancient Ward", type: "spell", system: { level: { value: 2 }, traits: { value: ["abjuration"], rarity: "rare" } } },
+  { _id: "wish0000000000005", name: "Wish", type: "spell", system: { level: { value: 9 }, traits: { value: [], rarity: "common" } } }
+];
+const spellPack = {
+  async getIndex() { return spellEntries.map((entry) => structuredClone(entry)); }
+};
 const pack = {
   async getIndex({ fields }) {
     requestedFields.push(fields);
@@ -93,11 +104,11 @@ const pack = {
   }
 };
 globalThis.game = {
-  settings: { get: () => ({ equipment: ["test.equipment"] }) },
-  packs: new Map([["test.equipment", pack]])
+  settings: { get: () => ({ equipment: ["test.equipment"], spells: ["test.spells"] }) },
+  packs: new Map([["test.equipment", pack], ["test.spells", spellPack]])
 };
 
-const { findEntry, getEquipmentCandidates, getLootCandidates } = await import("../scripts/compendium.mjs");
+const { findEntry, getEquipmentCandidates, getLootCandidates, getScrollSpellCandidates } = await import("../scripts/compendium.mjs");
 const equipment = await getEquipmentCandidates(2);
 const loot = await getLootCandidates(0);
 const equipmentNames = equipment.map((candidate) => candidate.name);
@@ -130,4 +141,15 @@ const template = await findEntry(["test.equipment"], "Scroll of 1st-rank Spell",
 assert.equal(template?._id, "RjuupS9xyXDLgyIr",
   "the underlying index remains able to resolve a blank scroll template for building");
 
-console.log("compendium.scrollCandidates.test.mjs: blank-template filtering assertions passed");
+// Scroll and wand candidates: focus spells and cantrips never appear; rank and rarity caps apply before the cut.
+const scrollNames = (await getScrollSpellCandidates(10)).map((candidate) => candidate.name);
+assert.ok(scrollNames.includes("Heal") && scrollNames.includes("Wish") && scrollNames.includes("Ancient Ward"),
+  "ordinary, high-rank and rare spells are offered when no rarity cap is given");
+assert.ok(!scrollNames.includes("Healing Font"), "focus spells never become scroll or wand candidates");
+assert.ok(!scrollNames.includes("Light"), "cantrips stay out of scroll candidates");
+assert.deepEqual((await getScrollSpellCandidates(3, [], { maxRarity: "common" })).map((candidate) => candidate.name), ["Heal"],
+  "the rank cap and the rarity cap both apply before the list is returned");
+assert.ok((await getScrollSpellCandidates(3, [], { maxRarity: "rare" })).some((candidate) => candidate.name === "Ancient Ward"),
+  "a rare cap admits rare spells");
+assert.ok(!(await getScrollSpellCandidates(2)).some((candidate) => candidate.name === "Wish"), "spells above the rank cap are left out");
+console.log("compendium.scrollCandidates.test.mjs: blank-template filtering and scroll spell candidate assertions passed");

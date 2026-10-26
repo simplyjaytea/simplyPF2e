@@ -14,7 +14,7 @@ import {
 import { createActivationMacro } from "./macro-templates.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
-import { getScrollSpellCandidates, getCandidateDocument, priceToGp, RARITY_RANK } from "./compendium.mjs";
+import { getScrollSpellCandidates, getCandidateDocument, priceToGp, toItemData } from "./compendium.mjs";
 import {
   spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName
 } from "./spell-consumables.mjs";
@@ -24,10 +24,15 @@ const CONSUMABLE_KINDS = new Set(["scroll", "wand"]);
 /** Most spell consumables one plan may hold. */
 const CONSUMABLE_PICK_LIMIT = 6;
 
-/** A spell may not be rarer than the rarity chosen in the Forge (same rule as item-builder effect candidates). */
-function spellWithinRarity(spell, rarity) {
-  const key = spell.rarity ?? "common";
-  return Object.hasOwn(RARITY_RANK, key) && RARITY_RANK[key] <= (RARITY_RANK[rarity] ?? 0);
+/**
+ * Highest spell rank a scroll or wand may hold at this item level. The pinned rank
+ * templates sit at level 2r-1 for scrolls and 2r+1 for wands, so the level caps the
+ * rank at (level+1)/2 or (level-1)/2 rounded down, and the native ceilings (10 for
+ * scrolls, 9 for wands) still apply. Returns 0 when no rank fits.
+ */
+function consumableMaxRank(kind, level) {
+  const byLevel = kind === "wand" ? Math.floor((level - 1) / 2) : Math.floor((level + 1) / 2);
+  return Math.max(0, Math.min(kind === "wand" ? 9 : 10, byLevel));
 }
 
 /** Words from the GM's brief that rank spell candidates by name and trait. */
@@ -436,18 +441,20 @@ export class ItemForgeApp extends SpfApp {
   }
 
   /**
-   * Scroll or wand plan. Real spells come only from the configured spell
-   * packs and the AI chooses only from them; every template, price and level
-   * is read from the pinned pf2e consumable template. Nothing is written here:
-   * Create writes the planned items in one call.
+   * Scroll or wand plan. Real spells come only from the configured spell packs and the
+   * AI chooses only from them. The Forge level caps the rank, and the chosen rarity
+   * filters the candidates before the bounded cut. Every template, price and level comes
+   * from the pinned pf2e consumable template. Nothing is written here: Create writes the
+   * planned items in one call.
    */
   async #generateConsumables(kind, signal) {
     // 1. Ground truth first: eligible spells from the configured packs.
     await this._setStep("templates");
-    const maxRank = kind === "wand" ? 9 : 10;
-    const offered = (await getScrollSpellCandidates(maxRank, briefKeywords(this.#input.prompt)))
-      .filter((candidate) => !candidate.traits?.includes("focus"))
-      .filter((candidate) => spellWithinRarity(candidate, this.#input.rarity));
+    const maxRank = consumableMaxRank(kind, this.#input.level);
+    if (maxRank < 1) {
+      throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.LevelTooLow", { kind, minLevel: kind === "wand" ? 3 : 1 }));
+    }
+    const offered = await getScrollSpellCandidates(maxRank, briefKeywords(this.#input.prompt), { maxRarity: this.#input.rarity });
     if (!offered.length) {
       throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoCandidates", { kind }));
     }
@@ -457,6 +464,7 @@ export class ItemForgeApp extends SpfApp {
     const { picks, usage } = await selectSpellConsumables(this.#input.prompt, {
       level: this.#input.level,
       kind,
+      maxRank,
       candidates: offered,
       count: CONSUMABLE_PICK_LIMIT,
       onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")),
@@ -469,28 +477,50 @@ export class ItemForgeApp extends SpfApp {
     await this._setStep("assemble");
     const items = [];
     const warnings = [];
+    const planned = new Set();
     for (const pick of picks) {
       this._throwIfCancelled();
       const label = spellConsumableName(kind, pick.name, pick.rank);
+      const dropped = (reason) => warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.DroppedPick", { name: label, reason }));
+      // The same spell at the same rank and kind is one planned item.
+      const key = JSON.stringify([pick.spellId, pick.rank, kind]);
+      if (planned.has(key)) continue;
+      planned.add(key);
+      if (pick.rank > maxRank) {
+        dropped(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.RankAboveLevel", { rank: pick.rank, max: maxRank }));
+        continue;
+      }
       const spellDoc = await getCandidateDocument(pick.candidate);
       if (!spellDoc) {
         warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.SpellMissing", { name: label }));
         continue;
       }
       const spellData = spellDoc.toObject();
+      // The spell keeps its own UUID as its source, so the description links to it.
+      // This mirrors builder.mjs buildScrollItem.
+      spellData._stats = { ...(spellData._stats ?? {}), compendiumSource: spellDoc.uuid };
       const problem = spellConsumableRankProblem(spellData, kind, pick.rank);
       if (problem) {
-        warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.DroppedPick", { name: label, reason: problem }));
+        dropped(problem);
         continue;
       }
-      const templateUuid = spellConsumableTemplateUuid(kind, pick.rank);
-      const templateDoc = templateUuid ? await fromUuid(templateUuid) : null;
-      if (!templateDoc) {
-        warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.TemplateMissing", { name: label }));
+      // The template goes through toItemData, which records the pinned table UUID that the build checks.
+      // A build that throws drops only this pick.
+      let source;
+      let templateData;
+      try {
+        const templateUuid = spellConsumableTemplateUuid(kind, pick.rank);
+        const templateDoc = templateUuid ? await fromUuid(templateUuid) : null;
+        if (!templateDoc) {
+          warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.TemplateMissing", { name: label }));
+          continue;
+        }
+        templateData = toItemData(templateDoc);
+        source = buildSpellConsumable({ kind, rank: pick.rank, templateData, spellData });
+      } catch (err) {
+        dropped(err?.message ?? String(err));
         continue;
       }
-      const templateData = templateDoc.toObject();
-      const source = buildSpellConsumable({ kind, rank: pick.rank, templateData, spellData });
       items.push({
         source,
         name: source.name,

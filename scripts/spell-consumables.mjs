@@ -91,6 +91,11 @@ export function spellConsumableRankProblem(spellData, kind, rank) {
   return null;
 }
 
+/** Escape the HTML metacharacters of text placed inside a description paragraph. */
+function escapeHtml(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 /** Item name in the native English format; null for a kind with no name template. */
 export function spellConsumableName(kind, spellName, rank) {
   if (!Object.hasOwn(NAME_TEMPLATES, kind)) return null;
@@ -154,9 +159,10 @@ export function buildSpellConsumable({ kind, rank, templateData, spellData } = {
   // serialization); that fallback is mirrored here. sourceId: base/document.ts 86-89.
   const templateDescription = item.system.description?.value ?? "";
   const sourceUuid = spell._stats?.duplicateSource ?? spell._stats?.compendiumSource ?? null;
-  const spellText = String(spell.system?.description?.value ?? "").trim()
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const link = sourceUuid ? `@UUID[${sourceUuid}]{${spell.name}}` : spellText;
+  const spellText = escapeHtml(String(spell.system?.description?.value ?? "").trim());
+  // The label is enricher text, where a brace would end it early, so braces become entities.
+  const label = escapeHtml(String(spell.name ?? "")).replace(/\{/g, "&#123;").replace(/\}/g, "&#125;");
+  const link = sourceUuid ? `@UUID[${sourceUuid}]{${label}}` : spellText;
   item.system.description = { ...item.system.description, value: `<p>${link}</p><hr>${templateDescription}` };
 
   // pf2e 8.5.0 spell-consumables.ts 70-75: the spell source with a fresh _id and

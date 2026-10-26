@@ -581,8 +581,14 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
       const rank = Math.min(Math.max(scroll.rank ?? baseRank, baseRank), 10);
       // A scroll's real price lives on the rank template it will be built
       // from at creation (there is no premade scroll item to price).
+      // Without that template the scroll cannot be built, so it stays unresolved
+      // and the preview fails closed instead of failing at Create.
       const templateDoc = await getDocument(await findScrollTemplate(rank));
-      const templateGp = priceToGp(templateDoc?.system?.price?.value);
+      if (!templateDoc) {
+        loot.push({ name, quantity, value, runes: parseRunes(name), entry: null, scroll: { rank }, resolvedValue: value });
+        continue;
+      }
+      const templateGp = priceToGp(templateDoc.system?.price?.value);
       loot.push({
         name, quantity, value, runes: parseRunes(name), entry, scroll: { rank },
         resolvedValue: templateGp > 0 ? templateGp : value

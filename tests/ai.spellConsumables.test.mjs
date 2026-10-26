@@ -106,6 +106,16 @@ try {
     "prompt forbids every number except the rank");
   assert.ok(prompt.includes("Choose ONLY spell IDs from the provided list"), "prompt restricts the model to listed ids");
 
+  replies.push({ picks: [] });
+  await selectSpellConsumables("cap the rank", { level: 5, kind: "scroll", candidates, maxRank: 3 });
+  assert.ok(JSON.stringify(requests.at(-1).messages).includes("Highest rank allowed: 3"), "the item level caps the rank the prompt allows");
+  assert.ok(JSON.stringify(requests.at(-1).messages).includes("up to 3. Do not emit"), "the system prompt states the same cap");
+  replies.push({ picks: [] });
+  await selectSpellConsumables("wand ceiling", { level: 20, kind: "wand", candidates, maxRank: 12 });
+  assert.ok(JSON.stringify(requests.at(-1).messages).includes("Highest rank allowed: 9"), "a wand never offers rank 10, whatever the level");
+  replies.push({ picks: [] });
+  await selectSpellConsumables("no level cap", { level: 5, kind: "scroll", candidates });
+  assert.ok(JSON.stringify(requests.at(-1).messages).includes("Highest rank allowed: 10"), "without a level cap the scroll ceiling is 10");
   replies.push({ spells: [] }, { spells: [] });
   await assert.rejects(() => selectSpellConsumables("bad shape", { level: 5, kind: "scroll", candidates }),
     "a response without picks fails closed after one structural retry");

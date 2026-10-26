@@ -528,6 +528,8 @@
         "TemplateMissing": "Dropped {name}: its pinned pf2e template could not be loaded.",
         "NoCandidates": "No spells in the configured spell packs can become a {kind}. Cantrips, focus spells, and rituals are never offered.",
         "NoPicks": "No chosen spell could be built as a {kind} at a legal rank. Regenerate or describe different spells.",
+        "RankAboveLevel": "rank {rank} is above the highest rank this item level allows ({max})",
+        "LevelTooLow": "A {kind} needs item level {minLevel} or higher, so this level allows no rank",
         "PartialCreate": "Only {created} of {total} items were created. Check the Items directory before forging again."
       }
     },
