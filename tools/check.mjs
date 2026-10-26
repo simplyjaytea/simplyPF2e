@@ -38,6 +38,12 @@ try {
   if (integrityResult.error || integrityResult.status !== 0) {
     throw integrityResult.error ?? new Error(`Integrity check failed (${integrityResult.signal ?? integrityResult.status})`);
   }
+  const linkResult = spawnSync(process.execPath, [resolve(root, "tools", "check-links.mjs")], { cwd: root, encoding: "utf8" });
+  if (linkResult.stdout) process.stdout.write(linkResult.stdout);
+  if (linkResult.stderr) process.stderr.write(linkResult.stderr);
+  if (linkResult.error || linkResult.status !== 0) {
+    throw linkResult.error ?? new Error(`Link check failed (${linkResult.signal ?? linkResult.status})`);
+  }
   for (const file of tests) {
     console.log(`Checking ${relative(root, file)}`);
     run([file]);
