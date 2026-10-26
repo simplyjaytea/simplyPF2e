@@ -215,7 +215,8 @@ Ordered. Pick the top item whose prerequisites are met; move finished items to Â
 4. **Cantrip deck** in the Forge (template pinned already; builder refuses it today).
 5. **Drift check with `GITHUB_TOKEN`** in CI on a schedule, so the 16 `equipment-srd` UUIDs are actually resolved; consider pinning `--ref` to the installed pf2e tag.
 6. **Wizard preflight completeness**: extend `preflightClassPaths` to require at least one closed candidate per bridge so a world with no enabled closed school fails before provider spend.
-7. **Hazard prompt breadth**: expose `CONFIG.PF2E.hazardTraits` subsets by theme to keep the prompt short on large worlds; measure prompt size first.
+7. **Review leftovers (P3, 2026-10-26)**: filter casters out of the Character editor's class control (pc-edit refuses them); skip focus candidates in the spell step when `classModelsFocusSpells` is false; make the hazard AI gate require `strike.name` like the builder; assert the Forge TemplateMissing label.
+8. **Hazard prompt breadth**: expose `CONFIG.PF2E.hazardTraits` subsets by theme to keep the prompt short on large worlds; measure prompt size first.
 
 Done in the 2026-10-26 sprint ([plan](docs/plans/sprint-2026-10-26.md)): dead-code and lang-key sweep; Markdown link check; pf2e drift check; Wizard complete-only class; Hazard generator (gated); scrolls and wands. Done in the 2026-10-25 sprint ([plan](docs/plans/sprint-2026-10-25.md)): static integrity check in the gate; gated level-shift UI + `api.levelShift`; v0.3.5.74 release parity; Batch A runbook.
 

@@ -20,7 +20,7 @@ Reviewer: Claude Opus 5.5 (high), fresh context, read-only, with two read-only f
 | P3-8 | P3 | `builder.mjs:723` | Loot scroll template requires `pf2e.equipment-srd` configured; preview shows a scroll, Create throws. | F1: unresolved entry, preview fails closed |
 | P3-9 | P3 | `pc-edit.mjs:326` | Class edit into Wizard yields a spell-less Wizard marked complete. | F2: refused until spell editing exists |
 | P3-10 | P3 | `pc-editor.mjs:87`, `pc-edit.mjs:159` | Alias/map seams: bridge-labelled alias not shown selected; bridge-less clear leaves concept school/thesis. | F2 |
-| P3-11 | P3 | tests | Weak assertions (rarity, TemplateMissing label); Runelord exclusion untested. | F1 + F2 |
+| P3-11 | P3 | tests | Weak assertions (rarity, TemplateMissing label); Runelord exclusion untested. | F1 + F2 (rarity and Runelord done; TemplateMissing label still unasserted) |
 | P3-12 | P3 | docs/CSS | Stale evidence-note sentence; no `.spf-consumables` CSS; Forge picks not de-duplicated. | F1 + F3 |
 
 ## Verified correct by the reviewer
@@ -31,3 +31,7 @@ Reviewer: Claude Opus 5.5 (high), fresh context, read-only, with two read-only f
 - WP1 removals have no consumer anywhere; WP2 and WP3 tooling wired and offline-tested.
 - WP4: fixtures match 8.5.0 shapes; guard does not misfire on Fighter/Rogue/Investigator/Wizard level-1 features; open schools never offered; single-`classPath` behavior unchanged.
 - WP6: UUID table matches the record; trait union, rarity, name, fresh `_id`, `location.heightenedLevel` match native; no price/level written; loot path uses `toItemData` and the spell uuid correctly.
+
+## Re-check (Opus 5.5 high, `1f10f9f..16a049b`): APPROVE
+
+Every required finding confirmed fixed, correct and tested; no regression in Rogue/Investigator/Fighter, NPC loot, other Forge kinds or hazard gate paths; merge seams in `ai.mjs`, `generator-app.mjs` and `lang/en.json` clean; README claims match code. Remaining P3s, all backlog: (1) preflight lacks a closed-candidate-per-bridge check (`class-paths.mjs`; abnormal data only); (2) editor class control offers casters that `pc-edit` refuses with DEFERRED; (3) focus candidates still offered to the AI for Wizard, dropped later by `settleFocusSpells`; (4) hazard AI gate accepts a strike object without a name that the builder refuses as MISSING_NAME.
