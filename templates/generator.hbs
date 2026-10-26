@@ -647,7 +647,7 @@
     </div>
     <div class="spf-statline spf-defenses">
       <span><strong>{{localize hazardLabels.defenses}}</strong></span>
-      <span><strong>{{localize "SIMPLYPF2E.Hazard.Preview.AC"}}</strong> {{hazardPreview.ac}}</span>
+      <span><strong>{{localize "SIMPLYPF2E.Hazard.Preview.AC"}}</strong> {{hazardPreview.ac}}{{#if hazardPreview.acAssumed}} ({{localize "SIMPLYPF2E.Hazard.Preview.ACAssumed"}}){{/if}}</span>
       {{#each hazardPreview.saves}}<span><strong>{{this.label}}</strong> {{this.value}}</span>{{/each}}
       {{#if hazardPreview.hp}}
         <span><strong>{{localize "SIMPLYPF2E.Hazard.Preview.HP"}}</strong> {{hazardPreview.hp}}</span>

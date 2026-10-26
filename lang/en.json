@@ -661,6 +661,7 @@
         "Reset": "Reset",
         "XP": "XP",
         "AC": "AC",
+        "ACAssumed": "assumed low value; the concept gave no AC",
         "HP": "HP",
         "Hardness": "Hardness",
         "Trigger": "Trigger",

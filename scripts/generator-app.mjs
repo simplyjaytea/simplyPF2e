@@ -2630,7 +2630,8 @@ export class GeneratorApp extends SpfApp {
         skill: named(config?.skills?.[entry.skill], entry.skill), text: dcLine(entry)
       })),
       dispel: preview.dispel ? i18n.format("SIMPLYPF2E.Hazard.Preview.DispelLine", preview.dispel) : null,
-      ac: preview.ac,
+      ac: preview.ac.value,
+      acAssumed: preview.ac.assumed === true,
       saves: Object.entries(HAZARD_SAVE_KEYS).filter(([type]) => preview.saves[type] !== null)
         .map(([type, key]) => ({ label: i18n.localize(key), value: signed(preview.saves[type]) })),
       hp: preview.hp,

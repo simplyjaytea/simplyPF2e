@@ -115,7 +115,7 @@ const simpleRaw = () => ({
   complex: false,
   stealth: "high",
   disable: [{ skill: "thievery", scale: "high" }],
-  dispel: null,
+  dispel: false,
   ac: "high",
   saves: { fortitude: "high", reflex: null, will: null },
   hasHP: true,
@@ -131,7 +131,7 @@ const complexRaw = () => ({
   name: "Whirling Blade Hall",
   rarity: "uncommon",
   complex: true,
-  dispel: { rank: 3 },
+  dispel: true,
   reaction: {
     name: "Blades Awaken", trigger: "A creature enters the hall.", effect: "Blades begin to whirl.",
     strike: null, save: { type: "reflex", scale: "high", effect: "The creature is cut by whirling blades." }
@@ -338,6 +338,7 @@ assert.equal(shown.disable[0].skill, "PF2E.SkillThievery");
 assert.equal(shown.disable[0].text, dcLine(T.hazardDC(3, "high"), T.hazardProficiency(3, "high")));
 assert.equal(shown.dispel, null);
 assert.equal(shown.ac, T.hazardAC(3, "high"));
+assert.equal(shown.acAssumed, false);
 assert.deepEqual(plain(shown.saves.map((row) => [row.label, row.value])), [["SIMPLYPF2E.Preview.Fort", signed(T.hazardSave(3, "high"))]]);
 assert.equal(shown.hp, T.hazardHP(3));
 assert.equal(shown.hardness, T.hazardHardness(3));
@@ -371,7 +372,7 @@ assert.deepEqual(stable(data.items), stable(expectedSource.items), "the created 
 assert.deepEqual(data.items.map((item) => item.type), ["action", "melee"]);
 assert.equal(data.items[1].system.bonus.value, issued.preview.strike.bonus, "the created strike matches the previewed bonus");
 assert.equal(Object.values(data.items[1].system.damageRolls)[0].damage, issued.preview.strike.formula);
-assert.equal(data.system.attributes.ac.value, issued.preview.ac);
+assert.equal(data.system.attributes.ac.value, issued.preview.ac.value);
 assert.equal(data.system.attributes.hp.max, issued.preview.hp);
 assert.equal(data.system.details.level.value, 3);
 assert.equal(reviewed._test_hazard, null, "the reviewed hazard is consumed by Create");
@@ -393,13 +394,13 @@ assert.equal(view.hazardPreview.complexity, labels.complexityComplex);
 assert.equal(view.hazardPreview.rarity, "SIMPLYPF2E.Rarity.Uncommon");
 assert.equal(view.hazardPreview.routine.text, "The blades sweep the hall and cut anyone near.");
 assert.equal(view.hazardPreview.routine.actions, "SIMPLYPF2E.Hazard.Preview.RoutineActions {" + Q + "count" + Q + ":2}");
-assert.equal(view.hazardPreview.dispel, "SIMPLYPF2E.Hazard.Preview.DispelLine " + JSON.stringify({ rank: 3, dc: T.hazardDC(3, "high") }));
+assert.equal(view.hazardPreview.dispel, "SIMPLYPF2E.Hazard.Preview.DispelLine " + JSON.stringify({ rank: 2, dc: T.hazardDC(3, "high") }));
 assert.equal(view.hazardPreview.reaction.save.text, "SIMPLYPF2E.Hazard.Preview.SaveLine " + JSON.stringify({ save: "SIMPLYPF2E.Preview.Ref", dc: T.hazardSaveDC(3, "high") }));
 assert.equal(view.hazardPreview.xp, encounter.creatureXP(3, 3), "a complex hazard uses the creature XP map");
 const beforeComplex = mark();
 await actions.createActor.call(complexApp);
 assert.equal(actorCreates.length - beforeComplex.creates, 1);
-assert.deepEqual(actorCreates.at(-1).items.map((item) => item.type), ["action", "action", "melee"]);
+assert.deepEqual(actorCreates.at(-1).items.map((item) => item.type), ["action", "melee"]);
 assert.equal(actorCreates.at(-1).system.details.isComplex, true);
 hazardRaw = simpleRaw;
 
@@ -478,7 +479,7 @@ const refusals = [
     field("SIMPLYPF2E.Hazard.Errors.Prose", "description")],
   ["a game number in prose", { ...simpleRaw(), reset: "The blade deals 2d6 damage again." },
     field("SIMPLYPF2E.Hazard.Errors.Prose", "reset")],
-  ["no way to disable it", { ...simpleRaw(), disable: [], dispel: null },
+  ["no way to disable it", { ...simpleRaw(), disable: [], dispel: false },
     field("SIMPLYPF2E.Hazard.Errors.Field", "disable")],
   ["a malformed required flag", { ...simpleRaw(), complex: "yes" },
     field("SIMPLYPF2E.Hazard.Errors.Field", "complex")],
