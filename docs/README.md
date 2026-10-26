@@ -33,6 +33,7 @@ Users start with the root [README](../README.md) for installation, supported beh
 | --- | --- |
 | [Release parity, v0.3.5.74](evidence/release-parity-2026-10-25.md) | Asset digests and 63/63 archive entries verified against the PR #114 merge |
 | [Level-shift UI](evidence/level-shift-ui-2026-10-25.md) | Gated Creature Tools level-shift section and `api.levelShift`; confirmed policy; open native rows |
+| [Hazard generator design](evidence/hazard-generator-2026-10-26.md) | WP5 H3a: AI hazard concept contract, fail-closed validation and experimental gate; no live Foundry run |
 | [Required PC identity](evidence/pc-identity-2026-09-15.md) | First completion slice, source evidence, independent review and pending native QA |
 | [NPC automatic abilities](evidence/npc-automatic-abilities-2026-09-09.md) | Implemented package boundary, source evidence and bounded .70 native QA |
 | [Consumer readiness](evidence/consumer-readiness-2026-09-08.md) | UI/generation changes and version-specific .65–.69 QA |
