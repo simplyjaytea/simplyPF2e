@@ -3,6 +3,7 @@ import { getPacksFor, findEntry, getDocument, toItemData, priceToGp, isIssuedCan
 import { slugify, capitalized, esc, toHtml } from "./text.mjs";
 import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
 import { persistedExpectedItems } from "./post-create.mjs";
+import { buildSpellConsumable, spellConsumableTemplateRef } from "./spell-consumables.mjs";
 import {
   resolveNpcAbilityPackages, revalidateNpcAbilityPackages, npcPackageUnarmedStrike,
   registerNpcAbilityExpectations
@@ -568,12 +569,12 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
       let entry = null;
       if (isIssuedCandidate(scrollCandidate, getPacksFor("spells"))) {
         const doc = await getDocument(scrollCandidate);
-        if (doc?.type === "spell" && !(doc.system?.traits?.value ?? []).includes("cantrip") && !doc.system?.ritual) {
+        if (doc?.type === "spell" && !(doc.system?.traits?.value ?? []).includes("cantrip") && !(doc.system?.traits?.value ?? []).includes("focus") && !doc.system?.ritual) {
           entry = scrollCandidate;
         }
       } else if (!exactContent) {
         entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
-          e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !e.system?.ritual
+          e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !(e.system?.traits?.value ?? []).includes("focus") && !e.system?.ritual
         );
       }
       const baseRank = entry?.system?.level?.value ?? 1;
@@ -714,19 +715,21 @@ export function heightenedLevelFor(spellSystemData, assignedRank) {
   return assignedRank;
 }
 
-const RANK_ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th"];
-
-/** Find the blank "Scroll of Nth-rank Spell" template item for a rank. */
+/**
+ * The blank "Scroll of Nth-rank Spell" template for a rank, pinned by UUID
+ * (spell-consumables.mjs, pf2e 8.5.0 config). The configured equipment packs
+ * only guard that the template's pack is enabled; they no longer pick the template.
+ */
 async function findScrollTemplate(rank) {
-  const ordinal = RANK_ORDINALS[rank - 1] ?? "1st";
-  // Remaster naming first, pre-remaster "level" naming as fallback
-  return (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-rank Spell`, (e) => e.type === "consumable"))
-    ?? (await findEntry(getPacksFor("equipment"), `Scroll of ${ordinal}-level Spell`, (e) => e.type === "consumable"));
+  const ref = spellConsumableTemplateRef("scroll", rank);
+  return ref && getPacksFor("equipment").includes(ref.packId) ? ref : null;
 }
 
 /**
- * Assemble a scroll consumable the way the PF2e system does on spell drag:
- * clone the "Scroll of Nth-rank Spell" template and embed the real spell.
+ * Assemble a scroll consumable the way the PF2e system does on spell drag
+ * (spell-consumables.mjs mirrors createConsumableFromSpell): the pinned rank
+ * template plus the real spell, with native traits, rarity and description.
+ * Throws when the spell cannot become a scroll at this rank (cantrip, focus, ritual, rank out of range).
  * @param {object} spellEntry  index entry of the spell (from resolveLoot)
  * @param {number} rank        rank the scroll casts the spell at
  * @returns {Promise<object|null>} item data, or null when spell/template is missing
@@ -734,19 +737,12 @@ async function findScrollTemplate(rank) {
 async function buildScrollItem(spellEntry, rank) {
   const spellDoc = await getDocument(spellEntry);
   if (!spellDoc) return null;
-  const template = await findScrollTemplate(rank);
-  const templateDoc = await getDocument(template);
+  const templateDoc = await getDocument(await findScrollTemplate(rank));
   if (!templateDoc) return null;
-  const data = toItemData(templateDoc);
-  const spell = spellDoc.toObject();
-  delete spell._id;
-  spell.system.location = { ...(spell.system.location ?? {}), heightenedLevel: rank };
-  data.name = `Scroll of ${spellDoc.name} (Rank ${rank})`;
-  data.system.spell = spell;
-  const traditions = spellDoc.system?.traits?.traditions ?? [];
-  data.system.traits ??= { value: [] };
-  data.system.traits.value = [...new Set([...(data.system.traits.value ?? []), ...traditions])];
-  return data;
+  const spellData = spellDoc.toObject();
+  // A compendium spell's sourceId is its own UUID (pf2e base/document.ts 86-89).
+  spellData._stats = { ...(spellData._stats ?? {}), compendiumSource: spellDoc.uuid };
+  return buildSpellConsumable({ kind: "scroll", rank, templateData: toItemData(templateDoc), spellData });
 }
 
 /**
