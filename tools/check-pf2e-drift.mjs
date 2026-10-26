@@ -18,6 +18,7 @@
  * - Pack map: the ref's system manifest (the first that exists of static/system.json, system.json and
  *   system.pf2e.json) lists each pack's name and path. The directory is that path when it exists in the
  *   tree (master layout: packs/feats), otherwise packs/pf2e/<last path segment> (8.5.0 layout).
+ *   A DEFAULT_PACKS id the manifest does not list is FAIL, or WARN when LEGACY_PACK_IDS in scripts/compendium.mjs names it.
  * - Compendium.pf2e.<pack>.Item.<id> references in scripts/*.mjs: a filename is a slug, not an id, so a
  *   document is proven only by reading its own _id. Candidates are read in this order and the first _id
  *   match wins: (1) exact basenames named by nearby text (json paths and quoted or commented phrases in the
@@ -91,6 +92,18 @@ export const parseDefaultPacks = (text) => {
     if (current) for (const match of code.matchAll(DOUBLE_QUOTED)) categories[current].push(match[1]);
   }
   return categories;
+};
+
+/** Pack ids in the LEGACY_PACK_IDS Set in scripts/compendium.mjs. Null when absent. */
+export const extractLegacyPackIds = (text) => {
+  const block = blockBetween(text, "export const LEGACY_PACK_IDS", "\n]));");
+  if (!block) return null;
+  const ids = [];
+  for (const line of block.text.split("\n")) {
+    const code = line.replace(/\/\/.*$/, "");
+    for (const match of code.matchAll(DOUBLE_QUOTED)) ids.push(match[1]);
+  }
+  return ids;
 };
 
 /** Dedication and feat names from MULTICLASS_PACKAGES in scripts/pc-multiclass.mjs. Null when absent. */
@@ -393,6 +406,18 @@ const walk = (directory, suffix) => readdirSync(directory, { withFileTypes: true
 const countBy = (list, level) => list.filter((finding) => finding.level === level).length;
 
 /**
+ * A DEFAULT_PACKS id that the ref system manifest does not list. A documented legacy alias (LEGACY_PACK_IDS in
+ * scripts/compendium.mjs) is a WARN, because upstream dropped it on purpose. Any other missing id is a FAIL.
+ */
+export const missingPackFinding = ({ category, id, legacyIds, manifestPath, ref }) => {
+  const where = "DEFAULT_PACKS." + category + ": " + JSON.stringify(id);
+  if (legacyIds.has(id)) {
+    return { level: "WARN", check: "packs", message: where + " is a legacy alias not in " + manifestPath + " at " + ref + " (expected for pre-8 compatibility)" };
+  }
+  return { level: "FAIL", check: "packs", message: where + " is not a pack in " + manifestPath + " at " + ref };
+};
+
+/**
  * Runs every check against ref. Reads the module checkout and GitHub only; never writes.
  * Returns { ref, manifest, checked, failures, warnings, findings, packs, requests }.
  */
@@ -421,7 +446,9 @@ export const runDriftCheck = async (options = {}) => {
   };
 
   // 1. DEFAULT_PACKS ids against the system manifest and the tree.
-  const categories = parseDefaultPacks(readSource("scripts/compendium.mjs"));
+  const compendiumSource = readSource("scripts/compendium.mjs");
+  const categories = parseDefaultPacks(compendiumSource);
+  const legacyIds = new Set(extractLegacyPackIds(compendiumSource) ?? []);
   if (!categories) add("FAIL", "packs", "scripts/compendium.mjs has no DEFAULT_PACKS object to check");
   for (const [category, ids] of Object.entries(categories ?? {})) {
     for (const id of ids) {
@@ -434,8 +461,9 @@ export const runDriftCheck = async (options = {}) => {
       const name = id.slice(dot + 1);
       const target = resolvePack(name);
       if (!target) {
-        add("FAIL", "packs", "DEFAULT_PACKS." + category + ": " + JSON.stringify(id) + " is not a pack in " + manifest.path + " at " + ref);
-        packs[id] = { category, error: "not in system manifest" };
+        const finding = missingPackFinding({ category, id, legacyIds, manifestPath: manifest.path, ref });
+        add(finding.level, finding.check, finding.message);
+        packs[id] = { category, error: "not in system manifest", legacy: legacyIds.has(id) };
       } else if (!target.dir) {
         add("FAIL", "packs", "DEFAULT_PACKS." + category + ": " + JSON.stringify(id) + " maps to " + target.path + ", which has no directory at " + ref);
         packs[id] = { category, pack: name, path: target.path, error: "no directory" };

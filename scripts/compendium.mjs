@@ -17,7 +17,8 @@ export const CATEGORIES = [
 export const DEFAULT_PACKS = {
   // PF2e 8 removed the `-srd` suffix from the family glossary collection.
   // Keep both identifiers so the supported PF2e 6+ range selects whichever
-  // version its installed system exposes.
+  // version its installed system exposes. Ids named in LEGACY_PACK_IDS (below)
+  // are legacy aliases: the drift check warns, not fails, when upstream drops one.
   abilities: [
     "pf2e.bestiary-ability-glossary-srd",
     "pf2e.bestiary-family-ability-glossary",
@@ -36,6 +37,12 @@ export const DEFAULT_PACKS = {
   heritages: ["pf2e.heritages"],
   bestiaryActors: ["pf2e.pathfinder-monster-core", "pf2e.pathfinder-bestiary"]
 };
+
+// Ids kept in DEFAULT_PACKS only for older worlds (PF2e 6 and 7). PF2e 8 dropped them, so
+// tools/check-pf2e-drift.mjs reports a missing legacy id as a WARN and any other missing id as a FAIL.
+export const LEGACY_PACK_IDS = Object.freeze(new Set([
+  "pf2e.bestiary-family-ability-glossary-srd"
+]));
 
 export const EQUIPMENT_TYPES = new Set([
   "weapon", "armor", "equipment", "consumable", "ammo", "treasure", "backpack", "shield", "kit"

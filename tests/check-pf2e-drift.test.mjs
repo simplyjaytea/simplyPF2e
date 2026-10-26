@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 // Importing the tool must not run the CLI or fetch anything.
 const realFetch = globalThis.fetch;
@@ -14,7 +15,7 @@ assert.deepEqual(requested, [], "importing the drift tool must not fetch");
 const {
   slugify, slugCandidates, isDocumentId, parseDefaultPacks, extractCatalogNames,
   extractSpellcasterProfiles, extractCompendiumRefs, manifestPacks, packDirectory,
-  buildIndex, locateById, compareDocuments, classFindings, parseArgs
+  buildIndex, locateById, compareDocuments, classFindings, parseArgs, extractLegacyPackIds, missingPackFinding
 } = tool;
 
 // Slugs and document ids.
@@ -42,6 +43,34 @@ assert.deepEqual(parseDefaultPacks(packsSample), {
   abilities: ["pf2e.bestiary-ability-glossary-srd", "pf2e.bestiary-family-ability-glossary"],
   feats: ["pf2e.feats-srd"]
 });
+
+// LEGACY_PACK_IDS: read from source text. A missing legacy alias is a WARN; any other missing pack id is a FAIL.
+const legacySample = [
+  `export const DEFAULT_PACKS = {`,
+  `  abilities: [\x22pf2e.bestiary-family-ability-glossary-srd\x22],`,
+  `};`,
+  `export const LEGACY_PACK_IDS = Object.freeze(new Set([`,
+  `  // \x22quoted\x22 comment text is not an id`,
+  `  \x22pf2e.bestiary-family-ability-glossary-srd\x22`,
+  `]));`
+].join("\n");
+assert.deepEqual(extractLegacyPackIds(legacySample), ["pf2e.bestiary-family-ability-glossary-srd"]);
+assert.equal(extractLegacyPackIds("export const DEFAULT_PACKS = {\n};"), null, "no LEGACY_PACK_IDS means no legacy aliases");
+const compendiumSource = readFileSync(new URL("../scripts/compendium.mjs", import.meta.url), "utf8");
+const legacyIds = new Set(extractLegacyPackIds(compendiumSource));
+assert.deepEqual([...legacyIds], ["pf2e.bestiary-family-ability-glossary-srd"]);
+const defaultIds = Object.values(parseDefaultPacks(compendiumSource)).flat();
+for (const id of legacyIds) assert.ok(defaultIds.includes(id), id + " must be a DEFAULT_PACKS id");
+const manifestPath = "static/system.json";
+const legacyWarn = missingPackFinding({ category: "abilities", id: "pf2e.bestiary-family-ability-glossary-srd", legacyIds, manifestPath, ref: "master" });
+assert.equal(legacyWarn.level, "WARN");
+assert.equal(legacyWarn.check, "packs");
+assert.equal(legacyWarn.message, "DEFAULT_PACKS.abilities: \x22pf2e.bestiary-family-ability-glossary-srd\x22 is a legacy alias not in static/system.json at master (expected for pre-8 compatibility)");
+const nonLegacyFail = missingPackFinding({ category: "feats", id: "pf2e.feats-srd", legacyIds, manifestPath, ref: "master" });
+assert.equal(nonLegacyFail.level, "FAIL");
+assert.equal(nonLegacyFail.message, "DEFAULT_PACKS.feats: \x22pf2e.feats-srd\x22 is not a pack in static/system.json at master");
+const withoutMarker = missingPackFinding({ category: "abilities", id: "pf2e.bestiary-family-ability-glossary-srd", legacyIds: new Set(), manifestPath, ref: "master" });
+assert.equal(withoutMarker.level, "FAIL", "without the LEGACY_PACK_IDS marker the alias stays a FAIL");
 
 // Compendium references: line numbers, name hints, dynamic and display-name tokens.
 const refSample = [
