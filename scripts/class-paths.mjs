@@ -37,6 +37,12 @@ import { choiceSetOptions, normalizeChoiceFlag, preselectChoiceSets } from "./ch
  * throws a named error before any chooser call or write. This is what makes
  * a PF2e shape the module cannot stage (master's two-entry Arcane School
  * filter, verified in the research record) refuse instead of prompting.
+ *
+ * Preflight. `preflightClassPaths(classData)` runs only that first pass (read
+ * the level-one entries, find each bridge, apply the guard). It calls no
+ * chooser and writes nothing, so the generator can offer only classes that
+ * pass it and the identity validation can refuse an explicit required class
+ * that fails it, before any provider spend, instead of at Create.
  */
 
 function isObject(value) {
@@ -163,6 +169,57 @@ export async function getClassPathCandidates(classData, { config = CONFIG?.PF2E 
   });
 }
 
+/**
+ * Pass one of staging: read the class level-one entries and refuse what cannot
+ * be staged. It makes no chooser call and writes nothing, so it is also the
+ * preflight that can run before any provider spend. Returns the bridges to
+ * stage as { entryId, source, selector }.
+ */
+async function readLevelOneEntries(entries) {
+  const bridges = [];
+  const unstaged = [];
+  for (const [entryId, entry] of Object.entries(entries)) {
+    if (Number(entry?.level) !== 1 || typeof entry?.uuid !== "string") continue;
+    const document = await documentFromUuid(entry.uuid);
+    if (!document) continue;
+    const source = toItemData(document);
+    const selector = singlePathTag(source);
+    if (!selector) {
+      unstaged.push(source);
+      continue;
+    }
+    if (!isEnabledClassFeature(document)) {
+      throw new Error(`simplypf2e | required class path source for "${source.name}" is not enabled`);
+    }
+    if (bridges.some((bridge) => bridge.source.name === source.name)) {
+      throw new Error(`simplypf2e | class has more than one level-one bridge named "${source.name}"`);
+    }
+    bridges.push({ entryId, source, selector });
+  }
+  // Fail-closed guard (module header): an entry that was not staged as a
+  // bridge must not carry a ChoiceSet, or PF2e would prompt after the build.
+  for (const source of unstaged) {
+    if (hasChoiceSet(source)) {
+      throw new Error(`simplypf2e | class path "${source.name}" has an unsupported choice shape; refusing a one-click build`);
+    }
+  }
+  return bridges;
+}
+
+/**
+ * Chooser-free preflight for a class source: throws the same named errors as
+ * the first pass of stageClassPaths (an unstageable bridge shape, a bridge
+ * whose source is not enabled, a duplicated bridge) and returns the names of
+ * the bridges it would stage. Callers run it before any provider spend, so a
+ * class the module cannot build is refused up front instead of at Create.
+ */
+export async function preflightClassPaths(classData) {
+  const entries = classData?.system?.items;
+  if (!isObject(entries)) return [];
+  const bridges = await readLevelOneEntries(entries);
+  return bridges.map((bridge) => bridge.source.name);
+}
+
 function sameCandidate(a, b) {
   return Boolean(a && b && a.ref?.packId === b.ref?.packId && a.ref?._id === b.ref?._id
     && a.uuid === b.uuid);
@@ -210,35 +267,10 @@ export async function stageClassPaths(classData, classId, { context, config = CO
     if (missing) throw new Error(`simplypf2e | required class path "${missing.name ?? "?"}" has no class bridge to stage`);
     return { items: [], expectedPaths: [] };
   }
-  // Pass one reads the class and refuses what cannot be staged, before any
-  // chooser call (which may spend provider tokens) and before any write.
-  const bridges = [];
-  const unstaged = [];
-  for (const [entryId, entry] of Object.entries(entries)) {
-    if (Number(entry?.level) !== 1 || typeof entry?.uuid !== "string") continue;
-    const document = await documentFromUuid(entry.uuid);
-    if (!document) continue;
-    const source = toItemData(document);
-    const selector = singlePathTag(source);
-    if (!selector) {
-      unstaged.push(source);
-      continue;
-    }
-    if (!isEnabledClassFeature(document)) {
-      throw new Error(`simplypf2e | required class path source for "${source.name}" is not enabled`);
-    }
-    if (bridges.some((bridge) => bridge.source.name === source.name)) {
-      throw new Error(`simplypf2e | class has more than one level-one bridge named "${source.name}"`);
-    }
-    bridges.push({ entryId, source, selector });
-  }
-  // Fail-closed guard (module header): an entry that was not staged as a
-  // bridge must not carry a ChoiceSet, or PF2e would prompt after the build.
-  for (const source of unstaged) {
-    if (hasChoiceSet(source)) {
-      throw new Error(`simplypf2e | class path "${source.name}" has an unsupported choice shape; refusing a one-click build`);
-    }
-  }
+  // Pass one (readLevelOneEntries) reads the class and refuses what cannot be
+  // staged, before any chooser call (which may spend provider tokens) and
+  // before any write.
+  const bridges = await readLevelOneEntries(entries);
   for (const [bridgeName, path] of byBridge) {
     if (!bridges.some((bridge) => bridge.source.name === bridgeName)) {
       throw new Error(`simplypf2e | required class path "${path.name ?? "?"}" names bridge "${bridgeName}", which this class does not have`);

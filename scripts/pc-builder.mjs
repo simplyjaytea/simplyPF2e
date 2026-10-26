@@ -12,8 +12,9 @@ import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocat
 import { SETTINGS, getSetting } from "./settings.mjs";
 import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
-import { getClassPathCandidates, stageClassPaths } from "./class-paths.mjs";
+import { getClassPathCandidates, preflightClassPaths, stageClassPaths } from "./class-paths.mjs";
 import { assertPCIdentity } from "./pc-identity.mjs";
+import { settleFocusSpells } from "./pc-support.mjs";
 import { resolveBackgroundLore } from "./pc-background-lore.mjs";
 import { stagedActorContext } from "./pc-prerequisites.mjs";
 import { persistedExpectedItems } from "./post-create.mjs";
@@ -181,6 +182,11 @@ export async function validatePCIdentityRequirements(identity) {
     }
     docs[field] = document;
   }
+  // A complete-only class whose level-one bridges the module cannot stage
+  // (master two-entry Arcane School filter) would pass every later check,
+  // spend provider tokens, and then refuse at Create. Refuse it here, as soon
+  // as the class is known, before any further provider call.
+  if (docs.class) await preflightClassPaths(toItemData(docs.class));
   if (docs.ancestry && docs.heritage && !heritageMatchesAncestry(docs.heritage, docs.ancestry)) {
     throw new Error(`simplypf2e | required heritage is incompatible with required ancestry`);
   }
@@ -370,6 +376,10 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
     ? concept.classCandidate : (exactContent ? null : await findEntry(classPacks, concept.class, (e) => e.type === "class"));
   const classDoc = await getDocument(classEntry);
   if (!classDoc || classDoc.type !== "class") throw new Error(`Could not find class "${concept.class}" in the compendium`);
+  // Focus spells are honoured only where the module models the class focus
+  // source (pc-support.mjs); otherwise the AI picks are dropped here, before
+  // they are resolved, previewed or counted as unresolved.
+  settleFocusSpells(concept, classDoc);
   const required = concept.requiredIdentity;
 
   let heritageDoc = null;
@@ -875,6 +885,12 @@ async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility, 
 export async function createCharacterActor(concept, resolved, { img = null, selectChoices = null } = {}) {
   await validatePCIdentityRequirements(concept.requiredIdentity);
   assertResolvedPCIdentity(concept, resolved, concept.requiredIdentity);
+
+  // The focus entry and pool exist only for classes whose focus source the
+  // module models (pc-support.mjs). Otherwise the AI picks are dropped with a
+  // warning, no entry or pool is written, and the pool stays at 0.
+  const focusModeled = settleFocusSpells(concept, resolved.classDoc);
+  const focusSpells = focusModeled ? resolved.focusSpells ?? [] : [];
   const items = [];
 
   // Key ability: validate the AI's pick against the class's legal options once,
@@ -1070,9 +1086,9 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // so a real published rule exemplar is cloned onto the entry (never
   // hand-authored, see rule-templates.mjs).
   let focusPoolSize = 0;
-  if (resolved.focusSpells?.some((s) => s.entry)) {
+  if (focusSpells.some((s) => s.entry)) {
     const focusEntryId = foundry.utils.randomID();
-    focusPoolSize = Math.min(resolved.focusSpells.filter((s) => s.entry).length, 3);
+    focusPoolSize = Math.min(focusSpells.filter((s) => s.entry).length, 3);
     const exemplar = await findRuleExemplar("focusPool");
     if (!exemplar) {
       // Fail closed but don't abort: the spells still embed, the pool just
@@ -1098,7 +1114,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
         rules: poolRule ? [poolRule] : []
       }
     });
-    for (const { entry } of resolved.focusSpells) {
+    for (const { entry } of focusSpells) {
       const doc = await getDocument(entry);
       if (!doc) continue;
       const data = toItemData(doc);
