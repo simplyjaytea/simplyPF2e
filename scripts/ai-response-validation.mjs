@@ -57,6 +57,7 @@ const RULES = Object.freeze({
     arrays: ["propertyRuneIds"],
     nonEmptyStrings: ["baseItemId", "potencyRuneId", "secondaryRuneId", "description"]
   },
+  [AI_TASK.SPELL_CONSUMABLE_CONCEPT]: { required: ["picks"], arrays: ["picks"] },
   [AI_TASK.ENCOUNTER_DESIGN]: {
     required: ["name", "briefs"],
     arrays: ["briefs"],

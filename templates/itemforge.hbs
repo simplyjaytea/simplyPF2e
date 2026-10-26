@@ -14,10 +14,19 @@
           </span>
         </button>
       {{/each}}
+      {{#each consumableKinds}}
+        <button type="button" class="spf-kind-choice {{#if this.selected}}spf-kind-selected{{/if}}" data-action="selectKind" data-kind="{{this.value}}" aria-pressed="{{this.selected}}" {{#if @root.busy}}disabled{{/if}}>
+          <i class="fa-solid {{this.icon}}" aria-hidden="true"></i>
+          <span class="spf-kind-choice-copy">
+            <strong>{{localize this.label}}</strong>
+            <small>{{localize this.hint}}</small>
+          </span>
+        </button>
+      {{/each}}
     </div>
     <div class="form-group stacked">
-      <label for="spf-itemforge-prompt">{{localize "SIMPLYPF2E.ItemForge.Prompt"}}</label>
-      <textarea id="spf-itemforge-prompt" name="prompt" rows="3" placeholder="{{localize 'SIMPLYPF2E.ItemForge.PromptPlaceholder'}}">{{input.prompt}}</textarea>
+      <label for="spf-itemforge-prompt">{{localize promptLabel}}</label>
+      <textarea id="spf-itemforge-prompt" name="prompt" rows="3" placeholder="{{localize promptPlaceholder}}">{{input.prompt}}</textarea>
     </div>
     <div class="spf-row">
       <div class="form-group">
@@ -70,6 +79,7 @@
       <div>
         <h2>{{localize "SIMPLYPF2E.ItemForge.CreatedTitle"}}</h2>
         <p>{{localize "SIMPLYPF2E.ItemForge.CreatedSummary" name=created.name}}</p>
+        {{#if created.names}}<ul class="spf-list">{{#each created.names}}<li>{{this}}</li>{{/each}}</ul>{{/if}}
       </div>
     </div>
     {{#if created.warning}}
@@ -94,6 +104,24 @@
 
   {{#if preview}}
   <section class="spf-preview spf-card">
+    {{#if preview.consumable}}
+      <header class="spf-statblock-header">
+        <h2>{{preview.heading}}</h2>
+      </header>
+      <table class="spf-consumables">
+        <thead>
+          <tr><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Spell"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Rank"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Price"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Level"}}</th></tr>
+        </thead>
+        <tbody>
+          {{#each preview.items}}
+            <tr><td>{{this.name}}</td><td>{{this.rank}}</td><td>{{this.price}}</td><td>{{this.level}}</td></tr>
+          {{/each}}
+        </tbody>
+      </table>
+      {{#each preview.warnings}}
+        <p class="notification warning" role="status">{{this}}</p>
+      {{/each}}
+    {{else}}
     <header class="spf-statblock-header">
       <h2>{{preview.concept.name}}</h2>
       <span class="spf-level">{{localize "SIMPLYPF2E.ItemForge.Item"}} {{preview.concept.level}}</span>
@@ -146,6 +174,7 @@
           <li>{{{preview.activation}}}</li>
         </ul>
       {{/if}}
+    {{/if}}
     {{/if}}
 
     {{#if preview.concept.description}}

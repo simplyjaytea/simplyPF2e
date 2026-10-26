@@ -811,6 +811,66 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
   return { loot, omitted: parsed.loot.length === 0, usage };
 }
 
+
+/**
+ * Pick real spells for Item Forge scrolls or wands. The model chooses only
+ * issued candidate IDs and whole-number ranks from real spells; the module
+ * supplies every template, price, level and name afterwards from real
+ * documents (spell-consumables.mjs), so no value below the rank comes from the model.
+ * @param {string} brief GM's description of the consumables wanted
+ * @param {object} args
+ * @param {number} args.level item level, for context only
+ * @param {"scroll"|"wand"} args.kind
+ * @param {{id: string, name: string, rank: number, traits?: string[], ref?: object}[]} args.candidates issued spell candidates
+ * @param {number} [args.count=6] most picks to keep
+ * @returns {Promise<{picks: {spellId: string, name: string, rank: number, kind: string, candidate: object}[], usage: object|null}>}
+ */
+export async function selectSpellConsumables(brief, { level, kind, candidates = [], count = 6, signal, onProgress } = {}) {
+  const offered = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.id);
+  if (!["scroll", "wand"].includes(kind)) throw new TypeError(`Unknown spell consumable kind: ${String(kind)}`);
+  const maximum = Number.isInteger(count) && count > 0 ? count : 6;
+  // Nothing to choose from: no provider request, and no picks.
+  if (!offered.length) return { picks: [], usage: null };
+
+  const list = offered.map((candidate) => {
+    const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
+    return `${candidate.id} | ${candidate.name} | base rank ${candidate.rank}${traits}`;
+  }).join("\n");
+
+  const system = `You are choosing spells for a Pathfinder 2e ${kind} that a GM is forging. Each pick is one ${kind} of a spell from the list, cast at a rank. Choose ONLY spell IDs from the provided list. Respond with a single JSON object and nothing else:
+{ "picks": [ { "spellId": string, "rank": integer, "kind": "${kind}" } ] }
+Return at most ${maximum} picks. "rank" is a whole number at or above the base rank of that spell. Do not emit any prices, item levels, DCs, damage, or other numbers beyond the rank: the module supplies every other value. Never write code. Return an empty "picks" array when nothing in the list fits the brief.`;
+
+  const user = [
+    `Item kind: ${kind}`,
+    `Item level: ${level}`,
+    `GM brief: ${String(brief ?? "")}`,
+    "",
+    "Available spells (ID | name | base rank | traits):",
+    list
+  ].join("\n");
+
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.SPELL_CONSUMABLE_CONCEPT, system, user, onProgress, signal
+  });
+  const byId = new Map(offered.map((candidate) => [candidate.id, candidate]));
+  const picks = [];
+  for (const pick of Array.isArray(parsed.picks) ? parsed.picks : []) {
+    if (picks.length >= maximum) break;
+    const candidate = byId.get(String(pick?.spellId ?? ""));
+    if (!candidate) {
+      console.warn("simplypf2e | dropped spell consumable pick with an unknown spell id", pick?.spellId);
+      continue;
+    }
+    if (!Number.isInteger(pick.rank) || pick.rank < 1 || pick.rank > 10) {
+      console.warn("simplypf2e | dropped spell consumable pick with a non-integer or out-of-range rank", candidate.name, pick.rank);
+      continue;
+    }
+    picks.push({ spellId: candidate.id, name: candidate.name, rank: pick.rank, kind, candidate });
+  }
+  return { picks, usage };
+}
+
 /**
  * Ground a PC's first-draft ancestry/heritage/background/class against the
  * real compendium lists in ONE call — the ABC counterpart of selectSpells/
