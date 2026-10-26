@@ -55,15 +55,21 @@ const PROSE_NUMBERS = Object.freeze([
   [/\b\d+\s*(?:[a-z]+\s+)?(?:damage|hp|hit\s+points?)\b|\b(?:damage|hp|hit\s+points?)\s*\d/i, "damage, HP or hit points next to a number"]
 ]);
 
+/*
+ * A refused concept. field and reason are set for refused prose and names, so the
+ * generator can say which field failed and why (generator-app.mjs hazardErrorText).
+ */
 export class HazardConceptError extends Error {
-  constructor(code, message) {
+  constructor(code, message, { field = null, reason = null } = {}) {
     super(message);
     this.name = "HazardConceptError";
     this.code = code;
+    this.field = field;
+    this.reason = reason;
   }
 }
 
-const fault = (code, message) => new HazardConceptError(code, message);
+const fault = (code, message, detail) => new HazardConceptError(code, message, detail);
 const warn = (message) => console.warn(`Hazard concept: ${message}`);
 const isPlainObject = (value) => Boolean(value && typeof value === "object" && !Array.isArray(value));
 
@@ -122,25 +128,40 @@ export function hazardProseProblem(text) {
   return found ? found.reason : null;
 }
 
+/** Markup a name may not carry: angle brackets, a tab, a line break, or the pipe that separates @Check parameters. */
+const NAME_MARKUP = /[<>|\r\n\t]/;
+const NAME_MARKUP_REASON = "is not a single plain line without markup or the pipe character";
+
+/**
+ * The one name check (review P3-2). Returns { code, reason } when the name must be refused, or null.
+ * The AI retry gate (ai.mjs, hazardTextProblem) and nameText both call it, so a name that passes the
+ * gate is never refused here. The caller passes the trimmed name.
+ */
+export function hazardNameProblem(text) {
+  if (text.length > NAME_MAX) return { code: "BAD_NAME", reason: "is longer than " + NAME_MAX + " characters" };
+  const found = proseFault(text);
+  if (found) return { code: found.code === "BAD_TEXT" ? "BAD_NAME" : found.code, reason: found.reason };
+  if (NAME_MARKUP.test(text)) return { code: "BAD_NAME", reason: NAME_MARKUP_REASON };
+  return null;
+}
+
 /** Optional prose: plain text that passes hazardProseProblem. Escaping happens at render time. */
 function proseText(field, value) {
   if (value === undefined || value === null) return "";
-  if (typeof value !== "string") throw fault("BAD_TEXT", `${field} must be text`);
+  if (typeof value !== "string") throw fault("BAD_TEXT", `${field} must be text`, { field, reason: "is not text" });
   const text = value.trim();
   if (!text) return "";
   const found = proseFault(text);
-  if (found) throw fault(found.code, `${field} ${found.reason}`);
+  if (found) throw fault(found.code, `${field} ${found.reason}`, { field, reason: found.reason });
   return text;
 }
 
-/** Required single-line name under the same policy. The pipe is refused because it separates @Check parameters. */
+/** Required single-line name. hazardNameProblem decides; the pipe is refused because it separates @Check parameters. */
 function nameText(field, value) {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) throw fault("MISSING_NAME", `${field} is required`);
-  const found = proseFault(text);
-  if (found) throw fault(found.code === "BAD_TEXT" ? "BAD_NAME" : found.code, `${field} ${found.reason}`);
-  if (text.length > NAME_MAX) throw fault("BAD_NAME", `${field} must be at most ${NAME_MAX} characters`);
-  if (/[<>|\r\n\t]/.test(text)) throw fault("BAD_NAME", `${field} must be one plain line without markup or the pipe character`);
+  const problem = hazardNameProblem(text);
+  if (problem) throw fault(problem.code, `${field} ${problem.reason}`, { field, reason: problem.reason });
   return text;
 }
 
@@ -318,14 +339,21 @@ async function hazardTables(tables) {
   return tables || (await import("./hazard-tables.mjs"));
 }
 
-/** Encounter XP: simple hazards use the simple map, complex hazards the creature map (WP5 decision 5). */
+/** Encounter XP: encounter.mjs hazardXP, the simple map for simple hazards and the creature map for complex ones (WP5 decision 5). */
 async function encounterXP(xp) {
   if (xp) return xp;
-  const encounter = await import("./encounter.mjs");
-  return (level, partyLevel, complex) => (complex
-    ? encounter.creatureXP(level, partyLevel)
-    : encounter.simpleHazardXP(level, partyLevel));
+  return (await import("./encounter.mjs")).hazardXP;
 }
+
+/*
+ * Dispel Magic link (review P2-5). The pf2e 8.5.0 spell is at
+ * https://raw.githubusercontent.com/foundryvtt/pf2e/pf2e-8.5.0/packs/pf2e/spells/spells/rank-2/dispel-magic.json
+ * and its id line reads:
+ *   "_id": "9HpwDN4MYQJnW0LG",
+ * tests/fixtures/hazards/dispel-magic.json is that file unchanged. Built packs resolve ID-form uuids,
+ * so the link names the id, not the spell name.
+ */
+const DISPEL_MAGIC_UUID = "Compendium.pf2e.spells-srd.Item.9HpwDN4MYQJnW0LG";
 
 function disableHtml(concept, level, T) {
   const rank = T.hazardProficiency(level, "high");
@@ -334,7 +362,7 @@ function disableHtml(concept, level, T) {
   ));
   if (concept.dispel) {
     const counteract = T.hazardDC(level, "high");
-    checks.push(`@UUID[Compendium.pf2e.spells-srd.Item.Dispel Magic] (${ordinal(dispelRank(level))} rank; counteract DC ${counteract})`);
+    checks.push(`@UUID[${DISPEL_MAGIC_UUID}]{Dispel Magic} (${ordinal(dispelRank(level))} rank; counteract DC ${counteract})`);
   }
   return checks.length ? `<p>${checks.join(" or ")}</p>` : "";
 }

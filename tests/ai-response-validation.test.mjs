@@ -53,4 +53,20 @@ assert.match(taskResponseProblem(AI_TASK.ABILITY_SELECTION, { picks: [] }), /mis
 assert.equal(taskResponseProblem(AI_TASK.CREATURE_FEAT_SELECTION, { featIds: [] }), null);
 assert.match(taskResponseProblem(AI_TASK.CREATURE_FEAT_SELECTION, { picks: [] }), /missing required fields: featIds/);
 
+const HAZARD = {
+  name: "Spear Launcher", description: "A wall socket loaded with a spear.", traits: ["trap"], rarity: "common", complex: false,
+  stealth: "high", disable: [{ skill: "thievery", scale: "high" }], dispel: false, ac: "high",
+  saves: { fortitude: "high", reflex: null, will: null }, hasHP: true,
+  reaction: { name: "Spear", trigger: "Pressure is applied.", effect: "A spear flies.", strike: null, save: null },
+  routine: null, reset: ""
+};
+assert.equal(taskResponseProblem(AI_TASK.HAZARD_CONCEPT, HAZARD), null, "a complete hazard shape passes without the validate hook");
+const withoutReset = { ...HAZARD };
+delete withoutReset.reset;
+assert.match(taskResponseProblem(AI_TASK.HAZARD_CONCEPT, withoutReset), /missing required fields: reset/);
+assert.match(taskResponseProblem(AI_TASK.HAZARD_CONCEPT, { ...HAZARD, traits: "trap" }), /fields must be arrays: traits/);
+assert.match(taskResponseProblem(AI_TASK.HAZARD_CONCEPT, { ...HAZARD, disable: {} }), /fields must be arrays: disable/);
+assert.match(taskResponseProblem(AI_TASK.HAZARD_CONCEPT, { ...HAZARD, name: "   " }), /fields must be non-empty strings: name/);
+assert.match(taskResponseProblem(AI_TASK.HAZARD_CONCEPT, {}), /missing required fields: name, description/);
+assert.doesNotMatch(taskResponseProblem(AI_TASK.HAZARD_CONCEPT, {}), /unknown task/, "the hazard task has a RULES entry");
 console.log("ai-response-validation.test.mjs: all response-shape assertions passed");

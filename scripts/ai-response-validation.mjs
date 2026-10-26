@@ -15,6 +15,12 @@ const PC_KEYS = [
   "spellcasting", "focusSpells", "equipment"
 ];
 
+// The hazard concept keys (ai.mjs HAZARD_KEYS). Structural only; the validate hook in ai.mjs is the full gate.
+const HAZARD_CONCEPT_KEYS = [
+  "name", "description", "traits", "rarity", "complex", "stealth", "disable", "dispel",
+  "ac", "saves", "hasHP", "reaction", "routine", "reset"
+];
+
 const RULES = Object.freeze({
   [AI_TASK.CREATURE_CONCEPT]: {
     required: CREATURE_KEYS,
@@ -62,6 +68,13 @@ const RULES = Object.freeze({
     required: ["name", "briefs"],
     arrays: ["briefs"],
     nonEmptyStrings: ["name"]
+  },
+  // Structural shape of the hazard concept only. The validate hook in ai.mjs (hazardConceptProblem) is the
+  // full gate; this entry keeps a caller without the hook from getting "unknown task".
+  [AI_TASK.HAZARD_CONCEPT]: {
+    required: HAZARD_CONCEPT_KEYS,
+    arrays: ["traits", "disable"],
+    nonEmptyStrings: ["name", "description"]
   },
   // Flavor-only output: exactly name/flavor/biography, plain and inert text.
   // Rejections use the structural retry path, so a hostile reply is re-asked once.
