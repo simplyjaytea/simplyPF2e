@@ -186,6 +186,19 @@ const wizardCandidate = issueCandidate({ packId: "pf2e.classes", _id: wizard._id
 }
 }
 
+// 7. A Wizard whose Arcane Thesis has no fully resolvable enabled candidate is
+// refused by identity validation before any provider call, and by the build
+// before Actor.create.
+{
+  const refusal = { message: 'simplypf2e | no fully resolvable enabled class paths for "Arcane Thesis"' };
+  worlds.use(makeWorld({ [CF]: features.filter((json) => !["Spell Blending", "Staff Nexus"].includes(json.name)), "pf2e.classes": [wizard] }));
+  reset();
+  await assert.rejects(validatePCIdentityRequirements({ class: wizardCandidate }), refusal, "identity validation refuses the class before any provider call");
+  await assert.rejects(createCharacterActor(concept(), resolved(), { selectChoices: chooser([]) }), refusal);
+  assert.deepEqual(events, [], "the build refuses before any actor write");
+  worlds.use(world);
+}
+
 console.warn = warn;
 assert.deepEqual(warnings.filter((line) => !/provisional native skills|character skill review/.test(line)), [],
   "only the stand-in's native-skill preview limit is warned");

@@ -274,6 +274,10 @@ const attunement = candidate("Improved Familiar Attunement");
   assert.deepEqual(await preflightClassPaths(copy("fighter-class")), [], "Fighter has no bridge");
   assert.deepEqual(await preflightClassPaths(copy("rogue-class")), ["Rogue's Racket"]);
   assert.deepEqual(await preflightClassPaths(copy("investigator-class")), ["Methodology"]);
+  // Thief is the only Rogue's Racket candidate: without it the bridge is refused up front.
+  worlds.use(makeWorld({ [CF]: [precedent["rogues-racket"], precedent["sneak-attack"], precedent["surprise-attack"], precedent["reactive-strike"], precedent["shield-block"]] }));
+  await assert.rejects(preflightClassPaths(copy("rogue-class")), { message: `simplypf2e | no fully resolvable enabled class paths for "Rogue's Racket"` },
+    "a Rogue with no closed Rogue's Racket candidate is refused before any provider call");
 }
 
 // ---- The decision is the feature's shape, not the class's name: any class
@@ -293,6 +297,27 @@ const attunement = candidate("Improved Familiar Attunement");
   worlds.use(makeWorld({ [CF]: [withChoice] }));
   await assert.rejects(preflightClassPaths(sneakClass), /class path "Sneak Attack" has an unsupported choice shape; refusing a one-click build/,
     "the preflight refuses the same shape that stageClassPaths refuses");
+}
+
+// ---- Preflight refuses a bridge with no fully resolvable enabled candidate. Only
+// open schools remain (Rooted Wisdom, Unified Magical Theory), or no thesis closes:
+// the class is refused before any chooser call or provider spend.
+{
+  const without = (...names) => makeWorld({ [CF]: classFeatures.filter((json) => !names.includes(json.name)), "pf2e.feats-srd": [familiar, pet] });
+  const refusal = (bridge) => ({ message: `simplypf2e | no fully resolvable enabled class paths for "${bridge}"` });
+  worlds.use(without("School of Battle Magic", "School of Mentalism"));
+  const untouched = classCopy();
+  await assert.rejects(preflightClassPaths(untouched), refusal(SCHOOL), "only open schools remain: the class is refused");
+  assert.deepEqual(untouched, wizard, "the refusal leaves the class source untouched");
+  worlds.use(without("Spell Blending", "Spell Substitution", "Staff Nexus", "Improved Familiar Attunement"));
+  await assert.rejects(preflightClassPaths(classCopy()), refusal(THESIS), "no closed thesis remains: the class is refused");
+  // The build refuses the same bridge before the chooser is asked about the school.
+  let chooserCalls = 0;
+  await assert.rejects(stageClassPaths(classCopy(), "class-id", {
+    context: {}, selectChoices: async () => { chooserCalls++; return { picks: [] }; }
+  }), refusal(THESIS));
+  assert.equal(chooserCalls, 0, "no chooser call, and so no provider spend, before the refusal");
+  worlds.use(wizardWorld);
 }
 
 console.log("pc-wizard.class-paths.test.mjs: per-bridge discovery, staging, required-path isolation and the bridge guard passed");
