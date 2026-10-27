@@ -43,6 +43,7 @@ import { HAZARD_DISABLE_SKILLS, HazardConceptError, normalizeHazardConcept, buil
 import { HAZARD_MIN_LEVEL, HAZARD_MAX_LEVEL, hazardSaveDC } from "./hazard-tables.mjs";
 import { HAZARD_LABEL_KEYS } from "./hazard-labels.mjs";
 import { esc } from "./text.mjs";
+import { createProgress } from "./progress.mjs";
 import { validateForgeRequest } from "./forge-command.mjs";
 import { heritageMatchesAncestry } from "./pc-builder.mjs";
 import { applyPCEdit, validatePCEditCompletion } from "./pc-edit.mjs";
@@ -740,12 +741,14 @@ export class GeneratorApp extends SpfApp {
       treasureBudget: Math.round(this.#encounter.treasureBudget ?? 0),
       treasureSpent: Math.round(this.#encounter.treasureSpent ?? 0),
       members: this.#encounter.members.map((member, index) => {
+        if (member.role === "hazard") return this.#encounterHazardRow(member, index);
         const stats = computeStats(member.concept);
         const strike = stats.strikes[0];
         return {
           index,
           count: member.count,
           skipped: member.count === 0,
+          tag: "SIMPLYPF2E.Generator.Creature",
           role: `SIMPLYPF2E.Role.${member.role.charAt(0).toUpperCase()}${member.role.slice(1)}`,
           name: member.concept.name,
           level: member.concept.level,
@@ -971,7 +974,9 @@ export class GeneratorApp extends SpfApp {
   async #stepMemberCount(index, delta) {
     const member = this.#encounter?.members?.[index];
     if (!member) return;
-    member.count = Math.min(8, Math.max(0, member.count + delta));
+    // A hazard is one copy: a second one would break the one-hazard rule of the design note.
+    const cap = member.role === "hazard" ? 1 : 8;
+    member.count = Math.min(cap, Math.max(0, member.count + delta));
     this.#encounter.spent = this.#encounter.members.reduce((sum, m) => sum + m.count * m.xpEach, 0);
     // The group's treasure share (treasureGroupBudget) stays constant; only
     // the per-copy split changes, so re-nudge the shared loot toward the new
@@ -1220,7 +1225,7 @@ export class GeneratorApp extends SpfApp {
     const runId = this._runId;
     let outcome = "success";
     try {
-      await this.#generateEncounter(isRandom, { signal, composition });
+      await this.#generateEncounter(isRandom, { signal, composition, create });
       if (create && this.#encounter) outcome = await this.#createEncounterActors({ reuseRunId: runId });
     } catch (err) {
       this._recordTokens(
@@ -1399,11 +1404,13 @@ export class GeneratorApp extends SpfApp {
    * AI names the encounter and briefs each slot, then every member runs
    * through the normal single-creature pipeline.
    */
-  async #generateEncounter(isRandom = false, { signal = null, composition = null } = {}) {
+  async #generateEncounter(isRandom = false, { signal = null, composition = null, create = false } = {}) {
     const { level: partyLevel, rarity } = this.#input;
     composition ??= composeEncounter(this.#input.threat, this.#input.partySize, partyLevel);
+    // The plan is the no-hazard composition until the design asks for a hazard, which reshapes it.
+    let plan = composition;
     const memberLabel = (i) => game.i18n.format("SIMPLYPF2E.Progress.Member", {
-      index: i + 1, total: composition.members.length
+      index: i + 1, total: plan.members.length
     });
     await this._setStep("design");
       // Random mode always rolls a fresh theme, even over a typed prompt —
@@ -1419,20 +1426,50 @@ export class GeneratorApp extends SpfApp {
         `the encounter names "${String(named[0].name).slice(0, 100)}", but its member assignment cannot be verified automatically. Generate the creature with that ability separately.`,
         "NPC_ABILITY_ENCOUNTER_REQUIREMENT_AMBIGUOUS"
       );
+      const catalogs = hazardCatalogs();
+      // A hazard is requested only while experimentalTools is open and the hazard catalogs exist.
+      const allowHazard = hazardGateOpen() && catalogs !== null;
       const design = await designEncounter({
         theme,
         partyLevel,
         slots: composition.members,
+        allowHazard,
         onProgress: this._progressCallback(), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Design"), design.usage);
+      // A hazard request reshapes the plan: the hazard takes its XP first, then the minions take the rest.
+      const requested = allowHazard ? design.hazard : "none";
+      if (requested !== "none") {
+        plan = composeEncounter(this.#input.threat, this.#input.partySize, partyLevel, { hazard: requested });
+        this.#replanEncounterSteps(plan, create);
+      }
+      // Briefs are per slot of the no-hazard composition, matched by role. The hazard has no brief:
+      // its request is the encounter theme and name.
+      const briefIndex = (role) => {
+        const index = composition.members.findIndex((slot) => slot.role === role);
+        if (index < 0) throw new Error(`encounter has no ${role} slot to brief`);
+        return index;
+      };
 
       const members = [];
-      for (let i = 0; i < composition.members.length; i++) {
-        const slot = composition.members[i];
+      for (let i = 0; i < plan.members.length; i++) {
+        const slot = plan.members[i];
+        if (slot.role === "hazard") {
+          const hazard = await this.#encounterHazardMember(slot, { i, design, theme, catalogs, signal, label: memberLabel(i) });
+          if (hazard) {
+            members.push(hazard);
+            continue;
+          }
+          // Dropped: the no-hazard composition replaces the plan. Its boss is the creature already
+          // generated, so only the minion after it changes; i-- re-enters the loop at that minion.
+          plan = composeEncounter(this.#input.threat, this.#input.partySize, partyLevel);
+          this.#replanEncounterSteps(plan, create);
+          i--;
+          continue;
+        }
         await this._setStep(`member${i}`);
         const { concept: raw, usage } = await generateConcept({
-          prompt: `${design.briefs[i]} (Part of the encounter "${design.name}": ${theme})`,
+          prompt: `${design.briefs[briefIndex(slot.role)]} (Part of the encounter "${design.name}": ${theme})`,
           level: slot.level,
           rarity,
           allowSpellcasting: this.#input.allowSpellcasting,
@@ -1466,7 +1503,9 @@ export class GeneratorApp extends SpfApp {
       }
 
       await this._setStep("match");
-      for (const member of members) {
+      // A hazard has no NPC statistics, equipment or loot; NPC treasure is split among the NPC members only.
+      const npc = members.filter((member) => member.role !== "hazard");
+      for (const member of npc) {
         member.resolved = await resolveConcept(member.concept, { exactContent: true });
         // Treasure is calibrated to the PARTY level and the WHOLE encounter:
         // treasureBudget() returns one encounter's total, split evenly across
@@ -1474,14 +1513,14 @@ export class GeneratorApp extends SpfApp {
         // regardless of copy count — only the per-copy split changes
         // (#stepMemberCount recomputes it the same way).
         member.treasureGroupBudget =
-          member.concept.loot.length ? treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / members.length : 0;
+          member.concept.loot.length ? treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / npc.length : 0;
         member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
         member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
         member.manifest = completionManifest({ mode: "monster", concept: member.concept, resolved: member.resolved });
         assertComplete(member.manifest);
         member.treasureEach = lootValueGp(member.resolved.loot);
       }
-      const allEq = members.flatMap((m) => m.resolved.equipment);
+      const allEq = npc.flatMap((m) => m.resolved.equipment);
       if (allEq.length) {
         const misses = allEq.filter((e) => !e.entry).map((e) => e.name);
         console.log(`${MODULE_ID} | equipment matches: ${allEq.length - misses.length}/${allEq.length}`,
@@ -1490,13 +1529,84 @@ export class GeneratorApp extends SpfApp {
       this._throwIfCancelled();
       this.#encounter = {
         name: design.name,
-        budget: composition.budget,
-        spent: composition.spent,
+        budget: plan.budget,
+        spent: plan.spent,
         treasureBudget: members.reduce((sum, m) => sum + m.count * (m.treasureBudgetEach ?? 0), 0),
         treasureSpent: members.reduce((sum, m) => sum + m.count * (m.treasureEach ?? 0), 0),
         members
       };
     console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
+  }
+
+  /**
+   * The hazard member of an encounter runs the standalone hazard path: one concept call, then
+   * local normalization and the table-built preview. Returns null when the concept's kind does
+   * not match the request; the caller drops the hazard with a warning.
+   */
+  async #encounterHazardMember(slot, { i, design, theme, catalogs, signal, label }) {
+    await this._setStep(`member${i}`);
+    // The request names the kind the composition selected. ai.mjs takes no kind option, so the
+    // brief carries it; a concept of the other kind is still dropped below.
+    const kind = slot.complex ? "a complex hazard (it acts in rounds)" : "a simple hazard (it acts once)";
+    const brief = `${theme} (Part of the encounter "${design.name}"; the hazard is ${kind})`;
+    const { concept: raw, usage } = await generateHazardConcept(brief, {
+      level: slot.level, ...catalogs, disableSkills: HAZARD_DISABLE_SKILLS, signal,
+      onProgress: this._progressCallback()
+    });
+    this._recordTokens(label, usage);
+    this._throwIfCancelled();
+    if (raw.complex !== slot.complex) {
+      console.warn(`${MODULE_ID} | encounter hazard dropped (the concept is ${raw.complex ? "complex" : "simple"}, but ${slot.complex ? "complex" : "simple"} was requested)`);
+      return null;
+    }
+    const concept = normalizeHazardConcept(raw, { level: slot.level, ...catalogs });
+    const preview = await describeHazard(concept, slot.level);
+    return { ...slot, hazard: { concept, preview, brief } };
+  }
+
+  /** Rebuild the encounter's step list for a changed plan. Step states carry over by key, so finished members stay finished. */
+  #replanEncounterSteps(plan, create) {
+    const progress = this._progress;
+    if (!progress) return;
+    const prior = progress.steps;
+    progress.steps = createProgress(this.#encounterGenerationSteps(plan, create)).steps.map((step) => {
+      const before = prior.find((candidate) => candidate.key === step.key);
+      return before && before.state !== "pending" ? { ...step, state: before.state, warning: before.warning } : step;
+    });
+  }
+
+  /** A hazard member's preview row. Every number comes from describeHazard, which reads the GM Core tables. */
+  #encounterHazardRow(member, index) {
+    const { concept, preview } = member.hazard;
+    const i18n = game.i18n;
+    const signed = (value) => (value >= 0 ? "+" + value : String(value));
+    const saves = Object.entries(HAZARD_SAVE_KEYS)
+      .filter(([type]) => preview.saves[type] !== null)
+      .map(([type, key]) => `${i18n.localize(key)} ${signed(preview.saves[type])}`);
+    const strike = preview.strike ? `, ${preview.strike.name} ${signed(preview.strike.bonus)} (${preview.strike.formula})` : "";
+    return {
+      index,
+      count: member.count,
+      skipped: member.count === 0,
+      tag: HAZARD_LABEL_KEYS.mode,
+      role: member.complex ? HAZARD_LABEL_KEYS.complexityComplex : HAZARD_LABEL_KEYS.complexitySimple,
+      name: concept.name,
+      level: member.level,
+      blurb: concept.description,
+      statline: [`AC ${preview.ac.value}`, ...saves, ...(preview.hp ? [`HP ${preview.hp}`] : [])].join(", ") + strike
+    };
+  }
+
+  /** Write one reviewed hazard member: the hazard source, one native write, then the post-create check. The gate is checked again before the write. */
+  async #createEncounterHazard(member, folder, actors) {
+    assertExperimentalToolAccess();
+    const source = await buildHazardSource(member.hazard.concept, { level: member.level });
+    const expectedItems = await persistedExpectedItems(source.items);
+    assertExperimentalToolAccess();
+    const actor = await Actor.create({ ...source.actor, items: source.items, folder: folder.id });
+    actors.push(actor);
+    verifyCreatedActor(actor, HAZARD_MANIFEST, expectedItems);
+    return actor;
   }
 
   /**
@@ -2303,11 +2413,20 @@ export class GeneratorApp extends SpfApp {
     let outcome = "success";
     try {
       await this._setStep("apply");
+      // A hazard needs the gate open: refuse before the folder or any actor is written.
+      if (this.#encounter.members.some((member) => member.role === "hazard")) assertExperimentalToolAccess();
       this._lockCreation();
       folder = await Folder.create({ name: this.#encounter.name, type: "Actor" });
       let created = 0;
       for (const member of this.#encounter.members) {
         if (member.count < 1) continue;
+        if (member.role === "hazard") {
+          for (let i = 0; i < member.count; i++) {
+            await this.#createEncounterHazard(member, folder, actors);
+            created++;
+          }
+          continue;
+        }
         // Identical minions share one art lookup — same creature, same portrait.
         const scaffold = await findBestiaryScaffold(member.concept);
         if (!scaffold) throw new Error(game.i18n.localize("SIMPLYPF2E.Errors.NoBestiaryScaffold"));
@@ -2325,7 +2444,7 @@ export class GeneratorApp extends SpfApp {
       }
       // Commit before presentation: all writes succeeded, so this plan cannot
       // safely be retried even if the next render fails.
-      const grounding = GeneratorApp.#completionContext(this.#encounter.members.flatMap((member) =>
+      const grounding = GeneratorApp.#completionContext(this.#encounter.members.filter((member) => member.role !== "hazard").flatMap((member) =>
         Array.from({ length: member.count }, () => member.manifest)
       ));
       this.#encounter = null;

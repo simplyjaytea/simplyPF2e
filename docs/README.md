@@ -12,6 +12,7 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
+| [Encounter hazard integration, October 27](plans/encounter-hazard-integration-2026-10-27.md) | Accepted design for hazards inside Encounter mode: AI requests none, simple or complex; module chooses level and XP; at most one hazard within the shared budget |
 | [Sprint plan, October 26](plans/sprint-2026-10-26.md) | Six work packages: hygiene tooling, drift check, Wizard class, Hazard generator, scrolls and wands; merge/review/fix ladder |
 | [Wizard research, October 26](plans/wizard-research-2026-10-26.md) | Verified pf2e 8.5.0/master facts behind the Wizard complete-only class |
 | [Hazard research, October 26](plans/hazard-research-2026-10-26.md) | pf2e hazard schema, GM Core Building Hazards tables, hazard XP, sample hazards |

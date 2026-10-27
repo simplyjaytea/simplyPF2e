@@ -39,7 +39,8 @@ import { choiceSetOptions, normalizeChoiceFlag, preselectChoiceSets } from "./ch
  * filter, verified in the research record) refuse instead of prompting.
  *
  * Preflight. `preflightClassPaths(classData)` runs only that first pass (read
- * the level-one entries, find each bridge, apply the guard). It calls no
+ * the level-one entries, find each bridge, apply the guard, and require every
+ * bridge to have a fully resolvable enabled candidate). It calls no
  * chooser and writes nothing, so the generator can offer only classes that
  * pass it and the identity validation can refuse an explicit required class
  * that fails it, before any provider spend, instead of at Create.
@@ -173,9 +174,10 @@ export async function getClassPathCandidates(classData, { config = CONFIG?.PF2E 
  * Pass one of staging: read the class level-one entries and refuse what cannot
  * be staged. It makes no chooser call and writes nothing, so it is also the
  * preflight that can run before any provider spend. Returns the bridges to
- * stage as { entryId, source, selector }.
+ * stage as { entryId, source, selector, closed }, where `closed` is the bridge's
+ * fully resolvable enabled candidates.
  */
-async function readLevelOneEntries(entries) {
+async function readLevelOneEntries(entries, config) {
   const bridges = [];
   const unstaged = [];
   for (const [entryId, entry] of Object.entries(entries)) {
@@ -203,20 +205,29 @@ async function readLevelOneEntries(entries) {
       throw new Error(`simplypf2e | class path "${source.name}" has an unsupported choice shape; refusing a one-click build`);
     }
   }
+  // A bridge with no fully resolvable enabled candidate cannot be staged, so the
+  // class is refused here, before any chooser call or write.
+  for (const bridge of bridges) {
+    bridge.closed = await closedPathCandidates(bridge.selector.tag, config);
+    if (!bridge.closed.length) {
+      throw new Error(`simplypf2e | no fully resolvable enabled class paths for "${bridge.source.name}"`);
+    }
+  }
   return bridges;
 }
 
 /**
  * Chooser-free preflight for a class source: throws the same named errors as
  * the first pass of stageClassPaths (an unstageable bridge shape, a bridge
- * whose source is not enabled, a duplicated bridge) and returns the names of
- * the bridges it would stage. Callers run it before any provider spend, so a
- * class the module cannot build is refused up front instead of at Create.
+ * whose source is not enabled, a duplicated bridge, a bridge with no fully
+ * resolvable enabled candidate) and returns the names of the bridges it would
+ * stage. Callers run it before any provider spend, so a class the module cannot
+ * build is refused up front instead of at Create.
  */
-export async function preflightClassPaths(classData) {
+export async function preflightClassPaths(classData, { config = CONFIG?.PF2E ?? {} } = {}) {
   const entries = classData?.system?.items;
   if (!isObject(entries)) return [];
-  const bridges = await readLevelOneEntries(entries);
+  const bridges = await readLevelOneEntries(entries, config);
   return bridges.map((bridge) => bridge.source.name);
 }
 
@@ -270,7 +281,7 @@ export async function stageClassPaths(classData, classId, { context, config = CO
   // Pass one (readLevelOneEntries) reads the class and refuses what cannot be
   // staged, before any chooser call (which may spend provider tokens) and
   // before any write.
-  const bridges = await readLevelOneEntries(entries);
+  const bridges = await readLevelOneEntries(entries, config);
   for (const [bridgeName, path] of byBridge) {
     if (!bridges.some((bridge) => bridge.source.name === bridgeName)) {
       throw new Error(`simplypf2e | required class path "${path.name ?? "?"}" names bridge "${bridgeName}", which this class does not have`);
@@ -282,14 +293,9 @@ export async function stageClassPaths(classData, classId, { context, config = CO
 
   const staged = [];
   const expectedPaths = [];
-  for (const { entryId, source, selector } of bridges) {
+  for (const { entryId, source, selector, closed } of bridges) {
     // A required path is matched only against the bridge it was required for.
     const requiredForBridge = byBridge.get(source.name) ?? unkeyed;
-
-    const closed = await closedPathCandidates(selector.tag, config);
-    if (!closed.length) {
-      throw new Error(`simplypf2e | no fully resolvable enabled class paths for "${source.name}"`);
-    }
 
     // Replace only the runtime query with the exact candidates we just issued.
     // The real ChoiceSet and GrantItem rules stay cloned from PF2e unchanged.
