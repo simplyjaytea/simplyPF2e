@@ -1,6 +1,6 @@
 # Encounter hazard integration — 2026-10-27
 
-**Status:** accepted design, as stated in the 2026-10-27 run brief. Not implemented. No live Foundry evidence. The implementation belongs to the encounter worktree (`claude/encounter-hazards-2026-10-27`).
+**Status:** accepted design (user-approved 2026-10-27). Implemented locally in `4c83685` on `claude/encounter-hazards-2026-10-27` and merged into the local integration branch `claude/omh-encounter-wizard-2026-10-27` (`8e03283`); not pushed. Local gate exit 0 at `8e03283`. A read-only verify pass found no unmet criterion and raised one P2 (the hazard concept request does not name the requested kind) plus P3 notes. Review fixes are being prepared on `claude/encounter-review-fixes-2026-10-27` and are not merged. The independent reviewer the design note requires is not confirmed run. No native Foundry evidence; no ledger row covers a hazard member inside an encounter.
 
 **Why.** Encounter mode composes a boss and minions to an XP budget (`composeEncounter` in `scripts/encounter.mjs`). Hazards exist as a separate generator mode, and the XP helpers exist (`simpleHazardXP`, `hazardXP`), but `composeEncounter` admits no hazard. The [sprint plan](sprint-2026-10-26.md) deferred encounter membership to a later package (WP5 decision 5). This note is that design. It satisfies the design-note prerequisite in PLAYBOOK §9 backlog item 1 (the budget share, and how the AI requests a hazard member). PLAYBOOK §9 is unchanged and does not link here.
 

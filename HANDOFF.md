@@ -2,19 +2,34 @@
 
 Read [PLAYBOOK.md](PLAYBOOK.md) first. This file holds only what the last session left in flight. Overwrite it at every session end.
 
-## Session 2026-10-26 — sprint: hygiene tooling, drift check, Wizard class, Hazard generator, scrolls and wands
+## Session 2026-10-27 — encounter hazards, Wizard preflight, status close-out
 
-- **Done, on branch `claude/sprint-2026-10-26`**: see [sprint plan](docs/plans/sprint-2026-10-26.md) and the top entry of [docs/HISTORY.md](docs/HISTORY.md). Six work packages merged (WP1 dead code, WP2 link check, WP3 drift check, WP4 Wizard, WP5 Hazard generator gated, WP6 scrolls/wands) plus a drift legacy-alias fix, a hazard fix pass and a merge reconciliation. Gate: 54 scripts, 123 tests, 4 tooling files; `Integrity passed: 311 imports, 804 exports, 15 templates, 579 localization keys; 0 unused keys`; `Links passed`; exit 0 on Node 26.12.1.
-- **Review:** Opus 5.5 (high) review of `main..HEAD`: APPROVE WITH FIXES (1 P1, 5 P2, 12 P3; [record](docs/reviews/sprint-review-2026-10-26.md)). All fixed by F1/F3 (Haiku xhigh) and F2 (Sonnet xhigh); re-check verdict in HISTORY.
-- **Publication state:** the user instructed, on 2026-10-26, a direct merge of this branch into `main` and a push (no PR). That merge publishes **v0.3.5.77** to every install with zero live QA on Wizard, hazards (gated, invisible with `experimentalTools` off), scrolls and wands. If the merge has happened, `git log main` shows it and the Auto Release run should be checked via `curl https://api.github.com/repos/simplyjaytea/simplyPF2e/releases?per_page=3`.
-- **Not done / unverified:** no installation, no provider spend, no Foundry run. Native ledger N09 (Wizard), N10 (hazard), N11 (scrolls/wands) added, all OPEN; zero PASS rows overall. Node 22 gate not re-run this sprint (CI runs it on the PR/main push).
-- **Exact next step:** (1) confirm the Auto Release for .77 succeeded and record the run id in PLAYBOOK §8; (2) re-base the [Batch A runbook](docs/plans/qa-batch-a-2026-10-25.md) on .77 and, with the user's spend authorization, run it; add N09–N11 zero-spend preflights (gate on/off visibility, Wizard class tile present) to the same session; (3) local backlog in PLAYBOOK §9 (hazards in Encounter mode; loot actor for consumables; Wizard school focus spell).
-- **Open decisions for the user:** Batch A spending envelope; screen-reader operator / isolated PF2e 8.4.1 environment or explicit deferral.
-- **Housekeeping:** all sprint worktrees under `.claude/worktrees/` and the Orca worktrees `h1-hazard-tables`, `h2-hazard-builder`, `c2-forge-consumables` were removed; the user's opencode default model `opencode/glm-5.3-flash-free` was restored after a config-swap launch attempt. The roster branch `claude/roster-2026-10-26` is contained in the sprint branch and can be deleted after the merge.
+- **Local state, nothing pushed.** The integration branch `claude/omh-encounter-wizard-2026-10-27` at `8e03283` holds Encounter-mode hazards (`4c83685`), the Wizard preflight closed-candidate check (`4865230`), the hazard design records and the OMH §6 rules, merged onto `main` `27ce615`. Details: [top entry of docs/HISTORY.md](docs/HISTORY.md) and the [hazard plan](docs/plans/encounter-hazard-integration-2026-10-27.md).
+- **Not observed, not claimed:** native Foundry acceptance of any of this (N10 covers the standalone hazard only; no row covers a hazard member inside an encounter); CI; PR; push; merge; release. The Auto Release for v0.3.5.77 was not checked this session.
+- **Worktrees and branches** (`git worktree list` at close-out):
+  - `C:/Users/jtf/projects/simplypf2e` — `main` at `27ce615`, clean.
+  - `simplypf2e-omh-integration` — `claude/omh-encounter-wizard-2026-10-27` at `8e03283`, clean.
+  - `simplypf2e-wt-review-code` — `claude/encounter-review-fixes-2026-10-27` from `8e03283`. Review fixes in progress; one uncommitted edit in `tests/generator-app.encounterHazard.test.mjs` at close-out. Not merged.
+  - `simplypf2e-wt-docs-closeout` — `claude/docs-closeout-2026-10-27`: this close-out commit.
+  - `simplypf2e-wt-docs` (`claude/omh-playbook-2026-10-27`), `simplypf2e-wt-encounter` (`claude/encounter-hazards-2026-10-27`), `simplypf2e-wt-wizard` (`claude/wizard-preflight-2026-10-27`): clean, and their commits are ancestors of the integration branch.
+- **Review:** the verify pass on `8e03283` found no unmet criterion and raised:
+  - P2, `scripts/generator-app.mjs` (around lines 1547–1556): `generateHazardConcept` gets only level and brief, so the requested kind is not sent and a mismatch is dropped at random after provider spend. Suggested fix: name the kind in the brief or pass it as a constraint.
+  - P3, `templates/generator.hbs:456`: a hazard row is labelled like a creature.
+  - P3, `scripts/generator-app.mjs:2412`: create refuses on a closed gate even with 0 hazard copies. Fails closed; accepted, no fix.
+  - The independent architect reviewer the design note requires is not confirmed as run. The verify pass is not that review and is not an approval.
+- **Exact next steps:**
+  1. In `claude/encounter-review-fixes-2026-10-27`: finish the fixes. Check each finding against the code first. Use the fix ladder (Haiku 5.5 xhigh, then Sonnet 5.5 xhigh, then Opus 5.5 xhigh). Then `node tools/check.mjs` and `git diff --check`.
+  2. Independent re-review with fresh context, at most two rounds.
+  3. Merge the fixes into `claude/omh-encounter-wizard-2026-10-27`; re-run the gate there.
+  4. Push `claude/omh-encounter-wizard-2026-10-27` only. The user authorized the push only after the final gates and review. Then clean up the temporary worktrees listed above. Do not merge to `main`; do not delete branches without the user's say-so.
+  5. Coordinator: add a ledger row, or an explicit gap, for a hazard member inside an encounter (plan, Open §1).
+  6. Coordinator, next docs pass: PLAYBOOK §10 Wizard limits still says the closed-candidate case fails at Create (`4865230` changed that). The plan's "Why" paragraph still says §9 is unchanged.
+  7. Carried over from 2026-10-26: confirm the Auto Release for v0.3.5.77 and record its run id in PLAYBOOK §8; re-base the [Batch A runbook](docs/plans/qa-batch-a-2026-10-25.md) on .77 (needs the user's spend envelope).
+- **Open decisions for the user:** Batch A spending envelope; screen-reader operator and isolated PF2e 8.4.1 environment, or an explicit deferral.
+- **Worker tooling (2026-10-26):** Write/Edit are refused for subagents by a plugin hook; a worktree guard refuses `cd` into hand-made worktrees and refuses heredocs with object-literal or nested-brace syntax inside agent worktrees. Working recipe: Agent-tool `isolation: worktree`, `git merge` the integration branch first, draft files in the session scratchpad with heredocs, `cp` them in one per command. Orca cannot set an opencode model at launch (`capability_unsupported`); the user replaced the opencode workers with Haiku in the 2026-10-26 sprint.
 
 ## Preserved environment facts
 
 - Live QA artifacts to preserve: [docs/evidence/live-qa-inventory.md](docs/evidence/live-qa-inventory.md). Last recorded installation v0.3.5.72 on Foundry 14.365 / PF2e 8.5.0, world `test`, provider `omniroute / auto/best-free`. Known provider spend lower bound 333,213 tokens.
-- `gh` hangs here; use `curl https://api.github.com/...` for reads; `git push` works with the stored credential. Node 26.12.1 default and 22.23.4 via `mise exec node@22`. Git identity for commits: `jt` / `jt_f@ymail.com`.
-- Worker tooling: Write/Edit are refused for subagents by a plugin hook; a worktree guard refuses `cd` into hand-made worktrees and refuses heredocs with object-literal or nested-brace syntax inside agent worktrees. Working recipe: Agent-tool `isolation: worktree`, `git merge` the integration branch first, draft files in the session scratchpad with heredocs, `cp` them in one per command. Orca cannot set an opencode model at launch (`capability_unsupported`); the user replaced the opencode workers with Haiku this sprint.
-- Remote `codex/*` branches are historical; prune only with the user's say-so.
+- `gh` hangs here; use `curl https://api.github.com/...` for reads; `git push` works with the stored credential. Node 26.12.1 is the PLAYBOOK §7 default and 22.23.4 is available via `mise exec node@22`; the 2026-10-27 session's PATH node was v24.22.1, so check `node --version` before citing gate results. Git identity for commits: `jt` / `jt_f@ymail.com`.
+- `git ls-remote origin` on 2026-10-27 showed `claude/sprint-2026-10-25` and `codex/remaining-2026-10-26`, and no `*-2026-10-27` branch. Remote `codex/*` branches are historical; prune only with the user's say-so.
