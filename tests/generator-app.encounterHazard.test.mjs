@@ -233,6 +233,8 @@ const boss = (level) => ({ role: "boss", level, count: 1, xpEach: 60 });
   assert.equal(counts.hazardCalls.length, 1, "the hazard runs the hazard path exactly once");
   assert.equal(counts.hazardCalls[0].options.level, 5, "the hazard level is the module's nearest feasible level");
   assert.match(counts.hazardCalls[0].brief, /Shrine Watch/, "the hazard brief names the encounter");
+  assert.match(counts.hazardCalls[0].brief, /\bsimple\b/, "the hazard concept request carries the selected simple kind");
+  assert.doesNotMatch(counts.hazardCalls[0].brief, /\bcomplex\b/, "the hazard concept request names only the selected kind");
   const members = app._test_encounter.members;
   assert.deepEqual(plain(members).map((m) => m.role), ["boss", "hazard", "minion"]);
   assert.deepEqual(pick(members[1]), { role: "hazard", level: 5, count: 1, xpEach: 8, complex: false });
@@ -247,6 +249,8 @@ const boss = (level) => ({ role: "boss", level, count: 1, xpEach: 60 });
   const row = app._test_buildEncounterPreviewContext().members[1];
   assert.equal(row.name, "Scything Pressure Plate");
   assert.equal(row.role, hazardLabels.HAZARD_LABEL_KEYS.complexitySimple, "a simple hazard is labelled as one");
+  assert.equal(row.tag, hazardLabels.HAZARD_LABEL_KEYS.mode, "a hazard row is tagged as a hazard, not a creature");
+  assert.equal(app._test_buildEncounterPreviewContext().members[0].tag, "SIMPLYPF2E.Generator.Creature", "a creature row keeps the creature tag");
   assert.equal(row.level, 5);
   assert.match(row.statline, /^AC \d+/, "the hazard row shows its table-built AC");
 
@@ -272,6 +276,8 @@ const boss = (level) => ({ role: "boss", level, count: 1, xpEach: 60 });
     hazard: simpleRaw
   });
   assert.equal(counts.hazardCalls.length, 1, "the concept is generated before the drop is known");
+  assert.match(counts.hazardCalls[0].brief, /\bcomplex\b/, "the hazard concept request carries the selected complex kind");
+  assert.doesNotMatch(counts.hazardCalls[0].brief, /\bsimple\b/, "the hazard concept request does not name the returned kind");
   assert.deepEqual(counts.conceptLevels, [6, 3], "the minion is composed from the no-hazard budget after the drop");
   assert.deepEqual(plain(app._test_encounter.members).map((m) => m.role), ["boss", "minion"]);
   const none = composeEncounter("moderate", 4, 5);
@@ -357,5 +363,10 @@ const boss = (level) => ({ role: "boss", level, count: 1, xpEach: 60 });
   assert.equal("level" in concept || "xp" in concept, false, "the normalized concept carries no level or XP");
   assert.equal(app._test_encounter.spent, 78);
 }
+
+// ---- Static contract: the encounter member tag labels a hazard as a hazard. ----
+const template = await readFile(new URL("../templates/generator.hbs", import.meta.url), "utf8");
+assert.match(template, /class="spf-member-tag">\{\{localize this\.tag\}\} \{\{this\.level\}\}/,
+  "the encounter member tag reads the row's own tag, not a fixed creature label");
 
 console.log("generator-app.encounterHazard.test.mjs: hazard members run the hazard path, drop without changing the none output, and write only through the gated create");

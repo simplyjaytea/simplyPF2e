@@ -748,6 +748,7 @@ export class GeneratorApp extends SpfApp {
           index,
           count: member.count,
           skipped: member.count === 0,
+          tag: "SIMPLYPF2E.Generator.Creature",
           role: `SIMPLYPF2E.Role.${member.role.charAt(0).toUpperCase()}${member.role.slice(1)}`,
           name: member.concept.name,
           level: member.concept.level,
@@ -1544,7 +1545,10 @@ export class GeneratorApp extends SpfApp {
    */
   async #encounterHazardMember(slot, { i, design, theme, catalogs, signal, label }) {
     await this._setStep(`member${i}`);
-    const brief = `${theme} (Part of the encounter "${design.name}")`;
+    // The request names the kind the composition selected. ai.mjs takes no kind option, so the
+    // brief carries it; a concept of the other kind is still dropped below.
+    const kind = slot.complex ? "a complex hazard (it acts in rounds)" : "a simple hazard (it acts once)";
+    const brief = `${theme} (Part of the encounter "${design.name}"; the hazard is ${kind})`;
     const { concept: raw, usage } = await generateHazardConcept(brief, {
       level: slot.level, ...catalogs, disableSkills: HAZARD_DISABLE_SKILLS, signal,
       onProgress: this._progressCallback()
@@ -1584,6 +1588,7 @@ export class GeneratorApp extends SpfApp {
       index,
       count: member.count,
       skipped: member.count === 0,
+      tag: HAZARD_LABEL_KEYS.mode,
       role: member.complex ? HAZARD_LABEL_KEYS.complexityComplex : HAZARD_LABEL_KEYS.complexitySimple,
       name: concept.name,
       level: member.level,
