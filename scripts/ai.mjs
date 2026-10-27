@@ -892,6 +892,79 @@ Return at most ${maximum} picks. "rank" is a whole number from the base rank of 
   return { picks, usage };
 }
 
+// requestJSON applies taskResponseProblem only when no validate hook is passed, and that table has no entry for the
+// parcel task. This hook keeps the same fail-closed structure check: a non-object root or a missing picks array retries once.
+const parcelSpellsProblem = (data) => {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "root must be a JSON object";
+  return Array.isArray(data.picks) ? null : "missing or non-array field: picks";
+};
+
+/**
+ * Pick one real spell for each module-issued treasure parcel slot. The model
+ * sees only slot IDs with their scroll ranks and the issued spell candidates,
+ * and returns only { slot, spellId } strings. The module supplies every rank,
+ * quantity, currency amount and price (treasure-parcel.mjs, spell-consumables.mjs).
+ *
+ * This function drops only unknown slot and spell IDs. It keeps duplicate
+ * slots and does not check base ranks against slot ranks: assignParcelPicks in
+ * treasure-parcel.mjs owns both checks and their stable drop codes.
+ * @param {string} brief GM's theme for the parcel's spells
+ * @param {object} args
+ * @param {number} args.partyLevel party level, for context only
+ * @param {{id: string, itemLevel: number, rank: number}[]} args.slots issued consumable slots
+ * @param {{id: string, name: string, rank: number, traits?: string[], ref?: object}[]} args.candidates issued spell candidates
+ * @returns {Promise<{picks: {slotId: string, spellId: string, name: string, candidate: object}[], usage: object|null}>}
+ */
+export async function selectParcelSpells(brief, { partyLevel, slots, candidates = [], signal, onProgress } = {}) {
+  const offered = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.id);
+  const issued = (Array.isArray(slots) ? slots : []).filter((slot) => slot?.id);
+  // Nothing to fill or nothing to fill it with: no provider request, and no picks.
+  if (!offered.length || !issued.length) return { picks: [], usage: null };
+
+  const slotList = issued.map((slot) => `${slot.id} | scroll rank ${slot.rank}`).join("\n");
+  const list = offered.map((candidate) => {
+    const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
+    return `${candidate.id} | ${candidate.name} | base rank ${candidate.rank}${traits}`;
+  }).join("\n");
+
+  const system = `You are choosing spells for a Pathfinder 2e treasure parcel. Each issued slot holds one scroll of one spell from the list. Choose ONLY slot IDs and spell IDs from the provided lists. Respond with a single JSON object and nothing else:
+{ "picks": [ { "slot": string, "spellId": string } ] }
+Each slot appears at most once. A spell's base rank must be at or below its slot's scroll rank. Prefer distinct spells unless the GM brief asks for copies. Return an empty "picks" array when nothing in the list fits the brief. Do not emit prices, levels, ranks, quantities or any other number; the module supplies them. Never write code.`;
+
+  const user = [
+    `Party level: ${partyLevel}`,
+    `GM brief: ${String(brief ?? "")}`,
+    "",
+    "Issued slots (slot ID | scroll rank):",
+    slotList,
+    "",
+    "Available spells (ID | name | base rank | traits):",
+    list
+  ].join("\n");
+
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.TREASURE_PARCEL_SPELLS, system, user, validate: parcelSpellsProblem, onProgress, signal
+  });
+  const slotIds = new Set(issued.map((slot) => slot.id));
+  const byId = new Map(offered.map((candidate) => [candidate.id, candidate]));
+  const picks = [];
+  for (const pick of parsed.picks) {
+    if (picks.length >= issued.length) break;
+    const slotId = String(pick?.slot ?? "");
+    if (!slotIds.has(slotId)) {
+      console.warn("simplypf2e | dropped parcel spell pick with an unknown slot id", pick?.slot);
+      continue;
+    }
+    const candidate = byId.get(String(pick?.spellId ?? ""));
+    if (!candidate) {
+      console.warn("simplypf2e | dropped parcel spell pick with an unknown spell id", pick?.spellId);
+      continue;
+    }
+    picks.push({ slotId, spellId: candidate.id, name: candidate.name, candidate });
+  }
+  return { picks, usage };
+}
+
 /**
  * Ground a PC's first-draft ancestry/heritage/background/class against the
  * real compendium lists in ONE call — the ABC counterpart of selectSpells/
