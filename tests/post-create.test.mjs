@@ -102,3 +102,35 @@ assert.deepEqual((await persistedExpectedItems([emptyBackpackKit], async (uuid) 
 "a kit's empty backpack persists without inventing a nested leaf expectation");
 
 console.log("post-create verification: exact source and relationship checks passed");
+
+// The rollback helper mirrors generator-app.mjs lines 155-164 for any created document class.
+// Imported here as a second declaration so the cases above stay byte-identical.
+import { rollbackCreatedActor } from "../scripts/post-create.mjs";
+
+const deleted = [];
+const createdActor = { name: "Forged Loot", delete: async () => { deleted.push("deleted"); } };
+assert.equal(await rollbackCreatedActor(createdActor, "loot actor"), null,
+  "a successful delete leaves nothing to report");
+assert.deepEqual(deleted, ["deleted"]);
+
+const warnings = [];
+const originalWarn = console.warn;
+let survivor;
+try {
+  console.warn = (...args) => { warnings.push(args); };
+  const stuckActor = { name: "Forged Loot", delete: async () => { throw new Error("permission denied"); } };
+  survivor = await rollbackCreatedActor(stuckActor, "loot actor");
+} finally {
+  console.warn = originalWarn;
+}
+assert.equal(survivor,
+  'loot actor "Forged Loot" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.',
+  "a failed cleanup reports the survivor so the caller discards the draft");
+assert.equal(warnings.length, 1, "a failed cleanup warns exactly once");
+assert.match(warnings[0][0], /simplypf2e \| failed to roll back loot actor "Forged Loot"/);
+assert.ok(warnings[0][1] instanceof Error, "the cleanup error is logged for diagnosis");
+
+assert.equal(await rollbackCreatedActor(null, "loot actor"), null, "a null actor is a no-op");
+assert.equal(await rollbackCreatedActor(undefined, "loot actor"), null, "an undefined actor is a no-op");
+
+console.log("post-create rollback: delete success, survivor report and no-op checks passed");
