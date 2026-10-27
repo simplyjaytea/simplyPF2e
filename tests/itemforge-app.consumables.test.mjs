@@ -96,6 +96,7 @@ class MockSpfApp {
   _finishRun() { this.abort = null; }
 }
 const mocks = {
+  experimentalToolsEnabled: () => false,
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
   AI_TASK: { MAGIC_ITEM_CONCEPT: "magic", RUNED_ITEM_CONCEPT: "runed", SPELL_CONSUMABLE_CONCEPT: "consumable" },
   taskMaxTokens: () => 100,

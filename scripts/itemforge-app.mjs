@@ -2,7 +2,7 @@ import {
   MODULE_ID, getProviderAuthWarningKey, getProviderRequestConfig,
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
-import { generateMagicItemConcept, generateRunedItemConcept, selectSpellConsumables } from "./ai.mjs";
+import { generateMagicItemConcept, generateRunedItemConcept, selectSpellConsumables, selectParcelSpells } from "./ai.mjs";
 import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import { getForgeEffectCatalog, EFFECT_KINDS } from "./rule-templates.mjs";
 import {
@@ -18,6 +18,13 @@ import { getScrollSpellCandidates, getCandidateDocument, priceToGp, toItemData }
 import {
   spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName
 } from "./spell-consumables.mjs";
+
+import { experimentalToolsEnabled, assertExperimentalToolAccess } from "./experimental-tools.mjs";
+import { partyTreasureForSize, TREASURE_MIN_PARTY_LEVEL, TREASURE_MAX_PARTY_LEVEL } from "./treasure-tables.mjs";
+import { planParcelSlots, assignParcelPicks, stackParcelAssignments, parcelValueGp, PARCEL_DROP } from "./treasure-parcel.mjs";
+import { LOOT_NAME_MAX, LOOT_MANIFEST, COIN_UUIDS, coinItemSource, buildLootActorSource } from "./loot-actor.mjs";
+import { persistedExpectedItems, verifyCreatedActor, rollbackCreatedActor } from "./post-create.mjs";
+import { esc } from "./text.mjs";
 
 /** Item Forge kinds that build real spells into scrolls or wands (spell-consumables.mjs). */
 const CONSUMABLE_KINDS = new Set(["scroll", "wand"]);
@@ -70,6 +77,7 @@ export class ItemForgeApp extends SpfApp {
       levelDown: ItemForgeApp.#onLevelDown,
       selectKind: ItemForgeApp.#onSelectKind,
       openCreatedItem: ItemForgeApp.#onOpenCreatedItem,
+      openCreatedActor: ItemForgeApp.#onOpenCreatedActor,
       forgeAnother: ItemForgeApp.#onForgeAnother
     }
   };
@@ -79,7 +87,7 @@ export class ItemForgeApp extends SpfApp {
   };
 
   /** Form values, kept across re-renders. "kind": "wondrous"|"weapon"|"armor". */
-  #input = { prompt: "", level: 4, rarity: "common", kind: "wondrous" };
+  #input = { prompt: "", level: 4, rarity: "common", kind: "wondrous", destination: "items", partySize: 4, containerName: "" };
   #busy = false;
   #error = null;
   #concept = null;
@@ -98,12 +106,17 @@ export class ItemForgeApp extends SpfApp {
   #unavailableKinds = null;
   /** Planned scroll/wand items: { items: [{ source, name, rank, level, priceGp }], warnings: string[] }. */
   #consumables = null;
+  #parcel = null;
 
   async _prepareContext() {
     const authState = getProviderRequestConfig();
     const authWarningKey = getProviderAuthWarningKey(authState);
     return {
       input: this.#input,
+      showDestination: experimentalToolsEnabled() && CONSUMABLE_KINDS.has(this.#input.kind),
+      showContainer: experimentalToolsEnabled() && (this.#input.kind === "parcel" || (CONSUMABLE_KINDS.has(this.#input.kind) && this.#input.destination === "loot")),
+      isParcel: experimentalToolsEnabled() && this.#input.kind === "parcel",
+      levelLabel: this.#input.kind === "parcel" ? "SIMPLYPF2E.ItemForge.Parcel.PartyLevel" : "SIMPLYPF2E.ItemForge.Level",
       busy: this.#busy,
       canCancel: this._canCancel,
       providerTested: this._providerTested,
@@ -131,11 +144,12 @@ export class ItemForgeApp extends SpfApp {
       ].map((kind) => ({ ...kind, selected: kind.value === this.#input.kind })),
       consumableKinds: [
         { value: "scroll", label: "SIMPLYPF2E.ItemForge.Consumables.KindScroll", hint: "SIMPLYPF2E.ItemForge.Consumables.KindScrollHint", icon: "fa-scroll" },
-        { value: "wand", label: "SIMPLYPF2E.ItemForge.Consumables.KindWand", hint: "SIMPLYPF2E.ItemForge.Consumables.KindWandHint", icon: "fa-wand-sparkles" }
+        { value: "wand", label: "SIMPLYPF2E.ItemForge.Consumables.KindWand", hint: "SIMPLYPF2E.ItemForge.Consumables.KindWandHint", icon: "fa-wand-sparkles" },
+        ...(experimentalToolsEnabled() ? [{ value: "parcel", label: "SIMPLYPF2E.ItemForge.Parcel.Kind", hint: "SIMPLYPF2E.ItemForge.Parcel.Hint", icon: "fa-sack-dollar" }] : [])
       ].map((kind) => ({ ...kind, selected: kind.value === this.#input.kind })),
-      promptLabel: CONSUMABLE_KINDS.has(this.#input.kind)
+      promptLabel: (CONSUMABLE_KINDS.has(this.#input.kind) || this.#input.kind === "parcel")
         ? "SIMPLYPF2E.ItemForge.Consumables.PromptLabel" : "SIMPLYPF2E.ItemForge.Prompt",
-      promptPlaceholder: CONSUMABLE_KINDS.has(this.#input.kind)
+      promptPlaceholder: (CONSUMABLE_KINDS.has(this.#input.kind) || this.#input.kind === "parcel")
         ? "SIMPLYPF2E.ItemForge.Consumables.PromptPlaceholder" : "SIMPLYPF2E.ItemForge.PromptPlaceholder",
       rarities: [
         { value: "common", label: "SIMPLYPF2E.Rarity.Common" },
@@ -177,15 +191,19 @@ export class ItemForgeApp extends SpfApp {
     const prompt = form.querySelector('[name="prompt"]')?.value ?? this.#input.prompt;
     const rawLevel = Number(form.querySelector('[name="level"]')?.value ?? this.#input.level);
     const level = Number.isFinite(rawLevel)
-      ? Math.min(MAX_ITEM_LEVEL, Math.max(MIN_ITEM_LEVEL, Math.round(rawLevel)))
+      ? (this.#input.kind === "parcel" ? Math.round(rawLevel) : Math.min(MAX_ITEM_LEVEL, Math.max(MIN_ITEM_LEVEL, Math.round(rawLevel))))
       : this.#input.level;
     const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
     // The kind tiles are buttons, so preserve the authoritative selected kind
     // when no form control for it exists in the current render.
     const rawKind = form.querySelector('[name="kind"]:checked')?.value ?? this.#input.kind;
-    const kind = rawKind === "wondrous" || RUNED_ITEM_KINDS.has(rawKind) || CONSUMABLE_KINDS.has(rawKind)
+    const kind = rawKind === "wondrous" || RUNED_ITEM_KINDS.has(rawKind) || CONSUMABLE_KINDS.has(rawKind) || (rawKind === "parcel" && experimentalToolsEnabled())
       ? rawKind : "wondrous";
-    this.#input = { prompt, level, rarity, kind };
+    const destination = (form.querySelector('[name="destination"]')?.value ?? this.#input.destination) === "loot" ? "loot" : "items";
+    const rawSize = Number(form.querySelector('[name="partySize"]')?.value ?? this.#input.partySize);
+    const partySize = Number.isFinite(rawSize) ? Math.max(1, Math.min(8, Math.round(rawSize))) : 4;
+    const containerName = String(form.querySelector('[name="containerName"]')?.value ?? this.#input.containerName).trim().slice(0, LOOT_NAME_MAX);
+    this.#input = { prompt, level, rarity, kind, destination, partySize, containerName };
   }
 
   _preserveForm() {
@@ -253,7 +271,7 @@ export class ItemForgeApp extends SpfApp {
   static async #onSelectKind(_event, target) {
     if (this.#busy) return;
     const kind = target?.dataset?.kind;
-    if (kind !== "wondrous" && !RUNED_ITEM_KINDS.has(kind) && !CONSUMABLE_KINDS.has(kind)) return;
+    if (kind !== "wondrous" && !RUNED_ITEM_KINDS.has(kind) && !CONSUMABLE_KINDS.has(kind) && !(kind === "parcel" && experimentalToolsEnabled())) return;
     this.#readForm();
     this.#input = { ...this.#input, kind };
     await this.render();
@@ -268,6 +286,9 @@ export class ItemForgeApp extends SpfApp {
 
   static async #onGenerate() {
     if (this.#busy) return;
+    if (this.#input.kind === "parcel" && !experimentalToolsEnabled()) {
+      try { assertExperimentalToolAccess(); } catch (err) { this.#error = err.message; await this.render(); return; }
+    }
     this.#readForm();
     const providerWarning = getProviderAuthWarningKey(getProviderRequestConfig());
     if (providerWarning) {
@@ -296,6 +317,7 @@ export class ItemForgeApp extends SpfApp {
     let outcome = "success";
     try {
       if (this.#kind === "wondrous") await this.#generateWondrous(signal);
+      else if (this.#kind === "parcel") await this.#generateParcel(signal);
       else if (CONSUMABLE_KINDS.has(this.#kind)) await this.#generateConsumables(this.#kind, signal);
       else await this.#generateRuned(this.#kind, signal);
       console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
@@ -409,18 +431,21 @@ export class ItemForgeApp extends SpfApp {
 
   /** AI task profile for the concept call of the current kind. */
   #conceptTask() {
+    if (this.#kind === "parcel") return AI_TASK.TREASURE_PARCEL_SPELLS;
     if (this.#kind === "wondrous") return AI_TASK.MAGIC_ITEM_CONCEPT;
     return CONSUMABLE_KINDS.has(this.#kind) ? AI_TASK.SPELL_CONSUMABLE_CONCEPT : AI_TASK.RUNED_ITEM_CONCEPT;
   }
 
   /** Preview context for the draft of the current kind. */
   #buildActivePreview() {
+    if (this.#kind === "parcel") return this.#buildParcelPreview();
     if (this.#kind === "wondrous") return this.#buildPreviewContext();
     return CONSUMABLE_KINDS.has(this.#kind) ? this.#buildConsumablePreviewContext() : this.#buildRunedPreviewContext();
   }
 
   /** Whether a generated draft of the current kind is waiting for Create. */
   #hasDraft() {
+    if (this.#kind === "parcel") return Boolean(this.#parcel);
     if (this.#kind === "wondrous") return Boolean(this.#concept);
     return CONSUMABLE_KINDS.has(this.#kind) ? Boolean(this.#consumables) : Boolean(this.#itemData);
   }
@@ -429,6 +454,7 @@ export class ItemForgeApp extends SpfApp {
     if (!this.#consumables) return null;
     return {
       consumable: true,
+      destination: this.#input.destination === "loot" ? game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DestinationLine") : null,
       heading: game.i18n.localize("SIMPLYPF2E.ItemForge.Consumables.PreviewHeading"),
       items: this.#consumables.items.map((item) => ({
         name: item.name,
@@ -490,50 +516,139 @@ export class ItemForgeApp extends SpfApp {
         dropped(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.RankAboveLevel", { rank: pick.rank, max: maxRank }));
         continue;
       }
-      const spellDoc = await getCandidateDocument(pick.candidate);
-      if (!spellDoc) {
-        warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.SpellMissing", { name: label }));
-        continue;
-      }
-      const spellData = spellDoc.toObject();
-      // The spell keeps its own UUID as its source, so the description links to it.
-      // This mirrors builder.mjs buildScrollItem.
-      spellData._stats = { ...(spellData._stats ?? {}), compendiumSource: spellDoc.uuid };
-      const problem = spellConsumableRankProblem(spellData, kind, pick.rank);
-      if (problem) {
-        dropped(problem);
-        continue;
-      }
-      // The template goes through toItemData, which records the pinned table UUID that the build checks.
-      // A build that throws drops only this pick.
-      let source;
-      let templateData;
-      try {
-        const templateUuid = spellConsumableTemplateUuid(kind, pick.rank);
-        const templateDoc = templateUuid ? await fromUuid(templateUuid) : null;
-        if (!templateDoc) {
-          warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.TemplateMissing", { name: label }));
-          continue;
-        }
-        templateData = toItemData(templateDoc);
-        source = buildSpellConsumable({ kind, rank: pick.rank, templateData, spellData });
-      } catch (err) {
-        dropped(err?.message ?? String(err));
-        continue;
-      }
-      items.push({
-        source,
-        name: source.name,
-        rank: pick.rank,
-        level: templateData.system?.level?.value ?? 0,
-        priceGp: priceToGp(templateData.system?.price?.value)
-      });
+      const result = await this.#buildSpellConsumable(kind, pick.candidate, pick.rank);
+      if (result.missing === "spell") warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.SpellMissing", { name: label }));
+      else if (result.missing === "template") warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.TemplateMissing", { name: label }));
+      else if (result.reason) dropped(result.reason);
+      else items.push(result);
+
     }
     if (!items.length) {
       throw new Error([game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoPicks", { kind }), ...warnings].join(" "));
     }
-    this.#consumables = { items, warnings };
+    this.#consumables = { items, warnings, level: this.#input.level };
     this._throwIfCancelled();
+  }
+
+  async #buildSpellConsumable(kind, candidate, rank) {
+    const spellDoc = await getCandidateDocument(candidate);
+    if (!spellDoc) return { missing: "spell" };
+    const spellData = spellDoc.toObject();
+    spellData._stats = { ...(spellData._stats ?? {}), compendiumSource: spellDoc.uuid };
+    const problem = spellConsumableRankProblem(spellData, kind, rank);
+    if (problem) return { reason: problem };
+    try {
+      const uuid = spellConsumableTemplateUuid(kind, rank);
+      const templateDoc = uuid ? await fromUuid(uuid) : null;
+      if (!templateDoc) return { missing: "template" };
+      const templateData = toItemData(templateDoc);
+      const source = buildSpellConsumable({ kind, rank, templateData, spellData });
+      return { source, name: source.name, rank, level: templateData.system?.level?.value ?? 0,
+        priceGp: priceToGp(templateData.system?.price?.value) };
+    } catch (err) { return { reason: err?.message ?? String(err) }; }
+  }
+
+  async #generateParcel(signal) {
+    assertExperimentalToolAccess();
+    if (this.#input.level < TREASURE_MIN_PARTY_LEVEL || this.#input.level > TREASURE_MAX_PARTY_LEVEL) {
+      throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.LevelRange"));
+    }
+    await this._setStep("templates");
+    const row = partyTreasureForSize(this.#input.level, this.#input.partySize);
+    const plan = planParcelSlots(row);
+    const candidates = await getScrollSpellCandidates(Math.max(...plan.slots.map((s) => s.rank)), briefKeywords(this.#input.prompt), { maxRarity: this.#input.rarity });
+    await this._setStep("concept");
+    const { picks, usage } = await selectParcelSpells(this.#input.prompt, { partyLevel: row.level, slots: plan.slots, candidates, signal,
+      onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")) });
+    this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
+    await this._setStep("assemble");
+    const assigned = assignParcelPicks(plan.slots, picks, candidates);
+    const items = [];
+    const dropped = [...assigned.dropped];
+    for (const drop of dropped) console.warn(`${MODULE_ID} | dropped parcel pick`, drop);
+    const unfilled = [...assigned.unfilled];
+    for (const stack of stackParcelAssignments(assigned.assignments)) {
+      this._throwIfCancelled();
+      const built = await this.#buildSpellConsumable("scroll", stack.candidate, stack.rank);
+      if (!built.source) {
+        console.warn(`${MODULE_ID} | dropped parcel scroll`, built);
+        dropped.push({ reason: "build", detail: built.reason ?? built.missing });
+        unfilled.push(...plan.slots.filter((slot) => stack.slotIds.includes(slot.id)));
+        continue;
+      }
+      built.source.system.quantity = stack.quantity;
+      items.push({ ...built, quantity: stack.quantity, slotIds: stack.slotIds, itemLevels: plan.slots.filter((slot) => stack.slotIds.includes(slot.id)).map((slot) => slot.itemLevel) });
+    }
+    let currency = null;
+    try {
+      const coin = await fromUuid(COIN_UUIDS.gp);
+      currency = coinItemSource(coin ? toItemData(coin) : null, "gp", plan.currencyGp);
+    } catch (err) { console.warn(`${MODULE_ID} | dropped parcel currency`, err); dropped.push({ reason: "currency" }); }
+    if (!items.length && !currency) throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoPicks", { kind: "scroll" }));
+    this.#parcel = { items, currency, unfilled, dropped, permanent: plan.permanent, permanentExtra: plan.permanentExtra,
+      row, partySize: row.partySize, valueGp: parcelValueGp({ items, currencyGp: currency ? plan.currencyGp : 0 }) };
+    this._throwIfCancelled();
+  }
+
+  #permanentList(parcel) {
+    const entries = parcel.permanent.map((e) => game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentEntry", { level: e.level, count: e.count }));
+    if (parcel.permanentExtra.count) entries.push(game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentExtra", { count: parcel.permanentExtra.count, levels: parcel.permanentExtra.levels.join(" / ") }));
+    return entries.join(", ");
+  }
+
+  #buildParcelPreview() {
+    const p = this.#parcel;
+    if (!p) return null;
+    const dropKeys = { [PARCEL_DROP.UNKNOWN_SLOT]: "UnknownSlot", [PARCEL_DROP.DUPLICATE_SLOT]: "DuplicateSlot", [PARCEL_DROP.UNKNOWN_SPELL]: "UnknownSpell", [PARCEL_DROP.RANK_ABOVE_SLOT]: "RankAbove", build: "BuildDrop", currency: "CurrencyDrop" };
+    return { parcel: true, items: p.items.map((i) => ({ ...i, itemLevels: i.itemLevels.join(", "), price: `${i.priceGp.toLocaleString()} gp` })),
+      unfilled: p.unfilled, warnings: p.dropped.map((d) => game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.${dropKeys[d.reason]}`)),
+      currency: p.currency ? p.row.currencyGp : 0, permanent: this.#permanentList(p), valueGp: p.valueGp, totalGp: p.row.totalGp };
+  }
+
+  async #createLootActor({ items, name, level, descriptionLines }) {
+    let actor = null;
+    let committed = false;
+    try {
+      assertExperimentalToolAccess();
+      const built = buildLootActorSource({ items, name, level, descriptionLines });
+      const expected = await persistedExpectedItems(built.items);
+      assertExperimentalToolAccess();
+      this._lockCreation();
+      actor = await Actor.create({ ...built.actor, items: built.items });
+      verifyCreatedActor(actor, LOOT_MANIFEST, expected);
+      this.#clearPreview();
+      committed = true;
+      this.#created = { name: actor.name, actorId: actor.id, warning: false };
+      ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Created", { name: esc(actor.name) }));
+      await actor.sheet.render(true);
+    } catch (err) {
+      if (committed) { console.warn(`${MODULE_ID} | loot actor committed, presentation failed`, err); return; }
+      const survivor = await rollbackCreatedActor(actor, "loot actor");
+      if (survivor) { this.#clearPreview(); throw new Error(`${err.message} ${survivor}`); }
+      throw err;
+    }
+  }
+
+  async #createLootDraft() {
+    this.#busy = true;
+    this.#error = null;
+    this._beginProgress([["apply", game.i18n.localize("SIMPLYPF2E.Progress.Apply"), 1800]], { cancellable: true });
+    let outcome = "success";
+    try {
+      assertExperimentalToolAccess();
+      await this._setStep("apply");
+      await this.render();
+      const p = this.#parcel;
+      const descriptionLines = p ? [
+        game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.Header", { level: p.row.level, size: p.partySize }),
+        game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentLine", { list: this.#permanentList(p) }),
+        game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.EvenNote"),
+        ...(p.row.belowBase ? [game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.BelowNote")] : [])
+      ] : [game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.Description")];
+      const items = p ? [...p.items.map((i) => i.source), ...(p.currency ? [p.currency] : [])] : this.#consumables.items.map((i) => i.source);
+      await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines });
+    } catch (err) { outcome = err?.cancelled ? "cancelled" : "error"; this.#error = err?.cancelled ? null : err.message; }
+    finally { this.#busy = false; this._finishRun(outcome); await this.render(); }
   }
 
   /**
@@ -595,6 +710,8 @@ export class ItemForgeApp extends SpfApp {
   static async #onCreateItem() {
     if (this.#busy) return;
     if (!this.#hasDraft()) return;
+    this.#readForm();
+    if (this.#kind === "parcel" || (CONSUMABLE_KINDS.has(this.#kind) && this.#input.destination === "loot")) return this.#createLootDraft();
     if (CONSUMABLE_KINDS.has(this.#kind)) return this.#createConsumables();
     this.#busy = true;
     this.#error = null;
@@ -670,6 +787,17 @@ export class ItemForgeApp extends SpfApp {
     await item.sheet.render(true);
   }
 
+  static async #onOpenCreatedActor() {
+    const actor = game.actors.get(this.#created?.actorId);
+    if (!actor) { ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.CreateFailed")); return; }
+    await actor.sheet.render(true);
+  }
+
+  _onRender(context, options) {
+    super._onRender(context, options);
+    this.element?.querySelector('[name="destination"]')?.addEventListener("change", () => { this.#readForm(); this.render(); });
+  }
+
   static async #onForgeAnother() {
     this.#created = null;
     this.#error = null;
@@ -691,5 +819,6 @@ export class ItemForgeApp extends SpfApp {
     this.#itemData = null;
     this.#runedPreview = null;
     this.#consumables = null;
+    this.#parcel = null;
   }
 }
