@@ -12,6 +12,7 @@
 4. At most one hazard per encounter.
 5. Budget left after the hazard can go to minions, as it does today.
 6. `none` leaves the encounter output exactly as it is now.
+7. Include hazard generation and writes only when the existing `experimentalTools` setting is enabled.
 
 ## Mechanics that follow from the design
 
@@ -20,13 +21,13 @@ The implementation brief confirms these. The independent reviewer checks them.
 - **XP.** `hazardXP(level, partyLevel, isComplex)` already exists. Simple hazards use the GM Core simple column; complex hazards use the creature column. Source: [hazard research §4](hazard-research-2026-10-26.md).
 - **Order.** Boss first (the existing rule), then the hazard, then minions from the remainder. The minion loop stays as it is, except that it starts from `spent` = boss XP + hazard XP.
 - **Feasible level.** A level is feasible when it lies in `HAZARD_MIN_LEVEL`..`HAZARD_MAX_LEVEL` (−1..24, `scripts/hazard-tables.mjs`) and its XP fits the budget left after the boss.
-- **Selection rule (proposed; the accepted text does not fix it; pending user decision).** Among feasible levels within party level ±4 (the range the XP maps cover), take the one nearest party level. On a tie, take the higher level.
-- **No feasible level.** Drop the hazard with `console.warn`. Do not step the boss down to make room: that changes the boss rule, which is a balance change and needs review.
+- **Selection rule (user-approved 2026-10-27).** Among feasible levels within party level ±4 (the range the XP maps cover), take the one nearest party level. On a tie, take the higher level.
+- **No feasible level (user-approved 2026-10-27).** Drop the hazard with `console.warn` and preserve the no-hazard output. Do not step the boss down to make room: that changes the boss rule, which is a balance change and needs review.
 - **Kind.** The complex flag comes from the request. The hazard concept's own `complex` value must match it, or the hazard is dropped with a warning.
 - **Member shape.** `{ role: "hazard", level, count: 1, xpEach, complex }`. Minions keep `role: "minion"`.
-- **Where the request lives (proposed).** One field in the `designEncounter()` output (`scripts/ai.mjs`). The AI themes the roster there today.
+- **Where the request lives.** One field in the `designEncounter()` output (`scripts/ai.mjs`). The AI themes the roster there today.
 - **Pipeline.** The hazard member runs the hazard path (`generateHazardConcept` → `normalizeHazardConcept` → `buildHazardSource`). Boss and minions run the NPC path. Standalone hazard creation is not yet native-accepted (ledger row N10).
-- **Gate (proposed; the accepted text is silent; pending user decision).** Behind `experimentalTools`, as the Hazard generator mode is (WP5 decision 1).
+- **Gate (user-approved 2026-10-27).** Behind `experimentalTools`, as the Hazard generator mode is (WP5 decision 1).
 
 ## Tests the implementation must add
 
@@ -42,5 +43,4 @@ Budget math, XP, the boss rule and the hazard source are schema- and balance-sen
 
 ## Open
 
-1. Gate placement and the selection rule: both proposed above, neither accepted yet; both await the user's decision.
-2. Native acceptance: ledger row N10 covers a standalone hazard. No native row covers a hazard member inside an encounter, and multi-member encounter checks are open (PLAYBOOK §10).
+1. Native acceptance: ledger row N10 covers a standalone hazard. No native row covers a hazard member inside an encounter, and multi-member encounter checks are open (PLAYBOOK §10).
