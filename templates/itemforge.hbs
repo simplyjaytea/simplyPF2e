@@ -110,10 +110,10 @@
   <section class="spf-preview spf-card">
     {{#if preview.parcel}}
       <h2>{{localize "SIMPLYPF2E.ItemForge.Parcel.Preview"}}</h2>
-      <table class="spf-parcel-table"><thead><tr><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Level"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Parcel.Scroll"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Rank"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Price"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Parcel.Quantity"}}</th></tr></thead><tbody>{{#each preview.items}}<tr><td>{{this.itemLevels}}</td><td>{{this.name}}</td><td>{{this.rank}}</td><td>{{this.price}}</td><td>{{this.quantity}}</td></tr>{{/each}}</tbody></table>
+      <table class="spf-parcel-table"><thead><tr><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Level"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Parcel.SlotLevels"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Parcel.Scroll"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Rank"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Consumables.Price"}}</th><th>{{localize "SIMPLYPF2E.ItemForge.Parcel.Quantity"}}</th></tr></thead><tbody>{{#each preview.items}}<tr><td>{{this.level}}</td><td>{{this.itemLevels}}</td><td>{{this.name}}</td><td>{{this.rank}}</td><td>{{this.price}}</td><td>{{this.quantity}}</td></tr>{{/each}}</tbody></table>
       {{#each preview.unfilled}}<p class="notification warning">{{localize "SIMPLYPF2E.ItemForge.Parcel.Unfilled" level=this.itemLevel rank=this.rank}}</p>{{/each}}
       {{#each preview.warnings}}<p class="notification warning">{{this}}</p>{{/each}}
-      <p>{{localize "SIMPLYPF2E.ItemForge.Parcel.Currency" gp=preview.currency}}</p><p>{{localize "SIMPLYPF2E.ItemForge.Parcel.PermanentLine" list=preview.permanent}}</p><p>{{localize "SIMPLYPF2E.ItemForge.Parcel.Value" value=preview.valueGp total=preview.totalGp}}</p>
+      <p>{{localize "SIMPLYPF2E.ItemForge.Parcel.Currency" gp=preview.currency}}</p><p>{{localize "SIMPLYPF2E.ItemForge.Parcel.PermanentLine" list=preview.permanent}}</p><p>{{#if preview.extraPcs}}{{localize "SIMPLYPF2E.ItemForge.Parcel.ValueExtra" value=preview.valueGp total=preview.totalGp}}{{else}}{{localize "SIMPLYPF2E.ItemForge.Parcel.Value" value=preview.valueGp total=preview.totalGp}}{{/if}}</p>
     {{else if preview.consumable}}
       <header class="spf-statblock-header">
         <h2>{{preview.heading}}</h2>
