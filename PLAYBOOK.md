@@ -150,25 +150,51 @@ Release archive = `module.json LICENSE README.md lang scripts styles templates` 
 - Add a `tests/*.test.mjs` for genuinely pure logic behind any bug-shaped change. Do not add tests that merely restate implementation.
 - Live Foundry behavior (rendering, derived stats, grant chains, dialogs) is **not** self-checkable from this machine. Say so in the PR body and in HANDOFF.md, and open/keep the ledger row.
 
-### Orchestration roster (user's standing instruction, revised 2026-10-26)
+<!-- omh:agent-instructions:begin -->
+### Orchestration
 
-This is the user's standing rule. Follow it without being told again; change it only when the user says so.
+Which section applies depends on what runs the session. The shared rules apply to every run; then pick the run shape.
+
+#### Shared rules (every run)
+
+- **Worktrees for parallel work.** Each worker gets its own git worktree, and each shared file has one owner. The coordinator owns `PLAYBOOK.md`, `HANDOFF.md`, `docs/HISTORY.md` and `docs/README.md`. A worker touches one of them only when its brief names the paragraph.
+- **Complete briefs.** A brief names the exact files owned, what not to touch, the verification command, the commit message and the report shape.
+- **Kept with the coordinator.** pf2e schema verification and release or workflow `.yml` reasoning are never delegated. The worker fetches and quotes real source; the coordinator spot-checks the quote.
+- **Independent review.** A schema-dependent or balance-sensitive diff (pf2e fields, encounter budget and XP math, hazard tables, Rule Elements) gets a reviewer with fresh context who did not build it, before the change is called done. This has caught real bugs before.
+- **Reports are not evidence.** A worker report, an OMH route, a card or a handoff is prepared work. Done means observed output from `node tools/check.mjs` and `git diff --check` in the run.
+- **Record what ran.** Each worker reports the model and reasoning effort it actually ran, not the one requested.
+- **Fix ladder.** The coordinator checks each review finding against the code before acting on it. A confirmed finding goes to the lowest rung first and moves up one rung only when that rung fails (wrong fix, gate still red, or the reviewer rejects it). The report records which rung fixed each finding.
+
+#### OMH-native DAG runs (Hermes parent)
+
+Use this shape when a Hermes session runs an OMH DAG with native `delegate_task` children. The Claude roster below does not apply.
+
+- **Coordinator.** The active Hermes parent stays the coordinator at its actual model and effort. Nothing here assumes the parent is any particular model. Report the parent's model as observed.
+- **Route each child in its dispatch turn.** Before each `delegate_task`, call `omh_delegate_route` with `action=set` in the same turn. In the TUI and CLI a route set in an earlier turn is restored when that turn ends, so the child would run on the parent's model. Sequence per lane: set the route, dispatch that lane, then set the next lane's route. A route change does not affect children already running.
+- **Choose the category by difficulty (suggested).** Bounded, already-specified execution: `quick` or `simple-work`. Escalation: `deep`. Independent review: `architect`. The category resolves to a model through OMH's chain; the report records the model that actually ran.
+- **Named models.** When the user names a model for a run, pass it as `model` (with `provider`) on every lane of that run, and keep the category for the lane label.
+- **Unavailable models are never silently substituted.** Hermes has no provider-side fallback. A child whose model the account cannot serve fails with an HTTP 400 yet still reports as completed. Treat a completed child with no recorded model usage as a failed dispatch. Then either stop and report, or advance with `omh_delegate_route` `action=fallback` and state in the report which model was named, which was unavailable and which ran. When the user named the model, ask before falling back.
+- **Per-child report.** Lane; route set (category or model, and effort); model and effort observed in the delegation record; files changed; commands with exit codes; blockers. The parent's final report lists the same fields for every lane.
+- **Review.** The reviewer is a separate child on a review route, not the builder. Re-review is capped at two rounds; after that, remaining blockers that cite a criterion are reported, not re-reviewed.
+
+#### Claude Code and opencode runs (conditional)
+
+Use this shape when the session is Claude Code, opencode or Orca rather than an OMH-native Hermes DAG. This is the user's standing roster (revised 2026-10-26): follow it without being told again, and change it only when the user says so.
 
 - **Orchestrator: Claude Fable 5.5 at high thinking.** Plans, writes briefs, delegates, verifies, integrates, owns HANDOFF.md and the final report. Does not do bulk execution itself. May spin up as many subagents as the work needs. Codex, opencode and omp are available at the orchestrator's judgment.
 - **Workers**, one of:
   - **Claude Haiku 5.5 at very high thinking** (`effort: xhigh`) for bounded, already-specified execution (apply a mapped fix, write a test mirroring an existing one, mechanical moves/renames, doc synthesis from named sources).
   - **opencode on a free model, `opencode/glm-5.3-flash-free` or `opencode/beam-free`, at very high thinking** (match the Haiku level; see §7 for how the model is set).
 - **Escalation:** if the orchestrator judges a task needs more reasoning than a Haiku worker can give, it may upgrade that worker to **Claude Sonnet 5.5** (same brief, same worktree rules). Say so in the brief and in the report.
-- **Parallel work always uses git worktrees** (`isolation: worktree`, one worker per worktree, one owner per shared file).
+- **Parallel work** uses git worktrees (`isolation: worktree`, one worker per worktree, one owner per shared file).
 - **Merge, review, fix ladder (addendum 2026-10-26):**
-  1. **Merge.** When a worktree's work is complete, merge it into a local integration branch (`claude/<topic>-<date>`). Every finished worktree lands there; nothing goes to `main` directly.
+  1. **Merge.** When a worktree's work is complete, merge it into a local integration branch (`claude/<topic>-<date>`). Nothing goes to `main` directly.
   2. **Gate** the integration branch: `node tools/check.mjs` and `git diff --check`.
   3. **Review.** Claude Opus 5.5 at high thinking reviews the integration branch with fresh context (not a builder). The orchestrator verifies each finding technically before acting on it.
-  4. **Fix, escalating one step at a time.** Each confirmed finding is first attempted by **Haiku 5.5 at very high thinking**. If Haiku fails (wrong fix, gate still red, or the reviewer rejects it), hand the same finding to **Sonnet 5.5 at very high thinking**. If Sonnet fails, hand it to **Opus 5.5 at very high thinking**. Record in the report which rung fixed each finding.
-  5. **Re-gate and re-review** after fixes. Repeat from step 3 until the reviewer has no open findings, then the user decides whether to open or merge the PR.
-- Never delegate without the brief stating: the exact files owned, what not to touch, the verification command, the commit message, and the report shape. Never delegate the two things that bite this repo: pf2e schema verification (the delegate must fetch real source and quote it; the coordinator spot-checks), and release/workflow `.yml` reasoning.
-- Every schema-dependent or balance-sensitive diff gets an independent reviewer with fresh context (not the builder) before the PR is called done — this has caught real bugs on three separate occasions.
-- Review handling: verify technically before accepting a reviewer finding; one fix PR per merged PR if the user merged mid-review.
+  4. **Fix, escalating one step at a time.** Haiku 5.5 at very high thinking first; if it fails, Sonnet 5.5 at very high thinking; if that fails, Opus 5.5 at very high thinking. Record the rung that fixed each finding.
+  5. **Re-gate and re-review** after fixes. Repeat from step 3 until the reviewer has no open findings; then the user decides whether to open or merge the PR.
+- **Review handling:** verify technically before accepting a reviewer finding. If the user merged mid-review, put the fix in one follow-up PR per merged PR.
+<!-- omh:agent-instructions:end -->
 
 ### Session protocol
 
