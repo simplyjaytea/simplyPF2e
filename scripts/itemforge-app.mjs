@@ -135,8 +135,8 @@ export class ItemForgeApp extends SpfApp {
         authState.baseUrl && authState.hasConfiguredApiKey && !authState.apiKeyIsBound
       ),
       model: authState.model,
-      minLevel: MIN_ITEM_LEVEL,
-      maxLevel: MAX_ITEM_LEVEL,
+      minLevel: this.#input.kind === "parcel" ? TREASURE_MIN_PARTY_LEVEL : MIN_ITEM_LEVEL,
+      maxLevel: this.#input.kind === "parcel" ? TREASURE_MAX_PARTY_LEVEL : MAX_ITEM_LEVEL,
       kinds: [
         { value: "wondrous", label: "SIMPLYPF2E.ItemForge.KindWondrous", hint: "SIMPLYPF2E.ItemForge.KindWondrousHint", icon: "fa-ring" },
         { value: "weapon", label: "SIMPLYPF2E.ItemForge.KindWeapon", hint: "SIMPLYPF2E.ItemForge.KindWeaponHint", icon: "fa-sword" },
@@ -190,8 +190,10 @@ export class ItemForgeApp extends SpfApp {
     const form = this.element;
     const prompt = form.querySelector('[name="prompt"]')?.value ?? this.#input.prompt;
     const rawLevel = Number(form.querySelector('[name="level"]')?.value ?? this.#input.level);
+    const min = this.#input.kind === "parcel" ? TREASURE_MIN_PARTY_LEVEL : MIN_ITEM_LEVEL;
+    const max = this.#input.kind === "parcel" ? TREASURE_MAX_PARTY_LEVEL : MAX_ITEM_LEVEL;
     const level = Number.isFinite(rawLevel)
-      ? (this.#input.kind === "parcel" ? Math.round(rawLevel) : Math.min(MAX_ITEM_LEVEL, Math.max(MIN_ITEM_LEVEL, Math.round(rawLevel))))
+      ? Math.min(max, Math.max(min, Math.round(rawLevel)))
       : this.#input.level;
     const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
     // The kind tiles are buttons, so preserve the authoritative selected kind
@@ -200,8 +202,9 @@ export class ItemForgeApp extends SpfApp {
     const kind = rawKind === "wondrous" || RUNED_ITEM_KINDS.has(rawKind) || CONSUMABLE_KINDS.has(rawKind) || (rawKind === "parcel" && experimentalToolsEnabled())
       ? rawKind : "wondrous";
     const destination = (form.querySelector('[name="destination"]')?.value ?? this.#input.destination) === "loot" ? "loot" : "items";
-    const rawSize = Number(form.querySelector('[name="partySize"]')?.value ?? this.#input.partySize);
-    const partySize = Number.isFinite(rawSize) ? Math.max(1, Math.min(8, Math.round(rawSize))) : 4;
+    const sizeText = String(form.querySelector('[name="partySize"]')?.value ?? this.#input.partySize).trim();
+    const rawSize = Number(sizeText);
+    const partySize = sizeText && Number.isFinite(rawSize) ? Math.max(1, Math.min(8, Math.round(rawSize))) : this.#input.partySize;
     const containerName = String(form.querySelector('[name="containerName"]')?.value ?? this.#input.containerName).trim().slice(0, LOOT_NAME_MAX);
     this.#input = { prompt, level, rarity, kind, destination, partySize, containerName };
   }
@@ -281,15 +284,25 @@ export class ItemForgeApp extends SpfApp {
     const input = this.element.querySelector('input[name="level"]');
     if (!input) return;
     const current = Number.parseInt(input.value, 10);
-    input.value = Math.min(MAX_ITEM_LEVEL, Math.max(MIN_ITEM_LEVEL, (Number.isNaN(current) ? 4 : current) + delta));
+    const min = this.#input.kind === "parcel" ? TREASURE_MIN_PARTY_LEVEL : MIN_ITEM_LEVEL;
+    const max = this.#input.kind === "parcel" ? TREASURE_MAX_PARTY_LEVEL : MAX_ITEM_LEVEL;
+    input.value = Math.min(max, Math.max(min, (Number.isNaN(current) ? 4 : current) + delta));
   }
 
   static async #onGenerate() {
     if (this.#busy) return;
-    if (this.#input.kind === "parcel" && !experimentalToolsEnabled()) {
-      try { assertExperimentalToolAccess(); } catch (err) { this.#error = err.message; await this.render(); return; }
-    }
+    const wasParcel = this.#input.kind === "parcel";
+    const rawLevel = Number(this.element.querySelector('[name="level"]')?.value ?? this.#input.level);
     this.#readForm();
+    if (wasParcel && !experimentalToolsEnabled()) {
+      try { assertExperimentalToolAccess(); } catch (err) { this.#input.kind = "parcel"; this.#error = err.message; await this.render(); return; }
+    }
+    if (!experimentalToolsEnabled()) this.#input.destination = "items";
+    if (wasParcel && Number.isFinite(rawLevel) && (rawLevel < TREASURE_MIN_PARTY_LEVEL || rawLevel > TREASURE_MAX_PARTY_LEVEL)) {
+      this.#error = game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.LevelRange");
+      await this.render();
+      return;
+    }
     const providerWarning = getProviderAuthWarningKey(getProviderRequestConfig());
     if (providerWarning) {
       ui.notifications.warn(game.i18n.localize(providerWarning));
@@ -454,7 +467,7 @@ export class ItemForgeApp extends SpfApp {
     if (!this.#consumables) return null;
     return {
       consumable: true,
-      destination: this.#input.destination === "loot" ? game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DestinationLine") : null,
+      destination: this.#input.destination === "loot" && (experimentalToolsEnabled() || this.#consumables) ? game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DestinationLine") : null,
       heading: game.i18n.localize("SIMPLYPF2E.ItemForge.Consumables.PreviewHeading"),
       items: this.#consumables.items.map((item) => ({
         name: item.name,
@@ -519,7 +532,7 @@ export class ItemForgeApp extends SpfApp {
       const result = await this.#buildSpellConsumable(kind, pick.candidate, pick.rank);
       if (result.missing === "spell") warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.SpellMissing", { name: label }));
       else if (result.missing === "template") warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.TemplateMissing", { name: label }));
-      else if (result.reason) dropped(result.reason);
+      else if (!result.source) dropped(result.reason || "build failed");
       else items.push(result);
 
     }
@@ -602,7 +615,7 @@ export class ItemForgeApp extends SpfApp {
     const dropKeys = { [PARCEL_DROP.UNKNOWN_SLOT]: "UnknownSlot", [PARCEL_DROP.DUPLICATE_SLOT]: "DuplicateSlot", [PARCEL_DROP.UNKNOWN_SPELL]: "UnknownSpell", [PARCEL_DROP.RANK_ABOVE_SLOT]: "RankAbove", build: "BuildDrop", currency: "CurrencyDrop" };
     return { parcel: true, items: p.items.map((i) => ({ ...i, itemLevels: i.itemLevels.join(", "), price: `${i.priceGp.toLocaleString()} gp` })),
       unfilled: p.unfilled, warnings: p.dropped.map((d) => game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.${dropKeys[d.reason]}`)),
-      currency: p.currency ? p.row.currencyGp : 0, permanent: this.#permanentList(p), valueGp: p.valueGp, totalGp: p.row.totalGp };
+      extraPcs: p.row.extraPcs, currency: p.currency ? p.row.currencyGp : 0, permanent: this.#permanentList(p), valueGp: p.valueGp, totalGp: p.row.totalGp };
   }
 
   async #createLootActor({ items, name, level, descriptionLines }) {
@@ -621,8 +634,14 @@ export class ItemForgeApp extends SpfApp {
       this.#created = { name: actor.name, actorId: actor.id, warning: false };
       ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Created", { name: esc(actor.name) }));
       await actor.sheet.render(true);
+      return false;
     } catch (err) {
-      if (committed) { console.warn(`${MODULE_ID} | loot actor committed, presentation failed`, err); return; }
+      if (committed) {
+        console.warn(`${MODULE_ID} | loot actor committed, presentation failed`, err);
+        this.#created.warning = true;
+        ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.CreatedPresentationFailed"));
+        return true;
+      }
       const survivor = await rollbackCreatedActor(actor, "loot actor");
       if (survivor) { this.#clearPreview(); throw new Error(`${err.message} ${survivor}`); }
       throw err;
@@ -646,7 +665,8 @@ export class ItemForgeApp extends SpfApp {
         ...(p.row.belowBase ? [game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.BelowNote")] : [])
       ] : [game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.Description")];
       const items = p ? [...p.items.map((i) => i.source), ...(p.currency ? [p.currency] : [])] : this.#consumables.items.map((i) => i.source);
-      await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines });
+      const presentationWarning = await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines });
+      if (presentationWarning) outcome = "warning";
     } catch (err) { outcome = err?.cancelled ? "cancelled" : "error"; this.#error = err?.cancelled ? null : err.message; }
     finally { this.#busy = false; this._finishRun(outcome); await this.render(); }
   }
@@ -710,7 +730,9 @@ export class ItemForgeApp extends SpfApp {
   static async #onCreateItem() {
     if (this.#busy) return;
     if (!this.#hasDraft()) return;
+    const selectedParcel = this.#input.kind === "parcel";
     this.#readForm();
+    if (selectedParcel && !experimentalToolsEnabled()) this.#input.kind = "parcel";
     if (this.#kind === "parcel" || (CONSUMABLE_KINDS.has(this.#kind) && this.#input.destination === "loot")) return this.#createLootDraft();
     if (CONSUMABLE_KINDS.has(this.#kind)) return this.#createConsumables();
     this.#busy = true;
