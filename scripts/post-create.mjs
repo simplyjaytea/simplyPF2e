@@ -147,3 +147,22 @@ export function verifyCreatedActor(actor, manifest, expectedItems) {
   verifyNpcAbilityMechanics(actor, matched);
   return { checked: matched.length };
 }
+
+/**
+ * Roll back a document this transaction created after a failure before commit.
+ *
+ * Mirrors the private `rollbackActor` in `generator-app.mjs` lines 155-164: a null actor is a
+ * no-op; a successful `delete()` returns null; a failed cleanup reports the survivor (a warning
+ * plus a message the caller appends to its error) so the draft is discarded and a retry cannot
+ * duplicate the document. The module id is inlined because this file has no MODULE_ID constant.
+ */
+export async function rollbackCreatedActor(actor, label) {
+  if (!actor) return null;
+  try {
+    await actor.delete();
+    return null;
+  } catch (cleanupErr) {
+    console.warn(`simplypf2e | failed to roll back ${label} "${actor.name}"`, cleanupErr);
+    return `${label} "${actor.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+  }
+}
