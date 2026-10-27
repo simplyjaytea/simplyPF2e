@@ -18,6 +18,7 @@ import { RESKIN_LIMITS } from "./reskin-policy.mjs";
 import { assertExperimentalToolAccess } from "./experimental-tools.mjs";
 import { hazardNameProblem, hazardProseProblem } from "./hazard-builder.mjs";
 import { HAZARD_MIN_LEVEL, HAZARD_MAX_LEVEL } from "./hazard-tables.mjs";
+import { hazardRequest } from "./encounter.mjs";
 
 /**
  * Client for any OpenAI-compatible chat completions API (DeepSeek, OpenAI,
@@ -1319,24 +1320,32 @@ Design guidance:
  * Encounter design pass: given a theme and a budget-fixed composition, name
  * the encounter and write a one-sentence creature brief per slot. Each brief
  * then runs through the normal single-creature pipeline.
- * @returns {Promise<{name: string, briefs: string[], usage: object}>} briefs indexed by slot
+ * @returns {Promise<{name: string, briefs: string[], hazard: "none"|"simple"|"complex", usage: object}>} briefs indexed by slot.
+ * hazard is "none" unless allowHazard is set and the model asks for one; an invalid request is dropped to "none".
  */
-export async function designEncounter({ theme, partyLevel, slots, onProgress, signal }) {
+export async function designEncounter({ theme, partyLevel, slots, allowHazard = false, onProgress, signal }) {
   const slotLines = slots.map((s, i) =>
     `Slot ${i + 1}: ${s.count} creature${s.count > 1 ? "s" : ""} of level ${s.level} (${s.role})`
   ).join("\n");
 
+  const schema = allowHazard
+    ? '{ "name": string, "briefs": string[], "hazard": "none" | "simple" | "complex" }'
+    : '{ "name": string, "briefs": string[] }';
+  const hazardRule = allowHazard
+    ? ' "hazard" is "none" unless a trap, ward or environmental danger belongs to the theme: "simple" for one that acts once, "complex" for one that acts in rounds. Write no level, XP or number for it; the module sizes it to the budget and it shares the budget with the creatures.'
+    : "";
   const system = `You are designing a themed Pathfinder 2e encounter. The composition (levels and counts) is FIXED by the XP budget; you decide who these creatures are so they feel like they belong together (a leader and its followers, a predator and its symbiotes, cultists and their summon, ...).
 Respond with a single JSON object and nothing else:
-{ "name": string, "briefs": string[] }
-"name" is a short evocative encounter name. "briefs" has EXACTLY one entry per slot in order: a 1-2 sentence creature concept for that slot (all creatures of a slot share one concept). Vary roles and tactics; make the boss memorable.`;
+${schema}
+"name" is a short evocative encounter name. "briefs" has EXACTLY one entry per slot in order: a 1-2 sentence creature concept for that slot (all creatures of a slot share one concept). Vary roles and tactics; make the boss memorable.${hazardRule}`;
 
   const user = [
     `Party level: ${partyLevel}`,
     `Theme from the GM: ${theme}`,
     "",
     "Composition (fixed):",
-    slotLines
+    slotLines,
+    ...(allowHazard ? ["A hazard, if chosen, shares this budget and may leave fewer minions."] : [])
   ].join("\n");
 
   const { data: parsed, usage } = await requestJSON({
@@ -1346,6 +1355,7 @@ Respond with a single JSON object and nothing else:
   return {
     name: String(parsed.name || "Encounter"),
     briefs: slots.map((s, i) => briefs[i] ?? `${theme} — a level ${s.level} ${s.role}`),
+    hazard: allowHazard ? hazardRequest(parsed.hazard) : "none",
     usage
   };
 }

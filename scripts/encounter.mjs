@@ -1,4 +1,5 @@
 import { MIN_LEVEL, MAX_LEVEL } from "./tables.mjs";
+import { HAZARD_MIN_LEVEL, HAZARD_MAX_LEVEL } from "./hazard-tables.mjs";
 
 /**
  * Encounter building math from the GM Core: XP budgets by threat level,
@@ -43,6 +44,32 @@ export function hazardXP(level, partyLevel, isComplex) {
   return isComplex ? creatureXP(level, partyLevel) : simpleHazardXP(level, partyLevel);
 }
 
+/** The hazard requests the AI may make (design note 69a22f5): none, or at most one simple or complex hazard. */
+export const HAZARD_REQUESTS = Object.freeze(["none", "simple", "complex"]);
+
+/** Normalize an AI hazard request. Any other value is dropped with a warning and becomes none. */
+export function hazardRequest(value) {
+  if (HAZARD_REQUESTS.includes(value)) return value;
+  console.warn("simplypf2e | encounter hazard request dropped (needs none, simple or complex):", value);
+  return "none";
+}
+
+/**
+ * The level for a hazard that must fit `remaining` XP: the feasible level nearest
+ * party level within +-4 (the range the XP maps cover). Ties go to the higher level,
+ * which the ascending scan gives because `<=` keeps the later one. Null when none fits.
+ */
+function hazardPlacement(partyLevel, remaining, complex) {
+  const low = Math.max(HAZARD_MIN_LEVEL, partyLevel - 4);
+  const high = Math.min(HAZARD_MAX_LEVEL, partyLevel + 4);
+  let best = null;
+  for (let level = low; level <= high; level++) {
+    if (hazardXP(level, partyLevel, complex) > remaining) continue;
+    if (best === null || Math.abs(level - partyLevel) <= Math.abs(best - partyLevel)) best = level;
+  }
+  return best;
+}
+
 export function encounterBudget(threat, partySize) {
   const t = THREATS[threat] ?? THREATS.moderate;
   return Math.max(t.budget + (partySize - 4) * t.perPlayer, 0);
@@ -52,8 +79,11 @@ export function encounterBudget(threat, partySize) {
  * Compose an encounter to budget: one headline creature whose relative level
  * matches the threat, backed by lesser creatures until the budget is spent.
  * Returns { members: [{role, level, count, xpEach}], budget, spent }.
+ * options.hazard is "none" (the default), "simple" or "complex": at most one hazard member
+ * ({role: "hazard", level, count: 1, xpEach, complex}), placed after the boss and before the minions.
  */
-export function composeEncounter(threat, partySize, partyLevel) {
+export function composeEncounter(threat, partySize, partyLevel, { hazard = "none" } = {}) {
+  if (!HAZARD_REQUESTS.includes(hazard)) throw new TypeError(`composeEncounter hazard must be one of ${HAZARD_REQUESTS.join(", ")}`);
   const budget = encounterBudget(threat, partySize);
   const bossRel = { trivial: -1, low: 0, moderate: 1, severe: 2, extreme: 3 }[threat] ?? 1;
   const members = [];
@@ -69,6 +99,20 @@ export function composeEncounter(threat, partySize, partyLevel) {
   }
   members.push({ role: "boss", level: bossLevel, count: 1, xpEach: bossXP });
   spent += bossXP;
+
+  // At most one hazard, placed before the minions so they spend what is left.
+  // With no feasible level the hazard is dropped and the output is the none output.
+  if (hazard !== "none") {
+    const complex = hazard === "complex";
+    const level = hazardPlacement(partyLevel, budget - spent, complex);
+    if (level === null) {
+      console.warn("simplypf2e | encounter hazard dropped (no level fits the budget left after the boss):", hazard);
+    } else {
+      const xpEach = hazardXP(level, partyLevel, complex);
+      members.push({ role: "hazard", level, count: 1, xpEach, complex });
+      spent += xpEach;
+    }
+  }
 
   // Keep the two-role shape and prefer the usual party-level-minus-two
   // minions on a tie. Other legal lesser foes may fit larger parties better.
