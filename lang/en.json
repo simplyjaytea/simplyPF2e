@@ -104,7 +104,14 @@
       "LoreHint": "Choose the Lore granted by this background before generating. This choice does not use AI.",
       "keyAbility": "Key ability",
       "classPath": "Racket / methodology / school / thesis",
-      "Ability": { "str": "Strength", "dex": "Dexterity", "con": "Constitution", "int": "Intelligence", "wis": "Wisdom", "cha": "Charisma" }
+      "Ability": {
+        "str": "Strength",
+        "dex": "Dexterity",
+        "con": "Constitution",
+        "int": "Intelligence",
+        "wis": "Wisdom",
+        "cha": "Charisma"
+      }
     },
     "PCEdit": {
       "Title": "Edit character",
@@ -531,6 +538,41 @@
         "RankAboveLevel": "rank {rank} is above the highest rank this item level allows ({max})",
         "LevelTooLow": "A {kind} needs item level {minLevel} or higher, so this level allows no rank",
         "PartialCreate": "Only {created} of {total} items were created. Check the Items directory before forging again."
+      },
+      "Loot": {
+        "CreateAs": "Create as",
+        "Items": "Items directory",
+        "Actor": "Loot actor",
+        "Name": "Container name",
+        "Open": "Open Loot Actor",
+        "DefaultName": "SimplyPF2e Loot",
+        "DestinationLine": "Destination: Loot actor",
+        "Description": "Spell consumables forged by SimplyPF2e."
+      },
+      "Parcel": {
+        "Kind": "Treasure parcel",
+        "Hint": "GM Core party treasure as scrolls and currency",
+        "PartyLevel": "Party level",
+        "PartySize": "Party size",
+        "LevelRange": "Party level must be between 1 and 20.",
+        "Preview": "Treasure parcel",
+        "Scroll": "Scroll",
+        "Quantity": "Quantity",
+        "Unfilled": "Unfilled: item level {level}, scroll rank {rank}.",
+        "Currency": "Currency: {gp} gp",
+        "PermanentLine": "Permanent items not included: {list}",
+        "PermanentEntry": "level {level}: {count}",
+        "PermanentExtra": "{count} extra at level {levels}",
+        "Value": "Built {value} gp of table total {total} gp.",
+        "Header": "GM Core Party Treasure by Level: party level {level}, size {size}.",
+        "EvenNote": "Even-level consumable slots use a scroll one level lower.",
+        "BelowNote": "Parties below four use the four-PC row.",
+        "UnknownSlot": "A pick used an unknown slot.",
+        "DuplicateSlot": "A duplicate slot pick was dropped.",
+        "UnknownSpell": "A pick used an unknown spell.",
+        "RankAbove": "A spell exceeded its slot rank.",
+        "BuildDrop": "A scroll could not be built and was dropped.",
+        "CurrencyDrop": "Gold Pieces could not be loaded; currency was dropped."
       }
     },
     "Loot": {
