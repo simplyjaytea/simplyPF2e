@@ -1506,14 +1506,19 @@ function hazardOptionalProblem(field, value, options = {}) {
 
 const HAZARD_NAME = { singleLine: true, max: HAZARD_LIMITS.name };
 
+function hazardStrikeProblem(field, strike) {
+  if (strike == null) return null;
+  if (!isPlainObject(strike)) return hazardFieldProblem(field);
+  return hazardTextProblem(field + ".name", strike.name, HAZARD_NAME);
+}
+
 function hazardReactionProblem(reaction) {
   if (!isPlainObject(reaction)) return hazardFieldProblem("reaction");
-  const strikeName = isPlainObject(reaction.strike) ? reaction.strike.name : null;
   const saveEffect = isPlainObject(reaction.save) ? reaction.save.effect : null;
   return hazardTextProblem("reaction.name", reaction.name, HAZARD_NAME)
     ?? hazardTextProblem("reaction.trigger", reaction.trigger)
     ?? hazardTextProblem("reaction.effect", reaction.effect)
-    ?? hazardOptionalProblem("reaction.strike.name", strikeName, HAZARD_NAME)
+    ?? hazardStrikeProblem("reaction.strike", reaction.strike)
     ?? hazardOptionalProblem("reaction.save.effect", saveEffect);
 }
 
@@ -1524,9 +1529,8 @@ function hazardRoutineProblem(concept) {
   if (!isPlainObject(routine)) return hazardFieldProblem("routine");
   const actions = routine.actions;
   if (!Number.isInteger(actions) || actions < 1 || actions > 3) return hazardFieldProblem("routine.actions");
-  const strikeName = isPlainObject(routine.strike) ? routine.strike.name : null;
   return hazardTextProblem("routine.text", routine.text)
-    ?? hazardOptionalProblem("routine.strike.name", strikeName, HAZARD_NAME);
+    ?? hazardStrikeProblem("routine.strike", routine.strike);
 }
 
 /**
