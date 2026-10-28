@@ -425,6 +425,23 @@ const withAdvancedFeat = () => ({ ...resolved(), feats: [{ type: "class", level:
   assert.deepEqual({ ...twoSchools }, { atCreate: true }, "two closed schools leave the choice to Create");
 }
 
+// AI focus picks that repeat the school spells add one copy each. Champion has a modeled focus source, so its picks
+// are kept, while the Wizard school is still staged from the same class data.
+{
+  worlds.use(advancedWorld());
+  reset();
+  const picks = [
+    { name: "Force Bolt", entry: { packId: "pf2e.spells-srd", _id: forceBolt._id } },
+    { name: "Energy Absorption", entry: { packId: "pf2e.spells-srd", _id: energyAbsorption._id } }
+  ];
+  await createCharacterActor(schoolConcept(), { ...withAdvancedFeat(), classDoc: { ...classDoc, name: "Champion" }, focusSpells: picks });
+  assert.deepEqual(created.filter((item) => item.type === "spell").map((item) => item.name).sort(), ["Energy Absorption", "Force Bolt"],
+    "each school spell is embedded once, even when the AI also picked it");
+  assert.equal(focusEntries().length, 1, "one focus entry holds them");
+  assert.equal(actorData.system.resources.focus.value, 2);
+  worlds.use(world);
+}
+
 console.warn = warn;
 assert.deepEqual(warnings.filter((line) => !/provisional native skills|character skill review/.test(line)), [],
   "only the stand-in's native-skill preview limit is warned");
