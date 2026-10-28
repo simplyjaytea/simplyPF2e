@@ -178,8 +178,9 @@ assert.equal(prepared.isCantripDeck, true);
 const template = readFileSync(new URL("../templates/itemforge.hbs", import.meta.url), "utf8");
 const deckBlock = template.match(/\{\{#unless isCantripDeck\}\}((?:(?!\{\{\/?unless)[\s\S])*)\{\{\/unless\}\}/);
 assert.ok(deckBlock, "the deck condition has a closing block");
-assert.match(deckBlock[1], /name="level"/);
-assert.match(deckBlock[1], /name="rarity"/);
+assert.match(deckBlock[1], /name="level"/, "a deck hides the level control");
+assert.doesNotMatch(deckBlock[1], /name="rarity"/, "the rarity control is not hidden for a deck");
+assert.ok(template.indexOf('name="rarity"') > deckBlock.index + deckBlock[0].length, "the rarity control follows the deck condition, so it shows for decks");
 assert.equal(prepared.preview.isCantripDeck, true);
 assert.equal(createCalls, 0);
 await actions.createItem.call(app);
@@ -216,3 +217,18 @@ for (const [rarity, maxRarity] of [["uncommon", "uncommon"], ["rare", "uncommon"
   assert.equal(cantripOptions?.maxRarity, maxRarity, `a ${rarity} Forge caps the deck pool at ${maxRarity}`);
 }
 forgeRarity = "common";
+
+// Through the Forge UI: the kind tile is a button with no form control, the rarity select stays visible for a deck,
+// and an uncommon Forge keeps its rarity, so the deck pool is capped at uncommon.
+{
+  const form = { prompt: { value: "fire and healing scrolls" }, level: { value: "1" }, rarity: { value: "uncommon" }, destination: { value: "items" } };
+  const ui = new App();
+  ui.element = { querySelector: (selector) => form[selector.match(/name="(\w+)"/)?.[1]] ?? null };
+  await actions.selectKind.call(ui, null, { dataset: { kind: "cantripDeck" } });
+  assert.equal((await ui._prepareContext()).isCantripDeck, true);
+  cantripOptions = null;
+  picksForCall = [pick("c-light", 1, "cantripDeck")];
+  await actions.generate.call(ui);
+  assert.equal(cantripOptions?.maxRarity, "uncommon", "an uncommon Forge reaches the uncommon deck pool");
+  assert.equal(ui.context?.error ?? null, null);
+}
