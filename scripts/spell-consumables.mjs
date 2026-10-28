@@ -53,9 +53,12 @@ export const CANTRIP_DECK_RANK = 1;
 // and unique cantrips stay out because the module found no pf2e rule that allows them.
 export const CANTRIP_DECK_RARITIES = Object.freeze(["common", "uncommon"]);
 
-/** The highest cantrip rarity the Forge offers a deck: common when the Forge is common, otherwise uncommon. */
+/**
+ * The highest cantrip rarity a deck pool may use for a Forge rarity. Fails closed: only the uncommon-or-rarer
+ * Forge values widen the pool to uncommon; any other value (including a missing one) stays common.
+ */
 export function cantripDeckMaxRarity(forgeRarity) {
-  return forgeRarity === "common" ? "common" : "uncommon";
+  return ["uncommon", "rare", "unique"].includes(forgeRarity) ? "uncommon" : "common";
 }
 
 /** Highest rank each kind may reach. Scrolls go to 10; wands stop at 9 (no wand 10 template). */

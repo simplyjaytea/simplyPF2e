@@ -5,8 +5,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  SPELL_CONSUMABLE_TEMPLATES, spellConsumableTemplateUuid, spellConsumableTemplateRef,
-  spellConsumableRankProblem, spellConsumableName, buildSpellConsumable
+  SPELL_CONSUMABLE_TEMPLATES, spellConsumableTemplateUuid, spellConsumableTemplateRef, spellConsumableRankProblem, spellConsumableName, buildSpellConsumable, cantripDeckMaxRarity
 } from "../scripts/spell-consumables.mjs";
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/consumables/${name}`, import.meta.url), "utf8"));
@@ -340,4 +339,11 @@ console.log("spell-consumables.test.mjs: template table, rank rules, scroll and 
   const uncommonDeck = buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: uncommonLight });
   assert.equal(uncommonDeck.system.traits.rarity, "uncommon");
   assert.equal(spellConsumableRankProblem(structuredClone(light), "cantripDeck", 1), null, "a common cantrip stays allowed");
+}
+
+// Forge rarity to deck pool cap: only uncommon, rare and unique widen the pool, and every other value fails closed.
+assert.equal(cantripDeckMaxRarity("common"), "common");
+for (const forge of ["uncommon", "rare", "unique"]) assert.equal(cantripDeckMaxRarity(forge), "uncommon", `${forge} caps the pool at uncommon`);
+for (const bogus of [undefined, null, "", "Common", "Uncommon", "epic", "legendary"]) {
+  assert.equal(cantripDeckMaxRarity(bogus), "common", `${JSON.stringify(bogus)} fails closed to common`);
 }
