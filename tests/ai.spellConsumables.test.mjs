@@ -126,3 +126,18 @@ try {
 }
 
 console.log("ai.spellConsumables.test.mjs: picks, fail-closed drops, kind, count and prompt contract passed");
+
+{
+  globalThis.fetch = async (_url, options) => {
+    const request = JSON.parse(options.body);
+    const prompt = JSON.stringify(request.messages);
+    assert.ok(!prompt.includes("base rank"));
+    assert.ok(prompt.includes("Do not emit ranks, prices, item levels, DCs, damage or any other number."));
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ picks: [{ spellId: "c-heal", rank: 7 }, { spellId: "unknown" }] }) }, finish_reason: "stop" }] }), { headers: { "content-type": "application/json" } });
+  };
+  try {
+    const { selectSpellConsumables } = await import("../scripts/ai.mjs");
+    const result = await selectSpellConsumables("light", { kind: "cantripDeck", candidates });
+    assert.deepEqual(result.picks.map(p => [p.spellId, p.rank]), [["c-heal", 1]]);
+  } finally { globalThis.fetch = originalFetch; }
+}

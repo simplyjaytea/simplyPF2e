@@ -298,3 +298,39 @@ assert.equal(unpinned.scroll.rank, 1);
 settingsStub.get = () => ({});
 game.packs.delete("test.equipment-only");
 console.log("spell-consumables.test.mjs: template table, rank rules, scroll and wand field map, and loot migration passed");
+
+// Cantrip deck expectations from pf2e 8.5.0 sources.
+{
+  const uuid = "Compendium.pf2e.equipment-srd.Item.tLa4bewBhyqzi6Ow";
+  const template = withSource(fixture("cantrip-deck-5-pack.json"), uuid);
+  const light = withSource(fixture("light.json"), "Compendium.pf2e.spells-srd.Item.WBmvzNDfpwka3qT4");
+  const before = JSON.stringify([template, light]);
+  assert.equal(spellConsumableTemplateUuid("cantripDeck", 1), uuid);
+  assert.equal(spellConsumableTemplateUuid("cantripDeck", 0), null);
+  assert.equal(spellConsumableTemplateUuid("cantripDeck", 2), null);
+  const item = buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: light });
+  assert.equal(item.name, "Cantrip Deck of Light (5-pack)");
+  assert.equal(item.system.category, "other");
+  assert.deepEqual(item.system.traits.value, ["cantrip", "concentrate", "light", "magical", "manipulate"]);
+  assert.equal(item.system.traits.rarity, "common");
+  assert.ok(item.system.description.value.startsWith("<p>@UUID[Compendium.pf2e.spells-srd.Item.WBmvzNDfpwka3qT4]{Light}</p><hr>"));
+  assert.ok(item.system.description.value.endsWith(template.system.description.value));
+  assert.equal("spell" in item.system, false);
+  assert.deepEqual(item.system.uses, { autoDestroy: true, max: 5, value: 5 });
+  assert.equal(item.system.quantity, 1);
+  assert.deepEqual(item.system.price, { per: 1, value: { gp: 5 } });
+  assert.deepEqual(item.system.level, { value: 1 });
+  assert.deepEqual(item.system.rules, []);
+  assert.equal(JSON.stringify([template, light]), before);
+  assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 2, templateData: template, spellData: light }));
+  assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: HEAL }));
+  for (const change of [s => s.system.traits.value.push("focus"), s => s.system.traits.rarity = "uncommon", s => s.system.ritual = {}]) {
+    const bad = structuredClone(light); change(bad);
+    assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: bad }));
+  }
+  for (const change of [t => t.system.category = "scroll", t => t._stats.compendiumSource = "wrong"]) {
+    const bad = structuredClone(template); change(bad);
+    assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: bad, spellData: light }));
+  }
+  assert.ok(spellConsumableRankProblem(light, "scroll", 1));
+}

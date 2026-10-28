@@ -1,3 +1,4 @@
+import { CANTRIP_DECK_RANK } from "./spell-consumables.mjs";
 import {
   SETTINGS, chatCompletionsUrl, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
   isOfficialOpenAIEndpoint, modelsUrl, resolveProviderModel
@@ -845,7 +846,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
  */
 export async function selectSpellConsumables(brief, { level, kind, candidates = [], count = 6, maxRank = null, signal, onProgress } = {}) {
   const offered = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.id);
-  if (!["scroll", "wand"].includes(kind)) throw new TypeError(`Unknown spell consumable kind: ${String(kind)}`);
+  if (!["scroll", "wand", "cantripDeck"].includes(kind)) throw new TypeError(`Unknown spell consumable kind: ${String(kind)}`);
   const maximum = Number.isInteger(count) && count > 0 ? count : 6;
   const kindCeiling = kind === "wand" ? 9 : 10;
   const ceiling = Number.isInteger(maxRank) && maxRank >= 1 ? Math.min(maxRank, kindCeiling) : kindCeiling;
@@ -854,14 +855,16 @@ export async function selectSpellConsumables(brief, { level, kind, candidates = 
 
   const list = offered.map((candidate) => {
     const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
-    return `${candidate.id} | ${candidate.name} | base rank ${candidate.rank}${traits}`;
+    return kind === "cantripDeck" ? `${candidate.id} | ${candidate.name} | traits: ${(candidate.traits ?? []).join(", ")}` : `${candidate.id} | ${candidate.name} | base rank ${candidate.rank}${traits}`;
   }).join("\n");
 
-  const system = `You are choosing spells for a Pathfinder 2e ${kind} that a GM is forging. Each pick is one ${kind} of a spell from the list, cast at a rank. Choose ONLY spell IDs from the provided list. Respond with a single JSON object and nothing else:
+  const system = kind === "cantripDeck" ? `Choose ONLY spell IDs from the provided list for cantrip decks. Respond with a single JSON object:
+{ "picks": [ { "spellId": string } ] }
+Return at most ${maximum} picks. Do not emit ranks, prices, item levels, DCs, damage or any other number. Never write code. Return an empty "picks" array when nothing fits.` : `You are choosing spells for a Pathfinder 2e ${kind} that a GM is forging. Each pick is one ${kind} of a spell from the list, cast at a rank. Choose ONLY spell IDs from the provided list. Respond with a single JSON object and nothing else:
 { "picks": [ { "spellId": string, "rank": integer, "kind": "${kind}" } ] }
 Return at most ${maximum} picks. "rank" is a whole number from the base rank of that spell up to ${ceiling}. Do not emit any prices, item levels, DCs, damage, or other numbers beyond the rank: the module supplies every other value. Never write code. Return an empty "picks" array when nothing in the list fits the brief.`;
 
-  const user = [
+  const user = kind === "cantripDeck" ? [`GM brief: ${String(brief ?? "")}`, "Available spells (ID | name | traits):", list].join("\n") : [
     `Item kind: ${kind}`,
     `Item level: ${level}`,
     `Highest rank allowed: ${ceiling}`,
@@ -883,11 +886,11 @@ Return at most ${maximum} picks. "rank" is a whole number from the base rank of 
       console.warn("simplypf2e | dropped spell consumable pick with an unknown spell id", pick?.spellId);
       continue;
     }
-    if (!Number.isInteger(pick.rank) || pick.rank < 1 || pick.rank > 10) {
+    if (kind !== "cantripDeck" && (!Number.isInteger(pick.rank) || pick.rank < 1 || pick.rank > 10)) {
       console.warn("simplypf2e | dropped spell consumable pick with a non-integer or out-of-range rank", candidate.name, pick.rank);
       continue;
     }
-    picks.push({ spellId: candidate.id, name: candidate.name, rank: pick.rank, kind, candidate });
+    picks.push({ spellId: candidate.id, name: candidate.name, rank: kind === "cantripDeck" ? CANTRIP_DECK_RANK : pick.rank, kind, candidate });
   }
   return { picks, usage };
 }

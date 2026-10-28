@@ -521,6 +521,10 @@
       "Consumables": {
         "PromptLabel": "Describe the spells to inscribe",
         "PromptPlaceholder": "e.g. Fire and healing spells for a battlefield medic, up to six scrolls",
+        "KindCantripDeck": "Cantrip deck",
+        "KindCantripDeckHint": "Five cards of one real common cantrip",
+        "NoCantripCandidates": "No common cantrips are available in enabled spell packs.",
+        "DeckNote": "A cantrip deck casts its cantrip as a 1st-rank spell; as in pf2e, the spell is not embedded.",
         "KindScroll": "Scroll",
         "KindScrollHint": "Real spells cast from a scroll at a chosen rank",
         "KindWand": "Wand",
