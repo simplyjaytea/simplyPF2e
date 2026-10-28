@@ -508,7 +508,7 @@ export class GeneratorApp extends SpfApp {
       ...catalogs,
       heritage: await this.#pcEligibleHeritages(catalogs.heritage ?? [], plan.resolved.ancestryDoc),
       equipment: (await getEquipmentCandidates(plan.concept.level)) ?? [],
-      editableClass: editableClassCandidates(offeredClass, classDocsByKey, pcIdentityKey(plan.concept.classCandidate))
+      editableClass: editableClassCandidates(offeredClass, classDocsByKey, pcIdentityKey({ ref: plan.concept.classCandidate }))
     };
   }
 
