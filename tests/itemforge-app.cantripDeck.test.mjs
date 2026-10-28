@@ -172,7 +172,10 @@ assert.equal(prepared.preview.items[0].name, "Cantrip Deck of Light (5-pack)");
 assert.equal(prepared.showDestination, false);
 assert.equal(prepared.isCantripDeck, true);
 const template = readFileSync(new URL("../templates/itemforge.hbs", import.meta.url), "utf8");
-assert.match(template, /\{\{#unless isCantripDeck\}\}[\s\S]*?name="level"[\s\S]*?name="rarity"[\s\S]*?\{\{\/unless\}\}/);
+const deckBlock = template.match(/\{\{#unless isCantripDeck\}\}((?:(?!\{\{\/?unless)[\s\S])*)\{\{\/unless\}\}/);
+assert.ok(deckBlock, "the deck condition has a closing block");
+assert.match(deckBlock[1], /name="level"/);
+assert.match(deckBlock[1], /name="rarity"/);
 assert.equal(prepared.preview.isCantripDeck, true);
 assert.equal(createCalls, 0);
 await actions.createItem.call(app);
@@ -191,3 +194,12 @@ assert.equal(gateContext.showDestination, true);
 await actions.generate.call(gated);
 await actions.createItem.call(gated);
 assert.equal(actorSource?.system.details.level.value, 1, "deck loot level comes from its template, not the stale level control");
+
+// A hidden deck rarity control must not erase the previously selected rarity.
+const switching = new App();
+let rarityVisible = true;
+switching.element = { querySelector: (selector) => selector === '[name="rarity"]' && rarityVisible ? { value: "rare" } : null };
+await actions.selectKind.call(switching, null, { dataset: { kind: "cantripDeck" } });
+rarityVisible = false;
+await actions.selectKind.call(switching, null, { dataset: { kind: "scroll" } });
+assert.equal((await switching._prepareContext()).input.rarity, "rare");
