@@ -198,7 +198,7 @@ export class ItemForgeApp extends SpfApp {
     const level = Number.isFinite(rawLevel)
       ? Math.min(max, Math.max(min, Math.round(rawLevel)))
       : this.#input.level;
-    const rarity = form.querySelector('[name="rarity"]')?.value ?? "common";
+    const rarity = form.querySelector('[name="rarity"]')?.value ?? this.#input.rarity;
     // The kind tiles are buttons, so preserve the authoritative selected kind
     // when no form control for it exists in the current render.
     const rawKind = form.querySelector('[name="kind"]:checked')?.value ?? this.#input.kind;
