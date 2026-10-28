@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import vm from "node:vm";
 import * as consumables from "../scripts/spell-consumables.mjs";
 import { priceToGp, toItemData } from "../scripts/compendium.mjs";
+import { buildLootActorSource } from "../scripts/loot-actor.mjs";
 
 if (!vm.SourceTextModule) {
   const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
@@ -69,12 +70,10 @@ const POOL = [
   { id: "c-fire", name: FIREBALL.name, rank: 3, traits: [], rarity: "common" },
   { id: "c-web", name: WEB.name, rank: WEB.system.level.value, traits: [], rarity: "common" }
 ];
-let candidatePool = POOL;
-const candidateCalls = [];
-async function getScrollSpellCandidates(maxRank, keywords, options) {
-  candidateCalls.push({ maxRank, keywords, options });
-  return candidatePool;
-}
+let scrollCalls = 0;
+let cantripCalls = 0;
+async function getScrollSpellCandidates() { scrollCalls++; throw new Error("Decks must not query scroll candidates"); }
+async function getCantripCandidates() { cantripCalls++; return [POOL[0]]; }
 let picksForCall = [];
 const aiCalls = [];
 async function selectSpellConsumables(brief, options) {
@@ -103,13 +102,15 @@ class MockSpfApp {
 let gate = false;
 const mocks = {
   experimentalToolsEnabled: () => gate,
+  assertExperimentalToolAccess: () => { if (!gate) throw new Error("gate closed"); },
+  buildLootActorSource, persistedExpectedItems: async () => [], verifyCreatedActor: () => {}, esc: (s) => s,
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
   AI_TASK: { MAGIC_ITEM_CONCEPT: "magic", RUNED_ITEM_CONCEPT: "runed", SPELL_CONSUMABLE_CONCEPT: "consumable" },
   taskMaxTokens: () => 100,
   RUNED_ITEM_KINDS: new Set(["weapon", "armor"]), MIN_ITEM_LEVEL: 1, MAX_ITEM_LEVEL: 24,
   getProviderRequestConfig: () => ({ provider: {}, connections: [] }),
   getProviderAuthWarningKey: () => null,
-  getScrollSpellCandidates, getCantripCandidates: async () => [POOL[0]], getCandidateDocument, selectSpellConsumables, toItemData, priceToGp,
+  getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, selectSpellConsumables, toItemData, priceToGp,
   spellConsumableTemplateUuid: consumables.spellConsumableTemplateUuid,
   spellConsumableRankProblem: consumables.spellConsumableRankProblem,
   buildSpellConsumable: consumables.buildSpellConsumable,
@@ -121,6 +122,7 @@ let forgeKind = "scroll";
 let forgeLevel = "5";
 const notices = [];
 const warnings = [];
+let actorSource = null;
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
   game: { i18n: { localize: (key) => key, format: (key, data) => key + ":" + JSON.stringify(data ?? {}) } },
@@ -130,6 +132,7 @@ const context = vm.createContext({
     createdWith = sources;
     return sources.map((item, index) => ({ id: "item-" + index, name: item.name, sheet: { render: async () => {} } }));
   } },
+  Actor: { create: async (data) => { actorSource = data; return { id: "actor-1", name: data.name, sheet: { render: async () => {} } }; } },
   fromUuid
 });
 const module = new vm.SourceTextModule(source, { context });
@@ -144,11 +147,11 @@ await module.link((specifier) => {
 await module.evaluate();
 const App = module.namespace.ItemForgeApp;
 const actions = App.DEFAULT_OPTIONS.actions;
-function forgeApp() {
+function forgeApp(destination = "items") {
   const instance = new App();
   const controls = {
     prompt: { value: "fire and healing scrolls" }, level: { value: forgeLevel },
-    rarity: { value: "common" }, kind: { value: forgeKind }
+    rarity: { value: "common" }, kind: { value: forgeKind }, destination: { value: destination }
   };
   instance.element = { querySelector: (selector) => controls[selector.match(/name="(\w+)"/)?.[1]] ?? null };
   return instance;
@@ -161,11 +164,15 @@ const app = forgeApp();
 let prepared = await app._prepareContext();
 assert.ok(prepared.consumableKinds.some(k => k.value === "cantripDeck"));
 await actions.generate.call(app);
+assert.equal(scrollCalls, 0);
+assert.equal(cantripCalls, 1);
 prepared = await app._prepareContext();
 assert.equal(prepared.preview.items.length, 1);
 assert.equal(prepared.preview.items[0].name, "Cantrip Deck of Light (5-pack)");
 assert.equal(prepared.showDestination, false);
 assert.equal(prepared.isCantripDeck, true);
+const template = readFileSync(new URL("../templates/itemforge.hbs", import.meta.url), "utf8");
+assert.match(template, /\{\{#unless isCantripDeck\}\}[\s\S]*?name="level"[\s\S]*?name="rarity"[\s\S]*?\{\{\/unless\}\}/);
 assert.equal(prepared.preview.isCantripDeck, true);
 assert.equal(createCalls, 0);
 await actions.createItem.call(app);
@@ -175,7 +182,12 @@ assert.equal(createdWith[0].name, "Cantrip Deck of Light (5-pack)");
 assert.equal("spell" in createdWith[0].system, false);
 
 gate = true;
-const gated = forgeApp();
+forgeLevel = "15";
+const gated = forgeApp("loot");
 await actions.selectKind.call(gated, null, { dataset: { kind: "cantripDeck" } });
 const gateContext = await gated._prepareContext();
 assert.equal(gateContext.showDestination, true);
+
+await actions.generate.call(gated);
+await actions.createItem.call(gated);
+assert.equal(actorSource?.system.details.level.value, 1, "deck loot level comes from its template, not the stale level control");
