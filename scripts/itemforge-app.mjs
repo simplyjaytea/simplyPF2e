@@ -471,7 +471,7 @@ export class ItemForgeApp extends SpfApp {
     return {
       consumable: true,
       isCantripDeck: this.#kind === "cantripDeck",
-      destination: this.#input.destination === "loot" && (experimentalToolsEnabled() || this.#consumables) ? game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DestinationLine") : null,
+      destination: this.#input.destination === "loot" ? game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DestinationLine") : null,
       heading: game.i18n.localize("SIMPLYPF2E.ItemForge.Consumables.PreviewHeading"),
       items: this.#consumables.items.map((item) => ({
         name: item.name,
@@ -544,7 +544,7 @@ export class ItemForgeApp extends SpfApp {
     if (!items.length) {
       throw new Error([game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoPicks", { kind }), ...warnings].join(" "));
     }
-    this.#consumables = { items, warnings, level: this.#input.level };
+    this.#consumables = { items, warnings, level: kind === "cantripDeck" ? Math.max(...items.map((item) => item.level)) : this.#input.level };
     this._throwIfCancelled();
   }
 
