@@ -63,6 +63,23 @@ export const COIN_UUIDS = Object.freeze({
   cp: "Compendium.pf2e.equipment-srd.Item.lzJ8AVhRcbFul5fh",
 });
 
+/** The pack that holds COIN_UUIDS; the only single source of coin ids for builder.mjs too. */
+export const COIN_PACK_ID = "pf2e.equipment-srd";
+
+/**
+ * `{ packId, _id }` for a coin, the form `getDocument` in compendium.mjs takes. Derived from
+ * COIN_UUIDS so the coin ids exist in one place. Throws for anything that is not a coin.
+ */
+export function coinEntry(denomination) {
+  if (!Object.hasOwn(COIN_UUIDS, denomination)) {
+    throw new Error(`"${denomination}" is not a coin denomination (pp, gp, sp, cp)`);
+  }
+  const prefix = `Compendium.${COIN_PACK_ID}.Item.`;
+  const uuid = COIN_UUIDS[denomination];
+  if (!uuid.startsWith(prefix)) throw new Error(`Coin UUID for ${denomination} is not in ${COIN_PACK_ID}`);
+  return { packId: COIN_PACK_ID, _id: uuid.slice(prefix.length) };
+}
+
 /** Plan 3.3.4: the GM-typed container name is trimmed and capped at this length. */
 export const LOOT_NAME_MAX = 100;
 

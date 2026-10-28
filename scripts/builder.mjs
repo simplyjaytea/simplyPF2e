@@ -3,6 +3,7 @@ import { getPacksFor, findEntry, getDocument, toItemData, priceToGp, isIssuedCan
 import { slugify, capitalized, esc, toHtml } from "./text.mjs";
 import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
 import { persistedExpectedItems } from "./post-create.mjs";
+import { coinEntry } from "./loot-actor.mjs";
 import { buildSpellConsumable, spellConsumableTemplateRef } from "./spell-consumables.mjs";
 import {
   resolveNpcAbilityPackages, revalidateNpcAbilityPackages, npcPackageUnarmedStrike,
@@ -427,16 +428,6 @@ const COIN_DENOMINATION = {
   "Copper Pieces": "cp"
 };
 const COIN_UNIT_GP = { "Platinum Pieces": 10, "Gold Pieces": 1, "Silver Pieces": 0.1, "Copper Pieces": 0.01 };
-/* PF2e 8.4.1 ActorInventory.addCurrency `coinCompendiumUuids`
- * (src/module/actor/inventory/index.ts). Same documents the sheet uses for
- * currency. Do not invent coin item data; clone these or an exact-name match. */
-const COIN_COMPENDIUM_IDS = {
-  pp: "JuNPeK5Qm1w6wpb4",
-  gp: "B6B7tBWJSqOBz5zz",
-  sp: "5Ew82vBF9YfaiY9f",
-  cp: "lzJ8AVhRcbFul5fh"
-};
-const OFFICIAL_COIN_PACK = "pf2e.equipment-srd";
 
 /**
  * Recognize coin loot like "Gold Coins", "150 gold pieces" or "20 gp" and map
@@ -484,7 +475,7 @@ async function resolveCoinage(canonicalName) {
     return { entry, resolvedValue: gp > 0 ? gp : (COIN_UNIT_GP[canonicalName] ?? 0) };
   };
   try {
-    const official = await accept({ packId: OFFICIAL_COIN_PACK, _id: COIN_COMPENDIUM_IDS[denom] });
+    const official = await accept(coinEntry(denom));
     if (official) return official;
   } catch (err) {
     console.warn("simplypf2e | official coinage document lookup failed", err);
