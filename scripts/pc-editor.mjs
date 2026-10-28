@@ -17,7 +17,7 @@
  * { field: "classPath", bridge, key } of pc-edit.mjs. The current selection of
  * a bridge comes from concept.classPathCandidates[bridge].
  */
-import { PC_EDIT_CODES } from "./pc-edit.mjs";
+import { PC_EDIT_CODES, classCastsSpells } from "./pc-edit.mjs";
 import { pcIdentityKey } from "./pc-identity.mjs";
 
 const NULLABLE = new Set(["heritage", "classPath"]);
@@ -94,6 +94,21 @@ export function pcEditorSelections(plan) {
     selections[`equipment.${index}`] = keyOf(line?.entry);
   });
   return selections;
+}
+
+/**
+ * Class candidates the editor's class control offers: a candidate whose class
+ * document is loaded (`classDocsByKey`, a Map keyed by pcIdentityKey) and does
+ * not cast spells. The current class is kept whatever it is, so a chosen
+ * caster stays visible. pc-edit.mjs refuses a caster edit as well.
+ */
+export function editableClassCandidates(candidates, classDocsByKey, currentKey) {
+  return (Array.isArray(candidates) ? candidates : []).filter((candidate) => {
+    const key = pcIdentityKey(candidate);
+    if (key === currentKey) return true;
+    const doc = classDocsByKey?.get(key);
+    return Boolean(doc) && !classCastsSpells(doc);
+  });
 }
 
 /** Editor control names whose drafts are stale after these invalidations. */

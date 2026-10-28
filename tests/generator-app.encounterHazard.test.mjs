@@ -121,7 +121,8 @@ const npcCreate = async (concept) => {
   return { actor: { id: `npc-${counts.npcCreates}`, name: concept.name, type: "npc", update: async () => {}, delete: async () => {} }, expectedItems: [] };
 };
 const mocks = {
-  SpfApp: RealSpfApp, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "free" }, AI_TASK: {}, taskMaxTokens: () => 100,
+  SpfApp: RealSpfApp, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "free" }, AI_TASK: { HAZARD_CONCEPT: "hazardConcept" },
+  taskMaxTokens: (task) => (task === "hazardConcept" ? 2000 : 100),
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null, authorizeApiKeyForCurrentBaseUrl: async () => {},
   getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "", presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),
   randomBrief: () => "random", sourceReadiness: () => ({ ready: true }), createProgress: progress.createProgress,
@@ -243,6 +244,8 @@ const boss = (level) => ({ role: "boss", level, count: 1, xpEach: 60 });
   assert.equal(members[1].hazard.concept.name, "Scything Pressure Plate", "the hazard member carries its reviewed concept");
   assert.deepEqual(plain(app._progress.steps).map((step) => step.key), ["design", "member0", "member1", "member2", "match"],
     "the progress plan follows the composed members");
+  assert.deepEqual(plain(app._progress.steps).map((step) => step.weight), [100, 600, 2000, 600, 1600],
+    "the hazard member is weighted by the hazard token cap; creature members keep the creature sum");
   assert.ok(app._progress.steps.every((step) => step.state === "done"), "no declared step is left pending");
 
   // The preview row for the hazard member is built from the reviewed concept; no NPC stat block is used for it.
@@ -287,6 +290,7 @@ const boss = (level) => ({ role: "boss", level, count: 1, xpEach: 60 });
   assert.ok(warnings.some((line) => /hazard dropped/.test(line)), "the mismatch is reported with a warning");
   assert.deepEqual(plain(app._progress.steps).map((step) => step.key), ["design", "member0", "member1", "match"],
     "the progress plan is rebuilt for the two members");
+  assert.deepEqual(plain(app._progress.steps).map((step) => step.weight), [100, 600, 600, 1600], "both creature members keep the creature sum");
   assert.ok(app._progress.steps.every((step) => step.state === "done"));
   const outcome = await app._test_createEncounterActors();
   assert.equal(outcome, "success");

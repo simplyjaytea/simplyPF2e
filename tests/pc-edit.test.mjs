@@ -240,6 +240,15 @@ async function expectCode(promise, code) {
   assert.equal(rogueEdit.plan.resolved.classDoc.name, "Rogue", "a class without spellcasting still edits");
 }
 
+// The caster test the editor's class control shares: real Wizard data (spellcasting 1)
+// casts, real Fighter data (spellcasting 0) does not.
+{
+  const { classCastsSpells } = await import("../scripts/pc-edit.mjs");
+  const { load } = await import("./fixtures/pc-wizard/world.mjs");
+  assert.equal(classCastsSpells(await load("wizard")), true);
+  assert.equal(classCastsSpells(await load("precedent/fighter-class")), false);
+}
+
 // A bridge-less clear removes every path choice, in the concept and in the required
 // identity alike (it used to wipe the required map and leave the school and thesis).
 {

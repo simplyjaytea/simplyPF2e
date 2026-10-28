@@ -72,7 +72,7 @@ const ABILITIES = Object.freeze(["str", "dex", "con", "int", "wis", "cha"]);
 const SPELL_FIELDS = Object.freeze(["spells", "focusSpells", "spellcasting"]);
 
 /** Whether a class document casts spells: a modeled casting profile, or any spell proficiency in the class data. */
-function castsSpells(classDoc) {
+export function classCastsSpells(classDoc) {
   return Boolean(pcSpellcastingProfile(classDoc)) || Number(classDoc?.system?.spellcasting) > 0;
 }
 
@@ -351,7 +351,7 @@ async function applyCatalogEdit(next, edit, catalogs, deps, changed, invalidated
       }
       // Spell editing does not exist yet, so a class that casts would leave a
       // caster with no spells and a plan that still reads as complete.
-      if (field === "class" && castsSpells(doc)) {
+      if (field === "class" && classCastsSpells(doc)) {
         fail(PC_EDIT_CODES.DEFERRED, field, `"${chosen.name}" casts spells; spell editing is deferred, so the class cannot change to a spellcasting class`);
       }
     }
