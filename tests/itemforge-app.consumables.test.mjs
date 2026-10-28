@@ -255,3 +255,5 @@ assert.ok(prepared.preview.warnings.some((warning) => warning.includes("SpellMis
 assert.ok(prepared.preview.warnings.some((warning) => warning.includes("TemplateMissing") && warning.includes("Scroll of Heal (Rank 3)")));
 
 console.log("itemforge-app.consumables.test.mjs: real template build, per-pick drops, level cap, wand and plan refusals, deferred write and commit passed");
+
+assert.ok(prepared.preview.warnings.some((warning) => warning.includes("TemplateMissing") && !warning.includes("DroppedPick")), "the missing template is labeled TemplateMissing, not DroppedPick");
