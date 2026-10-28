@@ -40,14 +40,17 @@ const features = await Promise.all([
 ].map(load));
 const forceBolt = await load("force-bolt");
 const energyAbsorption = await load("energy-absorption");
+const charmingPush = await load("charming-push");
 // Two closed schools (Battle Magic and Mentalism) are the fixtures the module can stage at 8.5.0.
-const world = makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt, energyAbsorption] });
+const world = makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt, energyAbsorption, charmingPush] });
 worlds.use(world);
 
 const wizardCandidate = issueCandidate(
   { packId: "pf2e.classes", _id: wizard._id, type: "class", name: "Wizard" },
   { name: "Wizard", uuid: `Compendium.pf2e.classes.Item.${wizard._id}` }
 );
+// The School of Mentalism candidate, as the identity catalog issues it, for the school-swap edit.
+const mentalismCandidate = (await getClassPathCandidates(structuredClone(wizard))).find((candidate) => candidate.name === "School of Mentalism");
 const wizardDoc = {
   name: "Wizard", type: "class", uuid: `Compendium.pf2e.classes.Item.${wizard._id}`, system: wizard.system,
   toObject: () => structuredClone(wizard)
@@ -57,6 +60,7 @@ const wizardDoc = {
 let promptText = "A scholar";
 let previewFails = false;
 let editRebuildsDraft = false;
+let editSwapsSchool = false;
 const warnings = [];
 const notices = [];
 
@@ -120,7 +124,16 @@ const mocks = {
   createCharacterActor: async () => ({ actor: null, skillReport: null }),
   validatePCEditCompletion: () => ({ complete: true, pending: [], errors: [], unresolved: [], manifest: {} }),
   // An edit that rebuilds the draft as a new object, as a feat or class-path swap does.
-  applyPCEdit: async (plan) => ({ plan: editRebuildsDraft ? { ...plan, resolved: { ...plan.resolved } } : plan, changed: [], invalidated: [], equipmentGp: 0 }),
+  // An edit that rebuilds the draft as a new object, as a feat or class-path swap does. A school swap rebinds the
+  // identity's Arcane School candidate to another school.
+  applyPCEdit: async (plan) => {
+    if (editSwapsSchool) {
+      const concept = { ...plan.concept, requiredIdentity: { ...plan.concept.requiredIdentity, classPaths: { "Arcane School": mentalismCandidate } } };
+      return { plan: { ...plan, concept, resolved: { ...plan.resolved } }, changed: ["classPath"], invalidated: [], equipmentGp: 0 };
+    }
+    return { plan: editRebuildsDraft ? { ...plan, resolved: { ...plan.resolved } } : plan, changed: [], invalidated: [], equipmentGp: 0 };
+  },
+  editableClassCandidates: () => [],
   pcEditFromControl: (control, value) => ({ control, value }),
   pcEditorSelections: () => ({}), pcEditorInvalidatedControls: () => [],
   heritageMatchesAncestry: () => true,
@@ -170,7 +183,8 @@ const schoolLines = (app) => (app.context.pcPreview.schoolSpells ? Array.from(ap
   assert.deepEqual(schoolLines(atCreate), ["SIMPLYPF2E.Preview.SchoolSpellAtCreate"], "the preview says the school is chosen at Create");
 }
 
-// (d) A PC editor edit that rebuilds the draft keeps the school-spell line for the edited draft.
+// (d) A PC editor edit that rebuilds the draft runs the real edit path and keeps the school-spell line for the
+// edited draft. The notice is the editor's own outcome: the edit was applied and nothing changed.
 {
   const edited = await generate("Class: Wizard\nSchool: School of Battle Magic");
   editRebuildsDraft = true;
@@ -178,9 +192,21 @@ const schoolLines = (app) => (app.context.pcPreview.schoolSpells ? Array.from(ap
   editRebuildsDraft = false;
   // Render the edited draft fresh, rather than trusting the context captured before the edit.
   const afterEdit = await edited._prepareContext();
-  assert.equal(edited.context.pcEditError ?? null, null, "the edit is applied");
+  assert.equal(afterEdit.pcEditor?.notice, "SIMPLYPF2E.PCEdit.Unchanged", "the editor reports the edit as applied");
   assert.deepEqual(Array.from(afterEdit.pcPreview.schoolSpells.lines), [`SIMPLYPF2E.Preview.SchoolSpell ${JSON.stringify({ school: "School of Battle Magic", spell: "Force Bolt" })}`],
     "the edited draft still shows its school spell");
+}
+
+// (e) An editor edit that swaps the Arcane School shows the new school's spell, so the preview follows the draft.
+{
+  const edited = await generate("Class: Wizard\nSchool: School of Battle Magic");
+  editSwapsSchool = true;
+  await actions.applyPCEdit.call(edited, null, { dataset: { control: "classPath" } });
+  editSwapsSchool = false;
+  const afterEdit = await edited._prepareContext();
+  assert.equal(afterEdit.pcEditor?.notice, "SIMPLYPF2E.PCEdit.Applied", "the swap is reported as applied");
+  assert.deepEqual(Array.from(afterEdit.pcPreview.schoolSpells.lines), [`SIMPLYPF2E.Preview.SchoolSpell ${JSON.stringify({ school: "School of Mentalism", spell: "Charming Push" })}`],
+    "the swapped school's spell is shown, not the old one");
 }
 
 // (c) A preview that throws warns and shows no school line, and the run still completes (advisory, fail closed).
