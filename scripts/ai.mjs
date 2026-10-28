@@ -979,6 +979,67 @@ Each slot appears at most once. A spell's base rank must be at or below its slot
   return { picks, dropped, usage };
 }
 
+const parcelPermanentsProblem = (data) => {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "root must be a JSON object";
+  return Array.isArray(data.picks) ? null : "missing or non-array field: picks";
+};
+
+/**
+ * Pick one offered permanent item (published equipment or a generic wand) for each module-issued
+ * permanent slot. The model sees slot IDs with their allowed item levels and the candidate IDs with
+ * their item level and kind, and returns only { slot, candidate } strings. The module supplies every
+ * level, price, rank and quantity; treasure-permanent.mjs decides whether a pick is valid.
+ *
+ * Unknown slot IDs are dropped here. Unoffered candidates, wrong levels and duplicates are dropped by
+ * assignPermanentPicks.
+ * @returns {Promise<{picks: {slotId: string, candidateId: string}[], dropped: object[], usage: object|null}>}
+ */
+export async function selectParcelPermanents(brief, { partyLevel, slots, candidates = [], signal, onProgress } = {}) {
+  const offered = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.id);
+  const issued = (Array.isArray(slots) ? slots : []).filter((slot) => slot?.id && Array.isArray(slot.allowedLevels));
+  if (!offered.length || !issued.length) return { picks: [], dropped: [], usage: null };
+
+  const slotList = issued.map((slot) => `${slot.id} | item level ${slot.allowedLevels.join(" or ")}`).join("\n");
+  const list = offered.map((candidate) => {
+    const kind = candidate.kind === "wand" ? `wand, rank ${candidate.rank}` : "equipment";
+    const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
+    return `${candidate.id} | ${candidate.name} | item level ${candidate.level} | ${kind}${traits}`;
+  }).join("\n");
+
+  const system = `You are choosing permanent magic items for a Pathfinder 2e treasure parcel. Each issued slot holds one item whose item level is one of the slot's allowed levels. Choose ONLY slot IDs and candidate IDs from the provided lists. Respond with a single JSON object and nothing else:
+{ "picks": [ { "slot": string, "candidate": string } ] }
+Each slot appears at most once. A candidate's item level must be one of its slot's allowed levels. Omit a slot when nothing in the list fits the brief. Do not emit prices, levels, ranks, quantities or any other number; the module supplies them. Never write code.`;
+
+  const user = [
+    `Party level: ${partyLevel}`,
+    `GM brief: ${String(brief ?? "")}`,
+    "",
+    "Permanent slots (slot ID | allowed item level):",
+    slotList,
+    "",
+    "Available items (ID | name | item level | kind, traits):",
+    list
+  ].join("\n");
+
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.TREASURE_PARCEL_PERMANENTS, system, user, validate: parcelPermanentsProblem, onProgress, signal
+  });
+  const slotIds = new Set(issued.map((slot) => slot.id));
+  const picks = [];
+  const dropped = [];
+  for (const pick of parsed.picks) {
+    if (picks.length >= issued.length) break;
+    const slotId = String(pick?.slot ?? "");
+    if (!slotIds.has(slotId)) {
+      console.warn("simplypf2e | dropped permanent parcel pick with an unknown slot id", pick?.slot);
+      dropped.push({ reason: "unknown-slot", slotId: slotId.slice(0, PARCEL_DROP_ID_MAX) });
+      continue;
+    }
+    picks.push({ slotId, candidateId: String(pick?.candidate ?? "") });
+  }
+  return { picks, dropped, usage };
+}
+
 /**
  * Ground a PC's first-draft ancestry/heritage/background/class against the
  * real compendium lists in ONE call — the ABC counterpart of selectSpells/

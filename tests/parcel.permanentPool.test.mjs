@@ -1,0 +1,145 @@
+// The permanent-slot pools and the valuable search, against a stubbed compendium of real pf2e 8.5.0
+// documents (tests/fixtures/parcel). Index entries carry only the fields the module requests, and a
+// document load goes through getDocument, as Foundry does.
+// Run: node tests/parcel.permanentPool.test.mjs
+import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import {
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates, pickParcelValuable,
+  getCandidateDocument
+} from "../scripts/compendium.mjs";
+import { PERMANENT_REASON } from "../scripts/treasure-permanent.mjs";
+
+const DIR = new URL("./fixtures/parcel/", import.meta.url);
+const fixture = (name) => JSON.parse(readFileSync(new URL(`${name}.json`, DIR), "utf8"));
+const EQUIPMENT_FIXTURES = ["magical-hearing-aid", "cube-of-recall", "aerial-cloak", "bracers-of-missile-deflection",
+  "abysium-chunk", "flaming", "wand-of-mercy-1st-rank", "poisonous-cloak-type-i", "taletellers-ring", "magic-wand-1st-rank-spell"];
+
+/** A pack stub: index entries shaped as getEquipmentIndex asks, and documents with toObject. */
+function makePack(packId, raws, { loads } = {}) {
+  const docs = new Map(raws.map((raw) => [raw._id, raw]));
+  return {
+    metadata: { type: "Item" },
+    async getIndex({ fields }) {
+      return raws.map((raw) => ({
+        _id: raw._id, name: raw.name, type: raw.type,
+        system: {
+          level: { value: raw.system.level?.value },
+          price: { value: raw.system.price?.value },
+          usage: { value: raw.system.usage?.value },
+          traits: { value: raw.system.traits?.value, rarity: raw.system.traits?.rarity },
+          category: raw.system.category,
+          specific: raw.system.specific
+        },
+        fields
+      }));
+    },
+    async getDocument(_id) {
+      if (loads) loads.count += 1;
+      const raw = docs.get(_id);
+      if (!raw) return null;
+      return { uuid: `Compendium.${packId}.Item.${_id}`, name: raw.name, type: raw.type, toObject: () => structuredClone(raw) };
+    }
+  };
+}
+
+const equipmentRaws = EQUIPMENT_FIXTURES.map(fixture);
+const valuableRaws = [fixture("agate"), fixture("silk-ceremonial-armor")];
+const spellRaws = [
+  { _id: "fireball0000000", name: "Fireball", type: "spell", system: { level: { value: 3 }, traits: { value: ["evocation", "fire"], rarity: "common" }, ritual: null } },
+  { _id: "light00000000000", name: "Light", type: "spell", system: { level: { value: 0 }, traits: { value: ["cantrip", "light"], rarity: "common" }, ritual: null } }
+];
+
+const loads = { count: 0 };
+const packs = new Map([
+  ["pf2e.equipment-srd", makePack("pf2e.equipment-srd", [...equipmentRaws, ...valuableRaws], { loads })],
+  ["pf2e.spells-srd", makePack("pf2e.spells-srd", spellRaws)]
+]);
+globalThis.game = {
+  settings: { get: () => undefined },
+  i18n: { localize: (key) => key },
+  packs: { get: (id) => packs.get(id) }
+};
+
+// Permanent equipment at each level: the index filter, then the Rule Elements check on the full document.
+const level1 = await getPermanentEquipmentCandidates(1, [], { maxRarity: "common" });
+assert.deepEqual(level1.map((candidate) => candidate.name), ["Magical Hearing Aid"], "one eligible item at level 1");
+assert.equal(level1[0].kind, "equipment");
+assert.equal(level1[0].level, 1);
+assert.match(level1[0].id, /^c-/, "offered as an opaque issued id, not a name or raw document id");
+
+const level3 = await getPermanentEquipmentCandidates(3, ["cloak"], { maxRarity: "common" });
+assert.deepEqual(level3.map((candidate) => candidate.name), ["Bracers of Missile Deflection"],
+  "the cloak matches the brief but carries Rule Elements, so it is never offered; the bracers remain");
+
+const level19 = await getPermanentEquipmentCandidates(19, [], { maxRarity: "common" });
+assert.deepEqual(level19.map((candidate) => candidate.name), ["Cube of Recall"]);
+
+const level2 = await getPermanentEquipmentCandidates(2, [], { maxRarity: "common" });
+assert.deepEqual(level2, [], "no published item at level 2 in this stub");
+
+// A distinct id resolves to exactly its own document; an issued candidate round-trips.
+const doc = await getCandidateDocument(level1[0]);
+assert.equal(doc.name, "Magical Hearing Aid");
+assert.equal(await getCandidateDocument({ ref: { packId: "pf2e.equipment-srd", _id: "forged" } }), null,
+  "a reference this run did not issue never resolves");
+
+// Bounded loads: a limit of one loads at most three documents for that level.
+loads.count = 0;
+await getPermanentEquipmentCandidates(3, ["cloak"], { maxRarity: "common", limit: 1 });
+assert.ok(loads.count <= 3, `loads are bounded (saw ${loads.count})`);
+
+// Generic wands: one per spell of exactly the wand's rank, at level 2r+1; cantrips never appear.
+// Level 7 is rank 3: the stub's Fireball is the one rank-3 spell.
+const wandAtRank3 = await getParcelWandCandidates(7, [], { maxRarity: "common" });
+assert.equal(wandAtRank3.length, 1, "level 7 is rank 3: Fireball");
+assert.deepEqual([wandAtRank3[0].name, wandAtRank3[0].level, wandAtRank3[0].rank, wandAtRank3[0].kind],
+  ["Fireball", 7, 3, "wand"], "a wand candidate carries the spell, its level and its rank");
+assert.equal(wandAtRank3[0].spell.name, "Fireball", "the wand names its issued spell candidate");
+assert.deepEqual(await getParcelWandCandidates(2, []), []);
+assert.deepEqual(await getParcelWandCandidates(21, []), []);
+const cantripsInPool = (await getParcelWandCandidates(1, [])).map((candidate) => candidate.name);
+assert.ok(!cantripsInPool.some((name) => name === "Light"), "cantrips are never wand spells");
+
+// Valuables from the SRD pack: gems and art objects only, ranked by the brief, exact copper.
+const pool = await getValuableCandidates(["silk"], { maxRarity: "common" });
+assert.equal(pool.available, true);
+assert.deepEqual(pool.candidates.map((candidate) => [candidate.name, candidate.copper]), [
+  ["Silk ceremonial armor", 1000], ["Agate", 50]
+], "the brief ranks silk first; each valuable has its exact copper value");
+
+const exact = await pickParcelValuable(pool.candidates, 1000, "common");
+assert.equal(exact.source.name, "Silk ceremonial armor", "a valuable exactly equal to the currency is allowed");
+assert.equal(exact.copper, 1000);
+assert.equal(exact.source.system.quantity, 1, "a valuable is always one item");
+
+const tooExpensive = await pickParcelValuable(pool.candidates, 40, "common");
+assert.equal(tooExpensive.reason, "too-expensive", "nothing fits a 40 cp currency");
+assert.equal(tooExpensive.source, undefined);
+
+const none = await pickParcelValuable([], 4000, "common");
+assert.equal(none.reason, "none-offered", "an empty ranking is reported as none offered, not as an error");
+
+// If the first fitting valuable cannot be loaded, the search goes on to the next one, deterministically.
+const originalGetDocument = packs.get("pf2e.equipment-srd").getDocument;
+packs.get("pf2e.equipment-srd").getDocument = async (_id) => (_id === fixture("silk-ceremonial-armor")._id ? null : originalGetDocument(_id));
+const fallback = await pickParcelValuable(pool.candidates, 4000, "common");
+assert.equal(fallback.source.name, "Agate", "an unloadable valuable falls through to the next fitting one");
+packs.get("pf2e.equipment-srd").getDocument = originalGetDocument;
+
+// The valuable pack is missing: the search says so, so the preview can say why.
+packs.delete("pf2e.equipment-srd");
+const missing = await getValuableCandidates([], { maxRarity: "common" });
+assert.deepEqual([missing.available, missing.candidates.length], [false, 0]);
+packs.set("pf2e.equipment-srd", makePack("pf2e.equipment-srd", [...equipmentRaws, ...valuableRaws]));
+
+// The reason codes used by the assignment match the stable constants.
+assert.equal(PERMANENT_REASON.NO_CANDIDATES, "no-candidates");
+
+// Every equipment fixture on disk is either used above or deliberately left to its unit test.
+const used = new Set([...EQUIPMENT_FIXTURES, "agate", "silk-ceremonial-armor", "abysium-chunk"]);
+for (const file of readdirSync(DIR).filter((name) => name.endsWith(".json"))) {
+  assert.ok(used.has(file.replace(/\.json$/, "")), `${file} is used by a test`);
+}
+
+console.log("parcel.permanentPool.test.mjs: equipment and wand pools, bounded loads, and valuable selection against real fixtures passed");
