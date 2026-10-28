@@ -1,12 +1,12 @@
 import * as T from "./tables.mjs";
-import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates, isIssuedCandidate } from "./compendium.mjs";
+import { findEntry, getCandidateDocument, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates, isIssuedCandidate } from "./compendium.mjs";
 import {
   parseCoins, resolveLoot, resolveEquipment, resolveFocusSpells,
   buildEquipmentItems, buildLootItems, filterItemTypes, heightenedLevelFor
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { multiclassAbilityBlocker, multiclassCatalogNames, multiclassFeatInfo, multiclassPickBlocker } from "./pc-multiclass.mjs";
-import { isArcaneSchoolSource, schoolInitialSpellLink } from "./school-spells.mjs";
+import { isAdvancedSchoolSpellFeat, isArcaneSchoolSource, schoolAdvancedSpellLink, schoolInitialSpellLink } from "./school-spells.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
@@ -870,8 +870,8 @@ async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility, 
   await preselectChoiceSets(itemSources, context, config, loadItemSource, selectChoices);
 }
 
-/** Resolve only the staged school's initial spell, failing closed. */
-async function resolveSchoolFocusSpell(expectedPaths) {
+/** The staged arcane school's source, or null. Warns and returns null when it is ambiguous or unloadable. */
+async function stagedArcaneSchool(expectedPaths) {
   const schools = [];
   for (const path of expectedPaths ?? []) {
     let source;
@@ -884,21 +884,90 @@ async function resolveSchoolFocusSpell(expectedPaths) {
     if (isArcaneSchoolSource(source)) schools.push(source);
   }
   if (!schools.length) return null;
-  const names = schools.map((school) => school.name ?? "unknown school").join(", ");
+  if (schools.length !== 1) {
+    const names = schools.map((school) => school.name ?? "unknown school").join(", ");
+    console.warn(`simplypf2e | ${names}: multiple arcane schools; school spell skipped`);
+    return null;
+  }
+  return schools[0];
+}
+
+/**
+ * Resolve the staged school's focus spells, failing closed: the initial spell always, and the advanced
+ * spell only when `advanced` is set (the Advanced School Spell feat is built). Each failure warns and skips
+ * that spell alone. Returns item data, initial first.
+ */
+async function resolveSchoolSpells(expectedPaths, { advanced = false } = {}) {
+  const school = await stagedArcaneSchool(expectedPaths);
+  if (!school) return [];
+  const names = school.name ?? "unknown school";
   const reject = (reason) => { console.warn(`simplypf2e | ${names}: ${reason}`); return null; };
-  if (schools.length !== 1) return reject("multiple arcane schools; school spell skipped");
-  const link = schoolInitialSpellLink(schools[0].system?.description?.value);
-  if (!link) return reject("initial school spell link is missing or ambiguous");
+  const spells = [];
+  for (const [label, parse] of advanced ? [["initial", schoolInitialSpellLink], ["advanced", schoolAdvancedSpellLink]]
+    : [["initial", schoolInitialSpellLink]]) {
+    const spell = await schoolSpellItem(school.system?.description?.value, label, parse, reject);
+    if (spell) spells.push(spell);
+  }
+  return spells;
+}
+
+/** One school spell from a description link, loaded and checked as a focus spell in an enabled pack. */
+async function schoolSpellItem(descriptionHtml, label, parse, reject) {
+  const link = parse(descriptionHtml);
+  if (!link) return reject(`${label} school spell link is missing or ambiguous`);
   try {
     const doc = await fromUuid(link.uuid);
     if (!doc || doc.type !== "spell" || !Array.isArray(doc.system?.traits?.value)
       || !doc.system.traits.value.includes("focus") || !getPacksFor("spells").includes(doc.pack)) {
-      return reject("initial school spell is missing, invalid, or in a disabled pack");
+      return reject(`${label} school spell is missing, invalid, or in a disabled pack`);
     }
     return toItemData(doc);
   } catch {
-    return reject("initial school spell could not be loaded");
+    return reject(`${label} school spell could not be loaded`);
   }
+}
+
+/**
+ * The school spells the PC preview shows before Create. The school is `fixed` when the concept names it
+ * (`requiredIdentity.classPaths["Arcane School"]`, a candidate from the identity catalog) or when the class offers
+ * exactly one closed Arcane School candidate, because the chooser then has one answer. Otherwise it is `atCreate`.
+ * Null when there is no Arcane School bridge or no spellcasting. Names only: a spell that does not load shows as
+ * null, never as a guess.
+ */
+export async function previewSchoolSpells(concept, resolved) {
+  if (!concept?.spellcasting || !resolved?.classDoc) return null;
+  const bridged = Object.values(resolved.classDoc.system?.items ?? {}).some((entry) => entry?.name === "Arcane School");
+  if (!bridged) return null;
+  const classData = toItemData(resolved.classDoc);
+  const named = concept.requiredIdentity?.classPaths?.["Arcane School"] ?? null;
+  const offered = named ? [] : (await getClassPathCandidates(classData)).filter((path) => path.bridge === "Arcane School");
+  const school = named ?? (offered.length === 1 ? offered[0] : null);
+  const schoolSource = school ? await candidateSource(school) : null;
+  if (!schoolSource || !isArcaneSchoolSource(schoolSource)) return { atCreate: true };
+  const spellName = async (parse) => {
+    const link = parse(schoolSource.system?.description?.value);
+    if (!link) return null;
+    try {
+      const doc = await fromUuid(link.uuid);
+      return doc?.type === "spell" && doc.system?.traits?.value?.includes("focus") ? doc.name : null;
+    } catch { return null; }
+  };
+  const advanced = (resolved.feats ?? []).some((feat) => isAdvancedSchoolSpellFeat(feat?.entry));
+  return {
+    atCreate: false,
+    school: schoolSource.name ?? "",
+    initial: await spellName(schoolInitialSpellLink),
+    advanced: advanced ? await spellName(schoolAdvancedSpellLink) : null,
+    hasAdvanced: advanced
+  };
+}
+
+/** The source of an issued class-path candidate, loaded through its ref. Null when the ref is not from this run's catalog. */
+async function candidateSource(candidate) {
+  try {
+    const doc = await getCandidateDocument(candidate);
+    return doc?.toObject?.() ?? null;
+  } catch { return null; }
 }
 
 /**
@@ -1111,9 +1180,12 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // then `this.actor.system.resources.focus.max += 1` for each character focus spell.
   // creature/document.ts 491–495 clamps the maximum to its cap of 3.
   // https://raw.githubusercontent.com/foundryvtt/pf2e/pf2e-8.5.0/src/module/item/spell/document.ts
-  const schoolSpell = concept.spellcasting ? await resolveSchoolFocusSpell(stagedClassPaths.expectedPaths) : null;
+  // The advanced school spell is added only when the built PC has the Advanced School Spell feat. pf2e grants
+  // neither spell (school text and feat rules are empty), so the module embeds both, in the same focus entry.
+  const wantsAdvanced = items.some((item) => isAdvancedSchoolSpellFeat(item?._stats?.compendiumSource));
+  const schoolSpells = concept.spellcasting ? await resolveSchoolSpells(stagedClassPaths.expectedPaths, { advanced: wantsAdvanced }) : [];
   let focusPoolSize = 0;
-  if (focusSpells.some((s) => s.entry) || schoolSpell) {
+  if (focusSpells.some((s) => s.entry) || schoolSpells.length) {
     const focusEntryId = foundry.utils.randomID();
     const sources = [];
     const identities = new Set();
@@ -1130,7 +1202,12 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
       if (identity) identities.add(identity);
       sources.push(data);
     }
-    if (schoolSpell && !identities.has(schoolSpell._stats?.compendiumSource)) sources.push(schoolSpell);
+    for (const schoolSpell of schoolSpells) {
+      const identity = schoolSpell._stats?.compendiumSource;
+      if (identity && identities.has(identity)) continue;
+      if (identity) identities.add(identity);
+      sources.push(schoolSpell);
+    }
     focusPoolSize = Math.min(3, sources.filter((source) => {
       const traits = source.system?.traits?.value;
       return Array.isArray(traits) && traits.includes("focus") && !traits.includes("cantrip");

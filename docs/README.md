@@ -6,13 +6,14 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
-| [Acceptance ledger](acceptance-ledger.md) | The single live native-QA ledger (R01–R25 and N01–N15). Rows are updated in place when native evidence lands. |
+| [Acceptance ledger](acceptance-ledger.md) | The single live native-QA ledger (R01–R25 and N01–N18). Rows are updated in place when native evidence lands. |
 
 ## Plans
 
 | Record | Purpose |
 | --- | --- |
 | [Sprint plan, wave 2, October 28](plans/sprint-2026-10-28-wave2.md) | Wizard school focus spell and focus-pool correction, cantrip decks in the Item Forge, and review leftovers |
+| [Wizard v2, October 29](plans/wizard-v2-2026-10-29.md) | Advanced school spell with the level-8 feat, school spell in the PC preview, uncommon cantrip decks; pf2e 8.5.0 quotes and revert checks |
 | [Sprint plan, October 27](plans/sprint-2026-10-27.md) | Loot actor destination and GM Core Treasure parcel in the Item Forge, both behind `experimentalTools` |
 | [Encounter hazard integration, October 27](plans/encounter-hazard-integration-2026-10-27.md) | Accepted design for hazards inside Encounter mode: AI requests none, simple or complex; module chooses level and XP; at most one hazard within the shared budget |
 | [Sprint plan, October 26](plans/sprint-2026-10-26.md) | Six work packages: hygiene tooling, drift check, Wizard class, Hazard generator, scrolls and wands; merge/review/fix ladder |

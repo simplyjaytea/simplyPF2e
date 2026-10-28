@@ -73,7 +73,8 @@ const POOL = [
 let scrollCalls = 0;
 let cantripCalls = 0;
 async function getScrollSpellCandidates() { scrollCalls++; throw new Error("Decks must not query scroll candidates"); }
-async function getCantripCandidates() { cantripCalls++; return [POOL[0]]; }
+let cantripOptions = null;
+async function getCantripCandidates(_keywords, options) { cantripCalls++; cantripOptions = options; return [POOL[0]]; }
 let picksForCall = [];
 const aiCalls = [];
 async function selectSpellConsumables(brief, options) {
@@ -114,7 +115,8 @@ const mocks = {
   spellConsumableTemplateUuid: consumables.spellConsumableTemplateUuid,
   spellConsumableRankProblem: consumables.spellConsumableRankProblem,
   buildSpellConsumable: consumables.buildSpellConsumable,
-  spellConsumableName: consumables.spellConsumableName
+  spellConsumableName: consumables.spellConsumableName,
+  cantripDeckMaxRarity: consumables.cantripDeckMaxRarity
 };
 let createCalls = 0;
 let createdWith = null;
@@ -147,11 +149,12 @@ await module.link((specifier) => {
 await module.evaluate();
 const App = module.namespace.ItemForgeApp;
 const actions = App.DEFAULT_OPTIONS.actions;
+let forgeRarity = "common";
 function forgeApp(destination = "items") {
   const instance = new App();
   const controls = {
     prompt: { value: "fire and healing scrolls" }, level: { value: forgeLevel },
-    rarity: { value: "common" }, kind: { value: forgeKind }, destination: { value: destination }
+    rarity: { value: forgeRarity }, kind: { value: forgeKind }, destination: { value: destination }
   };
   instance.element = { querySelector: (selector) => controls[selector.match(/name="(\w+)"/)?.[1]] ?? null };
   return instance;
@@ -166,6 +169,7 @@ assert.ok(prepared.consumableKinds.some(k => k.value === "cantripDeck"));
 await actions.generate.call(app);
 assert.equal(scrollCalls, 0);
 assert.equal(cantripCalls, 1);
+assert.equal(cantripOptions?.maxRarity, "common", "a common Forge offers common cantrips only");
 prepared = await app._prepareContext();
 assert.equal(prepared.preview.items.length, 1);
 assert.equal(prepared.preview.items[0].name, "Cantrip Deck of Light (5-pack)");
@@ -203,3 +207,12 @@ await actions.selectKind.call(switching, null, { dataset: { kind: "cantripDeck" 
 rarityVisible = false;
 await actions.selectKind.call(switching, null, { dataset: { kind: "scroll" } });
 assert.equal((await switching._prepareContext()).input.rarity, "rare");
+
+// Uncommon cantrips: a Forge at uncommon or rarer asks for a deck pool capped at uncommon; rare and unique never reach it.
+for (const [rarity, maxRarity] of [["uncommon", "uncommon"], ["rare", "uncommon"], ["unique", "uncommon"]]) {
+  forgeRarity = rarity;
+  cantripOptions = null;
+  await actions.generate.call(forgeApp());
+  assert.equal(cantripOptions?.maxRarity, maxRarity, `a ${rarity} Forge caps the deck pool at ${maxRarity}`);
+}
+forgeRarity = "common";

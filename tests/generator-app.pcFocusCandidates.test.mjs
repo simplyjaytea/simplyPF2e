@@ -132,7 +132,7 @@ const mocks = {
     selectArgs = args;
     throw Object.assign(new Error("cancelled"), { cancelled: true });
   },
-  getEquipmentCandidates: async () => [], parseCoins, heritageMatchesAncestry: () => true,
+  getEquipmentCandidates: async () => [], parseCoins, heritageMatchesAncestry: () => true, previewSchoolSpells: async () => null,
   validatePCEditCompletion: () => ({ complete: true, pending: [], errors: [], unresolved: [], manifest: {} }),
   applyPCEdit: async (plan) => ({ plan, changed: [], invalidated: [], equipmentGp: 0 }),
   pcEditFromControl: (control, value) => ({ control, value }), pcEditorSelections: () => ({}), pcEditorInvalidatedControls: () => []

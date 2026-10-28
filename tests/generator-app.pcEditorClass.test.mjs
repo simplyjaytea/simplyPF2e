@@ -87,7 +87,7 @@ const mocks = {
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null, sourceReadiness: () => ({ ready: true, missing: [] }),
   getClassCandidates: async () => classes,
   getAncestryCandidates: () => [], getBackgroundCandidates: () => [], getHeritageCandidates: () => [],
-  getEquipmentCandidates: async () => [], parseCoins, heritageMatchesAncestry: () => true,
+  getEquipmentCandidates: async () => [], parseCoins, heritageMatchesAncestry: () => true, previewSchoolSpells: async () => null,
   validatePCEditCompletion: () => ({ complete: true, pending: [], errors: [], unresolved: [] }),
   applyPCEdit: async (plan) => ({ plan, changed: [], invalidated: [], equipmentGp: 0 })
 };

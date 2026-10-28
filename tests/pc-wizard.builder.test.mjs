@@ -55,7 +55,7 @@ const masterWorld = makeWorld({
 });
 worlds.use(world);
 
-const { createCharacterActor, validatePCIdentityRequirements } = await import("../scripts/pc-builder.mjs");
+const { createCharacterActor, validatePCIdentityRequirements, previewSchoolSpells } = await import("../scripts/pc-builder.mjs");
 const { getClassPathCandidates } = await import("../scripts/class-paths.mjs");
 const { issueCandidate } = await import("../scripts/compendium.mjs");
 
@@ -316,6 +316,113 @@ const focusEntries = () => created.filter((item) => item.type === "spellcastingE
   assert.equal(created.filter((item) => item.type === "spell").length, 2);
   assert.equal(actorData.system.resources.focus.value, 1);
   worlds.use(world);
+}
+
+// 12–16. Advanced School Spell (level-8 Wizard feat, pf2e-8.5.0). pf2e grants no spell through the feat, so the
+// module embeds the school's advanced spell only when the feat is built, in the same focus entry.
+const advancedFeat = await load("advanced-school-spell");
+const energyAbsorption = await load("energy-absorption");
+const advancedWorld = (school = features) => makeWorld({ [CF]: school, "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt, energyAbsorption, focusSpell], "pf2e.feats-srd": [advancedFeat] });
+const withAdvancedFeat = () => ({ ...resolved(), feats: [{ type: "class", level: 8, name: "Advanced School Spell", entry: { packId: "pf2e.feats-srd", _id: advancedFeat._id } }] });
+{
+  worlds.use(advancedWorld());
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), withAdvancedFeat());
+  const entry = focusEntries()[0];
+  assert.equal(focusEntries().length, 1, "one focus entry holds both school spells");
+  const spells = created.filter((item) => item.type === "spell").map((item) => item.name).sort();
+  assert.deepEqual(spells, ["Energy Absorption", "Force Bolt"], "the initial and the advanced school spell are embedded");
+  assert.ok(created.filter((item) => item.type === "spell").every((item) => item.system.location.value === entry._id));
+  assert.equal(created.find((item) => item.name === "Energy Absorption")._stats.compendiumSource, "Compendium.pf2e.spells-srd.Item.LoBjvguamA12iyW0");
+  assert.equal(actorData.system.resources.focus.value, 2, "the starting pool counts the two focus spells; pf2e derives the maximum");
+  assert.equal(created.some((item) => item.type === "feat" && /focus/i.test(item.name)), false, "no focus-pool rule is written");
+  assert.equal(warnings.slice(mark).filter((line) => /School of Battle Magic/.test(line)).length, 0);
+}
+// Without the feat, the advanced spell is not embedded.
+{
+  worlds.use(advancedWorld());
+  reset();
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.deepEqual(created.filter((item) => item.type === "spell").map((item) => item.name), ["Force Bolt"], "no feat, no advanced spell");
+  assert.equal(actorData.system.resources.focus.value, 1);
+}
+// The feat without spellcasting builds no focus entry and no school spell.
+{
+  worlds.use(advancedWorld());
+  reset();
+  await createCharacterActor({ ...schoolConcept(), spellcasting: null }, withAdvancedFeat());
+  assert.equal(focusEntries().length, 0);
+  assert.equal(created.some((item) => item.type === "spell"), false);
+}
+// A missing advanced link warns and skips only the advanced spell; the initial spell is still embedded.
+{
+  const damaged = structuredClone(features.find((item) => item.name === "School of Battle Magic"));
+  damaged.system.description.value = "<p><strong>School Spells</strong> initial: @UUID[Compendium.pf2e.spells-srd.Item.Force Bolt]</p>";
+  worlds.use(advancedWorld(features.map((item) => item._id === damaged._id ? damaged : item)));
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), withAdvancedFeat());
+  assert.deepEqual(created.filter((item) => item.type === "spell").map((item) => item.name), ["Force Bolt"]);
+  const fresh = warnings.slice(mark).filter((line) => /School of Battle Magic/.test(line));
+  assert.deepEqual(fresh.map((line) => line.replace(/^.*School of Battle Magic: /, "")), ["advanced school spell link is missing or ambiguous"]);
+  warnings.splice(mark);
+}
+// An advanced spell that is not in an enabled pack warns and is skipped alone.
+{
+  worlds.use(makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt], "pf2e.feats-srd": [advancedFeat] }));
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), withAdvancedFeat());
+  assert.deepEqual(created.filter((item) => item.type === "spell").map((item) => item.name), ["Force Bolt"]);
+  const fresh = warnings.slice(mark).filter((line) => /School of Battle Magic/.test(line));
+  assert.deepEqual(fresh.map((line) => line.replace(/^.*School of Battle Magic: /, "")), ["advanced school spell is missing, invalid, or in a disabled pack"]);
+  warnings.splice(mark);
+}
+// The preview names the school spells before Create, and says so when the school is chosen at Create.
+{
+  worlds.use(advancedWorld());
+  const { previewSchoolSpells } = await import("../scripts/pc-builder.mjs");
+  const fixed = await previewSchoolSpells(schoolConcept(), withAdvancedFeat());
+  assert.deepEqual({ ...fixed }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: "Energy Absorption", hasAdvanced: true });
+  const plain = await previewSchoolSpells(schoolConcept(), resolved());
+  assert.deepEqual({ ...plain }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: null, hasAdvanced: false });
+  const atCreate = await previewSchoolSpells({ ...schoolConcept(), requiredIdentity: { class: wizardCandidate } }, withAdvancedFeat());
+  assert.deepEqual({ ...atCreate }, { atCreate: true });
+  assert.equal(await previewSchoolSpells({ ...schoolConcept(), spellcasting: null }, withAdvancedFeat()), null, "no spellcasting, no school spell line");
+  const noBridge = { ...resolved(), classDoc: { ...classDoc, system: { ...wizard.system, items: {} } } };
+  assert.equal(await previewSchoolSpells(schoolConcept(), noBridge), null, "a class with no Arcane School bridge shows no school line");
+}
+
+// Production-shaped identity. A required school is the candidate that resolvePCIdentity returns: it is built by
+// getClassPathCandidates and keeps its uuid and issued ref. The preview loads it from the ref.
+{
+  worlds.use(advancedWorld());
+  const { resolvePCIdentity, pcIdentityKey } = await import("../scripts/pc-identity.mjs");
+  const required = resolvePCIdentity({
+    choices: { class: pcIdentityKey(wizardCandidate), classPaths: { "Arcane School": pcIdentityKey(named("School of Battle Magic")) } },
+    catalogs: { class: [wizardCandidate], classPath: candidates }
+  });
+  const fromProduction = await previewSchoolSpells({ ...schoolConcept(), requiredIdentity: required }, withAdvancedFeat());
+  assert.deepEqual({ ...fromProduction }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: "Energy Absorption", hasAdvanced: true },
+    "a school resolved by the identity catalog is named in the preview");
+  // A candidate that carries only its issued ref, with no uuid, is loaded through the ref.
+  const refOnly = { name: "School of Battle Magic", bridge: "Arcane School", ref: named("School of Battle Magic").ref };
+  const byRef = await previewSchoolSpells({ ...schoolConcept(), requiredIdentity: { class: wizardCandidate, classPaths: { "Arcane School": refOnly } } }, resolved());
+  assert.deepEqual({ ...byRef }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: null, hasAdvanced: false });
+  // The picked feat arrives as the issued reference that resolveFeatPicks returns, { packId, _id }.
+  const issuedFeat = issueCandidate({ packId: "pf2e.feats-srd", _id: advancedFeat._id }, { name: "Advanced School Spell" }).ref;
+  const byFeatRef = await previewSchoolSpells(schoolConcept(), { ...resolved(), feats: [{ type: "class", level: 8, name: "Advanced School Spell", entry: issuedFeat }] });
+  assert.deepEqual({ ...byFeatRef }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: "Energy Absorption", hasAdvanced: true });
+}
+// One closed Arcane School candidate fixes the school even when nobody names it: the chooser has only one answer.
+{
+  const oneSchool = features.filter((item) => item.name !== "School of Mentalism");
+  worlds.use(makeWorld({ [CF]: oneSchool, "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt, energyAbsorption, focusSpell], "pf2e.feats-srd": [advancedFeat] }));
+  const { previewSchoolSpells } = await import("../scripts/pc-builder.mjs");
+  const offered = await previewSchoolSpells({ ...schoolConcept(), requiredIdentity: { class: wizardCandidate } }, resolved());
+  assert.deepEqual({ ...offered }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: null, hasAdvanced: false },
+    "the only closed school is shown as the school");
+  worlds.use(advancedWorld());
+  const twoSchools = await previewSchoolSpells({ ...schoolConcept(), requiredIdentity: { class: wizardCandidate } }, resolved());
+  assert.deepEqual({ ...twoSchools }, { atCreate: true }, "two closed schools leave the choice to Create");
 }
 
 console.warn = warn;

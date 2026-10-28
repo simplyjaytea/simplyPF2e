@@ -48,6 +48,16 @@ export const SPELL_CONSUMABLE_TEMPLATES = Object.freeze({
 // app.svelte: `itemTypeData?.cantripsOnly ? compendiumUuids?.[1] : compendiumUuids?.[Number(rank)]`.
 export const CANTRIP_DECK_RANK = 1;
 
+// Rarity of a cantrip deck follows its cantrip (spell-consumables.ts 43-45 quoted at the deck builder), and pf2e
+// has no rarity rule of its own for the deck (createConsumableFromSpell copies traits.rarity from the spell). Rare
+// and unique cantrips stay out because the module found no pf2e rule that allows them.
+export const CANTRIP_DECK_RARITIES = Object.freeze(["common", "uncommon"]);
+
+/** The highest cantrip rarity the Forge offers a deck: common when the Forge is common, otherwise uncommon. */
+export function cantripDeckMaxRarity(forgeRarity) {
+  return forgeRarity === "common" ? "common" : "uncommon";
+}
+
 /** Highest rank each kind may reach. Scrolls go to 10; wands stop at 9 (no wand 10 template). */
 const RANK_LIMITS = Object.freeze({ scroll: 10, wand: 9 });
 
@@ -87,7 +97,7 @@ export function spellConsumableRankProblem(spellData, kind, rank) {
     if (!traits.includes("cantrip")) return "a cantrip deck requires a cantrip";
     if (traits.includes("focus")) return "focus spells cannot become cantrip decks";
     if (spellData.system?.ritual) return "rituals cannot become cantrip decks";
-    if (spellData.system?.traits?.rarity !== "common") return "cantrip decks require a common cantrip";
+    if (!CANTRIP_DECK_RARITIES.includes(spellData.system?.traits?.rarity)) return "cantrip decks require a common or uncommon cantrip";
     return null;
   }
   if (!Object.hasOwn(RANK_LIMITS, kind)) return `"${kind}" is not a scroll or wand`;
