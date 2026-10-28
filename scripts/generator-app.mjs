@@ -31,7 +31,7 @@ import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryScaffold } from "./art.mjs";
 import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
 import { verifyCreatedActor, persistedExpectedItems } from "./post-create.mjs";
-import { supportedClassCandidates } from "./pc-support.mjs";
+import { classModelsFocusSpells, supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
 import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-ability-packages.mjs";
 
@@ -1737,7 +1737,7 @@ export class GeneratorApp extends SpfApp {
       // as the NPC pipeline: only call _setStep("spells") when that key exists.
       if (this.#input.allowSpellcasting && concept.spellcasting) await this._setStep("spells");
       else this._skipStep("spells");
-      await this.#refineSpells(concept, signal);
+      await this.#refineSpells(concept, signal, { focus: classModelsFocusSpells(resolved.classDoc) });
 
       await this._setStep("equipment");
       await this.#refineEquipment(concept, signal);
@@ -1839,8 +1839,9 @@ export class GeneratorApp extends SpfApp {
    * as "inspiration" only) — if this grounded pass doesn't produce a real,
    * compendium-backed list, spells are dropped rather than left as unvetted
    * draft names, same fail-closed behavior as feats elsewhere in the pipeline.
+   * `focus: false` (a PC class with no modeled focus source) requests no focus-spell candidates.
    */
-  async #refineSpells(concept, signal) {
+  async #refineSpells(concept, signal, { focus = true } = {}) {
     const spellcasting = concept?.spellcasting;
     if (!spellcasting) return;
     try {
@@ -1868,10 +1869,10 @@ export class GeneratorApp extends SpfApp {
         [...spellcasting.spells.map((spell) => spell.name), ...keywords],
         spellcasting.plannedPicks
       );
-      const focusCandidates = await getFocusSpellCandidates(
+      const focusCandidates = focus ? await getFocusSpellCandidates(
         spellcasting.maxRank,
         [...concept.focusSpells.map((spell) => spell.name), ...keywords]
-      );
+      ) : [];
       if (!candidates.length) {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
         spellcasting.spells = [];
