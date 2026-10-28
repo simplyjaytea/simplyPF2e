@@ -10,7 +10,7 @@ Full session-by-session narrative, process notes, and the bug log. Not loaded by
 - Workflow matrix: `master` replaced by `v14-dev`. The server's GitHub token gets HTTP 403 on workflow dispatch, so the first run is the Monday schedule (2026-11-02 06:23 UTC) once the branch merges.
 - Hygiene: removed the unused `boldKeywords` helper (`scripts/builder.mjs`) and the unneeded export of `HAZARD_REQUESTS` (`scripts/encounter.mjs`). A scan found no other unused module, export, fixture, junk file or TODO that points at finished work. Borderline, left alone: the name-form `Compendium.pf2e.classfeatures.Item.Skillful Lessons` reference (`scripts/pc-builder.mjs:427`) is a deliberate fallback that never resolves by id; the `arcane-school-master` fixture's rules differ from upstream at the same entry count.
 - Ledger: N15 (OPEN) for a hazard member inside an encounter, the gap PLAYBOOK §9 item 4 named.
-- Gate on Node v22.23.4: `node tools/check.mjs </dev/null` exit 0 (`Integrity passed: 356 imports, 902 exports, 15 templates, 612 localization keys; 0 unused keys`; `Links passed: 179 links in 57 files`; `Regressions passed: 138 files`); `git diff --check` clean.
+- Gate on Node v22.23.4: `node tools/check.mjs </dev/null` exit 0 (`Integrity passed: 356 imports, 902 exports, 15 templates, 612 localization keys; 0 unused keys`; `Links passed: 180 links in 57 files`; `Regressions passed: 138 files`); `git diff --check` clean.
 
 ## 2026-10-28 — Merge of the remaining branches (OpenBot session)
 
