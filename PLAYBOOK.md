@@ -47,7 +47,7 @@ Out of scope by decision: universal PF2e feat automation, caster multiclass dedi
 - **ChoiceSet** — a pf2e RE that prompts the user at embed time; the module pre-answers supported static ones.
 - **Experimental gate** — `scripts/experimental-tools.mjs`; the world setting `experimentalTools` checked at every tool entry and again before every native write.
 - **Native QA / native acceptance** — evidence from a real Foundry world with the pf2e system installed. Local tests stub Foundry; they never close a native row.
-- **Ledger row (R01–R25, N01–N18)** — one native acceptance case in [docs/acceptance-ledger.md](docs/acceptance-ledger.md).
+- **Ledger row (R01–R25, N01–N24)** — one native acceptance case in [docs/acceptance-ledger.md](docs/acceptance-ledger.md).
 
 ## 3. Invariants — never break these
 
@@ -236,7 +236,7 @@ Live QA runs on the user's Foundry (Foundry 14.365 / PF2e 8.5.0, world `test`) a
 - **Last recorded installation: v0.3.5.72.** Nothing from .73 onward has been installed or natively exercised. Level shifting, Wizard (and its school spell), hazards, scrolls/wands, cantrip decks, the loot actor and Treasure parcel, the PC editor, multiclass and Free Archetype have zero live evidence.
 - **Local gate (2026-10-29, branch `integrate/2026-10-29`, unpushed):** `node tools/check.mjs </dev/null` exits 0 and `git diff --check c86aa7a..HEAD` is clean on Node v22.23.4 (the CI version): `Integrity passed: 365 imports, 925 exports, 15 templates, 616 localization keys; 0 unused keys`; `Links passed: 192 links in 58 files`; `Regressions passed: 139 files`. The previous gate, at `6df3823`, ran on Node v24.22.1.
 - **Drift check** (`node tools/check-pf2e-drift.mjs`, default `pf2e-8.5.0`, 2026-10-29, with `GITHUB_TOKEN`, on `integrate/2026-10-29`): 128 checked, 0 failures, 3 warnings (legacy alias; one name-form UUID in `pc-builder.mjs`; one fixture rules diff at equal entry count). Without a token: 0 failures, 28 warnings (the `equipment-srd` UUIDs beyond the 60-read anonymous budget, plus the same three). A read that still fails after retries is a WARN for that item and the run continues.
-- **Native ledger:** R01–R25 (22 OPEN, 3 BLOCKED) and N01–N18 all OPEN (N09 Wizard, N10 hazard, N11 scrolls/wands added 2026-10-26; N12 loot actor and parcel, N13 Wizard school spell and focus pool, N14 cantrip deck added 2026-10-28; N15 encounter hazard member added 2026-10-28; N16 advanced school spell, N17 school spell preview, N18 uncommon cantrip deck added 2026-10-29). Zero PASS rows. Known provider spend lower bound 333,213 tokens.
+- **Native ledger:** R01–R25 (22 OPEN, 3 BLOCKED) and N01–N24 all OPEN (N09 Wizard, N10 hazard, N11 scrolls/wands added 2026-10-26; N12 loot actor and parcel, N13 Wizard school spell and focus pool, N14 cantrip deck added 2026-10-28; N15 encounter hazard member added 2026-10-28; N16 advanced school spell, N17 school spell preview, N18 uncommon cantrip deck added 2026-10-29; N19–N21 parcel coins, preview drops and Merchant sheet, N22–N24 parcel permanent items, wands and valuables added 2026-10-29). Zero PASS rows. Known provider spend lower bound 333,213 tokens.
 - **Decided 2026-10-26:** Wizard v1 = prepared arcane caster + closed school + closed thesis + Arcane Bond; curriculum extras, school focus spells and familiar actors stay manual. Hazard scale words are extreme/high/low; HP and hardness ranges resolve to the floor of the midpoint; the Low DC range resolves to its upper value; the Dispel Magic counteract rank is derived as `ceil(level/2)` clamped 1..10 (module convention). Scroll/wand templates are pinned by UUID; wand rank 10 is refused; cantrips, focus spells and rituals are refused.
 - **Decided 2026-10-27/28:** see the signed-off decisions in §3 (treasure parcel, cantrip decks, Wizard school spell) and the two plans' §6.
 - **Decided 2026-10-27 (user-approved; [plan](docs/plans/encounter-hazard-integration-2026-10-27.md)):** Encounter hazard v1, behind `experimentalTools`. The AI requests `none`, `simple` or `complex` and never writes a level or XP. The module takes the feasible level nearest party level within ±4 (ties upward) whose XP fits the budget left after the boss. If none fits, the hazard is dropped with a warning and the boss is not stepped down. At most one hazard; minions take the rest of the budget.
@@ -267,7 +267,7 @@ Done in the 2026-10-26 sprint ([plan](docs/plans/sprint-2026-10-26.md)): dead-co
 
 6. **Install the latest release module-only** in the `test` world (R01), then **Batch A** (R02: level-1 Guard/Thief with Legal Lore, ceiling 1 generation / 40,000 tokens) plus the zero-spend windows R06, R07, R21.
 7. **Batch B** (R03 Guard/Fighter Warfare Lore, R04 higher-level Rogue, R05 Investigator boundary) only after Batch A passes.
-8. **N01–N18** experimental/multiclass/editor/Wizard/hazard/consumable native rows — enable the gates in the test world only for the session; disable afterwards.
+8. **N01–N24** experimental/multiclass/editor/Wizard/hazard/consumable native rows — enable the gates in the test world only for the session; disable afterwards.
 9. **Batch C/D** (encounter R11–R13 with the rollback harness, NPC focus R19, forge activations R15–R18, source switch R08–R09).
 
 ### Needs a decision or an external resource
