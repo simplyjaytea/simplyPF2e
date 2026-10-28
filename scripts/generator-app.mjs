@@ -47,7 +47,7 @@ import { createProgress } from "./progress.mjs";
 import { validateForgeRequest } from "./forge-command.mjs";
 import { heritageMatchesAncestry } from "./pc-builder.mjs";
 import { applyPCEdit, validatePCEditCompletion } from "./pc-edit.mjs";
-import { pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } from "./pc-editor.mjs";
+import { editableClassCandidates, pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } from "./pc-editor.mjs";
 
 const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "backgroundLore", "keyAbility", "classPath"];
 
@@ -495,13 +495,20 @@ export class GeneratorApp extends SpfApp {
     return eligible;
   }
 
-  /** Catalogs for PC edits: the identity pickers, with heritage narrowed to the current ancestry. */
+  /**
+   * Catalogs for PC edits: the identity pickers, with heritage narrowed to the current ancestry
+   * and the class control limited to noncaster classes (plus the current class).
+   */
   async #pcEditCatalogs(plan) {
     const catalogs = await this.#identityCatalogs();
+    const offeredClass = catalogs.offeredClass ?? [];
+    const classDocs = await Promise.all(offeredClass.map((candidate) => getDocument(candidate.ref)));
+    const classDocsByKey = new Map(offeredClass.map((candidate, index) => [pcIdentityKey(candidate), classDocs[index]]));
     return {
       ...catalogs,
       heritage: await this.#pcEligibleHeritages(catalogs.heritage ?? [], plan.resolved.ancestryDoc),
-      equipment: (await getEquipmentCandidates(plan.concept.level)) ?? []
+      equipment: (await getEquipmentCandidates(plan.concept.level)) ?? [],
+      editableClass: editableClassCandidates(offeredClass, classDocsByKey, pcIdentityKey(plan.concept.classCandidate))
     };
   }
 
@@ -534,7 +541,7 @@ export class GeneratorApp extends SpfApp {
         { value: "", label: game.i18n.localize("SIMPLYPF2E.Identity.NoHeritage") }, ...catalogs.heritage.map(option)
       ]);
       add("background", label("background"), catalogs.background.map(option));
-      add("class", label("class"), (catalogs.offeredClass ?? []).map(option));
+      add("class", label("class"), (catalogs.editableClass ?? []).map(option));
       const paths = catalogs.classPath.filter((path) => path.classKeys.includes(selections.class));
       const bridges = classPathBridges(paths);
       if (bridges.length > 1) {

@@ -134,4 +134,30 @@ assert.deepEqual(pcEditorInvalidatedControls([
   assert.equal(unnormalized["classPath.Arcane School"], undefined);
 }
 
+// The class control offers noncasters and the current class, from real class data
+// (Fighter and Rogue cast nothing, Wizard casts). A candidate with no loaded doc is
+// excluded unless it is the current class.
+{
+  const { editableClassCandidates } = await import("../scripts/pc-editor.mjs");
+  const { load } = await import("./fixtures/pc-wizard/world.mjs");
+  const { pcIdentityKey } = await import("../scripts/pc-identity.mjs");
+  const candidate = (name) => ({ name, ref: { packId: "test.classes", _id: name.toLowerCase() } });
+  const fighter = candidate("Fighter");
+  const rogue = candidate("Rogue");
+  const wizard = candidate("Wizard");
+  const champion = candidate("Champion");
+  const offered = [fighter, rogue, wizard, champion];
+  const docs = new Map([
+    [pcIdentityKey(fighter), await load("precedent/fighter-class")],
+    [pcIdentityKey(rogue), await load("precedent/rogue-class")],
+    [pcIdentityKey(wizard), await load("wizard")]
+  ]);
+  const names = (currentKey) => editableClassCandidates(offered, docs, currentKey).map((item) => item.name);
+  assert.deepEqual(names(pcIdentityKey(fighter)), ["Fighter", "Rogue"], "a noncaster current class: the caster is not offered");
+  assert.deepEqual(names(pcIdentityKey(wizard)), ["Fighter", "Rogue", "Wizard"], "the current caster stays offered");
+  assert.deepEqual(names(pcIdentityKey(champion)), ["Fighter", "Rogue", "Champion"], "the current class is kept even with no doc");
+  assert.deepEqual(editableClassCandidates(offered, docs, "").map((item) => item.name), ["Fighter", "Rogue"],
+    "a candidate with no doc is excluded");
+}
+
 console.log("pc-editor.test.mjs: ok");
