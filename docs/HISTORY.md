@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-28 — Merge of the remaining branches (OpenBot session)
+
+- Run from a fresh clone on the OpenBot server (Linux, Node 22.23.4 downloaded for the gate; system Node 20 lacks `Promise.withResolvers`). Merged `claude/post-release-docs-2026-10-28` and draft PR #117 (`codex/remaining-2026-10-26`, 63 commits behind `main`) into one integration branch, so `main` gets one push and one release. The only conflict was the first import line of `scripts/ai.mjs` (cantrip-deck import from wave 2 against the hazard-candidate import); both kept.
+- Gate: `node tools/check.mjs` exit 0, 138 regression files. `node tools/check-pf2e-drift.mjs --ref pf2e-8.5.0`: 126 checked, 0 failures, 28 warnings (fetch-budget UUIDs and one fixture rules diff).
+- Not merged: `codex/audit-fixes` (a 2026-09-05 docs-only commit recording v0.3.5.56, superseded by every later HANDOFF/HISTORY). Remote branches left in place for the user's decision.
+
 ## 2026-10-27/28 — Two-wave sprint: loot actor and Treasure parcel; Wizard school spell, cantrip decks, review leftovers
 
 - Roster revised by the user (2026-10-27/28) and written into PLAYBOOK §6 and CLAUDE.md: Fable (high) orchestrates and merges; every plan comes from an Opus 5.5 (high) planning agent; workers are Codex GPT-6.1 Terra (high) first, Haiku 5.5 (high), and the opencode free models (`deepseek-v4.1-flash-free`, `glm-5.3-flash-free`, high; these ship no medium variant) only as overflow; several features run at once in separate Orca worktrees, merge into one integration branch and get one combined Opus review; the fix ladder is Haiku high (or the owning Codex worker), then Codex Terra high, then Opus xhigh.

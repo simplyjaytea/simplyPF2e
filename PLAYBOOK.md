@@ -222,7 +222,7 @@ Live QA runs on the user's Foundry (Foundry 14.365 / PF2e 8.5.0, world `test`) a
 - Git identity for this repo: `user.name "jt"`, `user.email "jt_f@ymail.com"` (the checkout may show a different global identity; set it per-repo before committing).
 - Prior sessions' worktrees lived under `/home/jtf/.t3/worktrees/` (Codex "T3"); remote branches `codex/*` are historical and may be pruned only with the user's say-so.
 
-**Drift check:** `node tools/check-pf2e-drift.mjs [--ref <git-ref>] [--json]` compares the module's pf2e pack ids, `Compendium.pf2e` UUIDs, catalog names and fixtures with upstream `foundryvtt/pf2e` at `--ref` (default `master`; a tag such as `pf2e-8.5.0` pins a version). It needs network access and is deliberately kept out of `node tools/check.mjs`, which stays offline; exit 2 means the check could not run (network or rate limit), not that drift was found. Run it before every release and whenever pf2e ships a new version. The default `--ref master` compares against a frozen tree; use `--ref pf2e-8.5.0` (installed) or `--ref v14-dev` until the default changes (backlog item 4).
+**Drift check:** `node tools/check-pf2e-drift.mjs [--ref <git-ref>] [--json]` compares the module's pf2e pack ids, `Compendium.pf2e` UUIDs, catalog names and fixtures with upstream `foundryvtt/pf2e` at `--ref` (default `master`; a tag such as `pf2e-8.5.0` pins a version). It needs network access and is deliberately kept out of `node tools/check.mjs`, which stays offline; exit 2 means the check could not run (network or rate limit), not that drift was found. Run it before every release and whenever pf2e ships a new version. The default `--ref master` compares against a frozen tree; use `--ref pf2e-8.5.0` (installed) or `--ref v14-dev` until the default changes (backlog item 1).
 
 ## 8. Current state — 2026-10-28
 
@@ -248,11 +248,12 @@ Ordered. Pick the top item whose prerequisites are met; move finished items to �
 
 ### Ready now — local only, no spend, no live world, no publication
 
-1. **Drift check with `GITHUB_TOKEN`** in CI on a schedule, so the 16 `equipment-srd` UUIDs are actually resolved; change the default `--ref` from the frozen `master` to the installed tag; follow the `v14-dev` move of the Wizard schools to `packs/pf2e/class-features/wizard/`. Touches `.github/**`: needs the user's go.
-2. **Hazard prompt breadth**: expose `CONFIG.PF2E.hazardTraits` subsets by theme to keep the prompt short on large worlds; measure prompt size first.
-3. **Treasure parcel v2**: permanent-item slots (published permanent items at exact levels), wands as permanent items, gems/art and pp/sp splits, merchant mode, unify the coin UUIDs with `builder.mjs`, show unknown-id drops from `selectParcelSpells` in the preview.
-4. **Wizard v2**: the advanced school spell (level-8 feat grant path), the school spell shown in the preview, uncommon cantrip decks.
-5. **Ledger**: no row covers a hazard member inside an encounter; add one or record the gap.
+1. **Drift check follow-ups**: the scheduled CI workflow is merged (`.github/workflows/pf2e-drift.yml`); confirm its first scheduled or manual run on `main`. Still open: raise the fetch budget so the `equipment-srd` UUIDs resolve, change the default `--ref` from the frozen `master` to the installed tag, follow the `v14-dev` move of the Wizard schools to `packs/pf2e/class-features/wizard/`.
+2. **Treasure parcel v2**: permanent-item slots (published permanent items at exact levels), wands as permanent items, gems/art and pp/sp splits, merchant mode, unify the coin UUIDs with `builder.mjs`, show unknown-id drops from `selectParcelSpells` in the preview.
+3. **Wizard v2**: the advanced school spell (level-8 feat grant path), the school spell shown in the preview, uncommon cantrip decks.
+4. **Ledger**: no row covers a hazard member inside an encounter; add one or record the gap.
+
+Merged 2026-10-28 from draft PR #117 (`codex/remaining-2026-10-26`) with the post-release docs branch; not native-accepted ([plan](docs/plans/remaining-local-2026-10-26.md)): hazard trait prompts bounded to 96 runtime slugs ranked by the brief (`hazard-candidates.mjs`), and the read-only weekly `PF2e source drift` workflow.
 
 Merged 2026-10-27 as PR #118 (`50aa045`), released as v0.3.5.78; not native-accepted ([plan](docs/plans/encounter-hazard-integration-2026-10-27.md)): hazards inside Encounter mode, gated by `experimentalTools`, and the Wizard preflight that refuses a bridge with no closed candidate before provider spend. Native Foundry acceptance and the ledger work stay open (no row covers a hazard member inside an encounter).
 
