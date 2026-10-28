@@ -5,10 +5,11 @@
  * with one ref of that repository. It is deliberately NOT part of tools/check.mjs, which stays offline.
  *
  * Run: node tools/check-pf2e-drift.mjs [--ref <git-ref>] [--json]
- *   --ref   branch, tag or commit of foundryvtt/pf2e (default master), e.g. pf2e-8.5.0
+ *   --ref   branch, tag or commit of foundryvtt/pf2e (default pf2e-8.5.0, the installed version), e.g. v14-dev
  *   --json  one JSON object (findings, pack mapping, request counts) instead of finding lines
  * Exit: 0 no FAIL, 1 at least one FAIL, 2 the check could not run (network, rate limit, unknown ref).
- * GITHUB_TOKEN, when set, is sent as a bearer token to the REST API and raises the per-reference fetch budget.
+ * GITHUB_TOKEN, when set, is sent as a bearer token to the REST API and raises the per-reference fetch budget
+ * from 60 to 10,000 reads, enough to scan the largest pack (packs/pf2e/equipment at pf2e-8.5.0) when no name matches.
  *
  * Requests per run: one REST call (git/trees/<ref>?recursive=1, a single listing of the whole ref, so
  * directory listings cost nothing more), a few raw.githubusercontent.com reads for the system manifest, and
@@ -43,10 +44,12 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 export const UPSTREAM = { owner: "foundryvtt", repo: "pf2e", systemId: "pf2e" };
-export const DEFAULT_REF = "master";
+export const DEFAULT_REF = "pf2e-8.5.0";
 const MANIFEST_PATHS = ["static/system.json", "system.json", "system.pf2e.json"];
 const CANDIDATE_LIMIT = 8;
-const FETCH_BUDGET = { anonymous: 60, token: 300 };
+const FETCH_BUDGET = { anonymous: 60, token: 10000 };
+const SCAN_BATCH = 8;
+const RAW_ATTEMPTS = 3;
 const MODULE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const USAGE = "usage: node tools/check-pf2e-drift.mjs [--ref <git-ref>] [--json]";
 const DOCUMENT_ID = /^[A-Za-z0-9]{16}$/;
@@ -237,7 +240,12 @@ export const locateById = async (options) => {
   const unread = pool.filter((path) => !docs.has(path)).length;
   const scannable = scan && unread <= budget - docs.size;
   if (scannable) {
-    for (const path of pool) if (!docs.has(path) && (await probe(path))) return found(path, "found");
+    for (let start = 0; start < pool.length; start += SCAN_BATCH) {
+      const batch = pool.slice(start, start + SCAN_BATCH);
+      await Promise.all(batch.map((path) => probe(path)));
+      const hit = batch.find((path) => docs.get(path)?._id === id);
+      if (hit) return found(hit, "found");
+    }
   }
   for (const path of named(others).slice(0, CANDIDATE_LIMIT)) if (await probe(path)) return found(path, "moved");
   const status = scannable || !dir ? "missing" : "unresolvable";
@@ -335,7 +343,11 @@ const createGitHub = (token, fetchImpl) => {
         counts.raw += 1;
         const encoded = [...ref.split("/"), ...path.split("/")].map((part) => encodeURIComponent(part)).join("/");
         const url = "https://raw.githubusercontent.com/" + UPSTREAM.owner + "/" + UPSTREAM.repo + "/" + encoded;
-        const response = await send(url, {});
+        let response = await send(url, {});
+        for (let attempt = 1; attempt < RAW_ATTEMPTS && (response.status === 429 || response.status >= 500); attempt += 1) {
+          await new Promise((wait) => setTimeout(wait, 500 * attempt));
+          response = await send(url, {});
+        }
         if (response.status === 404) return null;
         if (!response.ok) throw new Error("raw read returned " + response.status + " for " + url);
         return response.text();

@@ -45,7 +45,7 @@ export function hazardXP(level, partyLevel, isComplex) {
 }
 
 /** The hazard requests the AI may make (design note 69a22f5): none, or at most one simple or complex hazard. */
-export const HAZARD_REQUESTS = Object.freeze(["none", "simple", "complex"]);
+const HAZARD_REQUESTS = Object.freeze(["none", "simple", "complex"]);
 
 /** Normalize an AI hazard request. Any other value is dropped with a warning and becomes none. */
 export function hazardRequest(value) {
