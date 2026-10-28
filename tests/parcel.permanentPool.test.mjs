@@ -16,7 +16,7 @@ const EQUIPMENT_FIXTURES = ["magical-hearing-aid", "cube-of-recall", "aerial-clo
   "abysium-chunk", "flaming", "wand-of-mercy-1st-rank", "poisonous-cloak-type-i", "taletellers-ring", "magic-wand-1st-rank-spell"];
 
 /** A pack stub: index entries shaped as getEquipmentIndex asks, and documents with toObject. */
-function makePack(packId, raws, { loads } = {}) {
+function makePack(packId, raws, { loads, failing = new Map() } = {}) {
   const docs = new Map(raws.map((raw) => [raw._id, raw]));
   return {
     metadata: { type: "Item" },
@@ -36,6 +36,8 @@ function makePack(packId, raws, { loads } = {}) {
     },
     async getDocument(_id) {
       if (loads) loads.count += 1;
+      // A rejected read: the error thrown for this document id, as Foundry would reject it.
+      if (failing.has(_id)) throw failing.get(_id);
       const raw = docs.get(_id);
       if (!raw) return null;
       return { uuid: `Compendium.${packId}.Item.${_id}`, name: raw.name, type: raw.type, toObject: () => structuredClone(raw) };
@@ -52,8 +54,9 @@ const spellRaws = [
 ];
 
 const loads = { count: 0 };
+const equipmentFailing = new Map();
 const packs = new Map([
-  ["pf2e.equipment-srd", makePack("pf2e.equipment-srd", [...equipmentRaws, ...valuableRaws], { loads })],
+  ["pf2e.equipment-srd", makePack("pf2e.equipment-srd", [...equipmentRaws, ...valuableRaws], { loads, failing: equipmentFailing })],
   ["pf2e.spells-srd", makePack("pf2e.spells-srd", spellRaws)]
 ]);
 globalThis.game = {
@@ -135,7 +138,23 @@ packs.get("pf2e.equipment-srd").getDocument = originalGetDocument;
 packs.delete("pf2e.equipment-srd");
 const missing = await getValuableCandidates([], { maxRarity: "common" });
 assert.deepEqual([missing.available, missing.candidates.length], [false, 0]);
-packs.set("pf2e.equipment-srd", makePack("pf2e.equipment-srd", [...equipmentRaws, ...valuableRaws]));
+packs.set("pf2e.equipment-srd", makePack("pf2e.equipment-srd", [...equipmentRaws, ...valuableRaws], { failing: equipmentFailing }));
+
+// A rejected read of one candidate is that candidate's problem: the pool drops it and the search goes on.
+equipmentFailing.set(fixture("magical-hearing-aid")._id, new Error("pack damaged"));
+assert.deepEqual(await getPermanentEquipmentCandidates(1, [], { maxRarity: "common" }), [],
+  "a rejected read leaves that candidate out and the pool still returns");
+equipmentFailing.clear();
+
+equipmentFailing.set(fixture("silk-ceremonial-armor")._id, new Error("pack damaged"));
+const rejectedValuable = await pickParcelValuable(pool.candidates, 1000, "common");
+assert.equal(rejectedValuable.source.name, "Agate", "a valuable whose read rejects is passed over for the next one that fits");
+equipmentFailing.clear();
+
+// A user abort during a read is not a candidate problem: it propagates.
+equipmentFailing.set(fixture("silk-ceremonial-armor")._id, Object.assign(new Error("aborted"), { name: "AbortError" }));
+await assert.rejects(() => pickParcelValuable(pool.candidates, 1000, "common"), /aborted/, "an abort propagates");
+equipmentFailing.clear();
 
 // The reason codes used by the assignment match the stable constants.
 assert.equal(PERMANENT_REASON.NO_CANDIDATES, "no-candidates");

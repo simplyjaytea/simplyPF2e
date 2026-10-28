@@ -956,6 +956,21 @@ export async function getCreatureFeatCandidates({
 }
 
 /** Clone a compendium document into plain item data ready for embedding. */
+/**
+ * Full item data for one indexed entry, or null when it cannot be read. A failed read or conversion
+ * is one unavailable candidate, so the search goes on; a user abort still propagates.
+ */
+async function readItemData(packId, _id) {
+  try {
+    const doc = await getDocument({ packId, _id });
+    return doc ? toItemData(doc) : null;
+  } catch (err) {
+    if (err?.name === "AbortError") throw err;
+    console.warn(`simplypf2e | could not read ${packId} item ${_id}`, err);
+    return null;
+  }
+}
+
 /** Offered published items per permanent slot level (part 2 parcel); the pool is bounded before any AI call. */
 export const PERMANENT_EQUIPMENT_LIMIT = 12;
 /** Full documents loaded per level while filling that pool: a bound on compendium reads, not a cap on the result. */
@@ -989,10 +1004,8 @@ export async function getPermanentEquipmentCandidates(level, keywords = [], { ma
   for (const item of rankByBrief(indexed.map((entry) => ({ ...entry, id: `${entry.packId}/${entry._id}` })), keywords)) {
     if (offered.length >= limit || loads >= limit * PERMANENT_LOAD_FACTOR) break;
     loads += 1;
-    const doc = await getDocument({ packId: item.packId, _id: item._id });
-    if (!doc) continue;
-    const data = toItemData(doc);
-    if (permanentDocumentProblem(data, level, maxRarity)) continue;
+    const data = await readItemData(item.packId, item._id);
+    if (!data || permanentDocumentProblem(data, level, maxRarity)) continue;
     offered.push(candidateRecord(item, { name: item.name, type: "equipment", level, traits: item.traits, rarity: data.system.traits.rarity, kind: "equipment" }));
   }
   return offered;
@@ -1043,8 +1056,7 @@ export async function pickParcelValuable(ranked, budgetCopper, maxRarity = "comm
   for (let attempt = 0; attempt < VALUABLE_LOAD_ATTEMPTS; attempt++) {
     const { entry, reason } = chooseValuable(remaining, budgetCopper);
     if (!entry) return { reason: reason === "none-offered" ? "none-offered" : "too-expensive" };
-    const doc = await getDocument({ packId: entry.packId, _id: entry._id });
-    const data = doc ? toItemData(doc) : null;
+    const data = await readItemData(entry.packId, entry._id);
     const copper = data ? priceCopper(data.system?.price?.value) : null;
     if (data && !valuableProblem(data, maxRarity) && copper > 0 && copper <= budgetCopper) {
       data.system.quantity = 1;

@@ -67,6 +67,11 @@ function formatGp(copper) {
   return (copper / COIN_COPPER_RATES.gp).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+/** A user cancellation stops generation; any other error is a failure of one part of the parcel. */
+function isCancellation(err) {
+  return Boolean(err?.cancelled || err?.name === "AbortError");
+}
+
 /**
  * The item forge: describe a wondrous magic item → AI concept constrained to
  * effect kinds this world has real rule exemplars for → preview → create a
@@ -603,9 +608,21 @@ export class ItemForgeApp extends SpfApp {
     const candidates = await getScrollSpellCandidates(Math.max(...plan.slots.map((s) => s.rank)), keywords, { maxRarity: this.#input.rarity });
     const pool = await this.#permanentPool(permanentSlots, keywords);
     await this._setStep("concept");
-    const { picks, dropped: unknownPicks, usage } = await selectParcelSpells(this.#input.prompt, { partyLevel: row.level, slots: plan.slots, candidates, signal,
-      onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")) });
-    this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
+    // A scroll provider failure leaves the scroll slots unfilled; the permanent slots and currency still build.
+    let picks = [];
+    let unknownPicks = [];
+    let scrollFailure = false;
+    try {
+      const result = await selectParcelSpells(this.#input.prompt, { partyLevel: row.level, slots: plan.slots, candidates, signal,
+        onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")) });
+      picks = result.picks;
+      unknownPicks = result.dropped;
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), result.usage);
+    } catch (err) {
+      if (isCancellation(err) || signal?.aborted) throw err;
+      console.warn(`${MODULE_ID} | scroll parcel selection failed`, err);
+      scrollFailure = true;
+    }
     // Permanent picks are optional: a failure leaves those slots unfilled and keeps the scrolls.
     let permanentPicks = [];
     let permanentFailure = false;
@@ -626,7 +643,7 @@ export class ItemForgeApp extends SpfApp {
     const assigned = assignParcelPicks(plan.slots, picks, candidates);
     const items = [];
     // Unknown ids were already warned in selectParcelSpells; they are kept here for the preview.
-    const dropped = [...unknownPicks, ...assigned.dropped];
+    const dropped = [...unknownPicks, ...assigned.dropped, ...(scrollFailure ? [{ reason: "provider" }] : [])];
     for (const drop of assigned.dropped) console.warn(`${MODULE_ID} | dropped parcel pick`, drop);
     const unfilled = [...assigned.unfilled];
     for (const stack of stackParcelAssignments(assigned.assignments)) {
@@ -715,7 +732,7 @@ export class ItemForgeApp extends SpfApp {
       this._throwIfCancelled();
       const candidate = chosen.get(slot.id);
       if (candidate) {
-        const result = await this.#buildPermanent(candidate, slot);
+        const result = await this.#buildPermanentSafely(candidate, slot);
         if (result.source) {
           entries.push({ slot, filled: true, source: result.source, name: result.name, level: result.level, copper: result.copper });
           continue;
@@ -748,6 +765,17 @@ export class ItemForgeApp extends SpfApp {
     return this.#permanentResult(source, slot);
   }
 
+  /** A read or conversion failure on one chosen item is that slot's problem: it is unfilled, not the parcel's. */
+  async #buildPermanentSafely(candidate, slot) {
+    try {
+      return await this.#buildPermanent(candidate, slot);
+    } catch (err) {
+      if (isCancellation(err)) throw err;
+      console.warn(`${MODULE_ID} | permanent parcel item could not be read`, err);
+      return { reason: PERMANENT_REASON.UNAVAILABLE };
+    }
+  }
+
   #permanentResult(source, slot) {
     const problem = permanentSourceProblem(source, slot.allowedLevels);
     if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
@@ -756,12 +784,19 @@ export class ItemForgeApp extends SpfApp {
 
   /** The one valuable the parcel may hold, or the reason none is offered. */
   async #pickValuable(keywords, budgetCopper) {
-    const pool = await getValuableCandidates(keywords, { maxRarity: this.#input.rarity });
-    if (!pool.available) return { reason: "pack" };
-    if (!pool.candidates.length) return { reason: "none-offered" };
-    const picked = await pickParcelValuable(pool.candidates, budgetCopper, this.#input.rarity);
-    if (!picked.source) return { reason: picked.reason };
-    return { name: picked.source.name, source: picked.source, copper: picked.copper };
+    try {
+      const pool = await getValuableCandidates(keywords, { maxRarity: this.#input.rarity });
+      if (!pool.available) return { reason: "pack" };
+      if (!pool.candidates.length) return { reason: "none-offered" };
+      const picked = await pickParcelValuable(pool.candidates, budgetCopper, this.#input.rarity);
+      if (!picked.source) return { reason: picked.reason };
+      return { name: picked.source.name, source: picked.source, copper: picked.copper };
+    } catch (err) {
+      // The valuable is optional: a failed search keeps the full currency as coins.
+      if (isCancellation(err)) throw err;
+      console.warn(`${MODULE_ID} | parcel valuable search failed`, err);
+      return { reason: "unavailable" };
+    }
   }
 
   /**
@@ -783,7 +818,7 @@ export class ItemForgeApp extends SpfApp {
   #buildParcelPreview() {
     const p = this.#parcel;
     if (!p) return null;
-    const dropKeys = { [PARCEL_DROP.DUPLICATE_SLOT]: "DuplicateSlot", [PARCEL_DROP.RANK_ABOVE_SLOT]: "RankAbove", build: "BuildDrop", currency: "CurrencyDrop" };
+    const dropKeys = { [PARCEL_DROP.DUPLICATE_SLOT]: "DuplicateSlot", [PARCEL_DROP.RANK_ABOVE_SLOT]: "RankAbove", build: "BuildDrop", currency: "CurrencyDrop", provider: "ScrollProvider" };
     const built = p.permanents.filter((entry) => entry.filled).length;
     return { parcel: true, items: p.items.map((i) => ({ ...i, itemLevels: i.itemLevels.join(", "), price: `${i.priceGp.toLocaleString()} gp` })),
       unfilled: p.unfilled, warnings: p.dropped.map((d) => this.#dropText(d, dropKeys)),

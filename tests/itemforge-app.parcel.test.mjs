@@ -39,8 +39,11 @@ const docs = new Map([
 let coinAvailable = true; let emptyBuildError = false;
 async function fromUuid(uuid) { if (emptyBuildError && uuid === SCROLL_1) throw new Error(""); if (Object.values(loot.COIN_UUIDS).includes(uuid) && !coinAvailable) return null; return docs.get(uuid) ?? null; }
 const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "common" };
+// Failure modes for the read and provider paths: an error object is thrown on the next call.
+let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
 async function getCandidateDocument(c) {
   if (c?.id === "c-heal") return { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) };
+  if (c?.id === "c-hearing" && candidateReadError) throw candidateReadError;
   if (c?.id === "c-hearing") return { name: HEARING.name, uuid: "Compendium.pf2e.equipment-srd.Item." + HEARING._id, toObject: () => plain(HEARING) };
   return null;
 }
@@ -51,6 +54,7 @@ async function getPermanentEquipmentCandidates(level) { return permanentPools.ge
 async function getParcelWandCandidates(level) { return permanentPools.get(level)?.wands ?? []; }
 async function getValuableCandidates() { return valuablePool; }
 async function pickParcelValuable(ranked, budgetCopper) {
+  if (valuableReadError) throw valuableReadError;
   const { entry, reason } = permanent.chooseValuable(ranked, budgetCopper);
   if (!entry) return { reason };
   const raw = entry.id === "c-silk" ? SILK : AGATE;
@@ -63,7 +67,11 @@ async function selectParcelPermanents(brief, opts) {
 }
 const candCalls = []; async function getScrollSpellCandidates(maxRank) { candCalls.push(maxRank); return [HEALC]; }
 let parcelPicks = []; let parcelDrops = []; const parcelCalls = [];
-async function selectParcelSpells(brief, opts) { parcelCalls.push(opts); return { picks: parcelPicks, dropped: parcelDrops, usage: null }; }
+async function selectParcelSpells(brief, opts) {
+  parcelCalls.push(opts);
+  if (parcelMode === "fail") throw new Error("provider unavailable");
+  if (parcelMode === "abort") throw Object.assign(new Error("aborted"), { name: "AbortError" });
+  return { picks: parcelPicks, dropped: parcelDrops, usage: null }; }
 async function selectSpellConsumables() { return { picks: [{ spellId: "c-heal", name: HEAL.name, rank: 1, kind: "scroll", candidate: HEALC }], usage: null }; }
 let gate = true;
 class MockSpfApp {
@@ -386,3 +394,62 @@ assert.equal(ctx.preview.permanents[0].filled, false);
 assert.equal(ctx.preview.permanents[0].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.template", "a missing template is named, not replaced");
 docs.set(WAND_1_UUID, wandTemplate);
 permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks;
+
+// Read and provider failures (release repair): each failing part is its own problem, and a user abort still stops.
+// A rejected document read for the chosen permanent item leaves that slot unavailable; the scrolls and currency build.
+candidateReadError = new Error("pack damaged");
+permanentPools.clear(); permanentPools.set(1, { equipment: [HEARING_CANDIDATE], wands: [] });
+permanentPicks = [{ slotId: "perm-3", candidateId: "c-hearing" }]; parcelPicks = initialPicks;
+c = ctl(); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.error, null, "a rejected document read does not fail the parcel");
+assert.equal(ctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.unavailable", "the slot says why it is unavailable");
+assert.ok(ctx.preview.items.length > 0, "the scrolls survive a failed permanent read");
+assert.ok(ctx.preview.currency, "the currency survives a failed permanent read");
+candidateReadError = null;
+
+// A failed valuable search keeps the full currency as coins, with the reason shown.
+valuablePool.candidates = [SILK_CANDIDATE];
+valuableReadError = new Error("valuable damaged");
+parcelPicks = []; permanentPicks = []; permanentPools.clear();
+c = ctl({ valuables: { checked: true } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.error, null, "a failed valuable search does not fail the parcel");
+assert.equal(ctx.preview.valuable, null);
+assert.ok(ctx.preview.valuableNote.includes("ValuableReason.unavailable"), "the valuable's failure is named");
+assert.equal(ctx.preview.currency, "40 gp", "the full currency stays as coins");
+valuableReadError = null;
+
+// A user abort during the valuable search still stops generation.
+valuableReadError = Object.assign(new Error("aborted"), { name: "AbortError" });
+a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview, null, "an abort is not swallowed into a warning");
+assert.ok(ctx.error && ctx.error.includes("aborted"), "the abort surfaces as the run's error");
+valuableReadError = null; valuablePool.candidates = [];
+
+// A scroll provider failure leaves the scroll slots unfilled and still builds permanent items and currency.
+parcelMode = "fail";
+permanentPools.clear(); permanentPools.set(1, { equipment: [HEARING_CANDIDATE], wands: [] });
+permanentPicks = [{ slotId: "perm-3", candidateId: "c-hearing" }];
+c = ctl(); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.error, null, "a scroll provider failure does not fail the parcel");
+assert.equal(ctx.preview.items.length, 0, "no scroll is built when the selection failed");
+assert.ok(ctx.preview.unfilled.length > 0, "every scroll slot is listed as unfilled");
+assert.ok(ctx.preview.warnings.some((w) => w.includes("ScrollProvider")), "the failure is named in the preview");
+assert.equal(ctx.preview.permanents[2].filled, true, "the permanent item still builds");
+assert.equal(ctx.preview.currency, "40 gp", "the currency still builds");
+await A.createItem.call(a);
+created = createCalls.at(-1).actor;
+assert.deepEqual(created.items.map((item) => [item.type, item.name]), [["equipment", "Magical Hearing Aid"], ["treasure", "Gold Pieces"]],
+  "the loot actor holds the permanent item and the coins, with no scrolls");
+parcelMode = "abort";
+a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview, null, "a scroll-phase abort is not swallowed");
+assert.ok(ctx.error && ctx.error.includes("aborted"));
+parcelMode = "ok"; permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks;

@@ -583,6 +583,7 @@
         "RankAbove": "A spell exceeded its slot rank.",
         "BuildDrop": "A scroll could not be built and was dropped.",
         "CurrencyDrop": "A coin could not be loaded, so all currency was dropped.",
+        "ScrollProvider": "The scroll selection failed, so the scroll slots are unfilled.",
         "Revalidate": "A permanent item no longer passes its checks. Regenerate the plan before creating.",
         "PermanentHeading": "Permanent items",
         "PermanentLevels": "Allowed level",
