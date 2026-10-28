@@ -243,6 +243,37 @@ const focusEntries = () => created.filter((item) => item.type === "spellcastingE
   assert.deepEqual(created.filter((item) => item.type === "spell").map((item) => item.name), ["Force Bolt"]);
   assert.equal(warnings.splice(mark).filter((line) => /Wizard has no modeled focus-spell source/.test(line)).length, 1);
 }
+// Two staged school-tagged paths are ambiguous; no spell may be guessed.
+{
+  const secondSchool = structuredClone(features.find((item) => item.name === "Spell Blending"));
+  secondSchool.system.traits.otherTags.push("wizard-arcane-school");
+  worlds.use(makeWorld({ [CF]: features.map((item) => item._id === secondSchool._id ? secondSchool : item), "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt] }));
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.equal(events.includes("actor-create"), true);
+  assert.equal(focusEntries().length, 0);
+  const fresh = warnings.splice(mark);
+  const schoolWarnings = fresh.filter((line) => /multiple arcane schools/.test(line));
+  assert.equal(schoolWarnings.length, 1);
+  assert.match(schoolWarnings[0], /simplypf2e \| School of Battle Magic/);
+  warnings.push(...fresh.filter((line) => !/multiple arcane schools/.test(line)));
+  worlds.use(world);
+}
+// A link resolving to a feat is not an eligible spell, even with focus traits.
+{
+  const nonSpell = { ...structuredClone(forceBolt), type: "feat" };
+  worlds.use(makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [nonSpell] }));
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.equal(events.includes("actor-create"), true);
+  assert.equal(focusEntries().length, 0);
+  const fresh = warnings.splice(mark);
+  const schoolWarnings = fresh.filter((line) => /simplypf2e \| School of Battle Magic/.test(line));
+  assert.equal(schoolWarnings.length, 1);
+  assert.match(schoolWarnings[0], /initial school spell is missing, invalid, or in a disabled pack/);
+  warnings.push(...fresh.filter((line) => !/simplypf2e \| School of Battle Magic/.test(line)));
+  worlds.use(world);
+}
 // A resolved non-focus spell or an excluded pack cannot become a school spell.
 {
   const nonFocus = structuredClone(forceBolt);

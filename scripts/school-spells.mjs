@@ -1,7 +1,9 @@
 /** Pure parser for the initial spell link in a staged arcane school feature. */
+export const WIZARD_ARCANE_SCHOOL_TAG = "wizard-arcane-school";
+
 export function isArcaneSchoolSource(source) {
   const tags = source?.system?.traits?.otherTags;
-  return Array.isArray(tags) && tags.includes("wizard-arcane-school");
+  return Array.isArray(tags) && tags.includes(WIZARD_ARCANE_SCHOOL_TAG);
 }
 
 export function schoolInitialSpellLink(descriptionHtml) {
