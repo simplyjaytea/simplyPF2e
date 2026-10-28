@@ -44,11 +44,16 @@ export const SPELL_CONSUMABLE_TEMPLATES = Object.freeze({
   cantripDeck: "Compendium.pf2e.equipment-srd.Item.tLa4bewBhyqzi6Ow",
 });
 
+// pf2e config: `1: "Compendium.pf2e.equipment-srd.Item.tLa4bewBhyqzi6Ow"`;
+// app.svelte: `itemTypeData?.cantripsOnly ? compendiumUuids?.[1] : compendiumUuids?.[Number(rank)]`.
+export const CANTRIP_DECK_RANK = 1;
+
 /** Highest rank each kind may reach. Scrolls go to 10; wands stop at 9 (no wand 10 template). */
 const RANK_LIMITS = Object.freeze({ scroll: 10, wand: 9 });
 
 /** en.json keys PF2E.Item.Physical.FromSpell.Scroll / .Wand, English text, rank as a plain number. */
 const NAME_TEMPLATES = Object.freeze({
+  cantripDeck: "Cantrip Deck of {name} (5-pack)",
   scroll: "Scroll of {name} (Rank {level})",
   wand: "Wand of {name} (Rank {level})",
 });
@@ -58,6 +63,7 @@ const MAGIC_TRADITIONS = new Set(["arcane", "divine", "occult", "primal"]);
 
 /** Template UUID for a scroll or wand at a rank, or null (wand 10, unknown kind, bad rank). */
 export function spellConsumableTemplateUuid(kind, rank) {
+  if (kind === "cantripDeck") return rank === CANTRIP_DECK_RANK ? SPELL_CONSUMABLE_TEMPLATES.cantripDeck : null;
   if (!Object.hasOwn(RANK_LIMITS, kind) || !Number.isInteger(rank)) return null;
   return SPELL_CONSUMABLE_TEMPLATES[kind][rank] ?? null;
 }
@@ -74,6 +80,16 @@ export function spellConsumableTemplateRef(kind, rank) {
  * (research section 4.1). Order follows the policy in sprint plan WP6, decision 2.
  */
 export function spellConsumableRankProblem(spellData, kind, rank) {
+  if (kind === "cantripDeck") {
+    if (rank !== CANTRIP_DECK_RANK) return "rank must be 1 for a cantrip deck";
+    if (!spellData || typeof spellData !== "object") return "spell data is missing";
+    const traits = spellData.system?.traits?.value ?? [];
+    if (!traits.includes("cantrip")) return "a cantrip deck requires a cantrip";
+    if (traits.includes("focus")) return "focus spells cannot become cantrip decks";
+    if (spellData.system?.ritual) return "rituals cannot become cantrip decks";
+    if (spellData.system?.traits?.rarity !== "common") return "cantrip decks require a common cantrip";
+    return null;
+  }
   if (!Object.hasOwn(RANK_LIMITS, kind)) return `"${kind}" is not a scroll or wand`;
   const max = RANK_LIMITS[kind];
   if (!Number.isInteger(rank) || rank < 1 || rank > max) return `rank must be a whole number from 1 to ${max} for a ${kind}`;
@@ -124,8 +140,9 @@ function randomId() {
 export function buildSpellConsumable({ kind, rank, templateData, spellData } = {}) {
   const problem = spellConsumableRankProblem(spellData, kind, rank);
   if (problem) throw new Error(`Cannot build ${kind} at rank ${rank}: ${problem}`);
-  if (templateData?.type !== "consumable" || templateData.system?.category !== kind) {
-    throw new Error(`Cannot build ${kind}: the template must be a consumable with category "${kind}"`);
+  const category = kind === "cantripDeck" ? "other" : kind;
+  if (templateData?.type !== "consumable" || templateData.system?.category !== category) {
+    throw new Error(`Cannot build ${kind}: the template must be a consumable with category "${category}"`);
   }
   // The template must be the pinned rank template: toItemData() records the source UUID in _stats.
   if (templateData._stats?.compendiumSource !== spellConsumableTemplateUuid(kind, rank)) {
@@ -167,6 +184,10 @@ export function buildSpellConsumable({ kind, rank, templateData, spellData } = {
 
   // pf2e 8.5.0 spell-consumables.ts 70-75: the spell source with a fresh _id and
   // location { value: null, heightenedLevel: rank } merged over its own location.
+  if (kind === "cantripDeck") {
+    delete item.system.spell;
+    return item;
+  }
   spell._id = randomId();
   spell.system = {
     ...spell.system,

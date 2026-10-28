@@ -237,7 +237,7 @@ const picker = forgeApp();
 await actions.selectKind.call(picker, null, { dataset: { kind: "wand" } });
 prepared = await picker._prepareContext();
 assert.equal(prepared.input.kind, "wand");
-assert.deepEqual(plain(prepared.consumableKinds.map((kind) => kind.selected)), [false, true]);
+assert.deepEqual(plain(prepared.consumableKinds.map((kind) => kind.selected)), [false, false, true]);
 assert.equal(prepared.promptLabel, "SIMPLYPF2E.ItemForge.Consumables.PromptLabel");
 await actions.selectKind.call(picker, null, { dataset: { kind: "potion" } });
 assert.equal((await picker._prepareContext()).input.kind, "wand", "unknown kinds keep the selection");
@@ -255,3 +255,5 @@ assert.ok(prepared.preview.warnings.some((warning) => warning.includes("SpellMis
 assert.ok(prepared.preview.warnings.some((warning) => warning.includes("TemplateMissing") && warning.includes("Scroll of Heal (Rank 3)")));
 
 console.log("itemforge-app.consumables.test.mjs: real template build, per-pick drops, level cap, wand and plan refusals, deferred write and commit passed");
+
+assert.ok(prepared.preview.warnings.some((warning) => warning.includes("TemplateMissing") && !warning.includes("DroppedPick")), "the missing template is labeled TemplateMissing, not DroppedPick");

@@ -593,6 +593,24 @@ export async function getScrollSpellCandidates(maxRank = 10, keywords = [], { ma
   return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT);
 }
 
+/** Common, non-focus cantrips from enabled spell packs. */
+export async function getCantripCandidates(keywords = []) {
+  const candidates = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("spells")) {
+    const entries = await getIndex(packId);
+    if (!entries) continue;
+    for (const entry of entries) {
+      const traits = entry.system?.traits?.value ?? [];
+      if (entry.type !== "spell" || entry.system?.ritual || !traits.includes("cantrip") || traits.includes("focus") || entry.system?.traits?.rarity !== "common" || seen.has(entry.normalized)) continue;
+      seen.add(entry.normalized);
+      candidates.push(candidateRecord(entry, { name: entry.name, rank: entry.system?.level?.value ?? 1, traits, rarity: entry.system.traits.rarity }));
+    }
+  }
+  candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
+  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT);
+}
+
 /**
  * Bounded exact candidates for focus spells. Focus spells deliberately do not
  * filter by tradition: published focus spells commonly carry no tradition in

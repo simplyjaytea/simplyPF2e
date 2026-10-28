@@ -29,6 +29,7 @@
       <textarea id="spf-itemforge-prompt" name="prompt" rows="3" placeholder="{{localize promptPlaceholder}}">{{input.prompt}}</textarea>
     </div>
     <div class="spf-row">
+      {{#unless isCantripDeck}}
       <div class="form-group">
         <label for="spf-itemforge-level">{{localize levelLabel}}</label>
         <div class="spf-level-controls">
@@ -41,6 +42,7 @@
           </button>
         </div>
       </div>
+      {{/unless}}
       <div class="form-group">
         <label for="spf-itemforge-rarity">{{localize "SIMPLYPF2E.Generator.Rarity"}}</label>
         <select id="spf-itemforge-rarity" name="rarity">
@@ -128,6 +130,7 @@
           {{/each}}
         </tbody>
       </table>
+      {{#if preview.isCantripDeck}}<p>{{localize "SIMPLYPF2E.ItemForge.Consumables.DeckNote"}}</p>{{/if}}
       {{#if preview.destination}}<p>{{preview.destination}}</p>{{/if}}
       {{#each preview.warnings}}
         <p class="notification warning" role="status">{{this}}</p>

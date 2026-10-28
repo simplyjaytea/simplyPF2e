@@ -14,7 +14,7 @@ import {
 import { createActivationMacro } from "./macro-templates.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
-import { getScrollSpellCandidates, getCandidateDocument, priceToGp, toItemData } from "./compendium.mjs";
+import { getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, priceToGp, toItemData } from "./compendium.mjs";
 import {
   spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName
 } from "./spell-consumables.mjs";
@@ -27,7 +27,7 @@ import { persistedExpectedItems, verifyCreatedActor, rollbackCreatedActor } from
 import { esc } from "./text.mjs";
 
 /** Item Forge kinds that build real spells into scrolls or wands (spell-consumables.mjs). */
-const CONSUMABLE_KINDS = new Set(["scroll", "wand"]);
+const CONSUMABLE_KINDS = new Set(["scroll", "wand", "cantripDeck"]);
 /** Most spell consumables one plan may hold. */
 const CONSUMABLE_PICK_LIMIT = 6;
 
@@ -38,6 +38,7 @@ const CONSUMABLE_PICK_LIMIT = 6;
  * scrolls, 9 for wands) still apply. Returns 0 when no rank fits.
  */
 function consumableMaxRank(kind, level) {
+  if (kind === "cantripDeck") return 1;
   const byLevel = kind === "wand" ? Math.floor((level - 1) / 2) : Math.floor((level + 1) / 2);
   return Math.max(0, Math.min(kind === "wand" ? 9 : 10, byLevel));
 }
@@ -115,6 +116,7 @@ export class ItemForgeApp extends SpfApp {
       input: this.#input,
       showDestination: experimentalToolsEnabled() && CONSUMABLE_KINDS.has(this.#input.kind),
       showContainer: experimentalToolsEnabled() && (this.#input.kind === "parcel" || (CONSUMABLE_KINDS.has(this.#input.kind) && this.#input.destination === "loot")),
+      isCantripDeck: this.#input.kind === "cantripDeck",
       isParcel: experimentalToolsEnabled() && this.#input.kind === "parcel",
       levelLabel: this.#input.kind === "parcel" ? "SIMPLYPF2E.ItemForge.Parcel.PartyLevel" : "SIMPLYPF2E.ItemForge.Level",
       busy: this.#busy,
@@ -144,6 +146,7 @@ export class ItemForgeApp extends SpfApp {
       ].map((kind) => ({ ...kind, selected: kind.value === this.#input.kind })),
       consumableKinds: [
         { value: "scroll", label: "SIMPLYPF2E.ItemForge.Consumables.KindScroll", hint: "SIMPLYPF2E.ItemForge.Consumables.KindScrollHint", icon: "fa-scroll" },
+        { value: "cantripDeck", label: "SIMPLYPF2E.ItemForge.Consumables.KindCantripDeck", hint: "SIMPLYPF2E.ItemForge.Consumables.KindCantripDeckHint", icon: "fa-layer-group" },
         { value: "wand", label: "SIMPLYPF2E.ItemForge.Consumables.KindWand", hint: "SIMPLYPF2E.ItemForge.Consumables.KindWandHint", icon: "fa-wand-sparkles" },
         ...(experimentalToolsEnabled() ? [{ value: "parcel", label: "SIMPLYPF2E.ItemForge.Parcel.Kind", hint: "SIMPLYPF2E.ItemForge.Parcel.Hint", icon: "fa-sack-dollar" }] : [])
       ].map((kind) => ({ ...kind, selected: kind.value === this.#input.kind })),
@@ -467,6 +470,7 @@ export class ItemForgeApp extends SpfApp {
     if (!this.#consumables) return null;
     return {
       consumable: true,
+      isCantripDeck: this.#kind === "cantripDeck",
       destination: this.#input.destination === "loot" && (experimentalToolsEnabled() || this.#consumables) ? game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DestinationLine") : null,
       heading: game.i18n.localize("SIMPLYPF2E.ItemForge.Consumables.PreviewHeading"),
       items: this.#consumables.items.map((item) => ({
@@ -493,9 +497,9 @@ export class ItemForgeApp extends SpfApp {
     if (maxRank < 1) {
       throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.LevelTooLow", { kind, minLevel: kind === "wand" ? 3 : 1 }));
     }
-    const offered = await getScrollSpellCandidates(maxRank, briefKeywords(this.#input.prompt), { maxRarity: this.#input.rarity });
+    const offered = kind === "cantripDeck" ? await getCantripCandidates(briefKeywords(this.#input.prompt)) : await getScrollSpellCandidates(maxRank, briefKeywords(this.#input.prompt), { maxRarity: this.#input.rarity });
     if (!offered.length) {
-      throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoCandidates", { kind }));
+      throw new Error(kind === "cantripDeck" ? game.i18n.localize("SIMPLYPF2E.ItemForge.Consumables.NoCantripCandidates") : game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoCandidates", { kind }));
     }
 
     // 2. One AI call, constrained to those real spells.
@@ -530,6 +534,7 @@ export class ItemForgeApp extends SpfApp {
         continue;
       }
       const result = await this.#buildSpellConsumable(kind, pick.candidate, pick.rank);
+      if (kind === "cantripDeck" && !result.source) console.warn(`${MODULE_ID} | dropped cantrip deck pick`, label, result.missing ?? result.reason);
       if (result.missing === "spell") warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.SpellMissing", { name: label }));
       else if (result.missing === "template") warnings.push(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.TemplateMissing", { name: label }));
       else if (!result.source) dropped(result.reason || "build failed");
