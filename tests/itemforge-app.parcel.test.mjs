@@ -33,8 +33,8 @@ async function fromUuid(uuid) { if (emptyBuildError && uuid === SCROLL_1) throw 
 const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "common" };
 async function getCandidateDocument(c) { return c?.id === "c-heal" ? { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) } : null; }
 const candCalls = []; async function getScrollSpellCandidates(maxRank) { candCalls.push(maxRank); return [HEALC]; }
-let parcelPicks = []; const parcelCalls = [];
-async function selectParcelSpells(brief, opts) { parcelCalls.push(opts); return { picks: parcelPicks, usage: null }; }
+let parcelPicks = []; let parcelDrops = []; const parcelCalls = [];
+async function selectParcelSpells(brief, opts) { parcelCalls.push(opts); return { picks: parcelPicks, dropped: parcelDrops, usage: null }; }
 async function selectSpellConsumables() { return { picks: [{ spellId: "c-heal", name: HEAL.name, rank: 1, kind: "scroll", candidate: HEALC }], usage: null }; }
 let gate = true;
 class MockSpfApp {
@@ -169,3 +169,20 @@ const lang = JSON.parse(readFileSync(new URL("../lang/en.json", import.meta.url)
 assert.equal(lang.SIMPLYPF2E.ItemForge.Parcel.ValueExtra, "Built {value} gp of four-PC table total {total} gp.");
 assert.match(template, /Parcel.SlotLevels/);
 assert.match(template, /<td>{{this.level}}<\/td><td>{{this.itemLevels}}/);
+// Unknown ids the AI wrote reach the preview as data. The template prints each warning with {{this}} (escaped).
+parcelDrops = [
+  { reason: "unknown-slot", slotId: "slot-9" },
+  { reason: "unknown-spell", spellId: "<img src=x onerror=alert(1)>" },
+  { reason: "unknown-spell", spellId: "Fireball" }
+];
+c = ctl(); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.warnings.length, 3, "one preview line per dropped AI pick");
+assert.ok(ctx.preview.warnings[0].includes("UnknownSlot") && ctx.preview.warnings[0].includes("slot-9"));
+assert.ok(ctx.preview.warnings[1].includes("UnknownSpell") && ctx.preview.warnings[1].includes("<img src=x onerror=alert(1)>"),
+  "the raw AI string is passed through, escaped only at render time");
+assert.ok(ctx.preview.warnings[2].includes("Fireball"));
+assert.equal(ctx.preview.items[0].quantity, 3, "the parcel is still built from the valid picks");
+assert.match(template, /{{#each preview.warnings}}<p class="notification warning">{{this}}<\/p>{{\/each}}/, "parcel warnings render through escaping {{this}}");
+parcelDrops = [];

@@ -63,12 +63,23 @@ try {
     const unknownSlot = await selectParcelSpells("slot", { partyLevel: 5, slots, candidates });
     assert.deepEqual(unknownSlot.picks.map((pick) => pick.slotId), ["slot-2"], "a pick for an unissued slot id is dropped");
     assert.equal(warnings.length, 1, "an unknown slot id produces exactly one warning");
+    assert.deepEqual(unknownSlot.dropped, [{ reason: "unknown-slot", slotId: "slot-9" }],
+      "the unknown slot id is returned for the preview, not only logged");
 
     warnings.length = 0;
     replies.push({ picks: [{ slot: "slot-1", spellId: "c-invented" }, { slot: "slot-2", spellId: "Fireball" }] });
     const unknownSpell = await selectParcelSpells("spell", { partyLevel: 5, slots, candidates });
     assert.deepEqual(unknownSpell.picks, [], "a pick for an unissued spell id, or a spell name, is dropped");
     assert.equal(warnings.length, 2, "each unknown spell id produces one warning");
+    assert.deepEqual(unknownSpell.dropped, [
+      { reason: "unknown-spell", spellId: "c-invented" },
+      { reason: "unknown-spell", spellId: "Fireball" }
+    ], "each unknown spell id is returned in reply order, so a spell name the AI wrote shows as written");
+
+    replies.push({ picks: [{ slot: "slot-1", spellId: "x".repeat(200) }] });
+    const longId = await selectParcelSpells("long", { partyLevel: 5, slots, candidates });
+    assert.equal(longId.dropped[0].spellId.length, 60, "an echoed AI id is capped so one reply cannot flood the preview");
+    assert.deepEqual(round.dropped, [], "a reply with no unknown ids drops nothing");
   } finally {
     console.warn = originalWarn;
   }
@@ -96,10 +107,10 @@ try {
 
   const before = requests.length;
   const noCandidates = await selectParcelSpells("no candidates", { partyLevel: 5, slots, candidates: [] });
-  assert.deepEqual(noCandidates, { picks: [], usage: null });
+  assert.deepEqual(noCandidates, { picks: [], dropped: [], usage: null });
   assert.equal(requests.length, before, "no provider request is made without candidates");
   const noSlots = await selectParcelSpells("no slots", { partyLevel: 5, slots: [], candidates });
-  assert.deepEqual(noSlots, { picks: [], usage: null });
+  assert.deepEqual(noSlots, { picks: [], dropped: [], usage: null });
   assert.equal(requests.length, before, "no provider request is made without slots");
 
   const firstRequest = requests[0];

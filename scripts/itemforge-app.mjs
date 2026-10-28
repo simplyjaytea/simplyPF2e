@@ -581,14 +581,15 @@ export class ItemForgeApp extends SpfApp {
     const plan = planParcelSlots(row);
     const candidates = await getScrollSpellCandidates(Math.max(...plan.slots.map((s) => s.rank)), briefKeywords(this.#input.prompt), { maxRarity: this.#input.rarity });
     await this._setStep("concept");
-    const { picks, usage } = await selectParcelSpells(this.#input.prompt, { partyLevel: row.level, slots: plan.slots, candidates, signal,
+    const { picks, dropped: unknownPicks, usage } = await selectParcelSpells(this.#input.prompt, { partyLevel: row.level, slots: plan.slots, candidates, signal,
       onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")) });
     this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
     await this._setStep("assemble");
     const assigned = assignParcelPicks(plan.slots, picks, candidates);
     const items = [];
-    const dropped = [...assigned.dropped];
-    for (const drop of dropped) console.warn(`${MODULE_ID} | dropped parcel pick`, drop);
+    // Unknown ids were already warned in selectParcelSpells; they are kept here for the preview.
+    const dropped = [...unknownPicks, ...assigned.dropped];
+    for (const drop of assigned.dropped) console.warn(`${MODULE_ID} | dropped parcel pick`, drop);
     const unfilled = [...assigned.unfilled];
     for (const stack of stackParcelAssignments(assigned.assignments)) {
       this._throwIfCancelled();
@@ -626,12 +627,22 @@ export class ItemForgeApp extends SpfApp {
     return entries.join(", ");
   }
 
+  /**
+   * Preview line for one dropped pick. An unknown slot or spell id is the AI's own string, passed
+   * as data: the template prints it with `{{this}}`, which escapes it (PLAYBOOK invariant 5).
+   */
+  #dropText(drop, dropKeys) {
+    if (drop.reason === PARCEL_DROP.UNKNOWN_SLOT) return game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.UnknownSlot", { id: drop.slotId ?? "" });
+    if (drop.reason === PARCEL_DROP.UNKNOWN_SPELL) return game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.UnknownSpell", { id: drop.spellId ?? "" });
+    return game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.${dropKeys[drop.reason]}`);
+  }
+
   #buildParcelPreview() {
     const p = this.#parcel;
     if (!p) return null;
-    const dropKeys = { [PARCEL_DROP.UNKNOWN_SLOT]: "UnknownSlot", [PARCEL_DROP.DUPLICATE_SLOT]: "DuplicateSlot", [PARCEL_DROP.UNKNOWN_SPELL]: "UnknownSpell", [PARCEL_DROP.RANK_ABOVE_SLOT]: "RankAbove", build: "BuildDrop", currency: "CurrencyDrop" };
+    const dropKeys = { [PARCEL_DROP.DUPLICATE_SLOT]: "DuplicateSlot", [PARCEL_DROP.RANK_ABOVE_SLOT]: "RankAbove", build: "BuildDrop", currency: "CurrencyDrop" };
     return { parcel: true, items: p.items.map((i) => ({ ...i, itemLevels: i.itemLevels.join(", "), price: `${i.priceGp.toLocaleString()} gp` })),
-      unfilled: p.unfilled, warnings: p.dropped.map((d) => game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.${dropKeys[d.reason]}`)),
+      unfilled: p.unfilled, warnings: p.dropped.map((d) => this.#dropText(d, dropKeys)),
       extraPcs: p.row.extraPcs, currency: p.currency ? coinLabel(p.currency.coins) : null, permanent: this.#permanentList(p), valueGp: p.valueGp, totalGp: p.row.totalGp };
   }
 

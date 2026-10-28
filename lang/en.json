@@ -577,9 +577,9 @@
         "Header": "GM Core Party Treasure by Level: party level {level}, size {size}.",
         "EvenNote": "Even-level consumable slots use a scroll one level lower.",
         "BelowNote": "Parties below four use the four-PC row.",
-        "UnknownSlot": "A pick used an unknown slot.",
+        "UnknownSlot": "A pick used an unknown slot: “{id}”.",
         "DuplicateSlot": "A duplicate slot pick was dropped.",
-        "UnknownSpell": "A pick used an unknown spell.",
+        "UnknownSpell": "A pick used an unknown spell: “{id}”.",
         "RankAbove": "A spell exceeded its slot rank.",
         "BuildDrop": "A scroll could not be built and was dropped.",
         "CurrencyDrop": "Gold Pieces could not be loaded; currency was dropped."

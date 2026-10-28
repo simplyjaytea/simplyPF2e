@@ -14,6 +14,10 @@ import {
 } from "./ai-candidate-format.mjs";
 import { taskResponseProblem } from "./ai-response-validation.mjs";
 import { validateChoicePicks } from "./choice-set.mjs";
+import { PARCEL_DROP } from "./treasure-parcel.mjs";
+
+/** Longest AI-written id echoed back in a parcel drop, so one bad reply cannot flood the preview. */
+const PARCEL_DROP_ID_MAX = 60;
 import { pcIdentityKey, assertPCIdentity } from "./pc-identity.mjs";
 import { CORE_SKILLS } from "./pc-skills.mjs";
 import { RESKIN_LIMITS } from "./reskin-policy.mjs";
@@ -917,13 +921,16 @@ const parcelSpellsProblem = (data) => {
  * @param {number} args.partyLevel party level, for context only
  * @param {{id: string, itemLevel: number, rank: number}[]} args.slots issued consumable slots
  * @param {{id: string, name: string, rank: number, traits?: string[], ref?: object}[]} args.candidates issued spell candidates
- * @returns {Promise<{picks: {slotId: string, spellId: string, name: string, candidate: object}[], usage: object|null}>}
+ * `dropped` lists each unknown id as `{ reason, slotId }` or `{ reason, spellId }`, with the AI's
+ * string cut to PARCEL_DROP_ID_MAX characters. The string is untrusted: the preview shows it as
+ * escaped text only.
+ * @returns {Promise<{picks: {slotId: string, spellId: string, name: string, candidate: object}[], dropped: object[], usage: object|null}>}
  */
 export async function selectParcelSpells(brief, { partyLevel, slots, candidates = [], signal, onProgress } = {}) {
   const offered = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.id);
   const issued = (Array.isArray(slots) ? slots : []).filter((slot) => slot?.id);
   // Nothing to fill or nothing to fill it with: no provider request, and no picks.
-  if (!offered.length || !issued.length) return { picks: [], usage: null };
+  if (!offered.length || !issued.length) return { picks: [], dropped: [], usage: null };
 
   const slotList = issued.map((slot) => `${slot.id} | scroll rank ${slot.rank}`).join("\n");
   const list = offered.map((candidate) => {
@@ -952,21 +959,24 @@ Each slot appears at most once. A spell's base rank must be at or below its slot
   const slotIds = new Set(issued.map((slot) => slot.id));
   const byId = new Map(offered.map((candidate) => [candidate.id, candidate]));
   const picks = [];
+  const dropped = [];
   for (const pick of parsed.picks) {
     if (picks.length >= issued.length) break;
     const slotId = String(pick?.slot ?? "");
     if (!slotIds.has(slotId)) {
       console.warn("simplypf2e | dropped parcel spell pick with an unknown slot id", pick?.slot);
+      dropped.push({ reason: PARCEL_DROP.UNKNOWN_SLOT, slotId: slotId.slice(0, PARCEL_DROP_ID_MAX) });
       continue;
     }
     const candidate = byId.get(String(pick?.spellId ?? ""));
     if (!candidate) {
       console.warn("simplypf2e | dropped parcel spell pick with an unknown spell id", pick?.spellId);
+      dropped.push({ reason: PARCEL_DROP.UNKNOWN_SPELL, spellId: String(pick?.spellId ?? "").slice(0, PARCEL_DROP_ID_MAX) });
       continue;
     }
     picks.push({ slotId, spellId: candidate.id, name: candidate.name, candidate });
   }
-  return { picks, usage };
+  return { picks, dropped, usage };
 }
 
 /**
