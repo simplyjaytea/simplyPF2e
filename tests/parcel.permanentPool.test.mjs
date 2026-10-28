@@ -47,6 +47,7 @@ const equipmentRaws = EQUIPMENT_FIXTURES.map(fixture);
 const valuableRaws = [fixture("agate"), fixture("silk-ceremonial-armor")];
 const spellRaws = [
   { _id: "fireball0000000", name: "Fireball", type: "spell", system: { level: { value: 3 }, traits: { value: ["evocation", "fire"], rarity: "common" }, ritual: null } },
+  { _id: "heal0000000000000", name: "Heal", type: "spell", system: { level: { value: 1 }, traits: { value: ["healing"], rarity: "common" }, ritual: null } },
   { _id: "light00000000000", name: "Light", type: "spell", system: { level: { value: 0 }, traits: { value: ["cantrip", "light"], rarity: "common" }, ritual: null } }
 ];
 
@@ -96,6 +97,9 @@ assert.equal(wandAtRank3.length, 1, "level 7 is rank 3: Fireball");
 assert.deepEqual([wandAtRank3[0].name, wandAtRank3[0].level, wandAtRank3[0].rank, wandAtRank3[0].kind],
   ["Fireball", 7, 3, "wand"], "a wand candidate carries the spell, its level and its rank");
 assert.equal(wandAtRank3[0].spell.name, "Fireball", "the wand names its issued spell candidate");
+// Rank 1 is level 3 only: a rank-1 spell never fills a level-2 or level-4 wand slot.
+assert.deepEqual((await getParcelWandCandidates(3, [], { maxRarity: "common" })).map((candidate) => [candidate.name, candidate.level]), [["Heal", 3]]);
+assert.deepEqual(await getParcelWandCandidates(4, [], { maxRarity: "common" }), [], "level 4 is not a wand level");
 assert.deepEqual(await getParcelWandCandidates(2, []), []);
 assert.deepEqual(await getParcelWandCandidates(21, []), []);
 const cantripsInPool = (await getParcelWandCandidates(1, [])).map((candidate) => candidate.name);
