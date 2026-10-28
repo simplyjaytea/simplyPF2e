@@ -2,6 +2,10 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-29 — QA round on `integrate/2026-10-29`: F1–F7 repaired
+
+- QA (APPROVE WITH FIXES on `acd4058`) found that the PC preview never showed the school-spell lines (the generator dropped them when it rebuilt the draft), that a deck's rarity control was hidden so uncommon decks were unreachable, that the focus dedupe was untested, that one 503 aborted a drift run, that the deck rarity map failed open, that the preview call was unguarded, and that the docs were stale. Each is closed on the integrate branch with a test; see the commit messages.
+
 ## 2026-10-28 — Repo cleanup: docs truthfulness, drift check follow-ups, ledger N15 (branch `work/cleanup-2026-10-29`)
 
 - Docs truthfulness after the user deleted every remote branch except `main` (2026-10-28): HANDOFF, PLAYBOOK §7/§8/§9 and §10 and the docs map now say so, and state v0.3.5.80 as the latest release (tag at `c86aa7a`). `codex/audit-fixes` (superseded 2026-09-05 docs commit `024fbc4`) survives only as a local commit. Historical records (this file, reviews, plans) were not rewritten.

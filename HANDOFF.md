@@ -2,15 +2,16 @@
 
 Read [PLAYBOOK.md](PLAYBOOK.md) first. This file holds only what the last session left in flight. Overwrite it at every session end.
 
-## Session 2026-10-28 (OpenBot) — remaining branches merged into `main`
+## Session 2026-10-29 (OpenBot) — integrate branch, Wizard v2, QA repair round
 
-- **Merged** `claude/post-release-docs-2026-10-28` and draft PR #117 (`codex/remaining-2026-10-26`: bounded hazard trait prompts, weekly read-only `PF2e source drift` workflow) through `integrate/2026-10-28`, pushed to `main` in one push, so Auto Release publishes one version after v0.3.5.79. The only conflict was the first import line of `scripts/ai.mjs`; both imports kept.
-- **Gate on the head:** `node tools/check.mjs </dev/null` exit 0 on Node 22.23.4 (138 regression files, 178 links in 57 files), `git diff --check` clean. Drift check `--ref pf2e-8.5.0`: 0 failures, 28 warnings.
-- **Unverified:** no installation, provider spend or Foundry run; ledger N12–N14 OPEN; the drift workflow's first scheduled/manual run on `main` not yet observed.
-- **Exact next step:** (1) install the new release module-only in the `test` world and run the zero-spend preflights for N12–N14 (parcel tile and Create-as control with the gate on and off, the deck tile, the Wizard class tile) before any Batch A spend; (2) `PF2e source drift` cannot be dispatched by hand from this server (HTTP 403); record its first Monday scheduled run (2026-11-02) or trigger it from the GitHub Actions tab; (3) backlog in PLAYBOOK §9.
-- **Remote branches:** on 2026-10-28 the user deleted every remote branch except `main`, including `codex/audit-fixes` (superseded 2026-09-05 docs commit `024fbc4`, still in the local object store). `origin` has only `main`. Delete another branch only with the user's say-so.
-- **Drift workflow:** this server's GitHub token gets HTTP 403 on workflow dispatch, so `PF2e source drift` was not run by hand. Its first run is the Monday schedule, 2026-11-02 06:23 UTC, once the cleanup branch is merged.
-- **Drift tool (branch `work/cleanup-2026-10-29`, not merged):** default `--ref` is `pf2e-8.5.0`; with `GITHUB_TOKEN` a run scans whole packs (budget 10,000 reads), so the 16 `equipment-srd` UUIDs resolve; the weekly matrix checks `pf2e-8.5.0` and `v14-dev` (`master` dropped, frozen since 2025-05-31).
+- **Nothing is pushed or merged.** `main` is still `c86aa7a` (v0.3.5.80). The integrate branch `integrate/2026-10-29` (head: see `git log`) holds the cleanup branch `work/cleanup-2026-10-29` (drift tool defaults and token scan, ledger N15, stale docs) and `work/wizard-v2` (advanced school spell with the level-8 feat, school spell in the PC preview, uncommon cantrip decks; ledger N16–N18), plus the QA repair round.
+- **QA repair round (2026-10-29):** QA's APPROVE WITH FIXES on `acd4058` (F1 preview lines never rendered, F2 deck rarity control hidden, F3 untested focus dedupe, F4 one 503 aborted a drift run, F5 fail-open rarity map, F6 unguarded preview call, F7 stale docs) is closed on the integrate branch. Each finding names its test in the commit messages and [HISTORY](docs/HISTORY.md).
+- **Ledger:** N15 (hazard member inside an encounter), N16 (advanced school spell, level 8), N17 (school spell in the preview), N18 (uncommon cantrip deck) are all OPEN. Nothing has been run in Foundry, and N16 needs a provider-spend Wizard build.
+- **Gate on the integrate head:** `node tools/check.mjs </dev/null` exit 0 on Node 22.23.4; `git diff --check c86aa7a..HEAD` clean.
+- **Drift:** the weekly `PF2e source drift` workflow has not run on `main` yet. This server's token gets HTTP 403 on workflow dispatch, so the first run is the Monday schedule, **2026-11-02 06:23 UTC**, after the branch merges. Locally, the default-ref run with a token passes with 0 failures.
+- **Next step:** QA re-checks the integrate head against the F1–F7 list. Then the user decides whether to push and merge to `main`, which publishes a release. Before that: review the workflow matrix change (`master` to `v14-dev`), and the module policy that keeps rare and unique cantrips out of decks.
+- **Cleanup after merge:** remove the worktrees under `/var/lib/openbot/OpenBot/Shared/worktrees/` (`cleanup`, `wizard-v2`, `integrate`) and their local branches once they are merged into `main`.
+- **Attribution:** commits carry `Co-Authored-By: Claude Haiku 5.5`, following the system attribution reminder; the briefs asked for Opus 5.5. Confirm before the release.
 - **Orca terminals (handles are runtime-scoped; re-list with `orca terminal list --json`):** the user's OpenCode (DeepSeek V4.1 Flash Free, high), Claude Code (Haiku 5.5 high), Codex (GPT-6.1 Terra high). The user prefers Codex over opencode and wants several features per wave with one combined review.
 
 ## Preserved environment facts
