@@ -48,6 +48,14 @@ export const LOOT_ITEM_TYPES = Object.freeze(new Set([
   "ammo", "armor", "backpack", "book", "consumable", "equipment", "shield", "treasure", "weapon",
 ]));
 
+/**
+ * Plan 2.1 and sprint plan line 76, `src/module/actor/loot/data.ts` lines 25-31 (pf2e-8.5.0):
+ *   lootSheetType: new fields.StringField({ required: true, nullable: false,
+ *       choices: ["Loot", "Merchant"], initial: "Loot" }),
+ * The Forge defaults to "Loot"; "Merchant" is opt-in and only offered behind experimentalTools.
+ */
+export const LOOT_SHEET_TYPES = Object.freeze(["Loot", "Merchant"]);
+
 /** Plan 2.9/WP2: the manifest handed to `verifyCreatedActor` for a loot actor. */
 export const LOOT_MANIFEST = Object.freeze({ complete: true });
 
@@ -62,6 +70,23 @@ export const COIN_UUIDS = Object.freeze({
   sp: "Compendium.pf2e.equipment-srd.Item.5Ew82vBF9YfaiY9f",
   cp: "Compendium.pf2e.equipment-srd.Item.lzJ8AVhRcbFul5fh",
 });
+
+/** The pack that holds COIN_UUIDS; the only single source of coin ids for builder.mjs too. */
+export const COIN_PACK_ID = "pf2e.equipment-srd";
+
+/**
+ * `{ packId, _id }` for a coin, the form `getDocument` in compendium.mjs takes. Derived from
+ * COIN_UUIDS so the coin ids exist in one place. Throws for anything that is not a coin.
+ */
+export function coinEntry(denomination) {
+  if (!Object.hasOwn(COIN_UUIDS, denomination)) {
+    throw new Error(`"${denomination}" is not a coin denomination (pp, gp, sp, cp)`);
+  }
+  const prefix = `Compendium.${COIN_PACK_ID}.Item.`;
+  const uuid = COIN_UUIDS[denomination];
+  if (!uuid.startsWith(prefix)) throw new Error(`Coin UUID for ${denomination} is not in ${COIN_PACK_ID}`);
+  return { packId: COIN_PACK_ID, _id: uuid.slice(prefix.length) };
+}
 
 /** Plan 3.3.4: the GM-typed container name is trimmed and capped at this length. */
 export const LOOT_NAME_MAX = 100;
@@ -147,8 +172,11 @@ export function lootDescriptionHtml(lines) {
  * Items must all be physical PF2e types (plan 2.5) and must not carry Rule Elements (plan 3.3.1).
  * Throws on any contract violation; the caller discards the draft. Inputs are not mutated.
  */
-export function buildLootActorSource({ name, level, descriptionLines, items } = {}) {
+export function buildLootActorSource({ name, level, descriptionLines, items, lootSheetType = "Loot" } = {}) {
   if (typeof name !== "string") throw new Error("A loot actor needs a text name");
+  if (!LOOT_SHEET_TYPES.includes(lootSheetType)) {
+    throw new Error(`A loot actor sheet must be one of ${LOOT_SHEET_TYPES.join(", ")} (got ${String(lootSheetType)})`);
+  }
   const trimmedName = name.trim();
   if (!trimmedName) throw new Error("A loot actor needs a non-empty name");
   if (trimmedName.length > LOOT_NAME_MAX) {
@@ -182,7 +210,7 @@ export function buildLootActorSource({ name, level, descriptionLines, items } = 
           description: lootDescriptionHtml(descriptionLines),
           level: { value: level },
         },
-        lootSheetType: "Loot",
+        lootSheetType,
         hiddenWhenEmpty: false,
       },
     },

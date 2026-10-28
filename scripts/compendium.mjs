@@ -9,6 +9,10 @@ import { SETTINGS, getSetting } from "./settings.mjs";
 import { featPrerequisitesMet } from "./pc-prerequisites.mjs";
 import { slugify } from "./text.mjs";
 import { createAsyncCache } from "./async-cache.mjs";
+import {
+  permanentEquipmentProblem, permanentDocumentProblem, valuableProblem,
+  priceCopper, wandRankForLevel, rankByBrief, chooseValuable
+} from "./treasure-permanent.mjs";
 
 export const CATEGORIES = [
   "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "classFeatures", "heritages", "bestiaryActors"
@@ -198,7 +202,7 @@ export async function getEquipmentIndex(packId) {
   try {
     return await equipmentIndexCache(pack, async () => {
       const index = await pack.getIndex({
-        fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value", "system.category", "system.specific"]
+        fields: ["name", "type", "system.level.value", "system.price.value", "system.usage.value", "system.traits.value", "system.traits.rarity", "system.category", "system.specific"]
       });
       return [...index];
     });
@@ -952,6 +956,105 @@ export async function getCreatureFeatCandidates({
 }
 
 /** Clone a compendium document into plain item data ready for embedding. */
+/** Offered published items per permanent slot level (part 2 parcel); the pool is bounded before any AI call. */
+export const PERMANENT_EQUIPMENT_LIMIT = 12;
+/** Full documents loaded per level while filling that pool: a bound on compendium reads, not a cap on the result. */
+const PERMANENT_LOAD_FACTOR = 3;
+/** Generic wands offered per wand level, kept separate from equipment so truncation cannot erase a kind. */
+export const PARCEL_WAND_LIMIT = 6;
+/** The one pack valuables come from (the PF2e SRD equipment pack that holds the published gems and art objects). */
+export const VALUABLE_PACK_ID = "pf2e.equipment-srd";
+/** Valuable documents loaded before the search gives up; a bound on compendium reads. */
+const VALUABLE_LOAD_ATTEMPTS = 12;
+
+/**
+ * Published equipment that may fill a permanent slot at `level`. Index filters first (type, exact level,
+ * rarity, classification, usage, price), then full documents are loaded in ranked order and must carry
+ * no Rule Elements. Only documents that pass are offered; each is issued as an opaque candidate.
+ */
+export async function getPermanentEquipmentCandidates(level, keywords = [], { maxRarity = "common", limit = PERMANENT_EQUIPMENT_LIMIT } = {}) {
+  const indexed = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("equipment")) {
+    for (const entry of await getEquipmentIndex(packId)) {
+      if (permanentEquipmentProblem(entry, level, maxRarity)) continue;
+      const key = `${packId}\u0000${entry._id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      indexed.push({ packId, _id: entry._id, name: entry.name, traits: entry.system?.traits?.value ?? [] });
+    }
+  }
+  const offered = [];
+  let loads = 0;
+  for (const item of rankByBrief(indexed.map((entry) => ({ ...entry, id: `${entry.packId}/${entry._id}` })), keywords)) {
+    if (offered.length >= limit || loads >= limit * PERMANENT_LOAD_FACTOR) break;
+    loads += 1;
+    const doc = await getDocument({ packId: item.packId, _id: item._id });
+    if (!doc) continue;
+    const data = toItemData(doc);
+    if (permanentDocumentProblem(data, level, maxRarity)) continue;
+    offered.push(candidateRecord(item, { name: item.name, type: "equipment", level, traits: item.traits, rarity: data.system.traits.rarity, kind: "equipment" }));
+  }
+  return offered;
+}
+
+/**
+ * Generic wands for a permanent slot at `level`: one per spell of exactly the wand's rank (level 2r+1
+ * is rank r), from the configured spell packs. Each wand is an opaque candidate that names the issued
+ * spell candidate; the spell and template are resolved again when the wand is built.
+ */
+export async function getParcelWandCandidates(level, keywords = [], { maxRarity = "common", limit = PARCEL_WAND_LIMIT } = {}) {
+  const rank = wandRankForLevel(level);
+  if (!rank) return [];
+  const spells = (await getScrollSpellCandidates(rank, keywords, { maxRarity })).filter((spell) => spell.rank === rank);
+  return rankByBrief(spells, keywords).slice(0, limit).map((spell) => ({
+    id: `w-${spell.id}`,
+    name: spell.name,
+    level,
+    rank,
+    kind: "wand",
+    traits: spell.traits ?? [],
+    spell
+  }));
+}
+
+/**
+ * The published gems and art objects a parcel may use as a valuable, ranked by the brief. Empty with
+ * `available: false` when the valuable pack is not installed, so the caller can say why.
+ */
+export async function getValuableCandidates(keywords = [], { maxRarity = "common" } = {}) {
+  if (!game.packs.get(VALUABLE_PACK_ID)) return { available: false, candidates: [] };
+  const indexed = [];
+  for (const entry of await getEquipmentIndex(VALUABLE_PACK_ID)) {
+    if (valuableProblem(entry, maxRarity)) continue;
+    const copper = priceCopper(entry.system?.price?.value);
+    indexed.push({ packId: VALUABLE_PACK_ID, _id: entry._id, name: entry.name, traits: [], copper, id: `${VALUABLE_PACK_ID}/${entry._id}` });
+  }
+  return { available: true, candidates: rankByBrief(indexed, keywords) };
+}
+
+/**
+ * The first valuable in ranked order that fits `budgetCopper` and still passes the full-document check.
+ * Documents are loaded one at a time, at most VALUABLE_LOAD_ATTEMPTS, so the search is bounded.
+ * Returns { candidate, source, copper } or { reason }.
+ */
+export async function pickParcelValuable(ranked, budgetCopper, maxRarity = "common") {
+  let remaining = Array.isArray(ranked) ? ranked.map((entry) => ({ ...entry })) : [];
+  for (let attempt = 0; attempt < VALUABLE_LOAD_ATTEMPTS; attempt++) {
+    const { entry, reason } = chooseValuable(remaining, budgetCopper);
+    if (!entry) return { reason: reason === "none-offered" ? "none-offered" : "too-expensive" };
+    const doc = await getDocument({ packId: entry.packId, _id: entry._id });
+    const data = doc ? toItemData(doc) : null;
+    const copper = data ? priceCopper(data.system?.price?.value) : null;
+    if (data && !valuableProblem(data, maxRarity) && copper > 0 && copper <= budgetCopper) {
+      data.system.quantity = 1;
+      return { candidate: entry, source: data, copper };
+    }
+    remaining = remaining.slice(remaining.indexOf(entry) + 1);
+  }
+  return { reason: "unavailable" };
+}
+
 export function toItemData(doc) {
   const data = doc.toObject();
   delete data._id;

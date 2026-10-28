@@ -555,7 +555,10 @@
         "Open": "Open Loot Actor",
         "DefaultName": "SimplyPF2e Loot",
         "DestinationLine": "Destination: Loot actor",
-        "Description": "Spell consumables forged by SimplyPF2e."
+        "Description": "Spell consumables forged by SimplyPF2e.",
+        "Sheet": "Actor sheet",
+        "SheetLoot": "Loot",
+        "SheetMerchant": "Merchant"
       },
       "Parcel": {
         "Kind": "Treasure parcel",
@@ -568,21 +571,48 @@
         "SlotLevels": "Slot levels",
         "Quantity": "Quantity",
         "Unfilled": "Unfilled: item level {level}, scroll rank {rank}.",
-        "Currency": "Currency: {gp} gp",
-        "PermanentLine": "Permanent items not included: {list}",
-        "PermanentEntry": "level {level}: {count}",
-        "PermanentExtra": "{count} extra at level {levels}",
+        "Currency": "Currency: {coins}",
         "Value": "Built {value} gp of table total {total} gp.",
         "ValueExtra": "Built {value} gp of four-PC table total {total} gp.",
         "Header": "GM Core Party Treasure by Level: party level {level}, size {size}.",
         "EvenNote": "Even-level consumable slots use a scroll one level lower.",
         "BelowNote": "Parties below four use the four-PC row.",
-        "UnknownSlot": "A pick used an unknown slot.",
+        "UnknownSlot": "A pick used an unknown slot: “{id}”.",
         "DuplicateSlot": "A duplicate slot pick was dropped.",
-        "UnknownSpell": "A pick used an unknown spell.",
+        "UnknownSpell": "A pick used an unknown spell: “{id}”.",
         "RankAbove": "A spell exceeded its slot rank.",
         "BuildDrop": "A scroll could not be built and was dropped.",
-        "CurrencyDrop": "Gold Pieces could not be loaded; currency was dropped."
+        "CurrencyDrop": "A coin could not be loaded, so all currency was dropped.",
+        "Revalidate": "A permanent item no longer passes its checks. Regenerate the plan before creating.",
+        "PermanentHeading": "Permanent items",
+        "PermanentLevels": "Allowed level",
+        "PermanentFilled": "Item",
+        "PermanentItemLevel": "Item level",
+        "PermanentSummary": "Permanent items built: {built} of {total}.",
+        "PermanentUnfilled": "Permanent slot at {levels} is unfilled: {reason}.",
+        "UnfilledPermanent": "Unfilled: {reason}.",
+        "LevelOne": "level {level}",
+        "LevelPair": "level {low} or {high}",
+        "Reason": {
+          "no-candidates": "no published item at this level fits the rules and filters",
+          "no-pick": "the AI did not pick an item that suits the brief",
+          "invalid-pick": "the AI picked an item that was not offered for this slot",
+          "unavailable": "the item could not be loaded",
+          "build": "the item could not be built safely",
+          "template": "the wand template or its spell is unavailable",
+          "provider": "the AI selection failed"
+        },
+        "Valuables": "Include gems and art objects",
+        "ValuablesHint": "Replaces part of the gold with one published gem or art object that fits the currency. Off by default.",
+        "ValuableLine": "Valuable: {name} ({price})",
+        "ValuableNone": "No gem or art object was added: {reason}.",
+        "ValuableReason": {
+          "pack": "the equipment compendium is not installed",
+          "none-offered": "no eligible gem or art object is offered at this rarity",
+          "too-expensive": "none costs no more than the currency",
+          "unavailable": "the chosen one could not be loaded safely"
+        },
+        "CoinsMissing": "Coins could not be built: {gp} gp of currency is missing from the loot actor."
       }
     },
     "Loot": {

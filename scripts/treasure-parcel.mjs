@@ -9,7 +9,58 @@
  * - An even-level slot takes the scroll one level lower, never above the table.
  * - Unfilled slots are not back-filled. A pick is never reassigned or guessed.
  * - Permanent items are not built in v1. They are copied through for the preview.
+ * - Currency is split into pp, gp, sp and cp by splitCurrencyGp (see its comment).
  */
+
+/**
+ * Copper per coin, `src/module/item/physical/values.ts` lines 46-53 (pf2e-8.5.0):
+ *   const DENOMINATION_RATES = { cp: 1, sp: 10, gp: 100, pp: 1000, credits: 10, upb: 10 };
+ * Only the four coin denominations are listed here.
+ */
+export const COIN_COPPER_RATES = Object.freeze({ pp: 1000, gp: 100, sp: 10, cp: 1 });
+
+/**
+ * Module convention (recorded in docs/plans/parcel-v2-2026-10-29.md): a coin total under
+ * 100 gp is never paid in pp; from 100 gp up, whole pp come first. pf2e's own `Coins#normalized`
+ * (coins.ts lines 184-196, pf2e-8.5.0) rolls copper up only to gp, so the pp step is a module choice.
+ */
+export const PARCEL_PP_THRESHOLD_CP = 100 * COIN_COPPER_RATES.gp;
+
+/**
+ * Split an exact copper total into pp, gp, sp and cp: each denomination takes as many whole coins
+ * as fit, largest first. Totals under PARCEL_PP_THRESHOLD_CP have no pp. The copper total of the
+ * result equals the input exactly. Negative, fractional or non-safe values throw.
+ */
+export function splitCurrencyCopper(copper) {
+  if (!Number.isSafeInteger(copper) || copper < 0) {
+    throw new Error(`Currency must be a whole, non-negative number of copper pieces (got ${String(copper)})`);
+  }
+  let rest = copper;
+  const coins = { pp: 0, gp: 0, sp: 0, cp: 0 };
+  for (const denomination of Object.keys(coins)) {
+    if (denomination === "pp" && copper < PARCEL_PP_THRESHOLD_CP) continue;
+    coins[denomination] = Math.floor(rest / COIN_COPPER_RATES[denomination]);
+    rest -= coins[denomination] * COIN_COPPER_RATES[denomination];
+  }
+  return coins;
+}
+
+/** Copper pieces in a gold-piece amount, or throws when the amount is finer than 1 cp. */
+export function copperFromGp(currencyGp) {
+  if (!Number.isFinite(currencyGp) || currencyGp < 0) {
+    throw new Error(`Currency must be a finite amount of gold pieces, at least 0 (got ${String(currencyGp)})`);
+  }
+  const copper = Math.round(currencyGp * COIN_COPPER_RATES.gp);
+  if (!Number.isSafeInteger(copper) || Math.abs(copper - currencyGp * COIN_COPPER_RATES.gp) > 1e-6) {
+    throw new Error(`Currency must be a whole number of copper pieces (got ${currencyGp} gp)`);
+  }
+  return copper;
+}
+
+/** Whole-coin split of a gold-piece amount (see splitCurrencyCopper). */
+export function splitCurrencyGp(currencyGp) {
+  return splitCurrencyCopper(copperFromGp(currencyGp));
+}
 
 export const PARCEL_DROP = Object.freeze({
   UNKNOWN_SLOT: "unknown-slot",
@@ -119,12 +170,13 @@ export function stackParcelAssignments(assignments) {
 export function parcelValueGp({ items, currencyGp }) {
   if (!Array.isArray(items)) throw new Error("Parcel items must be an array");
   if (!Number.isFinite(currencyGp)) throw new Error(`Parcel currencyGp must be finite, got ${String(currencyGp)}`);
-  let itemsGp = 0;
+  // Exact in copper pieces: no rounding, so 39.95 gp stays 39.95 gp.
+  let copper = copperFromGp(currencyGp);
   for (const { priceGp, quantity } of items) {
     if (!Number.isFinite(priceGp) || !Number.isFinite(quantity)) {
       throw new Error(`Parcel item needs finite priceGp and quantity, got ${String(priceGp)} x ${String(quantity)}`);
     }
-    itemsGp += priceGp * quantity;
+    copper += copperFromGp(priceGp) * quantity;
   }
-  return Math.round(itemsGp + currencyGp);
+  return copper / COIN_COPPER_RATES.gp;
 }

@@ -175,6 +175,12 @@
   margin: var(--spf-space-xs) 0;
 }
 
+/* Wide parcel tables scroll inside their card instead of clipping the window. */
+.simplypf2e .spf-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
 .simplypf2e :is(h2, h3, h4, legend, summary) {
   font-family: var(--spf-font-display);
   letter-spacing: 0.045em;
