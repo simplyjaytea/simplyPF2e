@@ -164,8 +164,34 @@ assert.equal(tight.status, "unresolvable");
 const anywhere = await locateById({ id: "dfCMdR4wnpbYNTix", dir: null, index, hints: { exact: ["stunned"], words: [] }, document: read, budget: 60, scan: false });
 assert.equal(anywhere.status, "found");
 
+// v14-dev keeps the Wizard schools in a subdirectory of the class-features pack: the pack directory still holds them.
+const v14 = buildIndex([
+  { path: "packs/pf2e/class-features/wizard", type: "tree" },
+  { path: "packs/pf2e/class-features/wizard/school-of-rooted-wisdom.json", type: "blob" },
+  { path: "packs/pf2e/class-features/arcane-school.json", type: "blob" }
+]);
+const schoolFiles = {
+  "packs/pf2e/class-features/wizard/school-of-rooted-wisdom.json": { _id: "RootedWisdomId16" },
+  "packs/pf2e/class-features/arcane-school.json": { _id: "ArcaneSchoolId016" }
+};
+const readSchool = async (path) => schoolFiles[path] ?? null;
+const rooted = await locateById({ id: "RootedWisdomId16", dir: "packs/pf2e/class-features", index: v14, hints: { exact: [], words: [] }, document: readSchool, budget: 60, scan: true });
+assert.equal(rooted.status, "found");
+assert.equal(rooted.path, "packs/pf2e/class-features/wizard/school-of-rooted-wisdom.json");
+
+// A token-sized budget scans a whole pack with no name hint; the anonymous budget refuses the same pool.
+const big = buildIndex(Array.from({ length: 100 }, (_, n) => ({ path: "packs/pf2e/equipment/item-" + n + ".json", type: "blob" })));
+const bigFiles = Object.fromEntries(Array.from({ length: 100 }, (_, n) => ["packs/pf2e/equipment/item-" + n + ".json", { _id: "item-id-" + n }]));
+const readBig = async (path) => bigFiles[path] ?? null;
+const last = "item-id-99";
+const scanned = await locateById({ id: last, dir: "packs/pf2e/equipment", index: big, hints: { exact: [], words: [] }, document: readBig, budget: 10000, scan: true });
+assert.equal(scanned.status, "found");
+assert.equal(scanned.path, "packs/pf2e/equipment/item-99.json");
+const refused = await locateById({ id: last, dir: "packs/pf2e/equipment", index: big, hints: { exact: [], words: [] }, document: readBig, budget: 60, scan: true });
+assert.equal(refused.status, "unresolvable");
+
 // Arguments.
-assert.deepEqual(parseArgs([]), { ref: "master", json: false, help: false });
+assert.deepEqual(parseArgs([]), { ref: "pf2e-8.5.0", json: false, help: false });
 assert.deepEqual(parseArgs(["--ref", "pf2e-8.5.0", "--json"]), { ref: "pf2e-8.5.0", json: true, help: false });
 assert.equal(parseArgs(["--ref=pf2e-8.5.0"]).ref, "pf2e-8.5.0");
 assert.throws(() => parseArgs(["--ref"]), /needs a git ref/);
