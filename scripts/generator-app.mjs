@@ -1185,7 +1185,9 @@ export class GeneratorApp extends SpfApp {
     });
     return [
       ["design", game.i18n.localize("SIMPLYPF2E.Progress.Design"), taskMaxTokens(AI_TASK.ENCOUNTER_DESIGN)],
-      ...composition.members.map((_, i) => [`member${i}`, memberLabel(i), taskMaxTokens(AI_TASK.CREATURE_CONCEPT) + taskMaxTokens(AI_TASK.SPELL_SELECTION) + taskMaxTokens(AI_TASK.ABILITY_SELECTION) + taskMaxTokens(AI_TASK.CREATURE_FEAT_SELECTION) + taskMaxTokens(AI_TASK.EQUIPMENT_SELECTION) + taskMaxTokens(AI_TASK.LOOT_SELECTION)]),
+      ...composition.members.map((member, i) => [`member${i}`, memberLabel(i), member.role === "hazard"
+        ? taskMaxTokens(AI_TASK.HAZARD_CONCEPT)
+        : taskMaxTokens(AI_TASK.CREATURE_CONCEPT) + taskMaxTokens(AI_TASK.SPELL_SELECTION) + taskMaxTokens(AI_TASK.ABILITY_SELECTION) + taskMaxTokens(AI_TASK.CREATURE_FEAT_SELECTION) + taskMaxTokens(AI_TASK.EQUIPMENT_SELECTION) + taskMaxTokens(AI_TASK.LOOT_SELECTION)]),
       ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match"), 1600],
       ...(create ? [["apply", game.i18n.localize("SIMPLYPF2E.Progress.Apply"), 2400]] : [])
     ];
