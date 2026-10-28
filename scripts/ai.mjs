@@ -1,4 +1,5 @@
 import { CANTRIP_DECK_RANK } from "./spell-consumables.mjs";
+import { hazardTraitCandidates } from "./hazard-candidates.mjs";
 import {
   SETTINGS, chatCompletionsUrl, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
   isOfficialOpenAIEndpoint, modelsUrl, resolveProviderModel
@@ -1702,7 +1703,7 @@ export async function generateHazardConcept(brief, options = {}) {
   assertExperimentalToolAccess();
   const { level, traitsCatalog, damageTypes, disableSkills, signal, onProgress } = options;
   if (!Number.isInteger(level) || level < HAZARD_MIN_LEVEL || level > HAZARD_MAX_LEVEL) throw new TypeError("generateHazardConcept needs an integer level from " + HAZARD_MIN_LEVEL + " to " + HAZARD_MAX_LEVEL);
-  const traits = hazardOfferedList("traitsCatalog", traitsCatalog);
+  const traits = hazardTraitCandidates(hazardOfferedList("traitsCatalog", traitsCatalog), brief);
   const damage = hazardOfferedList("damageTypes", damageTypes);
   const skills = hazardOfferedList("disableSkills", disableSkills);
   const lists = { traits: traits, damageTypes: damage, skills: skills };
