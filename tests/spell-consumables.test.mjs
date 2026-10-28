@@ -43,7 +43,7 @@ assert.deepEqual({ ...SPELL_CONSUMABLE_TEMPLATES.wand }, Object.fromEntries(RECO
 assert.equal(SPELL_CONSUMABLE_TEMPLATES.cantripDeck, uuidFor(RECORD_CANTRIP_DECK_ID), "cantrip deck matches the research record");
 assert.equal(spellConsumableTemplateUuid("wand", 10), null, "wand rank 10 has no template");
 assert.equal(spellConsumableTemplateUuid("scroll", 10), uuidFor("o1XIHJ4MJyroAHfF"), "scroll rank 10 has a template");
-for (const [kind, rank] of [["scroll", 0], ["scroll", 11], ["scroll", 1.5], ["wand", 0], ["wand", 10], ["spell-gem", 1], ["toString", 1], ["cantripDeck", 1]]) {
+for (const [kind, rank] of [["scroll", 0], ["scroll", 11], ["scroll", 1.5], ["wand", 0], ["wand", 10], ["spell-gem", 1], ["toString", 1], ["cantripDeck", 2]]) {
   assert.equal(spellConsumableTemplateUuid(kind, rank), null, `no template for ${kind} rank ${rank}`);
 }
 assert.deepEqual(spellConsumableTemplateRef("scroll", 1), { packId: "pf2e.equipment-srd", _id: "RjuupS9xyXDLgyIr" });
@@ -60,7 +60,7 @@ const heal = spell();
 assert.equal(spellConsumableRankProblem(heal, "scroll", 1), null, "Heal may be a rank 1 scroll");
 assert.equal(spellConsumableRankProblem(heal, "scroll", 10), null, "Heal may be a rank 10 scroll");
 assert.equal(spellConsumableRankProblem(heal, "wand", 9), null, "Heal may be a rank 9 wand");
-assert.match(spellConsumableRankProblem(heal, "cantripDeck", 1), /not a scroll or wand/);
+assert.match(spellConsumableRankProblem(heal, "cantripDeck", 1), /requires a cantrip/);
 assert.match(spellConsumableRankProblem(heal, "toString", 1), /not a scroll or wand/, "inherited keys are not kinds");
 assert.match(spellConsumableRankProblem(heal, "scroll", 0), /whole number from 1 to 10/);
 assert.match(spellConsumableRankProblem(heal, "scroll", 11), /whole number from 1 to 10/);
@@ -78,7 +78,7 @@ assert.match(spellConsumableRankProblem({ system: {} }, "scroll", 1), /no base r
 assert.equal(spellConsumableName("scroll", "Heal", 1), "Scroll of Heal (Rank 1)");
 assert.equal(spellConsumableName("wand", "Web", 4), "Wand of Web (Rank 4)");
 assert.equal(spellConsumableName("scroll", "Cost $& Co", 2), "Scroll of Cost $& Co (Rank 2)", "spell names are inserted literally");
-assert.equal(spellConsumableName("cantripDeck", "Light", 1), null, "no name template for the cantrip deck");
+assert.equal(spellConsumableName("cantripDeck", "Light", 1), "Cantrip Deck of Light (5-pack)", "cantrip deck uses the native name template");
 
 // 4. Scroll built from the pinned rank 1 template and Heal, against the native field map.
 const before = structuredClone({ template: SCROLL_1, heal: HEAL });

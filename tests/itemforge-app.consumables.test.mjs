@@ -237,7 +237,7 @@ const picker = forgeApp();
 await actions.selectKind.call(picker, null, { dataset: { kind: "wand" } });
 prepared = await picker._prepareContext();
 assert.equal(prepared.input.kind, "wand");
-assert.deepEqual(plain(prepared.consumableKinds.map((kind) => kind.selected)), [false, true]);
+assert.deepEqual(plain(prepared.consumableKinds.map((kind) => kind.selected)), [false, false, true]);
 assert.equal(prepared.promptLabel, "SIMPLYPF2E.ItemForge.Consumables.PromptLabel");
 await actions.selectKind.call(picker, null, { dataset: { kind: "potion" } });
 assert.equal((await picker._prepareContext()).input.kind, "wand", "unknown kinds keep the selection");
