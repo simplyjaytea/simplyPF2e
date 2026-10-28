@@ -42,12 +42,14 @@ const features = await Promise.all([
   "spell-blending", "staff-nexus"
 ].map(load));
 const arcaneSchoolMaster = await load("arcane-school-master");
+const forceBolt = await load("force-bolt");
+const charmingPush = await load("charming-push");
 const classDoc = { id: "wizard", pack: "pf2e.classes", uuid: `Compendium.pf2e.classes.Item.${wizard._id}`, name: "Wizard", type: "class", system: wizard.system,
   toObject: () => structuredClone(wizard) };
 // Synthetic stand-in for a published focus spell, used only by regression 5: the
 // document shape and the focus trait are all the builder reads. Not a PF2e fixture.
 const focusSpell = { _id: "focusSpell0001", name: "Stand-in Focus Spell", type: "spell", system: { traits: { value: ["focus"] }, location: { value: null } } };
-const world = makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [focusSpell] });
+const world = makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt, charmingPush, focusSpell] });
 const masterWorld = makeWorld({
   [CF]: features.map((json) => (json._id === arcaneSchoolMaster._id ? arcaneSchoolMaster : json)), "pf2e.classes": [wizard]
 });
@@ -153,20 +155,14 @@ const wizardCandidate = issueCandidate({ packId: "pf2e.classes", _id: wizard._id
   reset();
   const mark = warnings.length;
   const otherConcept = { ...concept(), focusSpells: [{ name: focusSpell.name }] };
-  // The focus-pool exemplar search walks game.packs, which the stand-in does not
-  // iterate; an empty walk finds none, so the entry embeds with a pool rule of []
-  // and a warning (the pool value itself is still written to the actor).
-  globalThis.game.packs[Symbol.iterator] = function* () {};
   await createCharacterActor(otherConcept, { ...resolved(), classDoc: { ...classDoc, name: "Champion" }, focusSpells: [focus] }, { selectChoices: chooser([]) });
-  delete globalThis.game.packs[Symbol.iterator];
   const focusEntry = created.find((item) => item.type === "spellcastingEntry");
   assert.equal(focusEntry?.system.prepared.value, "focus", "a class with a focus source keeps its focus entry");
+  assert.deepEqual(focusEntry.system.rules, []);
   assert.equal(created.find((item) => item.type === "spell")?.system.location.value, focusEntry._id);
   assert.equal(actorData.system.resources.focus.value, 1);
   assert.equal(otherConcept.focusSpells.length, 1, "and its focus spells are not dropped");
-  // The exemplar search warns once per effect kind in this empty world; those are
-  // not what this regression asserts.
-  warnings.splice(mark);
+  assert.equal(warnings.slice(mark).filter((line) => /focus-pool/.test(line)).length, 0);
 }
 
 // 6. An explicitly required Wizard on master-shaped data fails identity
@@ -196,6 +192,98 @@ const wizardCandidate = issueCandidate({ packId: "pf2e.classes", _id: wizard._id
   await assert.rejects(validatePCIdentityRequirements({ class: wizardCandidate }), refusal, "identity validation refuses the class before any provider call");
   await assert.rejects(createCharacterActor(concept(), resolved(), { selectChoices: chooser([]) }), refusal);
   assert.deepEqual(events, [], "the build refuses before any actor write");
+  worlds.use(world);
+}
+
+// 8–11. School spell resolution is based on the staged school at Create.
+const schoolIdentity = { class: wizardCandidate, classPaths: { "Arcane School": named("School of Battle Magic"), "Arcane Thesis": named("Spell Blending") } };
+const schoolConcept = () => ({ ...concept(schoolIdentity), class: "Wizard", classCandidate: wizardCandidate.ref,
+  classPaths: { "Arcane School": "School of Battle Magic", "Arcane Thesis": "Spell Blending" },
+  classPathCandidates: { "Arcane School": named("School of Battle Magic").ref, "Arcane Thesis": named("Spell Blending").ref },
+  spellcasting: { tradition: "arcane", spells: [] } });
+const focusEntries = () => created.filter((item) => item.type === "spellcastingEntry" && item.system.prepared.value === "focus");
+{
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.equal(focusEntries().length, 1);
+  const entry = focusEntries()[0];
+  assert.deepEqual(entry.system.rules, []);
+  const spell = created.find((item) => item.name === "Force Bolt");
+  assert.equal(spell.system.location.value, entry._id);
+  assert.equal(spell._stats.compendiumSource, "Compendium.pf2e.spells-srd.Item.Hu38hoAUSYeFpkVa");
+  assert.equal(actorData.system.resources.focus.value, 1);
+  assert.equal(warnings.slice(mark).filter((line) => /School of Battle Magic/.test(line)).length, 0);
+}
+{
+  worlds.use(makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [charmingPush, focusSpell] }));
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.equal(focusEntries().length, 0);
+  assert.equal(events.includes("actor-create"), true);
+  const schoolWarnings = warnings.splice(mark).filter((line) => /School of Battle Magic/.test(line));
+  assert.equal(schoolWarnings.length, 1);
+  worlds.use(world);
+}
+{
+  const damagedSchool = structuredClone(features.find((item) => item.name === "School of Battle Magic"));
+  damagedSchool.system.description.value = "<p>No school spell link.</p>";
+  worlds.use(makeWorld({ [CF]: features.map((item) => item._id === damagedSchool._id ? damagedSchool : item), "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt] }));
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.equal(focusEntries().length, 0);
+  assert.equal(events.includes("actor-create"), true);
+  assert.equal(warnings.splice(mark).filter((line) => /School of Battle Magic/.test(line)).length, 1);
+  worlds.use(world);
+}
+{
+  reset(); const mark = warnings.length;
+  const c = { ...schoolConcept(), focusSpells: [{ name: focusSpell.name }] };
+  await createCharacterActor(c, { ...resolved(), focusSpells: [{ name: focusSpell.name, entry: { packId: "pf2e.spells-srd", _id: focusSpell._id } }] });
+  assert.deepEqual(c.focusSpells, []);
+  assert.deepEqual(created.filter((item) => item.type === "spell").map((item) => item.name), ["Force Bolt"]);
+  assert.equal(warnings.splice(mark).filter((line) => /Wizard has no modeled focus-spell source/.test(line)).length, 1);
+}
+// A resolved non-focus spell or an excluded pack cannot become a school spell.
+{
+  const nonFocus = structuredClone(forceBolt);
+  nonFocus.system.traits.value = ["force", "wizard"];
+  worlds.use(makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [nonFocus] }));
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.equal(focusEntries().length, 0);
+  assert.equal(warnings.splice(mark).filter((line) => /School of Battle Magic/.test(line)).length, 1);
+}
+{
+  worlds.use(makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt], "custom.spells": [] }));
+  const get = game.settings.get;
+  game.settings.get = (_module, key) => key === "sourcePacks" ? { spells: ["custom.spells"] } : {};
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.equal(focusEntries().length, 0);
+  assert.equal(warnings.splice(mark).filter((line) => /School of Battle Magic/.test(line)).length, 1);
+  game.settings.get = get;
+  worlds.use(world);
+}
+// Built-pack ID links resolve too, and focus cantrips do not add pool points.
+{
+  const builtSchool = structuredClone(features.find((item) => item.name === "School of Battle Magic"));
+  builtSchool.system.description.value = "<p><strong>School Spells</strong> initial: @UUID[Compendium.pf2e.spells-srd.Item.Hu38hoAUSYeFpkVa]{Force Bolt}; advanced: @UUID[Compendium.pf2e.spells-srd.Item.LoBjvguamA12iyW0]{Energy Absorption}</p>";
+  worlds.use(makeWorld({ [CF]: features.map((item) => item._id === builtSchool._id ? builtSchool : item), "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt] }));
+  reset();
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.equal(created.find((item) => item.name === "Force Bolt")._stats.compendiumSource, "Compendium.pf2e.spells-srd.Item.Hu38hoAUSYeFpkVa");
+  worlds.use(world);
+}
+{
+  const focusCantrip = { _id: "focusCantrip0001", name: "Focus Cantrip", type: "spell", system: { traits: { value: ["focus", "cantrip"] }, location: { value: null } } };
+  worlds.use(makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [focusSpell, focusCantrip] }));
+  reset();
+  const c = { ...concept(), focusSpells: [{ name: focusSpell.name }, { name: focusCantrip.name }] };
+  await createCharacterActor(c, { ...resolved(), classDoc: { ...classDoc, name: "Champion" }, focusSpells: [
+    { entry: { packId: "pf2e.spells-srd", _id: focusSpell._id } }, { entry: { packId: "pf2e.spells-srd", _id: focusCantrip._id } }
+  ] }, { selectChoices: chooser([]) });
+  assert.equal(created.filter((item) => item.type === "spell").length, 2);
+  assert.equal(actorData.system.resources.focus.value, 1);
   worlds.use(world);
 }
 

@@ -6,7 +6,7 @@ import {
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { multiclassAbilityBlocker, multiclassCatalogNames, multiclassFeatInfo, multiclassPickBlocker } from "./pc-multiclass.mjs";
-import { findRuleExemplar } from "./rule-templates.mjs";
+import { isArcaneSchoolSource, schoolInitialSpellLink } from "./school-spells.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
@@ -870,6 +870,37 @@ async function preresolveChoiceSets(itemSources, concept, resolved, keyAbility, 
   await preselectChoiceSets(itemSources, context, config, loadItemSource, selectChoices);
 }
 
+/** Resolve only the staged school's initial spell, failing closed. */
+async function resolveSchoolFocusSpell(expectedPaths) {
+  const schools = [];
+  for (const path of expectedPaths ?? []) {
+    let source;
+    try { source = (await fromUuid(path?._stats?.compendiumSource))?.toObject?.(); }
+    catch { source = null; }
+    if (!source) {
+      console.warn(`simplypf2e | ${path?.name ?? "unknown class path"}: staged path could not be loaded`);
+      continue;
+    }
+    if (isArcaneSchoolSource(source)) schools.push(source);
+  }
+  if (!schools.length) return null;
+  const names = schools.map((school) => school.name ?? "unknown school").join(", ");
+  const reject = (reason) => { console.warn(`simplypf2e | ${names}: ${reason}`); return null; };
+  if (schools.length !== 1) return reject("multiple arcane schools; school spell skipped");
+  const link = schoolInitialSpellLink(schools[0].system?.description?.value);
+  if (!link) return reject("initial school spell link is missing or ambiguous");
+  try {
+    const doc = await fromUuid(link.uuid);
+    if (!doc || doc.type !== "spell" || !Array.isArray(doc.system?.traits?.value)
+      || !doc.system.traits.value.includes("focus") || !getPacksFor("spells").includes(doc.pack)) {
+      return reject("initial school spell is missing, invalid, or in a disabled pack");
+    }
+    return toItemData(doc);
+  } catch {
+    return reject("initial school spell could not be loaded");
+  }
+}
+
 /**
  * Build the full actor + embedded item data and create the `type: "character"`
  * actor. Unlike builder.mjs's createActor() (NPC), no stats are computed here
@@ -886,9 +917,8 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   await validatePCIdentityRequirements(concept.requiredIdentity);
   assertResolvedPCIdentity(concept, resolved, concept.requiredIdentity);
 
-  // The focus entry and pool exist only for classes whose focus source the
-  // module models (pc-support.mjs). Otherwise the AI picks are dropped with a
-  // warning, no entry or pool is written, and the pool stays at 0.
+  // Drop unmodeled AI focus picks; the Wizard school spell is resolved
+  // separately from the staged school.
   const focusModeled = settleFocusSpells(concept, resolved.classDoc);
   const focusSpells = focusModeled ? resolved.focusSpells ?? [] : [];
   const items = [];
@@ -1076,27 +1106,35 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     items.push(...spellSources.values());
   }
 
-  // Focus spells: a separate `prepared.value: "focus"` entry — how the real
-  // system identifies a focus pool (spellcasting-entry/document.ts
-  // isFocusPool) — with NO slots object (focus spells spend pool points, not
-  // slots). Independent of the block above: a Champion has focus spells but
-  // no spontaneous casting. The pool MAX cannot be plain actor data —
-  // character/document.ts zeroes system.resources.focus.max every data-prep
-  // pass and rebuilds it ONLY from ActiveEffectLike rules on embedded items —
-  // so a real published rule exemplar is cloned onto the entry (never
-  // hand-authored, see rule-templates.mjs).
+  // pf2e-8.5.0 character/document.ts 369–373 resets focus.max to 0;
+  // spell/document.ts 650–657: "Increase focus point max if this is a non-cantrip focus spell",
+  // then `this.actor.system.resources.focus.max += 1` for each character focus spell.
+  // creature/document.ts 491–495 clamps the maximum to its cap of 3.
+  // https://raw.githubusercontent.com/foundryvtt/pf2e/pf2e-8.5.0/src/module/item/spell/document.ts
+  const schoolSpell = concept.spellcasting ? await resolveSchoolFocusSpell(stagedClassPaths.expectedPaths) : null;
   let focusPoolSize = 0;
-  if (focusSpells.some((s) => s.entry)) {
+  if (focusSpells.some((s) => s.entry) || schoolSpell) {
     const focusEntryId = foundry.utils.randomID();
-    focusPoolSize = Math.min(focusSpells.filter((s) => s.entry).length, 3);
-    const exemplar = await findRuleExemplar("focusPool");
-    if (!exemplar) {
-      // Fail closed but don't abort: the spells still embed, the pool just
-      // stays at 0 until a GM adds the rule by hand.
-      console.warn("simplypf2e | no real focus-pool rule exemplar found in any installed compendium — focus spells embed but the focus pool stays at 0");
+    const sources = [];
+    const identities = new Set();
+    for (const { entry } of focusSpells) {
+      if (!entry) continue;
+      const doc = await getDocument(entry);
+      if (!doc) {
+        console.warn(`simplypf2e | dropped unresolved focus spell "${entry.name ?? "?"}"`);
+        continue;
+      }
+      const data = toItemData(doc);
+      const identity = data._stats?.compendiumSource;
+      if (identity && identities.has(identity)) continue;
+      if (identity) identities.add(identity);
+      sources.push(data);
     }
-    const poolRule = exemplar ? structuredClone(exemplar.rule) : null;
-    if (poolRule) poolRule.value = focusPoolSize;
+    if (schoolSpell && !identities.has(schoolSpell._stats?.compendiumSource)) sources.push(schoolSpell);
+    focusPoolSize = Math.min(3, sources.filter((source) => {
+      const traits = source.system?.traits?.value;
+      return Array.isArray(traits) && traits.includes("focus") && !traits.includes("cantrip");
+    }).length);
     items.push({
       _id: focusEntryId,
       name: "Focus Spells",
@@ -1111,13 +1149,10 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
         proficiency: { value: 1 },
         spelldc: { value: 0, dc: 0, mod: 0 },
         showSlotlessLevels: { value: false },
-        rules: poolRule ? [poolRule] : []
+        rules: []
       }
     });
-    for (const { entry } of focusSpells) {
-      const doc = await getDocument(entry);
-      if (!doc) continue;
-      const data = toItemData(doc);
+    for (const data of sources) {
       data.system.location = { ...(data.system.location ?? {}), value: focusEntryId };
       items.push(data);
     }
@@ -1212,7 +1247,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
       attributes: { hp: { temp: 0 } },
       // Focus pool starts full. Source `value` survives data prep (verified in
       // character/document.ts prepareBaseData — it keeps value, zeroes max);
-      // `max` comes from the cloned rule on the focus spellcasting entry.
+      // `max` is derived by pf2e from embedded non-cantrip focus spells.
       resources: { focus: { value: focusPoolSize } },
       build: {
         attributes: {
