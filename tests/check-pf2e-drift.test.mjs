@@ -263,4 +263,42 @@ const scripted = (steps) => {
   }
 }
 
+// A catalog entry and a class whose documents cannot be read: each per-item read failure is a WARN, and the run
+// finishes with every other check in place. guarded() is what keeps these from aborting the run.
+{
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const root = mkdtempSync(join(tmpdir(), "drift-guarded-"));
+  try {
+    mkdirSync(join(root, "scripts"));
+    mkdirSync(join(root, "tests", "fixtures"), { recursive: true });
+    writeFileSync(join(root, "tests", "fixtures", ".keep"), "");
+    writeFileSync(join(root, "scripts", "compendium.mjs"), 'export const DEFAULT_PACKS = {\n  feats: ["pf2e.feats-srd"],\n  classes: ["pf2e.classes"]\n};\nexport const LEGACY_PACK_IDS = new Set([\n]));\n');
+    writeFileSync(join(root, "scripts", "pc-multiclass.mjs"), 'export const MULTICLASS_PACKAGES = Object.freeze([\n  {\n    slug: "fighter",\n    dedication: "Fighter Dedication",\n    feats: []\n  }\n]);\n');
+    writeFileSync(join(root, "scripts", "pc-tables.mjs"), 'const REMASTER_SPELLCASTERS = [\n  { slug: "bard", name: "Bard", title: "Pathfinder Player Core", mode: "spontaneous" }\n];\n');
+    const json = (body) => response(200, JSON.stringify(body));
+    const treeBody = { truncated: false, tree: [
+      { path: "packs/feats", type: "tree" }, { path: "packs/feats/fighter-dedication.json", type: "blob" },
+      { path: "packs/classes", type: "tree" }, { path: "packs/classes/bard.json", type: "blob" }
+    ] };
+    const fetchImpl = async (url) => {
+      const text = String(url);
+      if (text.includes("/git/trees/")) return json(treeBody);
+      if (text.endsWith("/static/system.json")) return json({ packs: [{ name: "feats-srd", path: "packs/feats" }, { name: "classes", path: "packs/classes" }] });
+      if (text.endsWith("/packs/feats/fighter-dedication.json") || text.endsWith("/packs/classes/bard.json")) return response(503, "unavailable");
+      return response(404);
+    };
+    const result = await tool.runDriftCheck({ ref: "pf2e-8.5.0", token: "", fetchImpl, root, retryDelayMs: 0 });
+    assert.equal(result.failures, 0, "per-item read failures are not failures");
+    const messages = result.findings.filter((finding) => finding.level === "WARN" && /could not be read from upstream/.test(finding.message)).map((finding) => finding.message);
+    assert.equal(messages.length, 2, "the catalog entry and the class each warn once");
+    assert.ok(messages.some((message) => /^scripts\/pc-multiclass\.mjs:\d+: could not be read from upstream: .*fighter-dedication\.json/.test(message)), messages.join(" | "));
+    assert.ok(messages.some((message) => /^scripts\/pc-tables\.mjs:\d+: could not be read from upstream: .*bard\.json/.test(message)), messages.join(" | "));
+    assert.ok(result.checked >= 3, "the run went on past the failed reads");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 console.log("check-pf2e-drift helper tests passed");
