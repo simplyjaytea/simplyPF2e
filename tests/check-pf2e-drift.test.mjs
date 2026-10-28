@@ -197,4 +197,70 @@ assert.equal(parseArgs(["--ref=pf2e-8.5.0"]).ref, "pf2e-8.5.0");
 assert.throws(() => parseArgs(["--ref"]), /needs a git ref/);
 assert.throws(() => parseArgs(["--bogus"]), /unknown argument/);
 
+// Raw reads retry 429 and 5xx responses and thrown network errors, then give up with the last response or error.
+const response = (status, body = "{}") => ({ status, ok: status >= 200 && status < 300, headers: { get: () => null }, text: async () => body, json: async () => JSON.parse(body) });
+const scripted = (steps) => {
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(String(url));
+    const step = steps[Math.min(calls.length - 1, steps.length - 1)];
+    if (step instanceof Error) throw step;
+    return step;
+  };
+  return { calls, fetchImpl };
+};
+{
+  const once = scripted([response(503), response(200, "ok")]);
+  const got = await tool.fetchWithRetry(once.fetchImpl, "https://example.test/a", {}, 0);
+  assert.equal(got.status, 200, "a 503 followed by a 200 succeeds on the retry");
+  assert.equal(once.calls.length, 2);
+  const always = scripted([response(503)]);
+  const last = await tool.fetchWithRetry(always.fetchImpl, "https://example.test/b", {}, 0);
+  assert.equal(last.status, 503, "a 503 on every attempt returns the last response");
+  assert.equal(always.calls.length, 3, "three attempts in all");
+  const flaky = scripted([new Error("socket reset"), response(200, "ok")]);
+  assert.equal((await tool.fetchWithRetry(flaky.fetchImpl, "https://example.test/c", {}, 0)).status, 200, "a thrown network error is retried");
+  const broken = scripted([new Error("socket reset")]);
+  await assert.rejects(tool.fetchWithRetry(broken.fetchImpl, "https://example.test/d", {}, 0), /network error reaching https:\/\/example\.test\/d: socket reset/);
+  assert.equal(broken.calls.length, 3, "a thrown error is retried before it gives up");
+  const notFound = scripted([response(404)]);
+  assert.equal((await tool.fetchWithRetry(notFound.fetchImpl, "https://example.test/e", {}, 0)).status, 404, "a 404 is not retried");
+  assert.equal(notFound.calls.length, 1);
+}
+
+// A whole run where one document returns 503 on every read: the reference becomes a WARN and the run completes.
+// The tree listing and the manifest answer normally, so the run is not an exit-2 failure.
+{
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const root = mkdtempSync(join(tmpdir(), "drift-test-"));
+  try {
+    mkdirSync(join(root, "scripts"));
+    mkdirSync(join(root, "tests", "fixtures"), { recursive: true });
+    writeFileSync(join(root, "tests", "fixtures", ".keep"), "");
+    writeFileSync(join(root, "scripts", "compendium.mjs"), 'export const DEFAULT_PACKS = {\n  feats: ["pf2e.feats-srd"]\n};\nexport const LEGACY_PACK_IDS = new Set([\n]));\n');
+    writeFileSync(join(root, "scripts", "pc-multiclass.mjs"), "export const MULTICLASS_PACKAGES = Object.freeze([\n]);\n");
+    writeFileSync(join(root, "scripts", "pc-tables.mjs"), "const REMASTER_SPELLCASTERS = [\n];\n");
+    writeFileSync(join(root, "scripts", "refs.mjs"), 'export const DOC = "Compendium.pf2e.feats-srd.Item.AAAAAAAAAAAAAAAA";\n');
+    const json = (body) => response(200, JSON.stringify(body));
+    const treeBody = { truncated: false, tree: [{ path: "packs/feats", type: "tree" }, { path: "packs/feats/doc.json", type: "blob" }] };
+    const fetchImpl = async (url) => {
+      const text = String(url);
+      if (text.includes("/git/trees/")) return json(treeBody);
+      if (text.endsWith("/static/system.json")) return json({ packs: [{ name: "feats-srd", path: "packs/feats" }] });
+      if (text.endsWith("/packs/feats/doc.json")) return response(503, "unavailable");
+      return response(404);
+    };
+    const result = await tool.runDriftCheck({ ref: "pf2e-8.5.0", token: "", fetchImpl, root, retryDelayMs: 0 });
+    assert.equal(result.failures, 0, "an unreadable document is not a failure");
+    const warned = result.findings.filter((finding) => finding.level === "WARN" && /could not be read from upstream/.test(finding.message));
+    assert.equal(warned.length, 1, "the unreadable reference is one WARN");
+    assert.match(warned[0].message, /scripts\/refs\.mjs:1: Compendium\.pf2e\.feats-srd\.Item\.AAAAAAAAAAAAAAAA could not be read from upstream: raw read returned 503/);
+    assert.equal(result.checked > 0, true, "the run finished every check");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 console.log("check-pf2e-drift helper tests passed");

@@ -50,6 +50,7 @@ const CANDIDATE_LIMIT = 8;
 const FETCH_BUDGET = { anonymous: 60, token: 10000 };
 const SCAN_BATCH = 8;
 const RAW_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 500;
 const MODULE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const USAGE = "usage: node tools/check-pf2e-drift.mjs [--ref <git-ref>] [--json]";
 const DOCUMENT_ID = /^[A-Za-z0-9]{16}$/;
@@ -324,8 +325,31 @@ export const parseArgs = (argv) => {
   return options;
 };
 
+/**
+ * One raw read with retries. A 429, a 5xx or a thrown network error is retried up to RAW_ATTEMPTS times, waiting
+ * delayMs times the attempt number. Returns the last response when every attempt was a retryable status, and
+ * throws only when every attempt threw.
+ */
+export const fetchWithRetry = async (fetchImpl, url, headers, delayMs = RETRY_DELAY_MS) => {
+  let response = null;
+  let failure = null;
+  for (let attempt = 1; attempt <= RAW_ATTEMPTS; attempt += 1) {
+    try {
+      response = await fetchImpl(url, { headers });
+      failure = null;
+      if (response.status !== 429 && response.status < 500) return response;
+    } catch (error) {
+      response = null;
+      failure = new Error("network error reaching " + url + ": " + error.message);
+    }
+    if (attempt < RAW_ATTEMPTS) await new Promise((wait) => setTimeout(wait, delayMs * attempt));
+  }
+  if (response) return response;
+  throw failure;
+};
+
 /** Thin GitHub reader: one REST tree call per run, raw reads cached per path. Never writes. */
-const createGitHub = (token, fetchImpl) => {
+const createGitHub = (token, fetchImpl, retryDelayMs) => {
   const counts = { api: 0, raw: 0 };
   const texts = new Map();
   const jsons = new Map();
@@ -343,11 +367,7 @@ const createGitHub = (token, fetchImpl) => {
         counts.raw += 1;
         const encoded = [...ref.split("/"), ...path.split("/")].map((part) => encodeURIComponent(part)).join("/");
         const url = "https://raw.githubusercontent.com/" + UPSTREAM.owner + "/" + UPSTREAM.repo + "/" + encoded;
-        let response = await send(url, {});
-        for (let attempt = 1; attempt < RAW_ATTEMPTS && (response.status === 429 || response.status >= 500); attempt += 1) {
-          await new Promise((wait) => setTimeout(wait, 500 * attempt));
-          response = await send(url, {});
-        }
+        const response = await fetchWithRetry(fetchImpl, url, {}, retryDelayMs);
         if (response.status === 404) return null;
         if (!response.ok) throw new Error("raw read returned " + response.status + " for " + url);
         return response.text();
@@ -434,8 +454,8 @@ export const missingPackFinding = ({ category, id, legacyIds, manifestPath, ref 
  * Returns { ref, manifest, checked, failures, warnings, findings, packs, requests }.
  */
 export const runDriftCheck = async (options = {}) => {
-  const { ref = DEFAULT_REF, token = "", fetchImpl = globalThis.fetch, root = MODULE_ROOT } = options;
-  const github = createGitHub(token, fetchImpl);
+  const { ref = DEFAULT_REF, token = "", fetchImpl = globalThis.fetch, root = MODULE_ROOT, retryDelayMs = RETRY_DELAY_MS } = options;
+  const github = createGitHub(token, fetchImpl, retryDelayMs);
   const index = buildIndex(await github.tree(ref));
   const manifest = await loadManifest(github, ref);
   const manifestPackMap = manifestPacks(manifest.json);
@@ -455,6 +475,22 @@ export const runDriftCheck = async (options = {}) => {
       resolved.set(name, entry ? { name, path: entry.path, dir } : null);
     }
     return resolved.get(name);
+  };
+
+  // A read that still fails after retries is a WARN for the item that needed it. The run goes on.
+  const located = async (options) => {
+    try {
+      return await locateById(options);
+    } catch (error) {
+      return { status: "unreadable", message: error.message, poolSize: 0, fetched: 0 };
+    }
+  };
+  const guarded = async (check, where, run) => {
+    try {
+      await run();
+    } catch (error) {
+      add("WARN", check, where + ": could not be read from upstream: " + error.message);
+    }
   };
 
   // 1. DEFAULT_PACKS ids against the system manifest and the tree.
@@ -507,12 +543,14 @@ export const runDriftCheck = async (options = {}) => {
       }
       const key = target.dir + "\n" + reference.id;
       if (!memo.has(key)) {
-        memo.set(key, await locateById({ id: reference.id, dir: target.dir, index, hints: reference.hints, document, budget, scan: true }));
+        memo.set(key, await located({ id: reference.id, dir: target.dir, index, hints: reference.hints, document, budget, scan: true }));
       }
       const outcome = memo.get(key);
       references.push({ location: where, uuid: reference.uuid, status: outcome.status, path: outcome.path ?? null });
       if (outcome.status === "found") continue;
-      if (outcome.status === "moved") {
+      if (outcome.status === "unreadable") {
+        add("WARN", "uuid", where + ": " + tail + " could not be read from upstream: " + outcome.message);
+      } else if (outcome.status === "moved") {
         add("FAIL", "uuid", where + ": " + tail + " - document " + reference.id + " is in " + outcome.path + ", not in " + target.dir);
       } else if (outcome.status === "missing") {
         add("FAIL", "uuid", where + ": " + tail + " - no document with _id " + reference.id + " in " + target.dir + " (" + outcome.poolSize + " files read)");
@@ -554,7 +592,8 @@ export const runDriftCheck = async (options = {}) => {
   if (!catalog) add("FAIL", "catalog", "scripts/pc-multiclass.mjs has no MULTICLASS_PACKAGES catalog to check");
   for (const entry of catalog ?? []) {
     checked += 1;
-    await checkCatalogName(entry.role, entry.name, categoryDir("feats"), "scripts/pc-multiclass.mjs:" + entry.line);
+    const where = "scripts/pc-multiclass.mjs:" + entry.line;
+    await guarded("catalog", where, () => checkCatalogName(entry.role, entry.name, categoryDir("feats"), where));
   }
 
   // 4. REMASTER_SPELLCASTERS against the classes directory.
@@ -569,9 +608,11 @@ export const runDriftCheck = async (options = {}) => {
       add("FAIL", "class", where + ": no " + profile.slug + ".json under " + (dir ?? "the classes pack") + " at " + ref);
       continue;
     }
-    for (const finding of classFindings(profile, await document(file))) {
-      add(finding.level, "class", where + " vs " + file + ": " + finding.message);
-    }
+    await guarded("class", where, async () => {
+      for (const finding of classFindings(profile, await document(file))) {
+        add(finding.level, "class", where + " vs " + file + ": " + finding.message);
+      }
+    });
   }
 
   // 5. Fixtures: every document-shaped JSON under tests/fixtures, compared with its upstream document.
@@ -599,15 +640,19 @@ export const runDriftCheck = async (options = {}) => {
     const names = typeof fixture.name === "string" ? slugCandidates(fixture.name) : [];
     const fileStem = stemOf(file).replace(/-(?:\d+\.)+\d+$/, "").replace(/-master$/, "");
     const hints = { exact: [...new Set([...names, fileStem])].filter(Boolean), words: [] };
-    const located = await locateById({ id, dir: pack ? pack.dir : null, index, hints, document, budget, scan: Boolean(pack) });
-    if (located.status === "missing" || located.status === "unresolvable") {
-      const why = located.status === "missing" ? "not found by _id" : "unresolvable without a token";
+    const found = await located({ id, dir: pack ? pack.dir : null, index, hints, document, budget, scan: Boolean(pack) });
+    if (found.status === "unreadable") {
+      add("WARN", "fixture", rel + ": upstream document " + id + " could not be read: " + found.message);
+      continue;
+    }
+    if (found.status === "missing" || found.status === "unresolvable") {
+      const why = found.status === "missing" ? "not found by _id" : "unresolvable without a token";
       add("WARN", "fixture", rel + ": upstream document " + id + " " + why);
       continue;
     }
-    if (located.status === "moved") add("WARN", "fixture", rel + ": upstream document " + id + " is now in " + located.path);
-    const diffs = compareDocuments(fixture, located.doc);
-    if (diffs.length) add("WARN", "fixture", rel + " differs from " + located.path + " at " + ref + ": " + diffs.join("; "));
+    if (found.status === "moved") add("WARN", "fixture", rel + ": upstream document " + id + " is now in " + found.path);
+    const diffs = compareDocuments(fixture, found.doc);
+    if (diffs.length) add("WARN", "fixture", rel + " differs from " + found.path + " at " + ref + ": " + diffs.join("; "));
   }
 
   const failures = countBy(findings, "FAIL");
