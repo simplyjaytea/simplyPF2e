@@ -593,8 +593,11 @@ export async function getScrollSpellCandidates(maxRank = 10, keywords = [], { ma
   return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT);
 }
 
-/** Common, non-focus cantrips from enabled spell packs. */
-export async function getCantripCandidates(keywords = []) {
+/**
+ * Common, non-focus cantrips from enabled spell packs, up to `maxRarity` (common by default). The caller
+ * decides whether uncommon cantrips are in the pool. Focus cantrips and rituals are excluded.
+ */
+export async function getCantripCandidates(keywords = [], { maxRarity = "common" } = {}) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("spells")) {
@@ -602,7 +605,7 @@ export async function getCantripCandidates(keywords = []) {
     if (!entries) continue;
     for (const entry of entries) {
       const traits = entry.system?.traits?.value ?? [];
-      if (entry.type !== "spell" || entry.system?.ritual || !traits.includes("cantrip") || traits.includes("focus") || entry.system?.traits?.rarity !== "common" || seen.has(entry.normalized)) continue;
+      if (entry.type !== "spell" || entry.system?.ritual || !traits.includes("cantrip") || traits.includes("focus") || !rarityAtMost(entry.system?.traits?.rarity, maxRarity) || seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
       candidates.push(candidateRecord(entry, { name: entry.name, rank: entry.system?.level?.value ?? 1, traits, rarity: entry.system.traits.rarity }));
     }

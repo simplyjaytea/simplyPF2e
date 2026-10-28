@@ -324,7 +324,7 @@ console.log("spell-consumables.test.mjs: template table, rank rules, scroll and 
   assert.equal(JSON.stringify([template, light]), before);
   assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 2, templateData: template, spellData: light }));
   assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: HEAL }));
-  for (const change of [s => s.system.traits.value.push("focus"), s => s.system.traits.rarity = "uncommon", s => s.system.ritual = {}]) {
+  for (const change of [s => s.system.traits.value.push("focus"), s => s.system.traits.rarity = "rare", s => s.system.traits.rarity = undefined, s => s.system.ritual = {}]) {
     const bad = structuredClone(light); change(bad);
     assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: bad }));
   }
@@ -333,4 +333,11 @@ console.log("spell-consumables.test.mjs: template table, rank rules, scroll and 
     assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: bad, spellData: light }));
   }
   assert.ok(spellConsumableRankProblem(light, "scroll", 1));
+  // An uncommon cantrip makes an uncommon deck, with the rarity copied from the spell (spell-consumables.ts 45).
+  const uncommonLight = structuredClone(light);
+  uncommonLight.system.traits.rarity = "uncommon";
+  assert.equal(spellConsumableRankProblem(uncommonLight, "cantripDeck", 1), null);
+  const uncommonDeck = buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: uncommonLight });
+  assert.equal(uncommonDeck.system.traits.rarity, "uncommon");
+  assert.equal(spellConsumableRankProblem(structuredClone(light), "cantripDeck", 1), null, "a common cantrip stays allowed");
 }

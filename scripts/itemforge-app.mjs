@@ -16,7 +16,7 @@ import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
 import { getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, priceToGp, toItemData } from "./compendium.mjs";
 import {
-  spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName
+  spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName, cantripDeckMaxRarity
 } from "./spell-consumables.mjs";
 
 import { experimentalToolsEnabled, assertExperimentalToolAccess } from "./experimental-tools.mjs";
@@ -497,7 +497,7 @@ export class ItemForgeApp extends SpfApp {
     if (maxRank < 1) {
       throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.LevelTooLow", { kind, minLevel: kind === "wand" ? 3 : 1 }));
     }
-    const offered = kind === "cantripDeck" ? await getCantripCandidates(briefKeywords(this.#input.prompt)) : await getScrollSpellCandidates(maxRank, briefKeywords(this.#input.prompt), { maxRarity: this.#input.rarity });
+    const offered = kind === "cantripDeck" ? await getCantripCandidates(briefKeywords(this.#input.prompt), { maxRarity: cantripDeckMaxRarity(this.#input.rarity) }) : await getScrollSpellCandidates(maxRank, briefKeywords(this.#input.prompt), { maxRarity: this.#input.rarity });
     if (!offered.length) {
       throw new Error(kind === "cantripDeck" ? game.i18n.localize("SIMPLYPF2E.ItemForge.Consumables.NoCantripCandidates") : game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoCandidates", { kind }));
     }
