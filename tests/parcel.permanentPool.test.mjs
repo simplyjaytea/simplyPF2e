@@ -160,7 +160,8 @@ equipmentFailing.clear();
 assert.equal(PERMANENT_REASON.NO_CANDIDATES, "no-candidates");
 
 // Every equipment fixture on disk is either used above or deliberately left to its unit test.
-const used = new Set([...EQUIPMENT_FIXTURES, "agate", "silk-ceremonial-armor", "abysium-chunk"]);
+// The classification fixtures used by treasure-permanent.test.mjs are listed here too, so each file on disk has a test.
+const used = new Set([...EQUIPMENT_FIXTURES, "agate", "silk-ceremonial-armor", "abysium-chunk", "inquisitive-quill", "the-keep", "guiding-star-orb-heroic"]);
 for (const file of readdirSync(DIR).filter((name) => name.endsWith(".json"))) {
   assert.ok(used.has(file.replace(/\.json$/, "")), `${file} is used by a test`);
 }
