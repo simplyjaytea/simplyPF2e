@@ -13,6 +13,7 @@ const { priceToGp, toItemData } = await import(R + "scripts/compendium.mjs");
 const tables = await import(R + "scripts/treasure-tables.mjs");
 const parcel = await import(R + "scripts/treasure-parcel.mjs");
 const loot = await import(R + "scripts/loot-actor.mjs");
+const permanent = await import(R + "scripts/treasure-permanent.mjs");
 const post = await import(R + "scripts/post-create.mjs");
 const text = await import(R + "scripts/text.mjs");
 const source = readFileSync(new URL(R + "scripts/itemforge-app.mjs"), "utf8");
@@ -21,17 +22,45 @@ const plain = (v) => JSON.parse(JSON.stringify(v));
 const RANK_1_SCROLL = fixture("scroll-of-1st-rank-spell.json");
 const HEAL = fixture("heal.json");
 const SCROLL_1 = consumables.SPELL_CONSUMABLE_TEMPLATES.scroll[1];
+const WAND_1_UUID = consumables.SPELL_CONSUMABLE_TEMPLATES.wand[1];
+const parcelFixture = (n) => JSON.parse(readFileSync(new URL(R + "tests/fixtures/parcel/" + n + ".json"), "utf8"));
+const WAND_1 = parcelFixture("magic-wand-1st-rank-spell");
+const HEARING = parcelFixture("magical-hearing-aid");
+const SILK = parcelFixture("silk-ceremonial-armor");
+const AGATE = parcelFixture("agate");
 const COIN_NAMES = { pp: "Platinum Pieces", gp: "Gold Pieces", sp: "Silver Pieces", cp: "Copper Pieces" };
 const coinDoc = (denomination) => ({ _id: loot.COIN_UUIDS[denomination].split(".").at(-1), name: COIN_NAMES[denomination], type: "treasure", img: "x.webp",
   system: { category: "coin", price: { value: { [denomination]: 1 } }, quantity: 1, rules: [] } });
 const docs = new Map([
   [SCROLL_1, { uuid: SCROLL_1, toObject: () => plain(RANK_1_SCROLL) }],
+  [WAND_1_UUID, { uuid: WAND_1_UUID, toObject: () => plain(WAND_1) }],
   ...Object.keys(COIN_NAMES).map((d) => [loot.COIN_UUIDS[d], { uuid: loot.COIN_UUIDS[d], toObject: () => plain(coinDoc(d)) }])
 ]);
 let coinAvailable = true; let emptyBuildError = false;
 async function fromUuid(uuid) { if (emptyBuildError && uuid === SCROLL_1) throw new Error(""); if (Object.values(loot.COIN_UUIDS).includes(uuid) && !coinAvailable) return null; return docs.get(uuid) ?? null; }
 const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "common" };
-async function getCandidateDocument(c) { return c?.id === "c-heal" ? { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) } : null; }
+async function getCandidateDocument(c) {
+  if (c?.id === "c-heal") return { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) };
+  if (c?.id === "c-hearing") return { name: HEARING.name, uuid: "Compendium.pf2e.equipment-srd.Item." + HEARING._id, toObject: () => plain(HEARING) };
+  return null;
+}
+// Permanent slot pools by item level, the AI's picks, and the valuable pool, all controlled per test.
+const permanentPools = new Map(); const permanentCalls = []; let permanentPicks = []; let permanentMode = "ok";
+const valuablePool = { available: true, candidates: [] };
+async function getPermanentEquipmentCandidates(level) { return permanentPools.get(level)?.equipment ?? []; }
+async function getParcelWandCandidates(level) { return permanentPools.get(level)?.wands ?? []; }
+async function getValuableCandidates() { return valuablePool; }
+async function pickParcelValuable(ranked, budgetCopper) {
+  const { entry, reason } = permanent.chooseValuable(ranked, budgetCopper);
+  if (!entry) return { reason };
+  const raw = entry.id === "c-silk" ? SILK : AGATE;
+  return { candidate: entry, copper: entry.copper, source: { name: raw.name, type: "treasure", img: "x.webp", system: { category: raw.system.category, price: { value: raw.system.price.value }, quantity: 1, rules: [] } } };
+}
+async function selectParcelPermanents(brief, opts) {
+  permanentCalls.push(opts);
+  if (permanentMode === "fail") throw new Error("provider unavailable");
+  return { picks: permanentPicks, dropped: [], usage: null };
+}
 const candCalls = []; async function getScrollSpellCandidates(maxRank) { candCalls.push(maxRank); return [HEALC]; }
 let parcelPicks = []; let parcelDrops = []; const parcelCalls = [];
 async function selectParcelSpells(brief, opts) { parcelCalls.push(opts); return { picks: parcelPicks, dropped: parcelDrops, usage: null }; }
@@ -46,7 +75,7 @@ class MockSpfApp {
   _lockCreation() { this._throwIfCancelled(); } _finishRun(o) { this.outcome = o; }
 }
 const mocks = {
-  ...consumables, ...tables, ...parcel, ...loot, ...post, ...text,
+  ...consumables, ...tables, ...parcel, ...permanent, ...loot, ...post, ...text,
   experimentalToolsEnabled: () => gate,
   assertExperimentalToolAccess: () => { if (!gate) throw Object.assign(new Error("GATE-CLOSED"), { code: "disabled" }); },
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
@@ -54,6 +83,7 @@ const mocks = {
   taskMaxTokens: () => 100, RUNED_ITEM_KINDS: new Set(["weapon", "armor"]), MIN_ITEM_LEVEL: 1, MAX_ITEM_LEVEL: 24,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   getScrollSpellCandidates, getCandidateDocument, selectSpellConsumables, selectParcelSpells, toItemData, priceToGp,
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates, pickParcelValuable, selectParcelPermanents,
   briefKeywords: () => []
 };
 let actorBehavior = "ok"; const createCalls = []; const deletes = []; const notices = [];
@@ -112,12 +142,12 @@ assert.deepEqual(Object.keys(payload.system).sort(), ["details", "hiddenWhenEmpt
 assert.equal(payload.type, "loot");
 assert.deepEqual(plain(payload.items.map((item) => ({ type: item.type, name: item.name, quantity: item.system.quantity, rules: item.system.rules }))), [
   { type: "consumable", name: "Scroll of Heal (Rank 1)", quantity: 3, rules: [] },
-  { type: "treasure", name: "Platinum Pieces", quantity: 4, rules: [] }
+  { type: "treasure", name: "Gold Pieces", quantity: 40, rules: [] }
 ]);
 assert.equal(ctx.hasPreview, false); assert.equal(a.outcome, "success");
-// Currency is whole pp, the remainder in gp; 40 gp is exactly 4 pp and no gp coin.
+// Under the 100 gp threshold the currency stays gold: 40 gp is 40 gp, with no pp.
 a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
-ctx = await a._prepareContext(); assert.equal(ctx.preview.currency, "4 pp");
+ctx = await a._prepareContext(); assert.equal(ctx.preview.currency, "40 gp");
 assert.ok(ctx.preview.warnings.length === 0);
 // A level-5 four-PC parcel (320 gp) is 32 pp; a party of 5 (+80 gp) is 40 pp.
 c.level.value = "5"; a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
@@ -206,3 +236,122 @@ assert.equal(createCalls.length, beforeMerchant); assert.equal(ctx.error, "GATE-
 gate = true;
 assert.match(template, /name="lootSheetType"/);
 assert.ok(lang.SIMPLYPF2E.ItemForge.Loot.SheetMerchant === "Merchant" && lang.SIMPLYPF2E.ItemForge.Loot.Sheet === "Actor sheet");
+
+// Permanent slots (part 2): a published item fills its level's slot; the others stay listed with a reason.
+const HEARING_CANDIDATE = { id: "c-hearing", name: "Magical Hearing Aid", level: 1, kind: "equipment", traits: ["magical"], rarity: "common" };
+gate = true; actorBehavior = "ok"; parcelPicks = initialPicks; permanentMode = "ok"; permanentCalls.length = 0;
+permanentPools.clear(); permanentPools.set(1, { equipment: [HEARING_CANDIDATE], wands: [] });
+permanentPicks = [{ slotId: "perm-3", candidateId: "c-hearing" }];
+c = ctl(); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(permanentCalls.length, 1, "one AI call for the permanent slots");
+assert.deepEqual(permanentCalls[0].slots.map((slot) => slot.allowedLevels), [[2], [2], [1], [1]], "table slots at four PCs");
+assert.equal(ctx.preview.permanents.length, 4, "every permanent slot is listed");
+assert.equal(ctx.preview.permanents[2].filled, true);
+assert.equal(ctx.preview.permanents[2].name, "Magical Hearing Aid");
+assert.equal(ctx.preview.permanents[2].itemLevel, 1, "the filled item reports its actual level");
+assert.equal(ctx.preview.permanents[0].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.no-candidates", "a level with no pool says why");
+assert.equal(ctx.preview.permanents[3].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.no-pick", "an omitted slot with a pool says why");
+assert.ok(ctx.preview.permanentSummary.includes('"built":1') && ctx.preview.permanentSummary.includes('"total":4'), "summary counts built and total");
+await A.createItem.call(a); ctx = await a._prepareContext();
+let created = createCalls.at(-1).actor;
+assert.ok(created.items.some((item) => item.type === "equipment" && item.name === "Magical Hearing Aid" && item.system.rules.length === 0),
+  "the built item is written as a physical item with no Rule Elements");
+assert.ok(created.system.details.description.includes("PermanentUnfilled"), "unfilled permanent slots are described on the actor");
+assert.equal(a.outcome, "success");
+
+// An invalid pick (not offered) leaves its slot unfilled with that reason, and the scrolls still build.
+permanentPicks = [{ slotId: "perm-3", candidateId: "c-invented" }];
+a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.invalid-pick");
+assert.ok(ctx.preview.items.length > 0, "a permanent failure never discards the scroll plan");
+
+// A provider failure leaves every permanent slot unfilled without failing the parcel.
+permanentMode = "fail";
+a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.error, null, "the parcel still generates");
+assert.equal(ctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.provider", "a provider failure is reported per slot");
+assert.equal(ctx.preview.permanents[0].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.no-candidates", "slots with no pool keep their own reason");
+assert.ok(ctx.preview.items.length > 0, "the scrolls survive a permanent provider failure");
+permanentMode = "ok";
+
+// Generic wands: a level-3 slot takes a rank-1 wand, built through the pinned template (item level 3).
+permanentPools.clear();
+permanentPools.set(3, { equipment: [], wands: [{ id: "w-c-heal", name: "Wand of Heal (Rank 1)", level: 3, rank: 1, kind: "wand", traits: [], spell: HEALC }] });
+permanentPicks = [{ slotId: "perm-1", candidateId: "w-c-heal" }];
+parcelPicks = [];
+c = ctl({ level: { value: "2" } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.permanents[0].filled, true, "the wand fills its level-3 slot");
+assert.equal(ctx.preview.permanents[0].name, "Wand of Heal (Rank 1)");
+assert.equal(ctx.preview.permanents[0].itemLevel, 3, "a rank-1 wand is item level 3");
+await A.createItem.call(a);
+created = createCalls.at(-1).actor;
+const wand = created.items.find((item) => item.name === "Wand of Heal (Rank 1)");
+assert.ok(wand, "the wand is written to the loot actor");
+assert.equal(wand.type, "consumable"); assert.equal(wand.system.category, "wand"); assert.equal(wand.system.level.value, 3);
+assert.equal(wand.system.rules.length, 0);
+permanentPools.clear();
+permanentPicks = [];
+parcelPicks = initialPicks;
+
+// Gems and art replace part of the currency: 40 gp with a 10 gp art object leaves 30 gp of coins, 40 gp in all.
+const SILK_CANDIDATE = { id: "c-silk", name: "Silk ceremonial armor", copper: 1000, packId: "pf2e.equipment-srd", _id: SILK._id };
+valuablePool.candidates = [SILK_CANDIDATE, { id: "c-agate", name: "Agate", copper: 50, packId: "pf2e.equipment-srd", _id: AGATE._id }];
+parcelPicks = []; permanentPicks = [];
+c = ctl({ valuables: { checked: true } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.valuable.name, "Silk ceremonial armor");
+assert.equal(ctx.preview.valuable.price, "10 gp");
+assert.equal(ctx.preview.currency, "30 gp", "the coins are the exact remainder");
+assert.equal(ctx.preview.valueGp, 40, "built value counts the valuable and the coins once each");
+await A.createItem.call(a);
+created = createCalls.at(-1).actor;
+assert.deepEqual(created.items.map((item) => [item.type, item.name, item.system.quantity]), [
+  ["treasure", "Silk ceremonial armor", 1], ["treasure", "Gold Pieces", 30]
+], "the valuable is one item and the remainder is gold coins");
+
+// Exact equality: a valuable worth the whole currency leaves no coins at all.
+valuablePool.candidates = [{ ...SILK_CANDIDATE, copper: 4000 }];
+a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.valuable.name, "Silk ceremonial armor");
+assert.equal(ctx.preview.currency, "", "no coins remain");
+assert.equal(ctx.preview.valueGp, 40, "exact equality keeps the built value at the currency total");
+
+// A valuable that costs more than the currency is not added, and the preview says why.
+valuablePool.candidates = [{ ...SILK_CANDIDATE, copper: 5000 }];
+a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.valuable, null);
+assert.ok(ctx.preview.valuableNote.includes("ValuableNone") && ctx.preview.valuableNote.includes("ValuableReason.too-expensive"),
+  "a fitting valuable that is missing names the reason");
+assert.equal(ctx.preview.currency, "40 gp", "the full currency stays as coins");
+
+// With the box off, no valuable is sought and no note appears.
+c = ctl(); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.valuable, null); assert.equal(ctx.preview.valuableNote, null);
+
+// The valuable pack is not installed: the preview gives that reason and the currency stays whole.
+valuablePool.available = false; valuablePool.candidates = [];
+c = ctl({ valuables: { checked: true } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.ok(ctx.preview.valuableNote.includes("ValuableReason.pack"));
+valuablePool.available = true;
+
+permanentPools.clear(); permanentPicks = []; valuablePool.candidates = [];
+
+// The preview and the template keep the table/checkbox/escaping contracts.
+assert.match(template, /name="valuables"/, "the valuables box is in the parcel form");
+assert.match(template, /{{#each preview\.permanents}}<tr><td>{{this\.levels}}<\/td><td>{{#if this\.filled}}{{this\.name}}/,
+  "permanent names are escaped by Handlebars");
+assert.match(template, /<th scope="col">{{localize "SIMPLYPF2E\.ItemForge\.Parcel\.PermanentLevels"}}<\/th>/, "headers are real column headers with scope");
+assert.match(template, /spf-table-scroll/, "wide tables scroll within their card");

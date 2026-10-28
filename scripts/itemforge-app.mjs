@@ -2,7 +2,7 @@ import {
   MODULE_ID, getProviderAuthWarningKey, getProviderRequestConfig,
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
-import { generateMagicItemConcept, generateRunedItemConcept, selectSpellConsumables, selectParcelSpells } from "./ai.mjs";
+import { generateMagicItemConcept, generateRunedItemConcept, selectSpellConsumables, selectParcelSpells, selectParcelPermanents } from "./ai.mjs";
 import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import { getForgeEffectCatalog, EFFECT_KINDS } from "./rule-templates.mjs";
 import {
@@ -14,14 +14,23 @@ import {
 import { createActivationMacro } from "./macro-templates.mjs";
 import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
-import { getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, priceToGp, toItemData } from "./compendium.mjs";
+import {
+  getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, priceToGp, toItemData,
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates, pickParcelValuable
+} from "./compendium.mjs";
 import {
   spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName, cantripDeckMaxRarity
 } from "./spell-consumables.mjs";
 
 import { experimentalToolsEnabled, assertExperimentalToolAccess } from "./experimental-tools.mjs";
 import { partyTreasureForSize, TREASURE_MIN_PARTY_LEVEL, TREASURE_MAX_PARTY_LEVEL } from "./treasure-tables.mjs";
-import { planParcelSlots, assignParcelPicks, stackParcelAssignments, parcelValueGp, splitCurrencyGp, PARCEL_DROP } from "./treasure-parcel.mjs";
+import {
+  planParcelSlots, assignParcelPicks, stackParcelAssignments, parcelValueGp, splitCurrencyCopper, copperFromGp,
+  COIN_COPPER_RATES, PARCEL_DROP
+} from "./treasure-parcel.mjs";
+import {
+  planPermanentSlots, assignPermanentPicks, permanentDocumentProblem, permanentSourceProblem, priceCopper, PERMANENT_REASON
+} from "./treasure-permanent.mjs";
 import { LOOT_NAME_MAX, LOOT_MANIFEST, COIN_UUIDS, coinItemSource, buildLootActorSource } from "./loot-actor.mjs";
 import { persistedExpectedItems, verifyCreatedActor, rollbackCreatedActor } from "./post-create.mjs";
 import { esc } from "./text.mjs";
@@ -48,9 +57,14 @@ function briefKeywords(brief) {
   return [...new Set(String(brief ?? "").toLowerCase().split(/[^a-z]+/).filter((word) => word.length >= 4))];
 }
 
-/** "4 pp, 2 cp" for the non-zero denominations of a splitCurrencyGp result; "" when all are zero. */
+/** "4 pp, 2 cp" for the non-zero denominations of a splitCurrencyCopper result; "" when all are zero. */
 function coinLabel(coins) {
   return Object.entries(coins).filter(([, quantity]) => quantity > 0).map(([denomination, quantity]) => `${quantity} ${denomination}`).join(", ");
+}
+
+/** Gold pieces from copper pieces, shown with at most two decimals; exact in copper, never rounded for the value. */
+function formatGp(copper) {
+  return (copper / COIN_COPPER_RATES.gp).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 /**
@@ -93,7 +107,7 @@ export class ItemForgeApp extends SpfApp {
   };
 
   /** Form values, kept across re-renders. "kind": "wondrous"|"weapon"|"armor". */
-  #input = { prompt: "", level: 4, rarity: "common", kind: "wondrous", destination: "items", partySize: 4, containerName: "", sheetType: "Loot" };
+  #input = { prompt: "", level: 4, rarity: "common", kind: "wondrous", destination: "items", partySize: 4, containerName: "", sheetType: "Loot", valuables: false };
   #busy = false;
   #error = null;
   #concept = null;
@@ -216,7 +230,10 @@ export class ItemForgeApp extends SpfApp {
     const containerName = String(form.querySelector('[name="containerName"]')?.value ?? this.#input.containerName).trim().slice(0, LOOT_NAME_MAX);
     // Merchant is offered only behind experimentalTools; with the gate closed the sheet is always Loot.
     const sheetType = experimentalToolsEnabled() && (form.querySelector('[name="lootSheetType"]')?.value ?? this.#input.sheetType) === "Merchant" ? "Merchant" : "Loot";
-    this.#input = { prompt, level, rarity, kind, destination, partySize, containerName, sheetType };
+    // Gems and art objects are a parcel option behind the same gate; the box is absent for other kinds.
+    const valuablesBox = form.querySelector('[name="valuables"]');
+    const valuables = experimentalToolsEnabled() && (valuablesBox ? valuablesBox.checked : this.#input.valuables) === true;
+    this.#input = { prompt, level, rarity, kind, destination, partySize, containerName, sheetType, valuables };
   }
 
   _preserveForm() {
@@ -581,11 +598,30 @@ export class ItemForgeApp extends SpfApp {
     await this._setStep("templates");
     const row = partyTreasureForSize(this.#input.level, this.#input.partySize);
     const plan = planParcelSlots(row);
-    const candidates = await getScrollSpellCandidates(Math.max(...plan.slots.map((s) => s.rank)), briefKeywords(this.#input.prompt), { maxRarity: this.#input.rarity });
+    const permanentSlots = planPermanentSlots(row);
+    const keywords = briefKeywords(this.#input.prompt);
+    const candidates = await getScrollSpellCandidates(Math.max(...plan.slots.map((s) => s.rank)), keywords, { maxRarity: this.#input.rarity });
+    const pool = await this.#permanentPool(permanentSlots, keywords);
     await this._setStep("concept");
     const { picks, dropped: unknownPicks, usage } = await selectParcelSpells(this.#input.prompt, { partyLevel: row.level, slots: plan.slots, candidates, signal,
       onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")) });
     this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), usage);
+    // Permanent picks are optional: a failure leaves those slots unfilled and keeps the scrolls.
+    let permanentPicks = [];
+    let permanentFailure = false;
+    if (pool.candidates.length) {
+      try {
+        const result = await selectParcelPermanents(this.#input.prompt, { partyLevel: row.level, slots: permanentSlots,
+          candidates: pool.candidates, signal, onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept")) });
+        this._recordTokens(game.i18n.localize("SIMPLYPF2E.ItemForge.ProgressConcept"), result.usage);
+        permanentPicks = result.picks;
+        for (const drop of result.dropped) console.warn(`${MODULE_ID} | dropped permanent parcel pick`, drop);
+      } catch (err) {
+        if (err?.cancelled || signal?.aborted) throw err;
+        console.warn(`${MODULE_ID} | permanent parcel selection failed`, err);
+        permanentFailure = true;
+      }
+    }
     await this._setStep("assemble");
     const assigned = assignParcelPicks(plan.slots, picks, candidates);
     const items = [];
@@ -605,28 +641,127 @@ export class ItemForgeApp extends SpfApp {
       built.source.system.quantity = stack.quantity;
       items.push({ ...built, quantity: stack.quantity, slotIds: stack.slotIds, itemLevels: plan.slots.filter((slot) => stack.slotIds.includes(slot.id)).map((slot) => slot.itemLevel) });
     }
-    // All-or-nothing: a coin that cannot be cloned drops the whole currency, so the total is never partial.
+    const permanents = await this.#assemblePermanents(permanentSlots, permanentPicks, pool, permanentFailure);
+    const budgetCopper = copperFromGp(plan.currencyGp);
+    let valuable = null;
+    let valuableReason = null;
+    if (this.#input.valuables) {
+      const picked = await this.#pickValuable(keywords, budgetCopper);
+      if (picked.source) valuable = picked;
+      else valuableReason = picked.reason;
+    }
+    // The valuable replaces part of the currency once; the exact remainder is split into coins.
+    // All-or-nothing: a coin that cannot be cloned drops the whole coin remainder, never part of it.
+    const remainderCopper = budgetCopper - (valuable?.copper ?? 0);
     let currency = null;
+    let coinsMissingCopper = 0;
     try {
-      const coins = splitCurrencyGp(plan.currencyGp);
+      const coins = splitCurrencyCopper(remainderCopper);
       const sources = [];
       for (const [denomination, quantity] of Object.entries(coins)) {
         if (quantity < 1) continue;
+        this._throwIfCancelled();
         const coin = await fromUuid(COIN_UUIDS[denomination]);
         sources.push(coinItemSource(coin ? toItemData(coin) : null, denomination, quantity));
       }
       currency = { coins, sources };
-    } catch (err) { console.warn(`${MODULE_ID} | dropped parcel currency`, err); dropped.push({ reason: "currency" }); }
-    if (!items.length && !currency) throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoPicks", { kind: "scroll" }));
-    this.#parcel = { items, currency, unfilled, dropped, permanent: plan.permanent, permanentExtra: plan.permanentExtra,
-      row, partySize: row.partySize, valueGp: parcelValueGp({ items, currencyGp: currency ? plan.currencyGp : 0 }) };
+    } catch (err) {
+      console.warn(`${MODULE_ID} | dropped parcel currency`, err);
+      dropped.push({ reason: "currency" });
+      coinsMissingCopper = remainderCopper;
+    }
+    const built = permanents.filter((entry) => entry.filled);
+    if (!items.length && !currency && !built.length && !valuable) {
+      throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoPicks", { kind: "scroll" }));
+    }
+    const valueItems = [
+      ...items.map((item) => ({ priceGp: item.priceGp, quantity: item.quantity })),
+      ...built.map((entry) => ({ priceGp: entry.copper / COIN_COPPER_RATES.gp, quantity: 1 })),
+      ...(valuable ? [{ priceGp: valuable.copper / COIN_COPPER_RATES.gp, quantity: 1 }] : [])
+    ];
+    this.#parcel = { items, currency, coinsMissingCopper, permanents, valuable, valuableReason, unfilled, dropped,
+      row, partySize: row.partySize,
+      valueGp: parcelValueGp({ items: valueItems, currencyGp: currency ? remainderCopper / COIN_COPPER_RATES.gp : 0 }) };
     this._throwIfCancelled();
   }
 
-  #permanentList(parcel) {
-    const entries = parcel.permanent.map((e) => game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentEntry", { level: e.level, count: e.count }));
-    if (parcel.permanentExtra.count) entries.push(game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentExtra", { count: parcel.permanentExtra.count, levels: parcel.permanentExtra.levels.join(" / ") }));
-    return entries.join(", ");
+  /**
+   * Candidate pool for the permanent slots: published equipment and generic wands per item level the
+   * slots allow. Bounded per level, validated before any AI call, and offered only as opaque ids.
+   */
+  async #permanentPool(slots, keywords) {
+    const levels = [...new Set(slots.flatMap((slot) => slot.allowedLevels))].sort((a, b) => a - b);
+    const candidates = [];
+    for (const level of levels) {
+      this._throwIfCancelled();
+      candidates.push(...await getPermanentEquipmentCandidates(level, keywords, { maxRarity: this.#input.rarity }));
+      candidates.push(...await getParcelWandCandidates(level, keywords, { maxRarity: this.#input.rarity }));
+    }
+    return { candidates, offered: new Map(candidates.map((candidate) => [candidate.id, candidate])) };
+  }
+
+  /**
+   * One entry per permanent slot, in slot order: a built item, or the reason it stays unfilled.
+   * Each pick is resolved to its document and checked again; nothing is fabricated.
+   */
+  async #assemblePermanents(slots, picks, pool, providerFailed) {
+    const outcome = providerFailed
+      ? assignPermanentPicks(slots, [], pool.offered)
+      : assignPermanentPicks(slots, picks, pool.offered);
+    const chosen = new Map(outcome.assignments.map(({ slot, candidate }) => [slot.id, candidate]));
+    const unfilled = new Map(outcome.unfilled.map(({ slot, reason }) => [slot.id, reason]));
+    const entries = [];
+    for (const slot of slots) {
+      this._throwIfCancelled();
+      const candidate = chosen.get(slot.id);
+      if (candidate) {
+        const result = await this.#buildPermanent(candidate, slot);
+        if (result.source) {
+          entries.push({ slot, filled: true, source: result.source, name: result.name, level: result.level, copper: result.copper });
+          continue;
+        }
+        console.warn(`${MODULE_ID} | dropped permanent parcel item`, result);
+        entries.push({ slot, filled: false, reason: result.reason });
+        continue;
+      }
+      let reason = unfilled.get(slot.id) ?? PERMANENT_REASON.NO_PICK;
+      if (providerFailed && reason === PERMANENT_REASON.NO_PICK) reason = PERMANENT_REASON.PROVIDER;
+      entries.push({ slot, filled: false, reason });
+    }
+    return entries;
+  }
+
+  /** Build one chosen permanent item. Returns a source, or a reason. */
+  async #buildPermanent(candidate, slot) {
+    if (candidate.kind === "wand") {
+      const built = await this.#buildSpellConsumable("wand", candidate.spell, candidate.rank);
+      if (built.missing === "spell") return { reason: PERMANENT_REASON.UNAVAILABLE };
+      if (built.missing === "template") return { reason: PERMANENT_REASON.TEMPLATE };
+      if (!built.source) return { reason: PERMANENT_REASON.BUILD, detail: built.reason };
+      return this.#permanentResult(built.source, slot);
+    }
+    const doc = await getCandidateDocument(candidate);
+    if (!doc) return { reason: PERMANENT_REASON.UNAVAILABLE };
+    const source = toItemData(doc);
+    const problem = permanentDocumentProblem(source, candidate.level, this.#input.rarity);
+    if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
+    return this.#permanentResult(source, slot);
+  }
+
+  #permanentResult(source, slot) {
+    const problem = permanentSourceProblem(source, slot.allowedLevels);
+    if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
+    return { source, name: source.name, level: source.system.level.value, copper: priceCopper(source.system.price.value) };
+  }
+
+  /** The one valuable the parcel may hold, or the reason none is offered. */
+  async #pickValuable(keywords, budgetCopper) {
+    const pool = await getValuableCandidates(keywords, { maxRarity: this.#input.rarity });
+    if (!pool.available) return { reason: "pack" };
+    if (!pool.candidates.length) return { reason: "none-offered" };
+    const picked = await pickParcelValuable(pool.candidates, budgetCopper, this.#input.rarity);
+    if (!picked.source) return { reason: picked.reason };
+    return { name: picked.source.name, source: picked.source, copper: picked.copper };
   }
 
   /**
@@ -639,13 +774,33 @@ export class ItemForgeApp extends SpfApp {
     return game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.${dropKeys[drop.reason]}`);
   }
 
+  /** "level 5" or "level 5 or 6" for a slot's allowed item levels. */
+  #levelsLabel(levels) {
+    if (levels.length === 1) return game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.LevelOne", { level: levels[0] });
+    return game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.LevelPair", { low: levels[0], high: levels.at(-1) });
+  }
+
   #buildParcelPreview() {
     const p = this.#parcel;
     if (!p) return null;
     const dropKeys = { [PARCEL_DROP.DUPLICATE_SLOT]: "DuplicateSlot", [PARCEL_DROP.RANK_ABOVE_SLOT]: "RankAbove", build: "BuildDrop", currency: "CurrencyDrop" };
+    const built = p.permanents.filter((entry) => entry.filled).length;
     return { parcel: true, items: p.items.map((i) => ({ ...i, itemLevels: i.itemLevels.join(", "), price: `${i.priceGp.toLocaleString()} gp` })),
       unfilled: p.unfilled, warnings: p.dropped.map((d) => this.#dropText(d, dropKeys)),
-      extraPcs: p.row.extraPcs, currency: p.currency ? coinLabel(p.currency.coins) : null, permanent: this.#permanentList(p), valueGp: p.valueGp, totalGp: p.row.totalGp };
+      extraPcs: p.row.extraPcs, currency: p.currency ? coinLabel(p.currency.coins) : null,
+      coinsMissing: p.coinsMissingCopper ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.CoinsMissing", { gp: formatGp(p.coinsMissingCopper) }) : null,
+      permanents: p.permanents.map((entry) => ({
+        levels: this.#levelsLabel(entry.slot.allowedLevels),
+        filled: entry.filled,
+        name: entry.filled ? entry.name : null,
+        itemLevel: entry.filled ? entry.level : null,
+        price: entry.filled ? `${formatGp(entry.copper)} gp` : null,
+        reason: entry.filled ? null : game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.Reason.${entry.reason}`)
+      })),
+      permanentSummary: game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentSummary", { built, total: p.permanents.length }),
+      valuable: p.valuable ? { name: p.valuable.name, price: `${formatGp(p.valuable.copper)} gp` } : null,
+      valuableNote: this.#input.valuables && !p.valuable ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.ValuableNone", { reason: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.ValuableReason.${p.valuableReason}`) }) : null,
+      valueGp: p.valueGp, totalGp: p.row.totalGp };
   }
 
   async #createLootActor({ items, name, level, descriptionLines, lootSheetType }) {
@@ -688,13 +843,28 @@ export class ItemForgeApp extends SpfApp {
       await this._setStep("apply");
       await this.render();
       const p = this.#parcel;
+      // Revalidate every built permanent source before anything is written (the preview may be old).
+      for (const entry of p?.permanents ?? []) {
+        if (!entry.filled) continue;
+        const problem = permanentSourceProblem(entry.source, entry.slot.allowedLevels);
+        if (problem) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.Revalidate"));
+      }
+      const built = p?.permanents.filter((entry) => entry.filled) ?? [];
       const descriptionLines = p ? [
         game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.Header", { level: p.row.level, size: p.partySize }),
-        game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentLine", { list: this.#permanentList(p) }),
+        game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentSummary", { built: built.length, total: p.permanents.length }),
+        ...p.permanents.filter((entry) => !entry.filled).map((entry) => game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentUnfilled", {
+          levels: this.#levelsLabel(entry.slot.allowedLevels), reason: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.Reason.${entry.reason}`)
+        })),
         game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.EvenNote"),
         ...(p.row.belowBase ? [game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.BelowNote")] : [])
       ] : [game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.Description")];
-      const items = p ? [...p.items.map((i) => i.source), ...(p.currency ? p.currency.sources : [])] : this.#consumables.items.map((i) => i.source);
+      const items = p ? [
+        ...p.items.map((i) => i.source),
+        ...built.map((entry) => entry.source),
+        ...(p.valuable ? [p.valuable.source] : []),
+        ...(p.currency ? p.currency.sources : [])
+      ] : this.#consumables.items.map((i) => i.source);
       const presentationWarning = await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines, lootSheetType: this.#input.sheetType });
       if (presentationWarning) outcome = "warning";
     } catch (err) { outcome = err?.cancelled ? "cancelled" : "error"; this.#error = err?.cancelled ? null : err.message; }
@@ -848,6 +1018,8 @@ export class ItemForgeApp extends SpfApp {
   _onRender(context, options) {
     super._onRender(context, options);
     this.element?.querySelector('[name="destination"]')?.addEventListener("change", () => { this.#readForm(); this.render(); });
+    // The valuables box only changes what the next Generate asks for, so it keeps focus and does not re-render.
+    this.element?.querySelector('[name="valuables"]')?.addEventListener("change", () => this.#readForm());
   }
 
   static async #onForgeAnother() {
