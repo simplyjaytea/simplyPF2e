@@ -173,12 +173,31 @@ const ranked = rankByBrief([
 ], ["fire", "opal"]).map((entry) => entry.id);
 assert.deepEqual(ranked, ["c", "b", "a"]);
 
-// A built source is checked again against its slot before it reaches the loot actor.
-const built = { system: { level: { value: 5 }, price: { value: { gp: 60 } }, rules: [] } };
-assert.equal(permanentSourceProblem(built, [5]), null);
-assert.equal(permanentSourceProblem(built, [6]), "level");
-assert.equal(permanentSourceProblem({ system: { ...built.system, rules: [{ key: "X" }] } }, [5]), "rules");
-assert.equal(permanentSourceProblem({ system: { ...built.system, price: { value: {} } } }, [5]), "price");
-assert.equal(permanentSourceProblem(null, [5]), "malformed");
+// Build-time and Create-time checks are one predicate. An equipment source is judged as the pool was:
+// the same type, level, rarity cap, traits and Rule Elements rules apply after Generate as before.
+const built = clone(hearingAid);
+assert.equal(permanentSourceProblem(built, [1], "common"), null, "a built equipment item that still passes is accepted");
+assert.equal(permanentSourceProblem(built, [2], "common"), "level", "a level the slot does not allow is refused");
+const withRule = clone(built);
+withRule.system.rules = [{ key: "Fake" }];
+assert.equal(permanentSourceProblem(withRule, [1], "common"), "rules", "a Rule Element added after Generate is refused");
+const raised = clone(built);
+raised.system.traits.rarity = "rare";
+assert.equal(permanentSourceProblem(raised, [1], "common"), "rarity", "a rarity raised after Generate is refused against the Forge cap");
+assert.equal(permanentSourceProblem(raised, [1], "rare"), null, "the same source passes under its own cap");
+const asWeapon = clone(built);
+asWeapon.type = "weapon";
+assert.equal(permanentSourceProblem(asWeapon, [1], "common"), "type", "a changed item type is refused");
+const intelligent = clone(built);
+intelligent.system.traits.value = ["magical", "intelligent"];
+assert.equal(permanentSourceProblem(intelligent, [1], "common"), "classification", "a source that gained an excluded trait is refused");
+const wand = { type: "consumable", system: { category: "wand", level: { value: 3 }, traits: { rarity: "common", value: ["magical", "wand"] },
+  price: { value: { gp: 60 } }, rules: [] } };
+assert.equal(permanentSourceProblem(wand, [3], "common"), null, "a built generic wand at an allowed level passes");
+assert.equal(permanentSourceProblem({ ...wand, system: { ...wand.system, rules: [{ key: "X" }] } }, [3], "common"), "rules");
+assert.equal(permanentSourceProblem({ ...wand, system: { ...wand.system, traits: { rarity: "rare", value: ["magical", "wand"] } } }, [3], "common"), "rarity");
+assert.equal(permanentSourceProblem(wand, [5], "common"), "level");
+assert.equal(permanentSourceProblem({ ...wand, system: { ...wand.system, price: { value: {} } } }, [3], "common"), "price");
+assert.equal(permanentSourceProblem(null, [1], "common"), "malformed");
 
 console.log("treasure-permanent.test.mjs: slots for rows 1-20, real-document safety filters, valuables, exact assignment and boundaries passed");

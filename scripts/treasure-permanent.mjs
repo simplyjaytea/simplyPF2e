@@ -101,16 +101,23 @@ export function permanentDocumentProblem(data, level, maxRarity) {
 }
 
 /**
- * Create-time check of a built permanent source against its slot. The source must carry no Rule
- * Elements, sit at one of the slot's allowed levels, and have a valid price. Runs again when the
- * loot actor is created, so a source changed after the preview cannot slip through.
+ * The one predicate for a built permanent source, used at build time and again at Create, so a source
+ * changed after the preview cannot slip through. Equipment is judged exactly as the offered pool was
+ * (type, level, rarity cap, magical trait, exclusions, usage, price, no Rule Elements). A generic wand
+ * is a consumable built from the pinned template: no Rule Elements, a level the slot allows, within the
+ * rarity cap and a valid price. Its `wand` trait is by design, so the equipment exclusions do not apply.
  */
-export function permanentSourceProblem(source, allowedLevels) {
-  if (!source || typeof source !== "object") return "malformed";
-  if (!Array.isArray(source.system?.rules) || source.system.rules.length) return "rules";
-  if (!Array.isArray(allowedLevels) || !allowedLevels.includes(source.system?.level?.value)) return "level";
-  if (priceCopper(source.system?.price?.value) === null) return "price";
-  return null;
+export function permanentSourceProblem(source, allowedLevels, maxRarity) {
+  if (!source || typeof source !== "object" || !Array.isArray(allowedLevels)) return "malformed";
+  const system = source.system ?? {};
+  if (!allowedLevels.includes(system.level?.value)) return "level";
+  if (source.type === "consumable" && system.category === "wand") {
+    if (!Array.isArray(system.rules) || system.rules.length) return "rules";
+    if (!rarityAllowed(system.traits?.rarity, maxRarity)) return "rarity";
+    if (priceCopper(system.price?.value) === null) return "price";
+    return null;
+  }
+  return permanentDocumentProblem(source, system.level.value, maxRarity);
 }
 
 /** Why a published treasure document cannot be a parcel valuable, or null. */

@@ -40,11 +40,16 @@ let coinAvailable = true; let emptyBuildError = false;
 async function fromUuid(uuid) { if (emptyBuildError && uuid === SCROLL_1) throw new Error(""); if (Object.values(loot.COIN_UUIDS).includes(uuid) && !coinAvailable) return null; return docs.get(uuid) ?? null; }
 const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "common" };
 // Failure modes for the read and provider paths: an error object is thrown on the next call.
-let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
+let lastHearingSource = null; let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
 async function getCandidateDocument(c) {
   if (c?.id === "c-heal") return { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) };
   if (c?.id === "c-hearing" && candidateReadError) throw candidateReadError;
-  if (c?.id === "c-hearing") return { name: HEARING.name, uuid: "Compendium.pf2e.equipment-srd.Item." + HEARING._id, toObject: () => plain(HEARING) };
+  if (c?.id === "c-hearing") {
+    // The built source is this object, so a test can change it between Generate and Create.
+    const src = plain(HEARING);
+    lastHearingSource = src;
+    return { name: HEARING.name, uuid: "Compendium.pf2e.equipment-srd.Item." + HEARING._id, toObject: () => src };
+  }
   return null;
 }
 // Permanent slot pools by item level, the AI's picks, and the valuable pool, all controlled per test.
@@ -453,3 +458,29 @@ ctx = await a._prepareContext();
 assert.equal(ctx.preview, null, "a scroll-phase abort is not swallowed");
 assert.ok(ctx.error && ctx.error.includes("aborted"));
 parcelMode = "ok"; permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks;
+
+// Create revalidates each built permanent source with the same predicate as Generate, and writes nothing when it fails.
+permanentPools.clear(); permanentPools.set(1, { equipment: [HEARING_CANDIDATE], wands: [] });
+permanentPicks = [{ slotId: "perm-3", candidateId: "c-hearing" }]; parcelPicks = initialPicks;
+const changes = [
+  ["a rule added after Generate", (src) => { src.system.rules = [{ key: "Fake" }]; }],
+  ["the level changed after Generate", (src) => { src.system.level.value = 5; }],
+  ["the rarity raised after Generate", (src) => { src.system.traits.rarity = "rare"; }],
+];
+for (const [label, change] of changes) {
+  c = ctl(); a = app(c);
+  await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+  assert.equal((await a._prepareContext()).preview.permanents[2].filled, true, `${label}: the item is built first`);
+  change(lastHearingSource);
+  const writes = createCalls.length;
+  await A.createItem.call(a); ctx = await a._prepareContext();
+  assert.equal(createCalls.length, writes, `${label}: nothing is written`);
+  assert.equal(ctx.error, "SIMPLYPF2E.ItemForge.Parcel.Revalidate", `${label}: Create refuses`);
+}
+// An unchanged source still creates, so the check is not refusing everything.
+c = ctl(); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+const writesBefore = createCalls.length;
+await A.createItem.call(a);
+assert.equal(createCalls.length, writesBefore + 1, "an unchanged source is created");
+permanentPools.clear(); permanentPicks = [];

@@ -29,7 +29,7 @@ import {
   COIN_COPPER_RATES, PARCEL_DROP
 } from "./treasure-parcel.mjs";
 import {
-  planPermanentSlots, assignPermanentPicks, permanentDocumentProblem, permanentSourceProblem, priceCopper, PERMANENT_REASON
+  planPermanentSlots, assignPermanentPicks, permanentSourceProblem, priceCopper, PERMANENT_REASON
 } from "./treasure-permanent.mjs";
 import { LOOT_NAME_MAX, LOOT_MANIFEST, COIN_UUIDS, coinItemSource, buildLootActorSource } from "./loot-actor.mjs";
 import { persistedExpectedItems, verifyCreatedActor, rollbackCreatedActor } from "./post-create.mjs";
@@ -697,7 +697,7 @@ export class ItemForgeApp extends SpfApp {
       ...(valuable ? [{ priceGp: valuable.copper / COIN_COPPER_RATES.gp, quantity: 1 }] : [])
     ];
     this.#parcel = { items, currency, coinsMissingCopper, permanents, valuable, valuableReason, unfilled, dropped,
-      row, partySize: row.partySize,
+      row, partySize: row.partySize, rarity: this.#input.rarity,
       valueGp: parcelValueGp({ items: valueItems, currencyGp: currency ? remainderCopper / COIN_COPPER_RATES.gp : 0 }) };
     this._throwIfCancelled();
   }
@@ -760,8 +760,6 @@ export class ItemForgeApp extends SpfApp {
     const doc = await getCandidateDocument(candidate);
     if (!doc) return { reason: PERMANENT_REASON.UNAVAILABLE };
     const source = toItemData(doc);
-    const problem = permanentDocumentProblem(source, candidate.level, this.#input.rarity);
-    if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
     return this.#permanentResult(source, slot);
   }
 
@@ -777,7 +775,7 @@ export class ItemForgeApp extends SpfApp {
   }
 
   #permanentResult(source, slot) {
-    const problem = permanentSourceProblem(source, slot.allowedLevels);
+    const problem = permanentSourceProblem(source, slot.allowedLevels, this.#input.rarity);
     if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
     return { source, name: source.name, level: source.system.level.value, copper: priceCopper(source.system.price.value) };
   }
@@ -881,7 +879,7 @@ export class ItemForgeApp extends SpfApp {
       // Revalidate every built permanent source before anything is written (the preview may be old).
       for (const entry of p?.permanents ?? []) {
         if (!entry.filled) continue;
-        const problem = permanentSourceProblem(entry.source, entry.slot.allowedLevels);
+        const problem = permanentSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity);
         if (problem) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.Revalidate"));
       }
       const built = p?.permanents.filter((entry) => entry.filled) ?? [];
