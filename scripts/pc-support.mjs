@@ -22,8 +22,8 @@ import { slugify } from "./text.mjs";
  *     base slots already match the native model (pc-tables.mjs), and the
  *     spellbook is the set of prepared spells, as for Cleric, Druid and Witch.
  *     The curriculum extra cantrip and extra restricted slots and the familiar
- *     actor stay manual. School focus spells are not granted either, and any
- *     focus spell the AI names for a complete-only class is dropped
+ *     actor stay manual. The initial school focus spell is resolved from the
+ *     staged school at Create; any AI-named focus spell is dropped
  *     (classModelsFocusSpells).
  * Ordinary feat prerequisites are evaluated against that staged ABC/grant
  * snapshot before complete-only selection. Wizard data is verified against PF2e
@@ -43,19 +43,17 @@ export function isCompletePCClass(value) {
 
 /**
  * Complete-only classes whose focus-spell source the module models end to end.
- * None yet. A focus spell is granted by a class feature the module would have
- * to resolve (Wizard: the chosen school has a School Spells link in its
- * description that no rule grants; PLAYBOOK backlog item 3), so for these
- * classes any focus spell the AI names would be an unbacked pick. Add a slug
- * here only together with the resolver that grounds it.
+ * None yet. Wizard's initial school spell is independently resolved from its
+ * staged school at Create; it is not an AI pick. Add a slug here only when
+ * AI-selected focus spells have a modeled source.
  */
 const FOCUS_SPELL_SOURCE_CLASS_SLUGS = new Set();
 
 /**
  * Whether a focus-spell pick can be honoured for this class. A complete-only
- * class without a modeled focus source (all of them today) carries no focus
- * spells, no focus entry and no focus pool. Classes outside the complete-only
- * registry are not generated and keep their previous focus handling.
+ * class without a modeled AI focus source (all of them today) drops AI picks.
+ * Wizard's staged school may independently supply a focus spell. Classes
+ * outside the complete-only registry keep their previous focus handling.
  */
 export function classModelsFocusSpells(value) {
   const slug = slugify(typeof value === "string" ? value : value?.name);

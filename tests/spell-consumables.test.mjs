@@ -43,7 +43,7 @@ assert.deepEqual({ ...SPELL_CONSUMABLE_TEMPLATES.wand }, Object.fromEntries(RECO
 assert.equal(SPELL_CONSUMABLE_TEMPLATES.cantripDeck, uuidFor(RECORD_CANTRIP_DECK_ID), "cantrip deck matches the research record");
 assert.equal(spellConsumableTemplateUuid("wand", 10), null, "wand rank 10 has no template");
 assert.equal(spellConsumableTemplateUuid("scroll", 10), uuidFor("o1XIHJ4MJyroAHfF"), "scroll rank 10 has a template");
-for (const [kind, rank] of [["scroll", 0], ["scroll", 11], ["scroll", 1.5], ["wand", 0], ["wand", 10], ["spell-gem", 1], ["toString", 1], ["cantripDeck", 1]]) {
+for (const [kind, rank] of [["scroll", 0], ["scroll", 11], ["scroll", 1.5], ["wand", 0], ["wand", 10], ["spell-gem", 1], ["toString", 1], ["cantripDeck", 2]]) {
   assert.equal(spellConsumableTemplateUuid(kind, rank), null, `no template for ${kind} rank ${rank}`);
 }
 assert.deepEqual(spellConsumableTemplateRef("scroll", 1), { packId: "pf2e.equipment-srd", _id: "RjuupS9xyXDLgyIr" });
@@ -60,7 +60,7 @@ const heal = spell();
 assert.equal(spellConsumableRankProblem(heal, "scroll", 1), null, "Heal may be a rank 1 scroll");
 assert.equal(spellConsumableRankProblem(heal, "scroll", 10), null, "Heal may be a rank 10 scroll");
 assert.equal(spellConsumableRankProblem(heal, "wand", 9), null, "Heal may be a rank 9 wand");
-assert.match(spellConsumableRankProblem(heal, "cantripDeck", 1), /not a scroll or wand/);
+assert.match(spellConsumableRankProblem(heal, "cantripDeck", 1), /requires a cantrip/);
 assert.match(spellConsumableRankProblem(heal, "toString", 1), /not a scroll or wand/, "inherited keys are not kinds");
 assert.match(spellConsumableRankProblem(heal, "scroll", 0), /whole number from 1 to 10/);
 assert.match(spellConsumableRankProblem(heal, "scroll", 11), /whole number from 1 to 10/);
@@ -78,7 +78,7 @@ assert.match(spellConsumableRankProblem({ system: {} }, "scroll", 1), /no base r
 assert.equal(spellConsumableName("scroll", "Heal", 1), "Scroll of Heal (Rank 1)");
 assert.equal(spellConsumableName("wand", "Web", 4), "Wand of Web (Rank 4)");
 assert.equal(spellConsumableName("scroll", "Cost $& Co", 2), "Scroll of Cost $& Co (Rank 2)", "spell names are inserted literally");
-assert.equal(spellConsumableName("cantripDeck", "Light", 1), null, "no name template for the cantrip deck");
+assert.equal(spellConsumableName("cantripDeck", "Light", 1), "Cantrip Deck of Light (5-pack)", "cantrip deck uses the native name template");
 
 // 4. Scroll built from the pinned rank 1 template and Heal, against the native field map.
 const before = structuredClone({ template: SCROLL_1, heal: HEAL });
@@ -298,3 +298,39 @@ assert.equal(unpinned.scroll.rank, 1);
 settingsStub.get = () => ({});
 game.packs.delete("test.equipment-only");
 console.log("spell-consumables.test.mjs: template table, rank rules, scroll and wand field map, and loot migration passed");
+
+// Cantrip deck expectations from pf2e 8.5.0 sources.
+{
+  const uuid = "Compendium.pf2e.equipment-srd.Item.tLa4bewBhyqzi6Ow";
+  const template = withSource(fixture("cantrip-deck-5-pack.json"), uuid);
+  const light = withSource(fixture("light.json"), "Compendium.pf2e.spells-srd.Item.WBmvzNDfpwka3qT4");
+  const before = JSON.stringify([template, light]);
+  assert.equal(spellConsumableTemplateUuid("cantripDeck", 1), uuid);
+  assert.equal(spellConsumableTemplateUuid("cantripDeck", 0), null);
+  assert.equal(spellConsumableTemplateUuid("cantripDeck", 2), null);
+  const item = buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: light });
+  assert.equal(item.name, "Cantrip Deck of Light (5-pack)");
+  assert.equal(item.system.category, "other");
+  assert.deepEqual(item.system.traits.value, ["cantrip", "concentrate", "light", "magical", "manipulate"]);
+  assert.equal(item.system.traits.rarity, "common");
+  assert.ok(item.system.description.value.startsWith("<p>@UUID[Compendium.pf2e.spells-srd.Item.WBmvzNDfpwka3qT4]{Light}</p><hr>"));
+  assert.ok(item.system.description.value.endsWith(template.system.description.value));
+  assert.equal("spell" in item.system, false);
+  assert.deepEqual(item.system.uses, { autoDestroy: true, max: 5, value: 5 });
+  assert.equal(item.system.quantity, 1);
+  assert.deepEqual(item.system.price, { per: 1, value: { gp: 5 } });
+  assert.deepEqual(item.system.level, { value: 1 });
+  assert.deepEqual(item.system.rules, []);
+  assert.equal(JSON.stringify([template, light]), before);
+  assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 2, templateData: template, spellData: light }));
+  assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: HEAL }));
+  for (const change of [s => s.system.traits.value.push("focus"), s => s.system.traits.rarity = "uncommon", s => s.system.ritual = {}]) {
+    const bad = structuredClone(light); change(bad);
+    assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: template, spellData: bad }));
+  }
+  for (const change of [t => t.system.category = "scroll", t => t._stats.compendiumSource = "wrong"]) {
+    const bad = structuredClone(template); change(bad);
+    assert.throws(() => buildSpellConsumable({ kind: "cantripDeck", rank: 1, templateData: bad, spellData: light }));
+  }
+  assert.ok(spellConsumableRankProblem(light, "scroll", 1));
+}

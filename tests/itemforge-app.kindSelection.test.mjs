@@ -36,6 +36,7 @@ const requestConfig = {
   apiKeyIsBound: false
 };
 const mocks = {
+  experimentalToolsEnabled: () => false,
   MODULE_ID: "simplypf2e",
   SpfApp: MockSpfApp,
   RUNED_ITEM_KINDS: new Set(["weapon", "armor"]),

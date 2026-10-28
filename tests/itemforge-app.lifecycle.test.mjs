@@ -53,6 +53,7 @@ class MockSpfApp {
   _finishRun() { this.abort = null; }
 }
 const mocks = {
+  experimentalToolsEnabled: () => false,
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
   AI_TASK: { MAGIC_ITEM_CONCEPT: "magic", RUNED_ITEM_CONCEPT: "runed" }, taskMaxTokens: () => 100,
   RUNED_ITEM_KINDS: new Set(["weapon", "armor"]), MIN_ITEM_LEVEL: 0, MAX_ITEM_LEVEL: 20,

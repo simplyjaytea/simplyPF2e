@@ -31,7 +31,7 @@ import { composeEncounter, THREATS } from "./encounter.mjs";
 import { findBestiaryScaffold } from "./art.mjs";
 import { assertComplete, completionManifest, completionSummary } from "./completion.mjs";
 import { verifyCreatedActor, persistedExpectedItems } from "./post-create.mjs";
-import { supportedClassCandidates } from "./pc-support.mjs";
+import { classModelsFocusSpells, supportedClassCandidates } from "./pc-support.mjs";
 import { SpfApp } from "./app-base.mjs";
 import { filterNpcAbilityCandidates, resolveNpcAbilityPackages } from "./npc-ability-packages.mjs";
 
@@ -47,7 +47,7 @@ import { createProgress } from "./progress.mjs";
 import { validateForgeRequest } from "./forge-command.mjs";
 import { heritageMatchesAncestry } from "./pc-builder.mjs";
 import { applyPCEdit, validatePCEditCompletion } from "./pc-edit.mjs";
-import { pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } from "./pc-editor.mjs";
+import { editableClassCandidates, pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } from "./pc-editor.mjs";
 
 const PC_IDENTITY_FIELDS = ["name", "class", "ancestry", "heritage", "background", "backgroundLore", "keyAbility", "classPath"];
 
@@ -495,13 +495,20 @@ export class GeneratorApp extends SpfApp {
     return eligible;
   }
 
-  /** Catalogs for PC edits: the identity pickers, with heritage narrowed to the current ancestry. */
+  /**
+   * Catalogs for PC edits: the identity pickers, with heritage narrowed to the current ancestry
+   * and the class control limited to noncaster classes (plus the current class).
+   */
   async #pcEditCatalogs(plan) {
     const catalogs = await this.#identityCatalogs();
+    const offeredClass = catalogs.offeredClass ?? [];
+    const classDocs = await Promise.all(offeredClass.map((candidate) => getDocument(candidate.ref)));
+    const classDocsByKey = new Map(offeredClass.map((candidate, index) => [pcIdentityKey(candidate), classDocs[index]]));
     return {
       ...catalogs,
       heritage: await this.#pcEligibleHeritages(catalogs.heritage ?? [], plan.resolved.ancestryDoc),
-      equipment: (await getEquipmentCandidates(plan.concept.level)) ?? []
+      equipment: (await getEquipmentCandidates(plan.concept.level)) ?? [],
+      editableClass: editableClassCandidates(offeredClass, classDocsByKey, pcIdentityKey({ ref: plan.concept.classCandidate }))
     };
   }
 
@@ -534,7 +541,7 @@ export class GeneratorApp extends SpfApp {
         { value: "", label: game.i18n.localize("SIMPLYPF2E.Identity.NoHeritage") }, ...catalogs.heritage.map(option)
       ]);
       add("background", label("background"), catalogs.background.map(option));
-      add("class", label("class"), (catalogs.offeredClass ?? []).map(option));
+      add("class", label("class"), (catalogs.editableClass ?? []).map(option));
       const paths = catalogs.classPath.filter((path) => path.classKeys.includes(selections.class));
       const bridges = classPathBridges(paths);
       if (bridges.length > 1) {
@@ -1178,7 +1185,9 @@ export class GeneratorApp extends SpfApp {
     });
     return [
       ["design", game.i18n.localize("SIMPLYPF2E.Progress.Design"), taskMaxTokens(AI_TASK.ENCOUNTER_DESIGN)],
-      ...composition.members.map((_, i) => [`member${i}`, memberLabel(i), taskMaxTokens(AI_TASK.CREATURE_CONCEPT) + taskMaxTokens(AI_TASK.SPELL_SELECTION) + taskMaxTokens(AI_TASK.ABILITY_SELECTION) + taskMaxTokens(AI_TASK.CREATURE_FEAT_SELECTION) + taskMaxTokens(AI_TASK.EQUIPMENT_SELECTION) + taskMaxTokens(AI_TASK.LOOT_SELECTION)]),
+      ...composition.members.map((member, i) => [`member${i}`, memberLabel(i), member.role === "hazard"
+        ? taskMaxTokens(AI_TASK.HAZARD_CONCEPT)
+        : taskMaxTokens(AI_TASK.CREATURE_CONCEPT) + taskMaxTokens(AI_TASK.SPELL_SELECTION) + taskMaxTokens(AI_TASK.ABILITY_SELECTION) + taskMaxTokens(AI_TASK.CREATURE_FEAT_SELECTION) + taskMaxTokens(AI_TASK.EQUIPMENT_SELECTION) + taskMaxTokens(AI_TASK.LOOT_SELECTION)]),
       ["match", game.i18n.localize("SIMPLYPF2E.Progress.Match"), 1600],
       ...(create ? [["apply", game.i18n.localize("SIMPLYPF2E.Progress.Apply"), 2400]] : [])
     ];
@@ -1730,7 +1739,7 @@ export class GeneratorApp extends SpfApp {
       // as the NPC pipeline: only call _setStep("spells") when that key exists.
       if (this.#input.allowSpellcasting && concept.spellcasting) await this._setStep("spells");
       else this._skipStep("spells");
-      await this.#refineSpells(concept, signal);
+      await this.#refineSpells(concept, signal, { focus: classModelsFocusSpells(resolved.classDoc) });
 
       await this._setStep("equipment");
       await this.#refineEquipment(concept, signal);
@@ -1832,8 +1841,9 @@ export class GeneratorApp extends SpfApp {
    * as "inspiration" only) — if this grounded pass doesn't produce a real,
    * compendium-backed list, spells are dropped rather than left as unvetted
    * draft names, same fail-closed behavior as feats elsewhere in the pipeline.
+   * `focus: false` (a PC class with no modeled focus source) requests no focus-spell candidates.
    */
-  async #refineSpells(concept, signal) {
+  async #refineSpells(concept, signal, { focus = true } = {}) {
     const spellcasting = concept?.spellcasting;
     if (!spellcasting) return;
     try {
@@ -1861,10 +1871,10 @@ export class GeneratorApp extends SpfApp {
         [...spellcasting.spells.map((spell) => spell.name), ...keywords],
         spellcasting.plannedPicks
       );
-      const focusCandidates = await getFocusSpellCandidates(
+      const focusCandidates = focus ? await getFocusSpellCandidates(
         spellcasting.maxRank,
         [...concept.focusSpells.map((spell) => spell.name), ...keywords]
-      );
+      ) : [];
       if (!candidates.length) {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
         spellcasting.spells = [];

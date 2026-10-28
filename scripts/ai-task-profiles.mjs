@@ -25,6 +25,7 @@ export const AI_TASK = Object.freeze({
   MAGIC_ITEM_CONCEPT: "magicItemConcept",
   RUNED_ITEM_CONCEPT: "runedItemConcept",
   SPELL_CONSUMABLE_CONCEPT: "spellConsumableConcept",
+  TREASURE_PARCEL_SPELLS: "treasureParcelSpells",
   ENCOUNTER_DESIGN: "encounterDesign",
   RESKIN_FLAVOR: "reskinFlavor",
   HAZARD_CONCEPT: "hazardConcept"
@@ -48,6 +49,7 @@ const TASK_PROFILES = Object.freeze({
   [AI_TASK.MAGIC_ITEM_CONCEPT]: { maxTokens: 4000, deterministic: false, disableReasoning: true },
   [AI_TASK.RUNED_ITEM_CONCEPT]: { maxTokens: 2000, deterministic: false, disableReasoning: true },
   [AI_TASK.SPELL_CONSUMABLE_CONCEPT]: { maxTokens: 1536, deterministic: true, disableReasoning: true },
+  [AI_TASK.TREASURE_PARCEL_SPELLS]: { maxTokens: 2048, deterministic: true, disableReasoning: true },
   [AI_TASK.ENCOUNTER_DESIGN]: { maxTokens: 1024, deterministic: false, disableReasoning: true },
   // Flavor needs a name, two sentences, and a bounded biography (2000 chars).
   [AI_TASK.RESKIN_FLAVOR]: { maxTokens: 1200, deterministic: false, disableReasoning: true },

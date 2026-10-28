@@ -96,6 +96,7 @@ class MockSpfApp {
   _finishRun() { this.abort = null; }
 }
 const mocks = {
+  experimentalToolsEnabled: () => false,
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
   AI_TASK: { MAGIC_ITEM_CONCEPT: "magic", RUNED_ITEM_CONCEPT: "runed", SPELL_CONSUMABLE_CONCEPT: "consumable" },
   taskMaxTokens: () => 100,
@@ -236,9 +237,23 @@ const picker = forgeApp();
 await actions.selectKind.call(picker, null, { dataset: { kind: "wand" } });
 prepared = await picker._prepareContext();
 assert.equal(prepared.input.kind, "wand");
-assert.deepEqual(plain(prepared.consumableKinds.map((kind) => kind.selected)), [false, true]);
+assert.deepEqual(plain(prepared.consumableKinds.map((kind) => kind.selected)), [false, false, true]);
 assert.equal(prepared.promptLabel, "SIMPLYPF2E.ItemForge.Consumables.PromptLabel");
 await actions.selectKind.call(picker, null, { dataset: { kind: "potion" } });
 assert.equal((await picker._prepareContext()).input.kind, "wand", "unknown kinds keep the selection");
 
+// The extracted helper reports missing spell and template without losing a valid pick.
+forgeKind = "scroll"; forgeLevel = "5";
+picksForCall = [pick("c-heal", 1, "scroll"),
+  { spellId: "missing", name: "Missing Spell", rank: 1, candidate: { id: "missing" } },
+  pick("c-heal", 3, "scroll")];
+const missing = forgeApp();
+await actions.generate.call(missing);
+prepared = await missing._prepareContext();
+assert.equal(prepared.preview.items.length, 1);
+assert.ok(prepared.preview.warnings.some((warning) => warning.includes("SpellMissing") && warning.includes("Scroll of Missing Spell (Rank 1)")));
+assert.ok(prepared.preview.warnings.some((warning) => warning.includes("TemplateMissing") && warning.includes("Scroll of Heal (Rank 3)")));
+
 console.log("itemforge-app.consumables.test.mjs: real template build, per-pick drops, level cap, wand and plan refusals, deferred write and commit passed");
+
+assert.ok(prepared.preview.warnings.some((warning) => warning.includes("TemplateMissing") && !warning.includes("DroppedPick")), "the missing template is labeled TemplateMissing, not DroppedPick");

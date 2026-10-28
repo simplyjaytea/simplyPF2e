@@ -10,7 +10,7 @@ import { parseCoins } from "../scripts/builder.mjs";
 import { reviewUnresolvedChoices } from "../scripts/choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "../scripts/pc-skills.mjs";
 import { assertComplete, completionManifest, completionSummary } from "../scripts/completion.mjs";
-import { supportedClassCandidates } from "../scripts/pc-support.mjs";
+import { classModelsFocusSpells, supportedClassCandidates } from "../scripts/pc-support.mjs";
 
 if (!vm.SourceTextModule) {
   const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
@@ -63,7 +63,7 @@ const mocks = {
   AI_TASK: {}, taskMaxTokens: () => 100,
   assertComplete, completionManifest, completionSummary,
   verifyCreatedActor: () => { if (verifyFailure) throw verifyFailure; },
-  supportedClassCandidates,
+  supportedClassCandidates, classModelsFocusSpells,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   BUILT_IN_PRESETS: [], getCustomPresets: () => [], findPreset: () => null, examplePrompt: () => "",
   presetPickerGroups: () => ({ selectedId: "", standard: [], custom: [] }),

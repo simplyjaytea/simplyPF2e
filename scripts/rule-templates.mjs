@@ -86,27 +86,13 @@ const KIND_SPECS = {
     allowed: ["key", "selector", "value"],
     matches: (r) => typeof r.selector === "string" && typeof r.value === "number"
   },
-  // PC focus pool max (character/document.ts zeroes system.resources.focus.max
-  // every data-prep pass and rebuilds it ONLY from ActiveEffectLike rules on
-  // embedded items — plain actor data is silently discarded). The numeric-value
-  // match excludes the predicated variants some subclass features carry; the
-  // clean unconditional shape (e.g. Clarity of Focus) is the one to clone.
-  focusPool: {
-    key: "ActiveEffectLike",
-    allowed: ["key", "mode", "path", "priority", "value"],
-    matches: (r) => r.mode === "add" && r.path === "system.resources.focus.max" && typeof r.value === "number"
-  }
 };
 
 /** Every kind the exemplar scan resolves. */
 const ALL_KINDS = Object.keys(KIND_SPECS);
 
-/**
- * Kinds offered to the ITEM FORGE's AI schema. focusPool is deliberately
- * excluded: it's a character-builder exemplar (PC focus pool max), not a
- * wondrous-item effect kind.
- */
-export const EFFECT_KINDS = ALL_KINDS.filter((k) => k !== "focusPool");
+/** Kinds offered to the Item Forge's AI schema. */
+export const EFFECT_KINDS = ALL_KINDS;
 
 /** Does `rule` qualify as an exemplar for `kind`? */
 function ruleMatchesKind(rule, kind) {

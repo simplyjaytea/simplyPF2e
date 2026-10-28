@@ -1,3 +1,4 @@
+import { CANTRIP_DECK_RANK } from "./spell-consumables.mjs";
 import {
   SETTINGS, chatCompletionsUrl, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
   isOfficialOpenAIEndpoint, modelsUrl, resolveProviderModel
@@ -845,7 +846,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
  */
 export async function selectSpellConsumables(brief, { level, kind, candidates = [], count = 6, maxRank = null, signal, onProgress } = {}) {
   const offered = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.id);
-  if (!["scroll", "wand"].includes(kind)) throw new TypeError(`Unknown spell consumable kind: ${String(kind)}`);
+  if (!["scroll", "wand", "cantripDeck"].includes(kind)) throw new TypeError(`Unknown spell consumable kind: ${String(kind)}`);
   const maximum = Number.isInteger(count) && count > 0 ? count : 6;
   const kindCeiling = kind === "wand" ? 9 : 10;
   const ceiling = Number.isInteger(maxRank) && maxRank >= 1 ? Math.min(maxRank, kindCeiling) : kindCeiling;
@@ -854,14 +855,16 @@ export async function selectSpellConsumables(brief, { level, kind, candidates = 
 
   const list = offered.map((candidate) => {
     const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
-    return `${candidate.id} | ${candidate.name} | base rank ${candidate.rank}${traits}`;
+    return kind === "cantripDeck" ? `${candidate.id} | ${candidate.name} | traits: ${(candidate.traits ?? []).join(", ")}` : `${candidate.id} | ${candidate.name} | base rank ${candidate.rank}${traits}`;
   }).join("\n");
 
-  const system = `You are choosing spells for a Pathfinder 2e ${kind} that a GM is forging. Each pick is one ${kind} of a spell from the list, cast at a rank. Choose ONLY spell IDs from the provided list. Respond with a single JSON object and nothing else:
+  const system = kind === "cantripDeck" ? `Choose ONLY spell IDs from the provided list for cantrip decks. Respond with a single JSON object:
+{ "picks": [ { "spellId": string } ] }
+Return at most ${maximum} picks. Do not emit ranks, prices, item levels, DCs, damage or any other number. Never write code. Return an empty "picks" array when nothing fits.` : `You are choosing spells for a Pathfinder 2e ${kind} that a GM is forging. Each pick is one ${kind} of a spell from the list, cast at a rank. Choose ONLY spell IDs from the provided list. Respond with a single JSON object and nothing else:
 { "picks": [ { "spellId": string, "rank": integer, "kind": "${kind}" } ] }
 Return at most ${maximum} picks. "rank" is a whole number from the base rank of that spell up to ${ceiling}. Do not emit any prices, item levels, DCs, damage, or other numbers beyond the rank: the module supplies every other value. Never write code. Return an empty "picks" array when nothing in the list fits the brief.`;
 
-  const user = [
+  const user = kind === "cantripDeck" ? [`GM brief: ${String(brief ?? "")}`, "Available spells (ID | name | traits):", list].join("\n") : [
     `Item kind: ${kind}`,
     `Item level: ${level}`,
     `Highest rank allowed: ${ceiling}`,
@@ -883,11 +886,84 @@ Return at most ${maximum} picks. "rank" is a whole number from the base rank of 
       console.warn("simplypf2e | dropped spell consumable pick with an unknown spell id", pick?.spellId);
       continue;
     }
-    if (!Number.isInteger(pick.rank) || pick.rank < 1 || pick.rank > 10) {
+    if (kind !== "cantripDeck" && (!Number.isInteger(pick.rank) || pick.rank < 1 || pick.rank > 10)) {
       console.warn("simplypf2e | dropped spell consumable pick with a non-integer or out-of-range rank", candidate.name, pick.rank);
       continue;
     }
-    picks.push({ spellId: candidate.id, name: candidate.name, rank: pick.rank, kind, candidate });
+    picks.push({ spellId: candidate.id, name: candidate.name, rank: kind === "cantripDeck" ? CANTRIP_DECK_RANK : pick.rank, kind, candidate });
+  }
+  return { picks, usage };
+}
+
+// requestJSON applies taskResponseProblem only when no validate hook is passed, and that table has no entry for the
+// parcel task. This hook keeps the same fail-closed structure check: a non-object root or a missing picks array retries once.
+const parcelSpellsProblem = (data) => {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return "root must be a JSON object";
+  return Array.isArray(data.picks) ? null : "missing or non-array field: picks";
+};
+
+/**
+ * Pick one real spell for each module-issued treasure parcel slot. The model
+ * sees only slot IDs with their scroll ranks and the issued spell candidates,
+ * and returns only { slot, spellId } strings. The module supplies every rank,
+ * quantity, currency amount and price (treasure-parcel.mjs, spell-consumables.mjs).
+ *
+ * This function drops only unknown slot and spell IDs. It keeps duplicate
+ * slots and does not check base ranks against slot ranks: assignParcelPicks in
+ * treasure-parcel.mjs owns both checks and their stable drop codes.
+ * @param {string} brief GM's theme for the parcel's spells
+ * @param {object} args
+ * @param {number} args.partyLevel party level, for context only
+ * @param {{id: string, itemLevel: number, rank: number}[]} args.slots issued consumable slots
+ * @param {{id: string, name: string, rank: number, traits?: string[], ref?: object}[]} args.candidates issued spell candidates
+ * @returns {Promise<{picks: {slotId: string, spellId: string, name: string, candidate: object}[], usage: object|null}>}
+ */
+export async function selectParcelSpells(brief, { partyLevel, slots, candidates = [], signal, onProgress } = {}) {
+  const offered = (Array.isArray(candidates) ? candidates : []).filter((candidate) => candidate?.id);
+  const issued = (Array.isArray(slots) ? slots : []).filter((slot) => slot?.id);
+  // Nothing to fill or nothing to fill it with: no provider request, and no picks.
+  if (!offered.length || !issued.length) return { picks: [], usage: null };
+
+  const slotList = issued.map((slot) => `${slot.id} | scroll rank ${slot.rank}`).join("\n");
+  const list = offered.map((candidate) => {
+    const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
+    return `${candidate.id} | ${candidate.name} | base rank ${candidate.rank}${traits}`;
+  }).join("\n");
+
+  const system = `You are choosing spells for a Pathfinder 2e treasure parcel. Each issued slot holds one scroll of one spell from the list. Choose ONLY slot IDs and spell IDs from the provided lists. Respond with a single JSON object and nothing else:
+{ "picks": [ { "slot": string, "spellId": string } ] }
+Each slot appears at most once. A spell's base rank must be at or below its slot's scroll rank. Prefer distinct spells unless the GM brief asks for copies. Return an empty "picks" array when nothing in the list fits the brief. Do not emit prices, levels, ranks, quantities or any other number; the module supplies them. Never write code.`;
+
+  const user = [
+    `Party level: ${partyLevel}`,
+    `GM brief: ${String(brief ?? "")}`,
+    "",
+    "Issued slots (slot ID | scroll rank):",
+    slotList,
+    "",
+    "Available spells (ID | name | base rank | traits):",
+    list
+  ].join("\n");
+
+  const { data: parsed, usage } = await requestJSON({
+    task: AI_TASK.TREASURE_PARCEL_SPELLS, system, user, validate: parcelSpellsProblem, onProgress, signal
+  });
+  const slotIds = new Set(issued.map((slot) => slot.id));
+  const byId = new Map(offered.map((candidate) => [candidate.id, candidate]));
+  const picks = [];
+  for (const pick of parsed.picks) {
+    if (picks.length >= issued.length) break;
+    const slotId = String(pick?.slot ?? "");
+    if (!slotIds.has(slotId)) {
+      console.warn("simplypf2e | dropped parcel spell pick with an unknown slot id", pick?.slot);
+      continue;
+    }
+    const candidate = byId.get(String(pick?.spellId ?? ""));
+    if (!candidate) {
+      console.warn("simplypf2e | dropped parcel spell pick with an unknown spell id", pick?.spellId);
+      continue;
+    }
+    picks.push({ slotId, spellId: candidate.id, name: candidate.name, candidate });
   }
   return { picks, usage };
 }
@@ -1430,14 +1506,19 @@ function hazardOptionalProblem(field, value, options = {}) {
 
 const HAZARD_NAME = { singleLine: true, max: HAZARD_LIMITS.name };
 
+function hazardStrikeProblem(field, strike) {
+  if (strike == null) return null;
+  if (!isPlainObject(strike)) return hazardFieldProblem(field);
+  return hazardTextProblem(field + ".name", strike.name, HAZARD_NAME);
+}
+
 function hazardReactionProblem(reaction) {
   if (!isPlainObject(reaction)) return hazardFieldProblem("reaction");
-  const strikeName = isPlainObject(reaction.strike) ? reaction.strike.name : null;
   const saveEffect = isPlainObject(reaction.save) ? reaction.save.effect : null;
   return hazardTextProblem("reaction.name", reaction.name, HAZARD_NAME)
     ?? hazardTextProblem("reaction.trigger", reaction.trigger)
     ?? hazardTextProblem("reaction.effect", reaction.effect)
-    ?? hazardOptionalProblem("reaction.strike.name", strikeName, HAZARD_NAME)
+    ?? hazardStrikeProblem("reaction.strike", reaction.strike)
     ?? hazardOptionalProblem("reaction.save.effect", saveEffect);
 }
 
@@ -1448,9 +1529,8 @@ function hazardRoutineProblem(concept) {
   if (!isPlainObject(routine)) return hazardFieldProblem("routine");
   const actions = routine.actions;
   if (!Number.isInteger(actions) || actions < 1 || actions > 3) return hazardFieldProblem("routine.actions");
-  const strikeName = isPlainObject(routine.strike) ? routine.strike.name : null;
   return hazardTextProblem("routine.text", routine.text)
-    ?? hazardOptionalProblem("routine.strike.name", strikeName, HAZARD_NAME);
+    ?? hazardStrikeProblem("routine.strike", routine.strike);
 }
 
 /**

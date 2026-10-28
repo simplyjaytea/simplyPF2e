@@ -183,3 +183,25 @@ assert.equal(replies.length, 0, "every scripted reply was consumed");
 globalThis.fetch = originalFetch;
 console.warn = originalWarn;
 console.log("ai hazard concept: contract, prompt, validation and gate passed");
+
+// Nameless and malformed strikes retry and fail closed.
+globalThis.fetch = async (_url, options) => {
+  requests.push(JSON.parse(options.body));
+  const reply = replies.shift();
+  assert.ok(reply);
+  return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(reply) }, finish_reason: "stop" }] }), { headers: { "content-type": "application/json" } });
+};
+try {
+  const bad = structuredClone(complex); bad.reaction.strike = { damageType: "piercing" };
+  const before = requests.length;
+  replies.push(bad, structuredClone(complex));
+  const result = await generateHazardConcept(BRIEF, LISTS);
+  assert.equal(requests.length - before, 2);
+  assert.equal(result.concept.reaction.strike.name, "Iron Spikes");
+  for (const strike of [{ name: "", damageType: "piercing" }, "spikes"]) {
+    const invalid = structuredClone(complex);
+    if (typeof strike === "string") invalid.reaction.strike = strike; else invalid.routine.strike = strike;
+    replies.push(structuredClone(invalid), structuredClone(invalid));
+    await assert.rejects(generateHazardConcept(BRIEF, LISTS), /SIMPLYPF2E.Hazard.Errors.Field/);
+  }
+} finally { globalThis.fetch = originalFetch; }
