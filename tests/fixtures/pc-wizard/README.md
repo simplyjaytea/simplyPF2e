@@ -50,3 +50,7 @@ Precedent classes (`pf2e-8.5.0`), used to prove the guard leaves the classes tha
 - [`precedent/pointed-question.json`](https://raw.githubusercontent.com/foundryvtt/pf2e/pf2e-8.5.0/packs/pf2e/actions/class/investigator/pointed-question.json): Granted by Interrogation; `rules: []`.
 
 `world.mjs` is the only code here: stand-ins for Foundry's compendium access (`game.packs`, `pack.getIndex/getDocument`, `fromUuid`) built from these files. The regressions (`tests/pc-wizard.class-paths.test.mjs`, `tests/pc-wizard.builder.test.mjs` and `tests/pc-wizard.generator.test.mjs`) use it to prove candidate discovery, staging payloads and refusals, and that `createCharacterActor` stages both bridges (or refuses) before `Actor.create`, and that a class whose bridges cannot be staged is not offered by the generator and a required one fails before any provider call. They do not prove live Foundry behavior; a Wizard build still needs a native pass on PF2e 8.5.0.
+
+- [`force-bolt.json`](https://raw.githubusercontent.com/foundryvtt/pf2e/pf2e-8.5.0/packs/pf2e/spells/focus/force-bolt.json): initial Battle Magic focus spell, `_id` `Hu38hoAUSYeFpkVa`.
+- [`charming-push.json`](https://raw.githubusercontent.com/foundryvtt/pf2e/pf2e-8.5.0/packs/pf2e/spells/focus/charming-push.json): initial Mentalism focus spell, `_id` `KMFRKzNCq7hVNH7H`.
+- [`school-of-magical-technologies.json`](https://raw.githubusercontent.com/foundryvtt/pf2e/pf2e-8.5.0/packs/pf2e/class-features/school-of-magical-technologies.json): `_id` `dPAwM9IdabdH68mW`; initial spell link uses emphasized labels.
