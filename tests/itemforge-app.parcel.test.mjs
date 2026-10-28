@@ -355,3 +355,34 @@ assert.match(template, /{{#each preview\.permanents}}<tr><td>{{this\.levels}}<\/
   "permanent names are escaped by Handlebars");
 assert.match(template, /<th scope="col">{{localize "SIMPLYPF2E\.ItemForge\.Parcel\.PermanentLevels"}}<\/th>/, "headers are real column headers with scope");
 assert.match(template, /spf-table-scroll/, "wide tables scroll within their card");
+
+// A coin that cannot load keeps the valuable (it was built) and reports the missing coin value; no coin is invented.
+valuablePool.candidates = [SILK_CANDIDATE];
+parcelPicks = []; permanentPicks = []; permanentPools.clear();
+coinAvailable = false;
+c = ctl({ valuables: { checked: true } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.valuable.name, "Silk ceremonial armor", "the built valuable is kept");
+assert.equal(ctx.preview.currency, null, "no partial coin is written");
+assert.ok(ctx.preview.coinsMissing.includes("CoinsMissing"), "the missing coin value is reported");
+assert.equal(ctx.preview.valueGp, 10, "built value counts only the valuable, not the missing coins");
+await A.createItem.call(a);
+created = createCalls.at(-1).actor;
+assert.deepEqual(created.items.map((item) => [item.name, item.system.quantity]), [["Silk ceremonial armor", 1]],
+  "the loot actor holds the valuable and no coins");
+coinAvailable = true;
+valuablePool.candidates = [];
+
+// An unavailable wand template leaves its slot visibly unfilled with the template reason; nothing is fabricated.
+const wandTemplate = docs.get(WAND_1_UUID);
+docs.delete(WAND_1_UUID);
+permanentPools.set(3, { equipment: [], wands: [{ id: "w-c-heal", name: "Wand of Heal (Rank 1)", level: 3, rank: 1, kind: "wand", traits: [], spell: HEALC }] });
+permanentPicks = [{ slotId: "perm-1", candidateId: "w-c-heal" }];
+parcelPicks = []; c = ctl({ level: { value: "2" } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.permanents[0].filled, false);
+assert.equal(ctx.preview.permanents[0].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.template", "a missing template is named, not replaced");
+docs.set(WAND_1_UUID, wandTemplate);
+permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks;
