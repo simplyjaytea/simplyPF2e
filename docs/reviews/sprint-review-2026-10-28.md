@@ -86,4 +86,32 @@ Other items: no import cycles (`spell-consumables.mjs`, `school-spells.mjs` impo
 
 ## Fix record
 
-Filled in by the orchestrator as the fix ladder runs (see [docs/HISTORY.md](../HISTORY.md)).
+All findings were fixed on the first ladder rung by the owning worker: G1 `3be62ef` (Haiku, WP-C worktree; new `tests/generator-app.pcEditorClass.test.mjs`), G7 `7e31c7c` (Codex Terra, WP-A worktree), G2/G5/G8 `70d7b41` (Codex Terra, WP-B worktree), G3 `9a71866` (Haiku, WP-D worktree), G4 `cbb926f` + `259422d` (orchestrator docs close-out), G6 no change. Re-check leftovers H1/H2 fixed by the Codex deck worker and H3–H5 by the orchestrator (see [docs/HISTORY.md](../HISTORY.md) for the SHAs).
+
+## Re-check
+
+Reviewer: Claude Opus 5.5 (high), fresh context, read-only, 2026-10-28. Range: `b20272d..259422d` (11 commits). Node v24.22.1.
+
+**Verdict: APPROVE WITH FIXES.** Every code fix holds, and the tests now fail when G1, G2, G5 or G7 is reverted. Three P3 issues remained: the G8 template assertion proved nothing, the G8 fix reset rarity (H1), and the close-out gave a stale gate and a self-contradictory Wizard bullet. None blocks.
+
+Gate observed on a `git archive 259422d` copy: `Syntax passed: 58 scripts, 137 tests, 4 tooling files`; `Integrity passed: 354 imports, 899 exports, 15 templates, 612 localization keys; 0 unused keys`; `Links passed: 183 links in 56 files`; `Regressions passed: 137 files`. `git diff --check` clean on both ranges. No `.github/**` or `module.json` change in the range.
+
+| # | Status | Evidence |
+| --- | --- | --- |
+| G1 | FIXED | `generator-app.mjs:511` uses `pcIdentityKey({ ref: plan.concept.classCandidate })`; the new test runs the real `GeneratorApp` with a bare-ref plan; reverting the line makes it exit 1; the Fighter plan excludes Wizard. |
+| G2 | FIXED | `itemforge-app.mjs:547` takes the max built template level for decks; test `:186-193` with a stale level 15 asserts `details.level.value === 1`; reverting makes it exit 1. |
+| G5 | FIXED | Test `:75` makes the scroll mock throw; `:167-168` assert 0 scroll calls and 1 cantrip call; routing through the scroll query makes it exit 1. |
+| G8 | FIXED in code; proof vacuous (H2); regression (H1) | Dead clause removed (`:474`); rarity inside `{{#unless isCantripDeck}}` (hbs `:32-53`); the regex at test `:175` still passed on the pre-fix template. |
+| G3 | FIXED | README:166 hedged "(not live-verified)"; README:134 drops Champion; README:132 adds D2; ledger N13 Wizard clause (only fires if the provider names a focus spell). |
+| G4 | PARTLY FIXED (H3–H5) | §3 bullet replaced; §6 ladder correct; "no cantrip deck" removed; CLAUDE.md matches; HISTORY/HANDOFF entries present. Stale: §8/HISTORY gate numbers, a self-contradictory §10 Wizard bullet, §9 references. |
+| G6 | ACCEPTED, no change | Nothing in the range touches `spell-consumables.mjs:188`. |
+| G7 | FIXED | `school-spells.mjs:2` exports `WIZARD_ARCANE_SCHOOL_TAG`; `tests/pc-wizard.builder.test.mjs:246-276` adds both scenarios; mutating either guard makes it exit 1. |
+
+§3 quotes re-fetched at `pf2e-8.5.0` and matched: `spell/document.ts` 650–657, `character/document.ts` 369–373, `creature/document.ts` 491–495, `build/lib/compendium-pack.ts` 229 and 407–419. §8 release facts matched the GitHub API (tag `v0.3.5.78`, published 2026-10-27T14:05:54Z, target `50aa045`, PR #118 merged 2026-10-27T14:04:47Z).
+
+New findings (all P3, CONFIRMED):
+- **H1** — `itemforge-app.mjs:201`, `:281`; `templates/itemforge.hbs:32-53`: with the rarity select hidden for decks, `#readForm()` falls back to `?? "common"`, so Rare chosen for scrolls is reset to Common after visiting the deck tile. Fix: fall back to `this.#input.rarity`.
+- **H2** — `tests/itemforge-app.cantripDeck.test.mjs:175`: the lazy `[\s\S]*?\{\{\/unless\}\}` runs on to the next `{{/unless}}`, so the pre-fix template still passes. Fix: capture exactly the `isCantripDeck` block and assert it contains `name="rarity"`.
+- **H3** — `PLAYBOOK.md:236`, `docs/HISTORY.md:13`: gate numbers are the pre-fix `b20272d` figures. Fix: observed numbers labelled with the SHA.
+- **H4** — `PLAYBOOK.md:289`: the §10 Wizard bullet says school focus spells are manual and, later, embedded. Fix: "the advanced school spell, curriculum extras and familiar actors are manual".
+- **H5** — `PLAYBOOK.md:231`, `:267`, `:230`, §6, §10:295; `docs/HISTORY.md:12`: stale "§9 item 5" cross-reference, "N01–N11", §9 numbering jumps 5→7, the §8 sentence lost its subject, HISTORY links the record twice, §6 never states Codex first, §10 states LIMITED looting as fact. Fix: renumber, re-reference, restate, hedge.
