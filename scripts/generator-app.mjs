@@ -227,6 +227,8 @@ export class GeneratorApp extends SpfApp {
   /** Character mode result: normalized PC concept + resolved documents. */
   #pcConcept = null;
   #pcResolved = null;
+  /** School-spell preview for one draft: { resolved, value }. Read only while `resolved` is still the current draft. */
+  #pcSchoolSpells = null;
   /** Required controls captured with the preview, including Random’s ignored inputs. */
   #pcIdentityInput = null;
   /** PC editor: choices awaiting a re-pick, unapplied control drafts, and the last edit outcome. UI-only. */
@@ -595,6 +597,7 @@ export class GeneratorApp extends SpfApp {
       const result = await applyPCEdit(plan, edit, { catalogs: await this.#pcEditCatalogs(plan) });
       this.#pcConcept = result.plan.concept;
       this.#pcResolved = result.plan.resolved;
+      this.#pcSchoolSpells = await this.#schoolSpellPreview(this.#pcConcept, this.#pcResolved);
       this.#pcPending = result.plan.pending;
       if (result.changed.some((change) => String(change).startsWith("equipment:"))) {
         const wealthTarget = pcStartingWealthGp(this.#pcConcept.level, this.#input.treasureAmount);
@@ -649,13 +652,26 @@ export class GeneratorApp extends SpfApp {
       signatureSummary: signatureRanks.length ? game.i18n.format("SIMPLYPF2E.Preview.PCSignaturePlan", {
         selected: plannedSignatures.size, total: signatureRanks.length
       }) : null,
-      schoolSpells: GeneratorApp.#schoolSpellContext(resolved.schoolSpells),
+      schoolSpells: GeneratorApp.#schoolSpellContext(this.#pcSchoolSpells?.resolved === resolved ? this.#pcSchoolSpells.value : null),
       feats,
       spells,
       equipment,
       loot,
       matchSummary: this.#matchSummary([ancestry], heritage ? [heritage] : [], [background], [pcClass], feats, spells, equipment, loot)
     };
+  }
+
+  /**
+   * School-spell preview for this draft, recomputed at every point the draft changes (generation and each PC
+   * editor edit). Advisory: a failure warns and shows no line, and never stops the run.
+   */
+  async #schoolSpellPreview(concept, resolved) {
+    try {
+      return { resolved, value: await previewSchoolSpells(concept, resolved) };
+    } catch (err) {
+      console.warn(`${MODULE_ID} | school spell preview unavailable`, err);
+      return { resolved, value: null };
+    }
   }
 
   /** Localized lines for the school spells: the initial one, the advanced one when its feat is picked. */
@@ -1741,8 +1757,6 @@ export class GeneratorApp extends SpfApp {
       // enforced in the AI prompt, so a non-compliant model output can still
       // return a valid tradition.
       if (!this.#input.allowSpellcasting) concept.spellcasting = null;
-      // School spell names for the preview, after the feats and the spellcasting filter above.
-      resolved.schoolSpells = await previewSchoolSpells(concept, resolved);
 
       // Both refine helpers reuse the NPC pipeline; the PC spell pass also
       // receives a class-qualified plan where supported. The
@@ -1840,6 +1854,7 @@ export class GeneratorApp extends SpfApp {
 
       this.#pcConcept = concept;
       this.#pcResolved = resolved;
+      this.#pcSchoolSpells = await this.#schoolSpellPreview(concept, resolved);
       this.#resetPCEdit();
       this.#pcIdentityInput = this.#identityInputSnapshot();
     console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
