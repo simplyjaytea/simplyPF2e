@@ -6,12 +6,14 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
-| [Acceptance ledger](acceptance-ledger.md) | The single live native-QA ledger (R01–R25 and N01–N11). Rows are updated in place when native evidence lands. |
+| [Acceptance ledger](acceptance-ledger.md) | The single live native-QA ledger (R01–R25 and N01–N14). Rows are updated in place when native evidence lands. |
 
 ## Plans
 
 | Record | Purpose |
 | --- | --- |
+| [Sprint plan, wave 2, October 28](plans/sprint-2026-10-28-wave2.md) | Wizard school focus spell and focus-pool correction, cantrip decks in the Item Forge, and review leftovers |
+| [Sprint plan, October 27](plans/sprint-2026-10-27.md) | Loot actor destination and GM Core Treasure parcel in the Item Forge, both behind `experimentalTools` |
 | [Encounter hazard integration, October 27](plans/encounter-hazard-integration-2026-10-27.md) | Accepted design for hazards inside Encounter mode: AI requests none, simple or complex; module chooses level and XP; at most one hazard within the shared budget |
 | [Sprint plan, October 26](plans/sprint-2026-10-26.md) | Six work packages: hygiene tooling, drift check, Wizard class, Hazard generator, scrolls and wands; merge/review/fix ladder |
 | [Wizard research, October 26](plans/wizard-research-2026-10-26.md) | Verified pf2e 8.5.0/master facts behind the Wizard complete-only class |
@@ -28,6 +30,7 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
+| [Sprint review, October 27](reviews/sprint-review-2026-10-27.md) | Opus 5.5 high review of the loot actor and treasure parcel sprint: no P1, 1 P2, 8 P3, APPROVE WITH FIXES; fix record and live-only checks |
 | [Sprint review, October 26](reviews/sprint-review-2026-10-26.md) | Opus 5.5 independent review of the 2026-10-26 sprint: 1 P1, 5 P2, 12 P3, APPROVE WITH FIXES; resolution per finding |
 | [Completion-plan review, October 17](reviews/completion-review-2026-10-17.md) | Opus 5.5 high review, parent assessment and outstanding scope decisions |
 | [Ship readiness, September 12](reviews/ship-readiness-2026-09-12.md) | Assessment of v0.3.5.70 and prioritized acceptance gaps |
