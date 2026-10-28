@@ -2,6 +2,16 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-28 — Repo cleanup: docs truthfulness, drift check follow-ups, ledger N15 (branch `work/cleanup-2026-10-29`)
+
+- Docs truthfulness after the user deleted every remote branch except `main` (2026-10-28): HANDOFF, PLAYBOOK §7/§8/§9 and §10 and the docs map now say so, and state v0.3.5.80 as the latest release (tag at `c86aa7a`). `codex/audit-fixes` (superseded 2026-09-05 docs commit `024fbc4`) survives only as a local commit. Historical records (this file, reviews, plans) were not rewritten.
+- Drift check ([tool](../tools/check-pf2e-drift.mjs)): default `--ref` is now `pf2e-8.5.0`, the installed version (was `master`, frozen at 2025-05-31). With `GITHUB_TOKEN` the fetch budget is 10,000 reads and the pack scan runs 8 reads at a time, so the 16 `equipment-srd` UUIDs resolve; raw reads retry 429/5xx up to three times. Without a token the budget stays 60. Offline tests cover a Wizard school under the `v14-dev` `packs/pf2e/class-features/wizard/` subdirectory and a whole-pack scan.
+- Drift results, default ref, branch head against `main@c86aa7a`: before (old `--ref master`, no token) 0 failures, 42 warnings; before (`pf2e-8.5.0`, no token) 0 failures, 28 warnings; after (`pf2e-8.5.0`, with token) 0 failures, 3 warnings (the legacy alias, one name-form UUID in `pc-builder.mjs`, one fixture rules diff at equal count). The Wizard schools resolve at `v14-dev` without a warning.
+- Workflow matrix: `master` replaced by `v14-dev`. The server's GitHub token gets HTTP 403 on workflow dispatch, so the first run is the Monday schedule (2026-11-02 06:23 UTC) once the branch merges.
+- Hygiene: removed the unused `boldKeywords` helper (`scripts/builder.mjs`) and the unneeded export of `HAZARD_REQUESTS` (`scripts/encounter.mjs`). A scan found no other unused module, export, fixture, junk file or TODO that points at finished work. Borderline, left alone: the name-form `Compendium.pf2e.classfeatures.Item.Skillful Lessons` reference (`scripts/pc-builder.mjs:427`) is a deliberate fallback that never resolves by id; the `arcane-school-master` fixture's rules differ from upstream at the same entry count.
+- Ledger: N15 (OPEN) for a hazard member inside an encounter, the gap PLAYBOOK §9 item 4 named.
+- Gate on Node v22.23.4: `node tools/check.mjs </dev/null` exit 0 (`Integrity passed: 356 imports, 902 exports, 15 templates, 612 localization keys; 0 unused keys`; `Links passed: 179 links in 57 files`; `Regressions passed: 138 files`); `git diff --check` clean.
+
 ## 2026-10-28 — Merge of the remaining branches (OpenBot session)
 
 - Run from a fresh clone on the OpenBot server (Linux, Node 22.23.4 downloaded for the gate; system Node 20 lacks `Promise.withResolvers`). Merged `claude/post-release-docs-2026-10-28` and draft PR #117 (`codex/remaining-2026-10-26`, 63 commits behind `main`) into one integration branch, so `main` gets one push and one release. The only conflict was the first import line of `scripts/ai.mjs` (cantrip-deck import from wave 2 against the hazard-candidate import); both kept.
