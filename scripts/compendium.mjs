@@ -955,7 +955,6 @@ export async function getCreatureFeatCandidates({
   });
 }
 
-/** Clone a compendium document into plain item data ready for embedding. */
 /**
  * Full item data for one indexed entry, or null when it cannot be read. A failed read or conversion
  * is one unavailable candidate, so the search goes on; a user abort still propagates.

@@ -2,6 +2,14 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-29 — Overnight release: Treasure parcel v2, final reviews, push to `main`
+
+- New staff (Code Monkey 2, Product Designer, Code Reviewer) joined. Product Designer wrote the part 2 spec; Code Monkey 2 built parcel v2 part 1 (coin UUID single source, pp/gp/sp/cp split, dropped ids in the preview, gated Merchant sheet; N19–N21) and part 2 (permanent slots with published magical equipment, generic wands at 2r+1, one optional gem or art object; N22–N24) on `work/parcel-v2`, merged cleanly into `integrate/2026-10-29`.
+- Largest narrowing: items with Rule Elements are excluded (621 of 1252 index-eligible), because pf2e's loot actor returns `canHostRuleElements: false`.
+- Code Reviewer CR-1 (preview named a school spell from a disabled pack) and QA F8 (hollow PC-editor test) were closed in `aa1f872`. On the combined head `d23ee18`, QA approved and Code Reviewer asked for two fixes: a failed compendium read or scroll provider error discarded the whole parcel after provider spend. Fixed in `8e2e981`..`32386ed` with QA's test gaps (Create-time revalidation now reuses the build predicate; `intelligent`/`artifact` exclusions covered).
+- Drift count rose from 128 to 140 because 12 parcel fixtures are checked by `_id`; no pinned UUID was added.
+- The user's "playable when I get up" was read as approval to push once both reviews passed. Not verified: Foundry, rendered templates, the CI drift workflow.
+
 ## 2026-10-29 — QA round on `integrate/2026-10-29`: F1–F7 repaired
 
 - QA (APPROVE WITH FIXES on `acd4058`) found that the PC preview never showed the school-spell lines (the generator dropped them when it rebuilt the draft), that a deck's rarity control was hidden so uncommon decks were unreachable, that the focus dedupe was untested, that one 503 aborted a drift run, that the deck rarity map failed open, that the preview call was unguarded, and that the docs were stale. Each is closed on the integrate branch with a test; see the commit messages.

@@ -2,17 +2,15 @@
 
 Read [PLAYBOOK.md](PLAYBOOK.md) first. This file holds only what the last session left in flight. Overwrite it at every session end.
 
-## Session 2026-10-29 (OpenBot) — integrate branch, Wizard v2, QA repair round
+## Session 2026-10-29 (OpenBot) — overnight release: cleanup, Wizard v2, Treasure parcel v2
 
-- **Nothing is pushed or merged.** `main` is still `c86aa7a` (v0.3.5.80). The integrate branch `integrate/2026-10-29` (head: see `git log`) holds the cleanup branch `work/cleanup-2026-10-29` (drift tool defaults and token scan, ledger N15, stale docs) and `work/wizard-v2` (advanced school spell with the level-8 feat, school spell in the PC preview, uncommon cantrip decks; ledger N16–N18), plus the QA repair round.
-- **QA repair round (2026-10-29):** QA's APPROVE WITH FIXES on `acd4058` (F1 preview lines never rendered, F2 deck rarity control hidden, F3 untested focus dedupe, F4 one 503 aborted a drift run, F5 fail-open rarity map, F6 unguarded preview call, F7 stale docs) is closed on the integrate branch. Each finding names its test in the commit messages and [HISTORY](docs/HISTORY.md).
-- **Ledger:** N15 (hazard member inside an encounter), N16 (advanced school spell, level 8), N17 (school spell in the preview), N18 (uncommon cantrip deck) are all OPEN. Nothing has been run in Foundry, and N16 needs a provider-spend Wizard build.
-- **Gate on the integrate head:** `node tools/check.mjs </dev/null` exit 0 on Node 22.23.4; `git diff --check c86aa7a..HEAD` clean.
-- **Drift:** the weekly `PF2e source drift` workflow has not run on `main` yet. This server's token gets HTTP 403 on workflow dispatch, so the first run is the Monday schedule, **2026-11-02 06:23 UTC**, after the branch merges. Locally, the default-ref run with a token passes with 0 failures.
-- **Next step:** QA re-checks the integrate head against the F1–F7 list. Then the user decides whether to push and merge to `main`, which publishes a release. Before that: review the workflow matrix change (`master` to `v14-dev`), and the module policy that keeps rare and unique cantrips out of decks.
-- **Cleanup after merge:** remove the worktrees under `/var/lib/openbot/OpenBot/Shared/worktrees/` (`cleanup`, `wizard-v2`, `integrate`) and their local branches once they are merged into `main`.
-- **Attribution:** commits carry `Co-Authored-By: Claude Haiku 5.5`, following the system attribution reminder; the briefs asked for Opus 5.5. Confirm before the release.
-- **Orca terminals (handles are runtime-scoped; re-list with `orca terminal list --json`):** the user's OpenCode (DeepSeek V4.1 Flash Free, high), Claude Code (Haiku 5.5 high), Codex (GPT-6.1 Terra high). The user prefers Codex over opencode and wants several features per wave with one combined review.
+- **Released.** `integrate/2026-10-29` was pushed to `main` on 2026-10-29; Auto Release publishes the next tag after v0.3.5.80 (check `gh release list`). It holds the repo cleanup and drift follow-ups, Wizard v2, and Treasure parcel v2 parts 1 and 2 ([records](docs/plans/wizard-v2-2026-10-29.md), [parcel](docs/plans/parcel-v2-2026-10-29.md)).
+- **Reviews:** QA APPROVE and Code Reviewer APPROVE WITH FIXES on the combined branch (`d23ee18`). The two Code Reviewer findings (one failed compendium read or scroll provider error discarded the whole parcel after spend) and the QA test gaps (Create-time revalidation, `intelligent`/`artifact` exclusions) were fixed in `8e2e981`..`32386ed`, each with a mutation-checked test.
+- **Default path:** every parcel feature (permanent items, wands, valuables, Merchant sheet, coin split) is behind `experimentalTools`. With the gate off, QA found no behavior change; NPC loot coins resolve the same four ids.
+- **Ledger:** N15–N24 are OPEN. Nothing has been run in Foundry; N16 needs a provider-spend level-8 Wizard build.
+- **Drift:** with a token, default ref: 140 checked, 0 failures, 3 warnings. The weekly workflow's first run is **2026-11-02 06:23 UTC** (dispatch gets HTTP 403 from this server).
+- **Decisions taken by the Lead (reversible, recorded in the parcel record):** pp only from 100 gp; pf2e `values.ts` rates; rare/unique cantrips stay out of decks; workflow matrix `master` replaced by `v14-dev`.
+- **Next step:** install the release module-only in the `test` world and run the zero-spend preflights for N12–N24 with the gate on, then off. Then the backlog in PLAYBOOK §9.
 
 ## Preserved environment facts
 
