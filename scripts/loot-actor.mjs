@@ -48,6 +48,14 @@ export const LOOT_ITEM_TYPES = Object.freeze(new Set([
   "ammo", "armor", "backpack", "book", "consumable", "equipment", "shield", "treasure", "weapon",
 ]));
 
+/**
+ * Plan 2.1 and sprint plan line 76, `src/module/actor/loot/data.ts` lines 25-31 (pf2e-8.5.0):
+ *   lootSheetType: new fields.StringField({ required: true, nullable: false,
+ *       choices: ["Loot", "Merchant"], initial: "Loot" }),
+ * The Forge defaults to "Loot"; "Merchant" is opt-in and only offered behind experimentalTools.
+ */
+export const LOOT_SHEET_TYPES = Object.freeze(["Loot", "Merchant"]);
+
 /** Plan 2.9/WP2: the manifest handed to `verifyCreatedActor` for a loot actor. */
 export const LOOT_MANIFEST = Object.freeze({ complete: true });
 
@@ -164,8 +172,11 @@ export function lootDescriptionHtml(lines) {
  * Items must all be physical PF2e types (plan 2.5) and must not carry Rule Elements (plan 3.3.1).
  * Throws on any contract violation; the caller discards the draft. Inputs are not mutated.
  */
-export function buildLootActorSource({ name, level, descriptionLines, items } = {}) {
+export function buildLootActorSource({ name, level, descriptionLines, items, lootSheetType = "Loot" } = {}) {
   if (typeof name !== "string") throw new Error("A loot actor needs a text name");
+  if (!LOOT_SHEET_TYPES.includes(lootSheetType)) {
+    throw new Error(`A loot actor sheet must be one of ${LOOT_SHEET_TYPES.join(", ")} (got ${String(lootSheetType)})`);
+  }
   const trimmedName = name.trim();
   if (!trimmedName) throw new Error("A loot actor needs a non-empty name");
   if (trimmedName.length > LOOT_NAME_MAX) {
@@ -199,7 +210,7 @@ export function buildLootActorSource({ name, level, descriptionLines, items } = 
           description: lootDescriptionHtml(descriptionLines),
           level: { value: level },
         },
-        lootSheetType: "Loot",
+        lootSheetType,
         hiddenWhenEmpty: false,
       },
     },

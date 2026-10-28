@@ -186,3 +186,23 @@ assert.ok(ctx.preview.warnings[2].includes("Fireball"));
 assert.equal(ctx.preview.items[0].quantity, 3, "the parcel is still built from the valid picks");
 assert.match(template, /{{#each preview.warnings}}<p class="notification warning">{{this}}<\/p>{{\/each}}/, "parcel warnings render through escaping {{this}}");
 parcelDrops = [];
+// Merchant is opt-in: the Forge sends the chosen sheet to the loot actor, and the default stays Loot.
+gate = true; actorBehavior = "ok";
+c = ctl({ lootSheetType: { value: "Merchant" } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+await A.createItem.call(a); ctx = await a._prepareContext();
+assert.equal(createCalls.at(-1).actor.system.lootSheetType, "Merchant");
+assert.equal(a.outcome, "success");
+c = ctl(); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+await A.createItem.call(a);
+assert.equal(createCalls.at(-1).actor.system.lootSheetType, "Loot", "no sheet control means the Loot default");
+// With the gate closed no Merchant sheet is ever written: creation is refused before any payload is built.
+gate = true; c = ctl({ lootSheetType: { value: "Merchant" } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+gate = false; const beforeMerchant = createCalls.length;
+await A.createItem.call(a); ctx = await a._prepareContext();
+assert.equal(createCalls.length, beforeMerchant); assert.equal(ctx.error, "GATE-CLOSED");
+gate = true;
+assert.match(template, /name="lootSheetType"/);
+assert.ok(lang.SIMPLYPF2E.ItemForge.Loot.SheetMerchant === "Merchant" && lang.SIMPLYPF2E.ItemForge.Loot.Sheet === "Actor sheet");

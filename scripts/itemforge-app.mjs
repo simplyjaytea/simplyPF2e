@@ -93,7 +93,7 @@ export class ItemForgeApp extends SpfApp {
   };
 
   /** Form values, kept across re-renders. "kind": "wondrous"|"weapon"|"armor". */
-  #input = { prompt: "", level: 4, rarity: "common", kind: "wondrous", destination: "items", partySize: 4, containerName: "" };
+  #input = { prompt: "", level: 4, rarity: "common", kind: "wondrous", destination: "items", partySize: 4, containerName: "", sheetType: "Loot" };
   #busy = false;
   #error = null;
   #concept = null;
@@ -214,7 +214,9 @@ export class ItemForgeApp extends SpfApp {
     const rawSize = Number(sizeText);
     const partySize = sizeText && Number.isFinite(rawSize) ? Math.max(1, Math.min(8, Math.round(rawSize))) : this.#input.partySize;
     const containerName = String(form.querySelector('[name="containerName"]')?.value ?? this.#input.containerName).trim().slice(0, LOOT_NAME_MAX);
-    this.#input = { prompt, level, rarity, kind, destination, partySize, containerName };
+    // Merchant is offered only behind experimentalTools; with the gate closed the sheet is always Loot.
+    const sheetType = experimentalToolsEnabled() && (form.querySelector('[name="lootSheetType"]')?.value ?? this.#input.sheetType) === "Merchant" ? "Merchant" : "Loot";
+    this.#input = { prompt, level, rarity, kind, destination, partySize, containerName, sheetType };
   }
 
   _preserveForm() {
@@ -646,12 +648,12 @@ export class ItemForgeApp extends SpfApp {
       extraPcs: p.row.extraPcs, currency: p.currency ? coinLabel(p.currency.coins) : null, permanent: this.#permanentList(p), valueGp: p.valueGp, totalGp: p.row.totalGp };
   }
 
-  async #createLootActor({ items, name, level, descriptionLines }) {
+  async #createLootActor({ items, name, level, descriptionLines, lootSheetType }) {
     let actor = null;
     let committed = false;
     try {
       assertExperimentalToolAccess();
-      const built = buildLootActorSource({ items, name, level, descriptionLines });
+      const built = buildLootActorSource({ items, name, level, descriptionLines, lootSheetType });
       const expected = await persistedExpectedItems(built.items);
       assertExperimentalToolAccess();
       this._lockCreation();
@@ -693,7 +695,7 @@ export class ItemForgeApp extends SpfApp {
         ...(p.row.belowBase ? [game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.BelowNote")] : [])
       ] : [game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.Description")];
       const items = p ? [...p.items.map((i) => i.source), ...(p.currency ? p.currency.sources : [])] : this.#consumables.items.map((i) => i.source);
-      const presentationWarning = await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines });
+      const presentationWarning = await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines, lootSheetType: this.#input.sheetType });
       if (presentationWarning) outcome = "warning";
     } catch (err) { outcome = err?.cancelled ? "cancelled" : "error"; this.#error = err?.cancelled ? null : err.message; }
     finally { this.#busy = false; this._finishRun(outcome); await this.render(); }

@@ -555,7 +555,10 @@
         "Open": "Open Loot Actor",
         "DefaultName": "SimplyPF2e Loot",
         "DestinationLine": "Destination: Loot actor",
-        "Description": "Spell consumables forged by SimplyPF2e."
+        "Description": "Spell consumables forged by SimplyPF2e.",
+        "Sheet": "Actor sheet",
+        "SheetLoot": "Loot",
+        "SheetMerchant": "Merchant"
       },
       "Parcel": {
         "Kind": "Treasure parcel",
