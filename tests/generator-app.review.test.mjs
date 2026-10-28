@@ -91,7 +91,7 @@ const mocks = {
   applyPCEdit: async (plan) => ({ plan, changed: [], invalidated: [], equipmentGp: 0 }),
   pcEditFromControl: (control, value) => ({ control, value }),
   pcEditorSelections: () => ({}), pcEditorInvalidatedControls: () => [],
-  heritageMatchesAncestry: () => true,
+  heritageMatchesAncestry: () => true, previewSchoolSpells: async () => null,
 };
 const source = await readFile(new URL("../scripts/generator-app.mjs", import.meta.url), "utf8");
 const appModule = new vm.SourceTextModule(source, { context });

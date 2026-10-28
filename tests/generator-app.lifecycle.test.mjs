@@ -136,7 +136,7 @@ const mocks = {
   applyPCEdit: async (plan) => { if (pcEditRefusal) throw pcEditRefusal; return { plan, changed: ["classPath"], invalidated: pcEditInvalidated, equipmentGp: 0 }; },
   pcEditFromControl: (control, value) => ({ control, value }),
   pcEditorSelections: () => pcEditSelections, pcEditorInvalidatedControls: (items = []) => items.map((item) => (item.field === "feat" ? `feat.${item.slot}` : item.field)),
-  heritageMatchesAncestry: () => true,
+  heritageMatchesAncestry: () => true, previewSchoolSpells: async () => null,
   normalizeSkillPriorities: () => [], skillPriorityOrder: () => [], slugify: (x) => x.toLowerCase(),
   getEquipmentCandidates: async () => [{ id: "equipment", name: "Lantern", ref: {} }], getLootCandidates: async () => [{ id: "loot", name: "Silver Ring", ref: {} }], getSpellCandidates: async () => [], getScrollSpellCandidates: async () => [], getFocusSpellCandidates: async () => [], getFeatCandidates: async () => [], getAbilityCandidates: async () => [],
   selectEquipment: async () => { equipmentSelections++; return { equipment: [], omitted: true }; },

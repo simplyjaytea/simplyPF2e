@@ -45,7 +45,7 @@ import { HAZARD_LABEL_KEYS } from "./hazard-labels.mjs";
 import { esc } from "./text.mjs";
 import { createProgress } from "./progress.mjs";
 import { validateForgeRequest } from "./forge-command.mjs";
-import { heritageMatchesAncestry } from "./pc-builder.mjs";
+import { heritageMatchesAncestry, previewSchoolSpells } from "./pc-builder.mjs";
 import { applyPCEdit, validatePCEditCompletion } from "./pc-edit.mjs";
 import { editableClassCandidates, pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } from "./pc-editor.mjs";
 
@@ -649,12 +649,23 @@ export class GeneratorApp extends SpfApp {
       signatureSummary: signatureRanks.length ? game.i18n.format("SIMPLYPF2E.Preview.PCSignaturePlan", {
         selected: plannedSignatures.size, total: signatureRanks.length
       }) : null,
+      schoolSpells: GeneratorApp.#schoolSpellContext(resolved.schoolSpells),
       feats,
       spells,
       equipment,
       loot,
       matchSummary: this.#matchSummary([ancestry], heritage ? [heritage] : [], [background], [pcClass], feats, spells, equipment, loot)
     };
+  }
+
+  /** Localized lines for the school spells: the initial one, the advanced one when its feat is picked. */
+  static #schoolSpellContext(school) {
+    if (!school) return null;
+    if (school.atCreate) return { lines: [game.i18n.localize("SIMPLYPF2E.Preview.SchoolSpellAtCreate")] };
+    const unknown = game.i18n.localize("SIMPLYPF2E.Preview.SchoolSpellUnknown");
+    const lines = [game.i18n.format("SIMPLYPF2E.Preview.SchoolSpell", { school: school.school, spell: school.initial ?? unknown })];
+    if (school.hasAdvanced) lines.push(game.i18n.format("SIMPLYPF2E.Preview.SchoolSpellAdvanced", { spell: school.advanced ?? unknown }));
+    return { lines };
   }
 
   static #skillName(slug) {
@@ -1730,6 +1741,8 @@ export class GeneratorApp extends SpfApp {
       // enforced in the AI prompt, so a non-compliant model output can still
       // return a valid tradition.
       if (!this.#input.allowSpellcasting) concept.spellcasting = null;
+      // School spell names for the preview, after the feats and the spellcasting filter above.
+      resolved.schoolSpells = await previewSchoolSpells(concept, resolved);
 
       // Both refine helpers reuse the NPC pipeline; the PC spell pass also
       // receives a class-qualified plan where supported. The
