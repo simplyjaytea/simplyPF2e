@@ -9,7 +9,40 @@
  * - An even-level slot takes the scroll one level lower, never above the table.
  * - Unfilled slots are not back-filled. A pick is never reassigned or guessed.
  * - Permanent items are not built in v1. They are copied through for the preview.
+ * - Currency is split into pp, gp, sp and cp by splitCurrencyGp (see its comment).
  */
+
+/**
+ * Copper per coin, `src/module/item/physical/values.ts` lines 46-53 (pf2e-8.5.0):
+ *   const DENOMINATION_RATES = { cp: 1, sp: 10, gp: 100, pp: 1000, credits: 10, upb: 10 };
+ * Only the four coin denominations are listed here.
+ */
+export const COIN_COPPER_RATES = Object.freeze({ pp: 1000, gp: 100, sp: 10, cp: 1 });
+
+/**
+ * Split a gold-piece currency total into whole pp, gp, sp and cp (module convention, recorded
+ * in docs/plans/parcel-v2-2026-10-29.md). pf2e's own `Coins#normalized` (coins.ts lines 184-196,
+ * pf2e-8.5.0) rolls copper up only to gp, so the pp step is a module choice. Each denomination
+ * takes as many whole coins as fit,
+ * largest first, so 40 gp is 4 pp and 0 gp, and 0.37 gp is 3 sp and 7 cp. The copper total of
+ * the result equals the input exactly. Amounts finer than 1 cp, negative or non-finite throw.
+ */
+export function splitCurrencyGp(currencyGp) {
+  if (!Number.isFinite(currencyGp) || currencyGp < 0) {
+    throw new Error(`Currency must be a finite amount of gold pieces, at least 0 (got ${String(currencyGp)})`);
+  }
+  const copper = Math.round(currencyGp * 100);
+  if (!Number.isSafeInteger(copper) || Math.abs(copper - currencyGp * 100) > 1e-6) {
+    throw new Error(`Currency must be a whole number of copper pieces (got ${currencyGp} gp)`);
+  }
+  let rest = copper;
+  const coins = {};
+  for (const denomination of Object.keys(COIN_COPPER_RATES)) {
+    coins[denomination] = Math.floor(rest / COIN_COPPER_RATES[denomination]);
+    rest -= coins[denomination] * COIN_COPPER_RATES[denomination];
+  }
+  return coins;
+}
 
 export const PARCEL_DROP = Object.freeze({
   UNKNOWN_SLOT: "unknown-slot",

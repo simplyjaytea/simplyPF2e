@@ -21,14 +21,15 @@ const plain = (v) => JSON.parse(JSON.stringify(v));
 const RANK_1_SCROLL = fixture("scroll-of-1st-rank-spell.json");
 const HEAL = fixture("heal.json");
 const SCROLL_1 = consumables.SPELL_CONSUMABLE_TEMPLATES.scroll[1];
-const GOLD = { _id: "B6B7tBWJSqOBz5zz", name: "Gold Pieces", type: "treasure", img: "x.webp",
-  system: { category: "coin", price: { value: { gp: 1 } }, quantity: 1, rules: [] } };
+const COIN_NAMES = { pp: "Platinum Pieces", gp: "Gold Pieces", sp: "Silver Pieces", cp: "Copper Pieces" };
+const coinDoc = (denomination) => ({ _id: loot.COIN_UUIDS[denomination].split(".").at(-1), name: COIN_NAMES[denomination], type: "treasure", img: "x.webp",
+  system: { category: "coin", price: { value: { [denomination]: 1 } }, quantity: 1, rules: [] } });
 const docs = new Map([
   [SCROLL_1, { uuid: SCROLL_1, toObject: () => plain(RANK_1_SCROLL) }],
-  [loot.COIN_UUIDS.gp, { uuid: loot.COIN_UUIDS.gp, toObject: () => plain(GOLD) }]
+  ...Object.keys(COIN_NAMES).map((d) => [loot.COIN_UUIDS[d], { uuid: loot.COIN_UUIDS[d], toObject: () => plain(coinDoc(d)) }])
 ]);
 let coinAvailable = true; let emptyBuildError = false;
-async function fromUuid(uuid) { if (emptyBuildError && uuid === SCROLL_1) throw new Error(""); if (uuid === loot.COIN_UUIDS.gp && !coinAvailable) return null; return docs.get(uuid) ?? null; }
+async function fromUuid(uuid) { if (emptyBuildError && uuid === SCROLL_1) throw new Error(""); if (Object.values(loot.COIN_UUIDS).includes(uuid) && !coinAvailable) return null; return docs.get(uuid) ?? null; }
 const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "common" };
 async function getCandidateDocument(c) { return c?.id === "c-heal" ? { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) } : null; }
 const candCalls = []; async function getScrollSpellCandidates(maxRank) { candCalls.push(maxRank); return [HEALC]; }
@@ -111,9 +112,24 @@ assert.deepEqual(Object.keys(payload.system).sort(), ["details", "hiddenWhenEmpt
 assert.equal(payload.type, "loot");
 assert.deepEqual(plain(payload.items.map((item) => ({ type: item.type, name: item.name, quantity: item.system.quantity, rules: item.system.rules }))), [
   { type: "consumable", name: "Scroll of Heal (Rank 1)", quantity: 3, rules: [] },
-  { type: "treasure", name: "Gold Pieces", quantity: 40, rules: [] }
+  { type: "treasure", name: "Platinum Pieces", quantity: 4, rules: [] }
 ]);
 assert.equal(ctx.hasPreview, false); assert.equal(a.outcome, "success");
+// Currency is whole pp, the remainder in gp; 40 gp is exactly 4 pp and no gp coin.
+a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext(); assert.equal(ctx.preview.currency, "4 pp");
+assert.ok(ctx.preview.warnings.length === 0);
+// A level-5 four-PC parcel (320 gp) is 32 pp; a party of 5 (+80 gp) is 40 pp.
+c.level.value = "5"; a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext(); assert.equal(ctx.preview.currency, "32 pp");
+c.partySize.value = "5"; a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext(); assert.equal(ctx.preview.currency, "40 pp");
+c.partySize.value = "4"; c.level.value = "1";
+// A coin document that cannot load drops the whole currency: no partial coin, and a visible warning.
+coinAvailable = false; a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext(); assert.equal(ctx.preview.currency, null);
+assert.ok(ctx.preview.warnings.some((w) => w.includes("CurrencyDrop")));
+coinAvailable = true;
 // Presentation errors happen after commit and do not permit another create.
 a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 actorBehavior = "presentation"; await A.createItem.call(a); ctx = await a._prepareContext();

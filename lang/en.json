@@ -568,7 +568,7 @@
         "SlotLevels": "Slot levels",
         "Quantity": "Quantity",
         "Unfilled": "Unfilled: item level {level}, scroll rank {rank}.",
-        "Currency": "Currency: {gp} gp",
+        "Currency": "Currency: {coins}",
         "PermanentLine": "Permanent items not included: {list}",
         "PermanentEntry": "level {level}: {count}",
         "PermanentExtra": "{count} extra at level {levels}",

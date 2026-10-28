@@ -21,7 +21,7 @@ import {
 
 import { experimentalToolsEnabled, assertExperimentalToolAccess } from "./experimental-tools.mjs";
 import { partyTreasureForSize, TREASURE_MIN_PARTY_LEVEL, TREASURE_MAX_PARTY_LEVEL } from "./treasure-tables.mjs";
-import { planParcelSlots, assignParcelPicks, stackParcelAssignments, parcelValueGp, PARCEL_DROP } from "./treasure-parcel.mjs";
+import { planParcelSlots, assignParcelPicks, stackParcelAssignments, parcelValueGp, splitCurrencyGp, PARCEL_DROP } from "./treasure-parcel.mjs";
 import { LOOT_NAME_MAX, LOOT_MANIFEST, COIN_UUIDS, coinItemSource, buildLootActorSource } from "./loot-actor.mjs";
 import { persistedExpectedItems, verifyCreatedActor, rollbackCreatedActor } from "./post-create.mjs";
 import { esc } from "./text.mjs";
@@ -46,6 +46,11 @@ function consumableMaxRank(kind, level) {
 /** Words from the GM's brief that rank spell candidates by name and trait. */
 function briefKeywords(brief) {
   return [...new Set(String(brief ?? "").toLowerCase().split(/[^a-z]+/).filter((word) => word.length >= 4))];
+}
+
+/** "4 pp, 2 cp" for the non-zero denominations of a splitCurrencyGp result; "" when all are zero. */
+function coinLabel(coins) {
+  return Object.entries(coins).filter(([, quantity]) => quantity > 0).map(([denomination, quantity]) => `${quantity} ${denomination}`).join(", ");
 }
 
 /**
@@ -597,10 +602,17 @@ export class ItemForgeApp extends SpfApp {
       built.source.system.quantity = stack.quantity;
       items.push({ ...built, quantity: stack.quantity, slotIds: stack.slotIds, itemLevels: plan.slots.filter((slot) => stack.slotIds.includes(slot.id)).map((slot) => slot.itemLevel) });
     }
+    // All-or-nothing: a coin that cannot be cloned drops the whole currency, so the total is never partial.
     let currency = null;
     try {
-      const coin = await fromUuid(COIN_UUIDS.gp);
-      currency = coinItemSource(coin ? toItemData(coin) : null, "gp", plan.currencyGp);
+      const coins = splitCurrencyGp(plan.currencyGp);
+      const sources = [];
+      for (const [denomination, quantity] of Object.entries(coins)) {
+        if (quantity < 1) continue;
+        const coin = await fromUuid(COIN_UUIDS[denomination]);
+        sources.push(coinItemSource(coin ? toItemData(coin) : null, denomination, quantity));
+      }
+      currency = { coins, sources };
     } catch (err) { console.warn(`${MODULE_ID} | dropped parcel currency`, err); dropped.push({ reason: "currency" }); }
     if (!items.length && !currency) throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoPicks", { kind: "scroll" }));
     this.#parcel = { items, currency, unfilled, dropped, permanent: plan.permanent, permanentExtra: plan.permanentExtra,
@@ -620,7 +632,7 @@ export class ItemForgeApp extends SpfApp {
     const dropKeys = { [PARCEL_DROP.UNKNOWN_SLOT]: "UnknownSlot", [PARCEL_DROP.DUPLICATE_SLOT]: "DuplicateSlot", [PARCEL_DROP.UNKNOWN_SPELL]: "UnknownSpell", [PARCEL_DROP.RANK_ABOVE_SLOT]: "RankAbove", build: "BuildDrop", currency: "CurrencyDrop" };
     return { parcel: true, items: p.items.map((i) => ({ ...i, itemLevels: i.itemLevels.join(", "), price: `${i.priceGp.toLocaleString()} gp` })),
       unfilled: p.unfilled, warnings: p.dropped.map((d) => game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.${dropKeys[d.reason]}`)),
-      extraPcs: p.row.extraPcs, currency: p.currency ? p.row.currencyGp : 0, permanent: this.#permanentList(p), valueGp: p.valueGp, totalGp: p.row.totalGp };
+      extraPcs: p.row.extraPcs, currency: p.currency ? coinLabel(p.currency.coins) : null, permanent: this.#permanentList(p), valueGp: p.valueGp, totalGp: p.row.totalGp };
   }
 
   async #createLootActor({ items, name, level, descriptionLines }) {
@@ -669,7 +681,7 @@ export class ItemForgeApp extends SpfApp {
         game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.EvenNote"),
         ...(p.row.belowBase ? [game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.BelowNote")] : [])
       ] : [game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.Description")];
-      const items = p ? [...p.items.map((i) => i.source), ...(p.currency ? [p.currency] : [])] : this.#consumables.items.map((i) => i.source);
+      const items = p ? [...p.items.map((i) => i.source), ...(p.currency ? p.currency.sources : [])] : this.#consumables.items.map((i) => i.source);
       const presentationWarning = await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines });
       if (presentationWarning) outcome = "warning";
     } catch (err) { outcome = err?.cancelled ? "cancelled" : "error"; this.#error = err?.cancelled ? null : err.message; }
