@@ -62,6 +62,34 @@ assert.equal(permanentEquipmentProblem(fixture("flaming"), 8, "common"), "attach
 assert.equal(permanentEquipmentProblem(fixture("wand-of-mercy-1st-rank"), 4, "common"), "classification", "a special published wand is excluded");
 assert.equal(permanentEquipmentProblem(fixture("poisonous-cloak-type-i"), 6, "rare"), "classification", "a cursed item is excluded");
 assert.equal(permanentEquipmentProblem(fixture("taletellers-ring"), 9, "rare"), "classification", "a cursed ring is excluded");
+// Intelligent and artifact are each excluded on their own (real 8.5.0 documents). Each case also shows the
+// same item passes once only the excluded trait differs, so the trait is what decides the outcome.
+const quill = fixture("inquisitive-quill");
+assert.equal(permanentEquipmentProblem(quill, 4, "unique"), "classification", "an intelligent item is excluded on its own");
+const quillWithoutIntelligence = clone(quill);
+quillWithoutIntelligence.system.traits.value = ["magical"];
+quillWithoutIntelligence.system.price.value = { gp: 5 };
+quillWithoutIntelligence.system.usage.value = "held-in-one-hand";
+assert.equal(permanentEquipmentProblem(quillWithoutIntelligence, 4, "unique"), null, "the same item passes without the intelligent trait");
+const theKeep = fixture("the-keep");
+assert.equal(permanentEquipmentProblem(theKeep, 20, "unique"), "classification", "an artifact item is excluded on its own");
+const keepWithoutArtifact = clone(theKeep);
+keepWithoutArtifact.system.traits.value = ["invested", "magical"];
+keepWithoutArtifact.system.price.value = { gp: 1 };
+assert.equal(permanentEquipmentProblem(keepWithoutArtifact, 20, "unique"), null, "the same item passes without the artifact trait");
+assert.equal(permanentEquipmentProblem(fixture("guiding-star-orb-heroic"), 20, "unique"), "classification", "an apex, artifact, intelligent orb is excluded");
+
+// A tradition is a magic trait: an item whose only magic trait is arcane is accepted.
+const arcaneOnly = clone(hearingAid);
+arcaneOnly.system.traits.value = ["arcane"];
+assert.equal(permanentEquipmentProblem(arcaneOnly, 1, "common"), null, "an arcane-only item is a magical item and is accepted");
+
+// A non-coin price denomination makes the price unknown, even alongside a coin price.
+const creditsPrice = clone(hearingAid);
+creditsPrice.system.price.value = { gp: 5, credits: 2 };
+assert.equal(permanentEquipmentProblem(creditsPrice, 1, "common"), "price", "a price with a non-coin denomination is refused");
+assert.equal(priceCopper({ gp: 5, credits: 2 }), null, "priceCopper refuses a non-coin denomination");
+
 assert.equal(permanentEquipmentProblem(fixture("magic-wand-1st-rank-spell"), 3, "common"), "type",
   "the generic wand template is a consumable and is only built through the wand path");
 

@@ -14,3 +14,7 @@ tests/parcel.permanentPool.test.mjs:
 - taletellers-ring: cursed item (cursed)
 - agate: treasure, category gem, 5 sp (valuable)
 - silk-ceremonial-armor: treasure, category art-object, 10 gp (valuable)
+- inquisitive-quill: level 4, traits `intelligent`, `magical` (the intelligent exclusion alone)
+- the-keep: level 20, traits `artifact`, `invested`, `magical` (the artifact exclusion alone)
+- guiding-star-orb-heroic: level 20, traits `apex`, `artifact`, `intelligent`, `invested`, `magical`
+- bracers-of-missile-deflection: level 3, magical, invested, no rules (eligible at level 3)
