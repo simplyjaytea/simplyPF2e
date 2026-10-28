@@ -55,7 +55,7 @@ const masterWorld = makeWorld({
 });
 worlds.use(world);
 
-const { createCharacterActor, validatePCIdentityRequirements } = await import("../scripts/pc-builder.mjs");
+const { createCharacterActor, validatePCIdentityRequirements, previewSchoolSpells } = await import("../scripts/pc-builder.mjs");
 const { getClassPathCandidates } = await import("../scripts/class-paths.mjs");
 const { issueCandidate } = await import("../scripts/compendium.mjs");
 
@@ -389,6 +389,40 @@ const withAdvancedFeat = () => ({ ...resolved(), feats: [{ type: "class", level:
   assert.equal(await previewSchoolSpells({ ...schoolConcept(), spellcasting: null }, withAdvancedFeat()), null, "no spellcasting, no school spell line");
   const noBridge = { ...resolved(), classDoc: { ...classDoc, system: { ...wizard.system, items: {} } } };
   assert.equal(await previewSchoolSpells(schoolConcept(), noBridge), null, "a class with no Arcane School bridge shows no school line");
+}
+
+// Production-shaped identity. A required school is the candidate that resolvePCIdentity returns: it is built by
+// getClassPathCandidates and keeps its uuid and issued ref. The preview loads it from the ref.
+{
+  worlds.use(advancedWorld());
+  const { resolvePCIdentity, pcIdentityKey } = await import("../scripts/pc-identity.mjs");
+  const required = resolvePCIdentity({
+    choices: { class: pcIdentityKey(wizardCandidate), classPaths: { "Arcane School": pcIdentityKey(named("School of Battle Magic")) } },
+    catalogs: { class: [wizardCandidate], classPath: candidates }
+  });
+  const fromProduction = await previewSchoolSpells({ ...schoolConcept(), requiredIdentity: required }, withAdvancedFeat());
+  assert.deepEqual({ ...fromProduction }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: "Energy Absorption", hasAdvanced: true },
+    "a school resolved by the identity catalog is named in the preview");
+  // A candidate that carries only its issued ref, with no uuid, is loaded through the ref.
+  const refOnly = { name: "School of Battle Magic", bridge: "Arcane School", ref: named("School of Battle Magic").ref };
+  const byRef = await previewSchoolSpells({ ...schoolConcept(), requiredIdentity: { class: wizardCandidate, classPaths: { "Arcane School": refOnly } } }, resolved());
+  assert.deepEqual({ ...byRef }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: null, hasAdvanced: false });
+  // The picked feat arrives as the issued reference that resolveFeatPicks returns, { packId, _id }.
+  const issuedFeat = issueCandidate({ packId: "pf2e.feats-srd", _id: advancedFeat._id }, { name: "Advanced School Spell" }).ref;
+  const byFeatRef = await previewSchoolSpells(schoolConcept(), { ...resolved(), feats: [{ type: "class", level: 8, name: "Advanced School Spell", entry: issuedFeat }] });
+  assert.deepEqual({ ...byFeatRef }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: "Energy Absorption", hasAdvanced: true });
+}
+// One closed Arcane School candidate fixes the school even when nobody names it: the chooser has only one answer.
+{
+  const oneSchool = features.filter((item) => item.name !== "School of Mentalism");
+  worlds.use(makeWorld({ [CF]: oneSchool, "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt, energyAbsorption, focusSpell], "pf2e.feats-srd": [advancedFeat] }));
+  const { previewSchoolSpells } = await import("../scripts/pc-builder.mjs");
+  const offered = await previewSchoolSpells({ ...schoolConcept(), requiredIdentity: { class: wizardCandidate } }, resolved());
+  assert.deepEqual({ ...offered }, { atCreate: false, school: "School of Battle Magic", initial: "Force Bolt", advanced: null, hasAdvanced: false },
+    "the only closed school is shown as the school");
+  worlds.use(advancedWorld());
+  const twoSchools = await previewSchoolSpells({ ...schoolConcept(), requiredIdentity: { class: wizardCandidate } }, resolved());
+  assert.deepEqual({ ...twoSchools }, { atCreate: true }, "two closed schools leave the choice to Create");
 }
 
 console.warn = warn;

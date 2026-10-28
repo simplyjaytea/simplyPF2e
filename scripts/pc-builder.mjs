@@ -1,5 +1,5 @@
 import * as T from "./tables.mjs";
-import { findEntry, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates, isIssuedCandidate } from "./compendium.mjs";
+import { findEntry, getCandidateDocument, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates, isIssuedCandidate } from "./compendium.mjs";
 import {
   parseCoins, resolveLoot, resolveEquipment, resolveFocusSpells,
   buildEquipmentItems, buildLootItems, filterItemTypes, heightenedLevelFor
@@ -928,37 +928,46 @@ async function schoolSpellItem(descriptionHtml, label, parse, reject) {
 }
 
 /**
- * The school spells the PC preview shows before Create. `fixed` when the concept names its arcane school
- * (`requiredIdentity.classPaths["Arcane School"]`), `atCreate` when the class has an Arcane School bridge but
- * the school is chosen only at Create, and null when there is no school bridge or no spellcasting. Names only:
- * a spell that does not load shows as null, never as a guess.
+ * The school spells the PC preview shows before Create. The school is `fixed` when the concept names it
+ * (`requiredIdentity.classPaths["Arcane School"]`, a candidate from the identity catalog) or when the class offers
+ * exactly one closed Arcane School candidate, because the chooser then has one answer. Otherwise it is `atCreate`.
+ * Null when there is no Arcane School bridge or no spellcasting. Names only: a spell that does not load shows as
+ * null, never as a guess.
  */
 export async function previewSchoolSpells(concept, resolved) {
-  if (!concept?.spellcasting) return null;
-  const bridged = Object.values(resolved?.classDoc?.system?.items ?? {}).some((entry) => entry?.name === "Arcane School");
+  if (!concept?.spellcasting || !resolved?.classDoc) return null;
+  const bridged = Object.values(resolved.classDoc.system?.items ?? {}).some((entry) => entry?.name === "Arcane School");
   if (!bridged) return null;
-  const required = concept.requiredIdentity?.classPaths?.["Arcane School"];
-  const requiredUuid = required?.uuid ?? required?._stats?.compendiumSource ?? null;
-  if (!requiredUuid) return { atCreate: true };
-  let school = null;
-  try { school = (await fromUuid(requiredUuid))?.toObject?.() ?? null; } catch { school = null; }
-  if (!school || !isArcaneSchoolSource(school)) return { atCreate: true };
+  const classData = toItemData(resolved.classDoc);
+  const named = concept.requiredIdentity?.classPaths?.["Arcane School"] ?? null;
+  const offered = named ? [] : (await getClassPathCandidates(classData)).filter((path) => path.bridge === "Arcane School");
+  const school = named ?? (offered.length === 1 ? offered[0] : null);
+  const schoolSource = school ? await candidateSource(school) : null;
+  if (!schoolSource || !isArcaneSchoolSource(schoolSource)) return { atCreate: true };
   const spellName = async (parse) => {
-    const link = parse(school.system?.description?.value);
+    const link = parse(schoolSource.system?.description?.value);
     if (!link) return null;
     try {
       const doc = await fromUuid(link.uuid);
       return doc?.type === "spell" && doc.system?.traits?.value?.includes("focus") ? doc.name : null;
     } catch { return null; }
   };
-  const advanced = (resolved?.feats ?? []).some((feat) => isAdvancedSchoolSpellFeat(feat?.entry));
+  const advanced = (resolved.feats ?? []).some((feat) => isAdvancedSchoolSpellFeat(feat?.entry));
   return {
     atCreate: false,
-    school: school.name ?? "",
+    school: schoolSource.name ?? "",
     initial: await spellName(schoolInitialSpellLink),
     advanced: advanced ? await spellName(schoolAdvancedSpellLink) : null,
     hasAdvanced: advanced
   };
+}
+
+/** The source of an issued class-path candidate, loaded through its ref. Null when the ref is not from this run's catalog. */
+async function candidateSource(candidate) {
+  try {
+    const doc = await getCandidateDocument(candidate);
+    return doc?.toObject?.() ?? null;
+  } catch { return null; }
 }
 
 /**
