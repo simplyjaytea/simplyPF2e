@@ -295,6 +295,22 @@ const focusEntries = () => created.filter((item) => item.type === "spellcastingE
   game.settings.get = get;
   worlds.use(world);
 }
+// The preview and Create share one validity rule: a school spell in a disabled spell pack is neither named nor embedded.
+{
+  worlds.use(makeWorld({ [CF]: features, "pf2e.classes": [wizard], "pf2e.spells-srd": [forceBolt], "custom.spells": [] }));
+  const get = game.settings.get;
+  game.settings.get = (_module, key) => key === "sourcePacks" ? { spells: ["custom.spells"] } : {};
+  const { previewSchoolSpells: preview } = await import("../scripts/pc-builder.mjs");
+  const named = await preview(schoolConcept(), resolved());
+  assert.deepEqual({ ...named }, { atCreate: false, school: "School of Battle Magic", initial: null, advanced: null, hasAdvanced: false },
+    "the preview does not name a spell from a disabled pack");
+  reset(); const mark = warnings.length;
+  await createCharacterActor(schoolConcept(), resolved());
+  assert.equal(focusEntries().length, 0, "Create drops the same spell");
+  assert.equal(warnings.splice(mark).filter((line) => /School of Battle Magic/.test(line)).length, 1);
+  game.settings.get = get;
+  worlds.use(world);
+}
 // Built-pack ID links resolve too, and focus cantrips do not add pool points.
 {
   const builtSchool = structuredClone(features.find((item) => item.name === "School of Battle Magic"));

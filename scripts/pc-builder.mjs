@@ -911,16 +911,22 @@ async function resolveSchoolSpells(expectedPaths, { advanced = false } = {}) {
   return spells;
 }
 
-/** One school spell from a description link, loaded and checked as a focus spell in an enabled pack. */
+/**
+ * The one validity rule for a school spell, shared by Create and the preview so they cannot drift apart: a focus
+ * spell from an enabled spell pack. Anything else is not named and not embedded.
+ */
+function isUsableSchoolSpell(doc) {
+  return doc?.type === "spell" && Array.isArray(doc.system?.traits?.value)
+    && doc.system.traits.value.includes("focus") && getPacksFor("spells").includes(doc.pack);
+}
+
+/** One school spell from a description link, loaded and checked by isUsableSchoolSpell. */
 async function schoolSpellItem(descriptionHtml, label, parse, reject) {
   const link = parse(descriptionHtml);
   if (!link) return reject(`${label} school spell link is missing or ambiguous`);
   try {
     const doc = await fromUuid(link.uuid);
-    if (!doc || doc.type !== "spell" || !Array.isArray(doc.system?.traits?.value)
-      || !doc.system.traits.value.includes("focus") || !getPacksFor("spells").includes(doc.pack)) {
-      return reject(`${label} school spell is missing, invalid, or in a disabled pack`);
-    }
+    if (!isUsableSchoolSpell(doc)) return reject(`${label} school spell is missing, invalid, or in a disabled pack`);
     return toItemData(doc);
   } catch {
     return reject(`${label} school spell could not be loaded`);
@@ -949,7 +955,7 @@ export async function previewSchoolSpells(concept, resolved) {
     if (!link) return null;
     try {
       const doc = await fromUuid(link.uuid);
-      return doc?.type === "spell" && doc.system?.traits?.value?.includes("focus") ? doc.name : null;
+      return isUsableSchoolSpell(doc) ? doc.name : null;
     } catch { return null; }
   };
   const advanced = (resolved.feats ?? []).some((feat) => isAdvancedSchoolSpellFeat(feat?.entry));
