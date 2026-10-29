@@ -2,6 +2,16 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-29 — Fifth release: Bard spellcasting archetype (v0.3.5.85)
+
+- After the small-gaps and N44 rounds, Product Designer specced the next non-Wizard caster archetype and picked Bard (one muse ChoiceSet, no grant or companion, fixed occult/Charisma). Code Monkey Plus built it on `feat/bard-archetype` and the Lead integrated it into `integrate/2026-10-30-bard`.
+- Code Reviewer required two fixes: the indexed `system.slug` had been dropped (a muse with an explicit slug would persist the wrong value), and a caster dedication that vanished between preview and Create could leave its spell entry without the feat. Both fixed with fail-before tests at `303d3bb`, re-reviewed PASS; QA APPROVE (21/21 mutations) then recheck APPROVE (5/5).
+- The signature spell is module-chosen (lowest-rank ranked spell), not yet user-pickable in the editor. Native muse flag and signature representation still need Foundry verification.
+
+## 2026-10-29 — Fourth release: N44 rollback fix (v0.3.5.84)
+
+- The world-folder parcel create wrote its items with one `Item.create(array)`; a throw after partial writes left them untracked so the rollback skipped them and a retry duplicated them. Fixed to write one-per-call and sweep the new folder's contents. Code Reviewer PASS, QA APPROVE; N44 stays OPEN natively.
+
 ## 2026-10-29 — Third release: small-gaps fixes (v0.3.5.83)
 
 - After shipping v0.3.5.82, the user asked to work through todo item #2 (the open decisions) plus the backlog, ledger rows and small gaps. Three tracks fanned out from `main@1c7f0cc` and were merged into `integrate/2026-10-30-fixes` (`3cd1705`): Code Monkey 2 (encounter preview skipped-items line + tests killing the three surviving mutants), Code Monkey Plus (`requestJSON` retry progress — found already guarded, added a regression pin — plus the rarity cap in the Character editor recompute and the Forge runed-item pools), and Code Monkey 3 (strike range list 150 → 200 ft, the published thunderbird maximum).
