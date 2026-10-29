@@ -36,7 +36,7 @@ import { LOOT_NAME_MAX, LOOT_MANIFEST, COIN_UUIDS, coinItemSource, buildLootActo
 import { persistedExpectedItems, verifyCreatedActor, rollbackCreatedActor } from "./post-create.mjs";
 import { esc } from "./text.mjs";
 import { applyRunes } from "./runes.mjs";
-import { runedBaseProblem, runeTierProblem, runedValuation, runedSourceFrom, runedSourceProblem, pinnedTier } from "./parcel-runed.mjs";
+import { runedBaseProblem, runeTierProblem, runedValuation, runedSourceFrom, runedSourceProblem, runedBaseSnapshot, pinnedTier } from "./parcel-runed.mjs";
 
 /** Item Forge kinds that build real spells into scrolls or wands (spell-consumables.mjs). */
 const CONSUMABLE_KINDS = new Set(["scroll", "wand", "cantripDeck"]);
@@ -796,7 +796,8 @@ export class ItemForgeApp extends SpfApp {
       return { reason: PERMANENT_REASON.BUILD, detail: "valuation" };
     }
     const source = runedSourceFrom(base, { kind, potency, secondary }, applyRunes);
-    return this.#permanentResult(source, slot, candidate.computed);
+    // The validated base's valuation facts travel with the value, so Create can prove the source still matches them.
+    return this.#permanentResult(source, slot, { ...candidate.computed, base: runedBaseSnapshot(base, kind) });
   }
 
   /** A read or conversion failure on one chosen item is that slot's problem: it is unfilled, not the parcel's. */

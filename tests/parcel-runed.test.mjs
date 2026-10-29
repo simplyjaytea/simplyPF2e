@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   RUNE_TIERS, runedValuation, runedBaseProblem, runeTierProblem, runedCandidateId, runedSourceFrom,
-  runedSourceProblem, highestRarity, pinnedTier
+  runedSourceProblem, highestRarity, pinnedTier, runedBaseSnapshot
 } from "../scripts/parcel-runed.mjs";
 import { applyRunes } from "../scripts/runes.mjs";
 
@@ -91,7 +91,7 @@ assert.notEqual(runedCandidateId("c-AbC", 1, 0), runedCandidateId("c-AbC", 1, 1)
 
 // Build and Create: the source carries the runes and the magical trait and no Rule Elements, and the checks
 // match the stored computation. Runes, traits, rules, rarity and the valuation are each checked.
-const computed = { baseLevel: 0, baseRarity: "common", potency: 1, secondary: 1, copper: 10000, level: 4, rarity: "common" };
+const computed = { baseLevel: 0, baseRarity: "common", potency: 1, secondary: 1, copper: 10000, level: 4, rarity: "common", base: runedBaseSnapshot(LONGSWORD, "weapon") };
 const runedSource = runedSourceFrom(LONGSWORD, { kind: "weapon", potency: 1, secondary: 1 }, applyRunes);
 assert.equal(runedSource.name, "+1 Striking Longsword", "the name comes from runes.mjs runedName");
 assert.deepEqual(runedSource.system.runes, { ...LONGSWORD.system.runes, potency: 1, striking: 1 }, "the runes are the verified tiers");
@@ -110,5 +110,29 @@ assert.equal(runedSourceProblem(untagged, [4], "common", computed), "classificat
 assert.equal(runedSourceProblem(runedSource, [4], "common", { ...computed, baseRarity: "uncommon", rarity: "uncommon" }), "rarity",
   "an uncommon base is refused at a common cap");
 assert.equal(runedSourceProblem(runedSource, [4], "uncommon", { ...computed, baseRarity: "uncommon", rarity: "uncommon" }), null);
+
+// Create compares the source with the base snapshot taken from the validated base, field by field. A change to any
+// valuation-relevant field after the preview is refused with that field's reason, and nothing else is accepted.
+assert.equal(runedSourceProblem(runedSource, [4], "common", { ...computed, base: undefined }), "malformed", "a value without its base snapshot is refused");
+const driftCases = {
+  level: (source) => { source.system.level.value = 20; },
+  rarity: (source) => { source.system.traits.rarity = "uncommon"; },
+  grade: (source) => { source.system.grade = "high"; },
+  materialType: (source) => { source.system.material.type = "silver"; },
+  materialGrade: (source) => { source.system.material.grade = "high"; },
+  specific: (source) => { source.system.specific = true; },
+  size: (source) => { source.system.size = "lg"; },
+  usage: (source) => { source.system.usage = { value: "held-in-two-hands" }; },
+  otherTags: (source) => { source.system.traits.otherTags = ["shoddy"]; },
+  traits: (source) => { source.system.traits.value = [...source.system.traits.value, "fire"]; },
+  runesOther: (source) => { source.system.runes.resilient = 1; }
+};
+for (const [field, change] of Object.entries(driftCases)) {
+  const changed = clone(runedSource);
+  change(changed);
+  assert.equal(runedSourceProblem(changed, [4], "common", computed), `base-${field}`, `a changed ${field} after the preview is refused`);
+}
+// A source that matches its snapshot is still accepted: the comparison refuses drift, not the clone itself.
+assert.equal(runedSourceProblem(clone(runedSource), [4], "common", computed), null);
 
 console.log("parcel-runed.test.mjs: pinned tiers match real documents, pf2e valuation parity, base and tier refusals, and Create-time checks passed");

@@ -171,15 +171,63 @@ export function runedSourceFrom(baseData, { kind, potency, secondary }, applyRun
   return applyRunes(source, { potency, [field]: secondary });
 }
 
+/** Stable JSON: object keys sorted, so two equal values always compare equal. */
+function stableJson(value) {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
 /**
- * Why a built runed source no longer matches its computed value, or null when it does. Runs at build
- * time and again at Create, from the stored computation and the pinned tiers, so an edited source,
- * changed runes or a recomputed value cannot slip through with a stale level or price.
+ * The valuation-relevant facts of an ordinary base, read from its validated document (or from a built clone:
+ * the clone copies them). Every field pf2e prepares a runed item from is here: level, rarity, grade, material,
+ * specific, size, usage, the other tags (shoddy), the traits (without `magical`, which the clone adds), and the
+ * runes already present apart from the fundamental tiers the module applies.
+ */
+export function runedBaseSnapshot(base, kind) {
+  const system = base?.system ?? {};
+  const field = SECONDARY_FIELD[kind];
+  const { potency: _potency, [field]: _secondary, ...otherRunes } = system.runes ?? {};
+  return Object.freeze({
+    level: system.level?.value ?? null,
+    rarity: system.traits?.rarity ?? null,
+    grade: system.grade ?? null,
+    materialType: system.material?.type ?? null,
+    materialGrade: system.material?.grade ?? null,
+    specific: Boolean(system.specific),
+    size: system.size ?? null,
+    usage: system.usage?.value ?? null,
+    otherTags: [...(system.traits?.otherTags ?? [])].sort(),
+    traits: [...(system.traits?.value ?? [])].filter((trait) => trait !== "magical").sort(),
+    runesOther: stableJson(otherRunes)
+  });
+}
+
+/** The snapshot fields, in the order a drift is reported. Each has its own reason code: `base-<field>`. */
+export const RUNED_BASE_FIELDS = Object.freeze(["level", "rarity", "grade", "materialType", "materialGrade", "specific", "size", "usage", "otherTags", "traits", "runesOther"]);
+
+/** The first snapshot field a built source no longer matches, as `base-<field>`, or null when none changed. */
+export function runedBaseDrift(source, kind, snapshot) {
+  const now = runedBaseSnapshot(source, kind);
+  for (const field of RUNED_BASE_FIELDS) {
+    if (stableJson(now[field]) !== stableJson(snapshot[field])) return `base-${field}`;
+  }
+  return null;
+}
+
+/**
+ * Why a built runed source no longer matches its computed value, or null when it does. Runs at build time and
+ * again at Create. The base snapshot is required: a computation without it cannot prove the source still
+ * matches the base it was valued from, so it is refused. Then the source is compared with the snapshot field by
+ * field, and the value is recomputed from the pinned tiers and the snapshot's level and rarity.
  */
 export function runedSourceProblem(source, allowedLevels, maxRarity, computed) {
   if (!source || !computed || !Array.isArray(allowedLevels)) return "malformed";
   const kind = source.type;
   if (!SECONDARY_FIELD[kind]) return "type";
+  if (!computed.base) return "malformed";
   const field = SECONDARY_FIELD[kind];
   const system = source.system ?? {};
   const runes = system.runes ?? {};
@@ -187,6 +235,8 @@ export function runedSourceProblem(source, allowedLevels, maxRarity, computed) {
   if (Array.isArray(runes.property) && runes.property.length) return "property-rune";
   if (!Array.isArray(system.rules) || system.rules.length) return "rules";
   if (!Array.isArray(system.traits?.value) || !system.traits.value.includes("magical")) return "classification";
+  const drift = runedBaseDrift(source, kind, computed.base);
+  if (drift) return drift;
   if (system.specific || system.material?.type || system.material?.grade || system.size !== "med") return "base";
   const check = runedValuation({ kind, baseLevel: computed.baseLevel, baseRarity: computed.baseRarity, potency: computed.potency, secondary: computed.secondary });
   if (!check || check.copper !== computed.copper || check.level !== computed.level || check.rarity !== computed.rarity) return "valuation";

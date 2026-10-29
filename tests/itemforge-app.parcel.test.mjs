@@ -45,7 +45,7 @@ let coinAvailable = true; let emptyBuildError = false;
 async function fromUuid(uuid) { if (emptyBuildError && uuid === SCROLL_1) throw new Error(""); if (Object.values(loot.COIN_UUIDS).includes(uuid) && !coinAvailable) return null; return docs.get(uuid) ?? null; }
 const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "common" };
 // Failure modes for the read and provider paths: an error object is thrown on the next call.
-let lastHearingSource = null; let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
+let lastHearingSource = null; let lastRunedSource = null; let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
 async function getCandidateDocument(c) {
   if (c?.id === "c-heal") return { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) };
   if (c?.id === "c-runedbase") return { name: RUNED_BASE.name, uuid: "Compendium.pf2e.equipment-srd.Item." + RUNED_BASE._id, toObject: () => plain(RUNED_BASE) };
@@ -106,6 +106,8 @@ class MockSpfApp {
 }
 const mocks = {
   ...consumables, ...tables, ...parcel, ...permanent, ...runed, ...loot, ...post, ...text, applyRunes: runes.applyRunes,
+  // Keeps the built runed source, so a test can change the stored draft after Generate (the real stale-draft case).
+  runedSourceFrom: (...args) => { lastRunedSource = runed.runedSourceFrom(...args); return lastRunedSource; },
   experimentalToolsEnabled: () => gate,
   assertExperimentalToolAccess: () => { if (!gate) throw Object.assign(new Error("GATE-CLOSED"), { code: "disabled" }); },
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
@@ -583,15 +585,17 @@ const runedFlow = async (candidate) => {
   assert.equal(tctx.preview.permanents[2].filled, false, "a tampered rune document is not built");
   assert.equal(tctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.unavailable", "its slot says the tier could not be verified");
 }
-// Create refuses a runed item whose stored value changed after Generate, and writes nothing.
-{
-  const fresh = { ...RUNED_CANDIDATE, computed: { ...RUNED_CANDIDATE.computed } };
-  const { cc: ccr, aa: aar, ctx: pctx } = await runedFlow(fresh);
-  assert.equal(pctx.preview.permanents[2].filled, true, "the runed item is built first");
-  fresh.computed.copper = 9999;
-  const writesBeforeRunedCreate = createCalls.length;
-  await A.createItem.call(aar); const rctx = await aar._prepareContext();
-  assert.equal(createCalls.length, writesBeforeRunedCreate, "nothing is written");
-  assert.equal(rctx.error, "SIMPLYPF2E.ItemForge.Parcel.Revalidate", "Create refuses the stale runed value");
+// Create refuses a runed item whose stored source changed after Generate, and writes nothing.
+for (const [label, change, reason] of [
+  ["base level set to 20", (source) => { source.system.level.value = 20; }, "base-level"],
+  ["a shoddy tag added", (source) => { source.system.traits.otherTags = ["shoddy"]; }, "base-otherTags"]
+]) {
+  const { aa: staleApp, ctx: staleCtx } = await runedFlow(RUNED_CANDIDATE);
+  assert.equal(staleCtx.preview.permanents[2].filled, true, `${label}: the runed item is built first`);
+  change(lastRunedSource);
+  const writesBeforeStale = createCalls.length;
+  await A.createItem.call(staleApp); const sctx = await staleApp._prepareContext();
+  assert.equal(createCalls.length, writesBeforeStale, `${label}: nothing is written`);
+  assert.equal(sctx.error, "SIMPLYPF2E.ItemForge.Parcel.Revalidate", `${label}: Create refuses the changed base`);
 }
 runedPool = []; permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
