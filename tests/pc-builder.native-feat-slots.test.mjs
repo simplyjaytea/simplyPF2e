@@ -89,6 +89,12 @@ assert.deepEqual(investigator.featSlots.find((slot) => slot.type === "skill" && 
   ["Society feat"], "published Skillful Lessons receives only a provable qualifying mental-skill candidate");
 assert.ok(investigator.featSlots.find((slot) => slot.type === "skill" && slot.level === 2).candidates.some((candidate) => candidate.name === "Stealth feat"),
   "ordinary even-level skill feats keep their normal prerequisite catalog");
+// The 8.5.0 Investigator class stores the NAME form of the uuid (investigator.json lines 165–166). It must
+// resolve to the same qualifying slot as the id form.
+entries.class.system = { ...entries.class.system, items: { skillful: { level: 3, name: "Skillful Lessons", uuid: "Compendium.pf2e.classfeatures.Item.Skillful Lessons" } } };
+const nameForm = await resolvePCConcept(concept);
+assert.deepEqual(nameForm.featSlots.find((slot) => slot.type === "skill" && slot.level === 3).candidates.map((candidate) => candidate.name),
+  ["Society feat"], "the name-form Skillful Lessons uuid receives the same mental-skill candidates");
 entries.class.system.skillFeatLevels = null;
 await assert.rejects(resolvePCConcept(concept), /feat schedule/, "production resolution refuses unreadable native schedules");
 
