@@ -8,3 +8,5 @@ Feats (`packs/pf2e/feats/archetype/wizard/`): `wizard-dedication.json` (level 2,
 
 Spells (`packs/pf2e/spells/spells/`): cantrips `detect-magic`, `electric-arc`, `light`, `telekinetic-projectile`; rank 1 `fear`, `grim-tendrils`; rank 2 `mirror-image`; rank 3 `fireball`. All common and arcane.
 Also (fix/caster-gate): rank 2 `invisibility`, `web`; rank 3 `lightning-bolt`, same provenance (blob SHAs matched).
+
+Bard (feat/bard-archetype), same provenance (blob SHAs matched `pf2e-8.5.0`): `bard-dedication.json` (`feats/archetype/bard/level-2/`), `basic-bard-spellcasting.json` (`level-4/`), `expert-bard-spellcasting.json` (`level-12/`), `master-bard-spellcasting.json` (`level-18/`); the five bard muses `enigma`, `maestro`, `polymath`, `warrior`, `zoophonia` (`packs/pf2e/class-features/`, tag `bard-muse`); spell `haste` (rank 3, arcane/occult/primal).

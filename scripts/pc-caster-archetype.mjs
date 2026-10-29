@@ -20,9 +20,22 @@
 //     At 6th level, they grant you a 2nd-rank spell slot ... At 8th level, they grant you a
 //     3rd-rank spell slot."
 //
-// Only the Wizard archetype is modeled. Expert and Master Wizard Spellcasting need "master in
-// Arcana" / "legendary in Arcana", which the staged prerequisite evaluator cannot prove, so
+// Two archetypes are modeled: Wizard (prepared) and Bard (spontaneous, 2026-10-30). Expert and Master
+// feats need "master/legendary in <skill>", which the staged prerequisite evaluator cannot prove, so
 // the entry never exceeds the Basic benefits (ranks 1 to 3, one slot each).
+//
+// Bard (packs/pf2e/feats/archetype/bard/level-2/bard-dedication.json): "You gain a spell repertoire with two
+// common cantrips from the occult spell list ... Your key spellcasting attribute for bard archetype spells is
+// Charisma, and they are occult bard spells." Basic Bard Spellcasting: "Each time you gain a spell slot of a new
+// rank from the bard archetype, add a common occult spell of the appropriate rank ... to your repertoire."
+// The journal adds, for Basic: "At 6th level ... if you have a spell repertoire, you can select one spell from
+// your repertoire as a signature spell." A signature spell is `system.location.signature: true` on a spell in a
+// spontaneous entry (spell/data.ts; spellcasting-entry/collection.ts 262-280).
+//
+// The Bard Dedication also carries a `ChoiceSet` (flag `dedicationMuse`, bard-muse class features, slug values).
+// pf2e persists a ChoiceSet answer as `selection` on that rule's source (choice-set/rule-element.ts, preCreate:
+// `this.selection = ruleSource.selection = selection.value`), and derives the item flag and roll option from it at
+// preparation; this module writes that same `selection` (see applyArchetypeChoice) and nothing else.
 
 import { slugify } from "./text.mjs";
 
@@ -37,11 +50,17 @@ import { slugify } from "./text.mjs";
  * @property {string} basic         the Basic Spellcasting feat that grants ranks 1 to 3
  * @property {number} cantripsKnown cantrips in the spellbook from the dedication
  * @property {number} cantripSlots  cantrips prepared per day
- * @property {number} spellsPerRank spells added to the spellbook per rank gained
+ * @property {number} spellsPerRank spells added to the spellbook or repertoire per rank gained
+ * @property {number|null} signatureFromLevel level from which one repertoire spell is a signature spell (Basic feat held)
+ * @property {{flag: string, tag: string, excludeTag: string, defaultValue: string, labelKey: string}|null} choice the dedication's ChoiceSet
  */
 export const CASTER_ARCHETYPES = Object.freeze({
   wizard: Object.freeze({
     pkg: "wizard",
+    noteKey: "SIMPLYPF2E.Preview.PCArchetypeSpells",
+    book: "spellbook",
+    signatureFromLevel: null,
+    choice: null,
     label: "Wizard Archetype Spells",
     tradition: "arcane",
     ability: "int",
@@ -51,6 +70,28 @@ export const CASTER_ARCHETYPES = Object.freeze({
     cantripsKnown: 4,
     cantripSlots: 2,
     spellsPerRank: 2
+  }),
+  bard: Object.freeze({
+    pkg: "bard",
+    noteKey: "SIMPLYPF2E.Preview.PCArchetypeBard",
+    book: "repertoire",
+    // First level at which the Basic feat lets the PC mark one repertoire spell as a signature spell.
+    signatureFromLevel: 6,
+    // The dedication's ChoiceSet: rule flag, the class-feature tag its filter selects, the tag it excludes, and the
+    // visible default (used only when it is among the eligible choices).
+    choice: Object.freeze({
+      flag: "dedicationMuse", tag: "bard-muse", excludeTag: "class-archetype", defaultValue: "maestro",
+      labelKey: "SIMPLYPF2E.PCEdit.ArchetypeMuse"
+    }),
+    label: "Bard Archetype Spells",
+    tradition: "occult",
+    ability: "cha",
+    mode: "spontaneous",
+    dedication: "Bard Dedication",
+    basic: "Basic Bard Spellcasting",
+    cantripsKnown: 2,
+    cantripSlots: 0,
+    spellsPerRank: 1
   })
 });
 
@@ -82,7 +123,7 @@ export function isCasterPackage(pkg) {
  * levels 4, 6 and 8. Holding a feat without its dedication yields nothing (fail closed).
  * @param {(string|null)[]} featNames held feats, any order
  * @param {number} level character level
- * @returns {{archetype: CasterArchetype, slots: Record<number, number>, picks: Record<number, number>, maxRank: number}[]}
+ * @returns {{archetype: CasterArchetype, slots: Record<number, number>, picks: Record<number, number>, maxRank: number, signatures: number}[]}
  */
 export function casterArchetypePlans(featNames, level) {
   const held = new Set((featNames ?? []).filter((name) => typeof name === "string").map(slugify));
@@ -101,9 +142,67 @@ export function casterArchetypePlans(featNames, level) {
         maxRank = Number(rank);
       }
     }
-    plans.push({ archetype, slots, picks, maxRank });
+    const signatures = held.has(slugify(archetype.basic)) && archetype.signatureFromLevel && lv >= archetype.signatureFromLevel ? 1 : 0;
+    plans.push({ archetype, slots, picks, maxRank, signatures });
   }
   return plans;
+}
+
+/**
+ * Which spells of a list are signature spells: deterministic, so the preview and Create agree. The first `count`
+ * ranked (non-cantrip) spells of the lowest rank are chosen, since a low-rank spell gains most from heightening.
+ * @param {{rank: number}[]} spells repertoire spells in pick order
+ * @param {number} count signatures the plan allows
+ * @returns {Set<number>} indexes into `spells`
+ */
+export function chooseSignatureIndexes(spells, count) {
+  const chosen = new Set();
+  if (!(count > 0)) return chosen;
+  const ranked = spells.map((spell, index) => ({ rank: spell?.rank, index })).filter((entry) => Number.isInteger(entry.rank) && entry.rank >= 1)
+    .sort((a, b) => a.rank - b.rank || a.index - b.index);
+  for (const entry of ranked.slice(0, count)) chosen.add(entry.index);
+  return chosen;
+}
+
+/**
+ * Eligible choices of an archetype's ChoiceSet from class-feature candidates, by the dedication's own filter
+ * (`item:tag:<tag>` and not `item:tag:<excludeTag>`), as pf2e's `slugsAsValues` names them (the slug of the name).
+ * @param {NonNullable<CasterArchetype["choice"]>} choice
+ * @param {{name: string, tags?: string[]}[]} candidates
+ * @returns {{value: string, label: string}[]} sorted by label
+ */
+export function eligibleArchetypeChoices(choice, candidates) {
+  const seen = new Set();
+  const options = [];
+  for (const candidate of candidates ?? []) {
+    const tags = Array.isArray(candidate?.tags) ? candidate.tags : [];
+    if (!tags.includes(choice.tag) || tags.includes(choice.excludeTag)) continue;
+    const value = slugify(candidate.name);
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    options.push({ value, label: candidate.name });
+  }
+  return options.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** The visible default when it is eligible, else null: never an arbitrary pick. */
+export function defaultArchetypeChoice(choice, options) {
+  return options.some((option) => option.value === choice.defaultValue) ? choice.defaultValue : null;
+}
+
+/**
+ * Write the chosen answer onto the dedication's ChoiceSet rule source, exactly as pf2e does when a prompt is
+ * answered (`ruleSource.selection = selection.value`); the flag and roll option follow at preparation. Throws unless
+ * the dedication carries exactly one ChoiceSet with the archetype's flag, so an unexpected shape is never guessed.
+ * @param {object} data the dedication's cloned item data (mutated)
+ * @param {NonNullable<CasterArchetype["choice"]>} choice
+ * @param {string} value the chosen slug
+ */
+export function applyArchetypeChoice(data, choice, value) {
+  const rules = Array.isArray(data?.system?.rules) ? data.system.rules : [];
+  const matches = rules.filter((rule) => rule?.key === "ChoiceSet" && rule.flag === choice.flag);
+  if (matches.length !== 1) throw new Error(`${data?.name ?? "dedication"} does not carry exactly one ${choice.flag} ChoiceSet`);
+  matches[0].selection = value;
 }
 
 const ordinalName = (rank) => (rank === 0 ? "cantrip" : `rank ${rank}`);
@@ -125,6 +224,7 @@ export function assembleCasterArchetypeEntry({ plan, entryId, spells, newId }) {
   const slots = {};
   for (let rank = 0; rank <= 10; rank++) slots[`slot${rank}`] = { value: slotCounts[rank] ?? 0, max: slotCounts[rank] ?? 0, prepared: [] };
   const kept = [];
+  const keptRanks = [];
   const rejected = [];
   const used = new Map();
   const seen = new Set();
@@ -151,11 +251,14 @@ export function assembleCasterArchetypeEntry({ plan, entryId, spells, newId }) {
     // A cloned source can carry a stale entry or heightened location; rebuild it.
     data.system.location = { value: entryId };
     kept.push(data);
+    keptRanks.push({ rank });
     // Prepared: the first picks of each rank fill that rank's slots; the rest stay in the spellbook.
-    if ((slots[`slot${rank}`].prepared.length) < (slotCounts[rank] ?? 0)) {
+    if (archetype.mode === "prepared" && (slots[`slot${rank}`].prepared.length) < (slotCounts[rank] ?? 0)) {
       slots[`slot${rank}`].prepared.push({ id: data._id, expended: false });
     }
   }
+  // Signature spells (Bard, from the level the Basic feat grants one): a flag on the spell, chosen the same way as in the preview.
+  for (const index of chooseSignatureIndexes(keptRanks, plan.signatures ?? 0)) kept[index].system.location.signature = true;
   return {
     entry: {
       _id: entryId,

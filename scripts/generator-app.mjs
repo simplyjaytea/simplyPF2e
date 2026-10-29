@@ -22,7 +22,7 @@ import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp, validatePCIdentityRequirements
 } from "./pc-builder.mjs";
 import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
-import { CASTER_ARCHETYPES, casterArchetypeFeat, casterArchetypePlans } from "./pc-caster-archetype.mjs";
+import { CASTER_ARCHETYPES, casterArchetypeFeat, casterArchetypePlans, chooseSignatureIndexes, defaultArchetypeChoice } from "./pc-caster-archetype.mjs";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
@@ -47,7 +47,7 @@ import { HAZARD_LABEL_KEYS } from "./hazard-labels.mjs";
 import { esc } from "./text.mjs";
 import { createProgress } from "./progress.mjs";
 import { validateForgeRequest } from "./forge-command.mjs";
-import { heritageMatchesAncestry, previewSchoolSpells } from "./pc-builder.mjs";
+import { casterArchetypeChoiceOptions, heritageMatchesAncestry, previewSchoolSpells } from "./pc-builder.mjs";
 import { applyPCEdit, validatePCEditCompletion } from "./pc-edit.mjs";
 import { editableClassCandidates, pcEditFromControl, pcEditorInvalidatedControls, pcEditorSelections } from "./pc-editor.mjs";
 
@@ -589,6 +589,11 @@ export class GeneratorApp extends SpfApp {
         `feat.${index}`, game.i18n.format("SIMPLYPF2E.PCEdit.FeatSlot", { type: slot.type, level: slot.level }),
         (slot.candidates ?? []).filter((candidate) => !casterArchetypeFeat(candidate.name) || pcIdentityKey(candidate) === selections[`feat.${index}`]).map(option)
       ));
+      // The archetype's ChoiceSet (Bard muse) is an editor control of its own: it changes no spell, only the saved answer.
+      const archetypeChoice = plan.concept.archetypeSpellcasting?.choice;
+      if (archetypeChoice) {
+        add("archetypeChoice", game.i18n.localize(archetypeChoice.labelKey), archetypeChoice.options.map((entry) => ({ value: entry.value, label: entry.label })));
+      }
       const equipment = catalogs.equipment.map(option);
       plan.concept.equipment.forEach((line, index) => add(
         `equipment.${index}`, game.i18n.format("SIMPLYPF2E.PCEdit.EquipmentLine", { index: index + 1, name: line.name }), equipment
@@ -670,7 +675,9 @@ export class GeneratorApp extends SpfApp {
       ? {
         label: CASTER_ARCHETYPES[concept.archetypeSpellcasting.pkg]?.label ?? concept.archetypeSpellcasting.pkg,
         tradition: concept.archetypeSpellcasting.tradition,
-        spells: GeneratorApp.#mapSpells(resolved.archetypeSpells)
+        note: game.i18n.localize(CASTER_ARCHETYPES[concept.archetypeSpellcasting.pkg]?.noteKey ?? "SIMPLYPF2E.Preview.PCArchetypeSpells"),
+        spells: GeneratorApp.#archetypeSpellRows(concept, resolved),
+        choice: GeneratorApp.#archetypeChoiceRow(concept.archetypeSpellcasting.choice)
       }
       : null;
     const signatureRanks = concept.spellcasting?.signatureRanks ?? [];
@@ -780,6 +787,25 @@ export class GeneratorApp extends SpfApp {
   /** Rows for a plain {name, entry} list (feats). */
   static #mapNamed(list) {
     return (list ?? []).map(({ name, entry }) => ({ name: entry?.name ?? name, found: Boolean(entry) }));
+  }
+
+  /** Rows for the archetype spells, with the signature spell the builder will mark (the same deterministic choice). */
+  static #archetypeSpellRows(concept, resolved) {
+    const rows = GeneratorApp.#mapSpells(resolved.archetypeSpells);
+    const plan = casterArchetypePlans(
+      (resolved.feats ?? []).map((pick) => (pick?.entry ? pick.name : null)), concept.level
+    ).find((entry) => entry.archetype.pkg === concept.archetypeSpellcasting.pkg);
+    for (const index of chooseSignatureIndexes((resolved.archetypeSpells ?? []).map((pick) => pick.spell), plan?.signatures ?? 0)) {
+      if (rows[index]?.found) rows[index].signature = true;
+    }
+    return rows;
+  }
+
+  /** The archetype ChoiceSet as the preview shows it: its label, the chosen answer's name and the missing state. */
+  static #archetypeChoiceRow(choice) {
+    if (!choice) return null;
+    const chosen = choice.options.find((option) => option.value === choice.value);
+    return { label: game.i18n.localize(choice.labelKey), value: chosen?.label ?? null, missing: !chosen };
   }
 
   /** Rows for resolved spells, which carry their cast rank. */
@@ -1812,7 +1838,7 @@ export class GeneratorApp extends SpfApp {
       } else {
         resolved.feats = [];
       }
-      this.#planArchetypeSpellcasting(concept, resolved);
+      await this.#planArchetypeSpellcasting(concept, resolved);
 
       // Same defensive filter as the NPC pipeline: allowSpellcasting is only
       // enforced in the AI prompt, so a non-compliant model output can still
@@ -1925,13 +1951,22 @@ export class GeneratorApp extends SpfApp {
    * Spellcasting archetype plan (W3): derived from the feats just picked, so it exists only while the dedication is
    * held. The module owns the picks per rank; the spells are chosen by #refineArchetypeSpells.
    */
-  #planArchetypeSpellcasting(concept, resolved) {
+  async #planArchetypeSpellcasting(concept, resolved) {
     const [plan] = this.#input.allowSpellcasting
       ? casterArchetypePlans((resolved.feats ?? []).map((pick) => (pick?.entry ? pick.name : null)), concept.level)
       : [];
     concept.archetypeSpellcasting = plan
       ? { pkg: plan.archetype.pkg, tradition: plan.archetype.tradition, plannedPicks: plan.picks, maxRank: plan.maxRank, spells: [] }
       : null;
+    // The dedication's ChoiceSet (Bard muse): the eligible answers are listed, the visible default is taken only when it
+    // is eligible, and a missing value stays missing so the completion manifest blocks Create (never an arbitrary pick).
+    const definition = plan?.archetype.choice;
+    if (definition) {
+      let options = [];
+      try { options = await casterArchetypeChoiceOptions(definition); }
+      catch (err) { console.warn(`${MODULE_ID} | archetype choice options unavailable`, err); }
+      concept.archetypeSpellcasting.choice = { flag: definition.flag, labelKey: definition.labelKey, options, value: defaultArchetypeChoice(definition, options) };
+    }
   }
 
   /**
@@ -1950,6 +1985,7 @@ export class GeneratorApp extends SpfApp {
       const { spells, usage } = await selectArchetypeSpells({
         concept, candidates, plannedPicks: plan.plannedPicks, tradition: plan.tradition,
         label: CASTER_ARCHETYPES[plan.pkg].label,
+        repertoire: CASTER_ARCHETYPES[plan.pkg].book === "repertoire",
         onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.Progress.Spells")), signal
       });
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);

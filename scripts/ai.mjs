@@ -716,7 +716,7 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
  * @param {string} args.tradition
  * @param {string} args.label archetype name for the prompt
  */
-export async function selectArchetypeSpells({ concept, candidates, plannedPicks, tradition, label, onProgress, signal }) {
+export async function selectArchetypeSpells({ concept, candidates, plannedPicks, tradition, label, repertoire = false, onProgress, signal }) {
   if (!plannedPicks || typeof plannedPicks !== "object" || Array.isArray(plannedPicks)
     || !Object.entries(plannedPicks).every(([rank, count]) => /^(?:[0-9]|10)$/.test(rank) && Number.isInteger(count) && count >= 0 && count <= 5)) {
     throw new TypeError("Invalid archetype spell plan");
@@ -731,7 +731,7 @@ export async function selectArchetypeSpells({ concept, candidates, plannedPicks,
     .join("\n");
   const plan = Object.fromEntries(Object.entries(plannedPicks).filter(([, count]) => count > 0).map(([rank, count]) => [PC_SPELL_RANKS[rank], count]));
 
-  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are choosing the ${label} spellbook of a Pathfinder 2e player character who took a spellcasting archetype. Choose ONLY from the provided list, copying each id EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are choosing the ${label} ${repertoire ? "repertoire" : "spellbook"} of a Pathfinder 2e player character who took a spellcasting archetype. Choose ONLY from the provided list, copying each id EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
 { "spells": [ { "id": string } ] }
 Fill this module-supplied plan (rank enum: number of DISTINCT spells to choose): ${JSON.stringify(plan)}. A spell belongs to the rank under which it is listed; write no rank and no number. Never repeat a spell. Leave a rank short rather than invent a name. Favor spells that express the character's theme.`;
 

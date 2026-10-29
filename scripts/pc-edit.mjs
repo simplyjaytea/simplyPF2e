@@ -23,6 +23,7 @@
  *   { field: "backgroundLore", value }                    must be an option of the background
  *   { field: "feat", slot, key }                          slot = zero-based index into featSlots
  *   { field: "equipment", index, key }                    index into concept.equipment
+ *   { field: "archetypeChoice", value }                   one eligible answer of the held spellcasting archetype's ChoiceSet
  *
  * Class paths. A class with one level-one bridge (Rogue, Investigator) edits
  * `classPath` as before: concept.classPath / classPathCandidate and
@@ -64,7 +65,7 @@ export const PC_EDIT_CODES = Object.freeze({
 
 const PC_EDIT_FIELDS = Object.freeze([
   "ancestry", "heritage", "background", "class", "classPath",
-  "keyAbility", "backgroundLore", "feat", "equipment"
+  "keyAbility", "backgroundLore", "feat", "equipment", "archetypeChoice"
 ]);
 
 const DOC_TYPE = Object.freeze({ ancestry: "ancestry", heritage: "heritage", background: "background", class: "class" });
@@ -128,6 +129,10 @@ function clonePlan(plan) {
   }
   for (const field of ["classPaths", "classPathCandidates"]) {
     if (isObject(concept[field])) concept[field] = { ...concept[field] };
+  }
+  if (isObject(concept.archetypeSpellcasting)) {
+    concept.archetypeSpellcasting = { ...concept.archetypeSpellcasting };
+    if (isObject(concept.archetypeSpellcasting.choice)) concept.archetypeSpellcasting.choice = { ...concept.archetypeSpellcasting.choice };
   }
   return {
     concept,
@@ -403,6 +408,21 @@ function applyBackgroundLore(next, value, changed) {
   changed.push("backgroundLore");
 }
 
+/**
+ * Change the saved answer of the held archetype's ChoiceSet (Bard muse). Only an eligible answer listed in the plan is
+ * accepted; no spell, slot or feat depends on it, so nothing else is recomputed.
+ */
+function applyArchetypeChoiceEdit(next, value, changed) {
+  const choice = next.concept.archetypeSpellcasting?.choice;
+  if (!choice) fail(PC_EDIT_CODES.INVALID, "archetypeChoice", "this character has no spellcasting archetype choice");
+  if (typeof value !== "string" || !choice.options.some((option) => option.value === value)) {
+    fail(PC_EDIT_CODES.INVALID, "archetypeChoice", "not an eligible choice");
+  }
+  if (choice.value === value) return;
+  choice.value = value;
+  changed.push("archetypeChoice");
+}
+
 function applyFeatEdit(next, edit, changed) {
   if (next.pending.length) fail(PC_EDIT_CODES.PENDING, "feat", "resolve pending identity choices before editing feats");
   const { resolved } = next;
@@ -548,6 +568,8 @@ export async function applyPCEdit(plan, edit, { catalogs = {}, services = {}, ma
     applyFeatEdit(next, edit, changed);
   } else if (edit.field === "equipment") {
     await applyEquipmentEdit(next, edit, catalogs, deps, changed);
+  } else if (edit.field === "archetypeChoice") {
+    applyArchetypeChoiceEdit(next, edit.value, changed);
   } else if (edit.field === "keyAbility") {
     applyKeyAbility(next, edit.value, changed);
   } else if (edit.field === "backgroundLore") {
@@ -556,7 +578,7 @@ export async function applyPCEdit(plan, edit, { catalogs = {}, services = {}, ma
     await applyCatalogEdit(next, edit, catalogs, deps, changed, invalidated);
   }
 
-  if (changed.length && next.pending.length === 0 && !["feat", "equipment"].includes(edit.field)) {
+  if (changed.length && next.pending.length === 0 && !["feat", "equipment", "archetypeChoice"].includes(edit.field)) {
     await refresh(next, deps, invalidated, maxRarity);
   }
   const equipmentGp = await deps.equipmentValue(next.resolved.equipment);
@@ -595,6 +617,10 @@ export function validatePCEditCompletion(plan) {
   if ((heldPlan?.archetype.pkg ?? null) !== (planned?.pkg ?? null)
     || (heldPlan && JSON.stringify(heldPlan.picks) !== JSON.stringify(planned.plannedPicks))) {
     errors.push("the spellcasting archetype feats and the archetype spell plan disagree");
+  }
+  const choice = planned?.choice;
+  if (choice && !choice.options.some((option) => option.value === choice.value)) {
+    errors.push("the spellcasting archetype choice is missing or not eligible");
   }
   const manifest = completionManifest({ mode: "character", concept, resolved });
   return {

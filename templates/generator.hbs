@@ -584,11 +584,15 @@
 
     {{#if pcPreview.archetype}}
       <h3>{{pcPreview.archetype.label}} <span class="spf-spell-dc">({{pcPreview.archetype.tradition}})</span></h3>
-      <p class="spf-hint">{{localize "SIMPLYPF2E.Preview.PCArchetypeSpells"}}</p>
+      <p class="spf-hint">{{pcPreview.archetype.note}}</p>
+      {{#if pcPreview.archetype.choice}}
+        <p role="status"{{#if pcPreview.archetype.choice.missing}} class="notification warning"{{/if}}>{{pcPreview.archetype.choice.label}}: {{#if pcPreview.archetype.choice.value}}{{pcPreview.archetype.choice.value}}{{else}}{{localize "SIMPLYPF2E.Preview.PCArchetypeChoiceMissing"}}{{/if}}</p>
+      {{/if}}
       <ul class="spf-list spf-inline">
         {{#each pcPreview.archetype.spells}}
           <li class="{{#unless this.found}}spf-dropped{{/unless}}">
             {{this.name}} <span class="spf-rank">({{#if this.rank}}{{localize "SIMPLYPF2E.Preview.Rank"}} {{this.rank}}{{else}}{{localize "SIMPLYPF2E.Preview.Cantrip"}}{{/if}})</span>
+            {{#if this.signature}}<span class="spf-rank">({{localize "SIMPLYPF2E.Preview.Signature"}})</span>{{/if}}
             {{#if this.found}}<i class="fa-solid fa-circle-check spf-match" aria-hidden="true" title="{{localize 'SIMPLYPF2E.Preview.Found'}}"></i>{{else}}<i class="fa-solid fa-circle-exclamation" aria-hidden="true" title="{{localize 'SIMPLYPF2E.Preview.NotFound'}}"></i>{{/if}}
           </li>
         {{/each}}

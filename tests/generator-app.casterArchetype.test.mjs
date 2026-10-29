@@ -31,8 +31,11 @@ const feat = (id, name) => issueCandidate({ packId: "test.feats", _id: id, type:
 const dedication = feat("wizded", "Wizard Dedication");
 const basic = feat("wizbasic", "Basic Wizard Spellcasting");
 const toughness = feat("tough", "Toughness");
+const bardDedication = feat("barded", "Bard Dedication");
+const bardBasic = feat("bardbasic", "Basic Bard Spellcasting");
+let museOptions = [{ value: "enigma", label: "Enigma" }, { value: "maestro", label: "Maestro" }, { value: "warrior", label: "Warrior" }];
 const spell = (id, name, rank) => ({ id, name, rank, ref: { packId: "test.spells", _id: id } });
-const spellCandidates = [spell("dm", "Detect Magic", 0), spell("ea", "Electric Arc", 0), spell("li", "Light", 0), spell("tp", "Telekinetic Projectile", 0), spell("fe", "Fear", 1), spell("gt", "Grim Tendrils", 1)];
+const spellCandidates = [spell("dm", "Detect Magic", 0), spell("ea", "Electric Arc", 0), spell("li", "Light", 0), spell("tp", "Telekinetic Projectile", 0), spell("fe", "Fear", 1), spell("gt", "Grim Tendrils", 1), spell("mi", "Mirror Image", 2), spell("hs", "Haste", 3)];
 
 // ---- Scenario state read by the mocks.
 let allowSpellcasting = true;
@@ -76,11 +79,11 @@ const fighterDoc = { name: "Fighter", type: "class", uuid: "Compendium.test.clas
   toObject() { return { name: "Fighter", type: "class", system: { keyAbility: { value: ["str"] } } }; } };
 const fighterCandidate = issueCandidate({ packId: "test.classes", _id: "fighter", type: "class", name: "Fighter" }, { name: "Fighter", uuid: "Compendium.test.classes.Item.fighter" });
 const featSlots = () => [
-  { type: "class", level: 2, archetype: false, abilities: { int: 2 }, candidates: [toughness, dedication] },
-  { type: "class", level: 4, archetype: false, abilities: { int: 2 }, candidates: [toughness, dedication, basic] }
+  { type: "class", level: 2, archetype: false, abilities: { int: 2 }, candidates: [toughness, dedication, bardDedication] },
+  { type: "class", level: 4, archetype: false, abilities: { int: 2 }, candidates: [toughness, dedication, basic, bardDedication, bardBasic] }
 ];
 const mocks = {
-  ...casterArchetype, needsExtraPurchasePass,
+  ...casterArchetype, needsExtraPurchasePass, casterArchetypeChoiceOptions: async () => museOptions,
   ...identityHelpers, getBackgroundLoreOptions, getDocument: async () => fighterDoc, getClassPathCandidates: async () => [],
   validatePCIdentityRequirements: async () => {}, supportedClassCandidates: (list) => list, classModelsFocusSpells: () => false,
   reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder, pcEditorSelections,
@@ -107,7 +110,7 @@ const mocks = {
   selectFeats: async () => ({ picks: [], usage: {} }),
   resolveFeatPicks: async () => held.map((name, index) => ({
     type: "class", level: index === 0 ? 2 : 4, archetype: false, name,
-    entry: { packId: "test.feats", _id: { "Wizard Dedication": "wizded", "Basic Wizard Spellcasting": "wizbasic", Toughness: "tough" }[name] }
+    entry: { packId: "test.feats", _id: { "Wizard Dedication": "wizded", "Basic Wizard Spellcasting": "wizbasic", "Bard Dedication": "barded", "Basic Bard Spellcasting": "bardbasic", Toughness: "tough" }[name] }
   })),
   pcSpellcastingProfile: () => null, pcSpellPlan: () => ({ picks: {}, signatureRanks: [], slots: {} }),
   slugify: (name) => String(name).toLowerCase(),
@@ -120,11 +123,9 @@ const mocks = {
   selectArchetypeSpells: async (args) => {
     calls.select.push(args);
     if (selectFails) throw new Error("provider failed");
-    return {
-      spells: [spellCandidates[0], spellCandidates[1], spellCandidates[2], spellCandidates[3], spellCandidates[4], spellCandidates[5]]
-        .map((pick) => ({ name: pick.name, candidate: pick.ref, rank: pick.rank })),
-      usage: {}
-    };
+    // Fill the module's plan in candidate order: the first N candidates of each planned rank.
+    const picked = Object.entries(args.plannedPicks).flatMap(([rank, count]) => spellCandidates.filter((c) => c.rank === Number(rank)).slice(0, count));
+    return { spells: picked.map((pick) => ({ name: pick.name, candidate: pick.ref, rank: pick.rank })), usage: {} };
   },
   generatePCLoot: async () => ({ loot: [] }), normalizeLoot: (loot) => loot,
   getEquipmentCandidates: async () => [], dedupeLootAgainstEquipment: (loot) => loot, enforceNamedLootBudget: (loot) => loot,
@@ -181,6 +182,8 @@ async function generate() {
   const labelsOf = (control) => Array.from(control.options, (option) => option.label.split(" — ")[0]);
   assert.deepEqual(labelsOf(featControls[0]), ["Toughness", "Wizard Dedication"], "slot 1 keeps its current dedication visible and offers no other caster feat");
   assert.deepEqual(labelsOf(featControls[1]), ["Toughness", "Basic Wizard Spellcasting"], "slot 2 keeps its current Basic feat visible and offers no dedication");
+  assert.equal(app.context.pcPreview.archetype.choice, null, "Wizard has no ChoiceSet row");
+  assert.ok(!app.context.pcEditor.controls.some((control) => control.control === "archetypeChoice"), "and no muse control");
 }
 
 // (b) Dedication only (level 2): cantrips only, no ranked picks.
@@ -190,7 +193,7 @@ async function generate() {
   const app = await generate();
   assert.deepEqual({ ...calls.select[0].plannedPicks }, { 0: 4 });
   assert.equal(calls.candidates[0][1], 0, "no ranked spells are requested without the Basic feat");
-  assert.equal(app.context.pcPreview.archetype.spells.length, 6, "the mock returned six picks; the entry builder, not the selector, drops excess");
+  assert.equal(app.context.pcPreview.archetype.spells.length, 4, "four cantrips and no ranked picks");
   held = ["Wizard Dedication", "Basic Wizard Spellcasting"];
   level = 4;
 }
@@ -233,6 +236,54 @@ async function generate() {
   assert.match(String(app.context.error), /archetype-spell/);
   assert.ok(warnings.some((line) => /no archetype spell candidates/.test(line)));
   candidatesEmpty = false;
+}
+
+// ================= Bard =================
+{
+  held = ["Bard Dedication", "Basic Bard Spellcasting"];
+  level = 6;
+  const app = await generate();
+  assert.equal(app.context.error, null, `the run completes (${app.context.error ?? "no error"})`);
+  assert.deepEqual({ ...calls.select[0].plannedPicks }, { 0: 2, 1: 1, 2: 1 }, "two cantrips and one spell per rank at level 6");
+  assert.equal(calls.select[0].tradition, "occult");
+  assert.equal(calls.select[0].label, "Bard Archetype Spells");
+  assert.equal(calls.select[0].repertoire, true, "the prompt says repertoire");
+  const preview = app.context.pcPreview;
+  assert.equal(preview.concept.archetypeSpellcasting.choice.value, "maestro", "the visible default is Maestro");
+  assert.equal(preview.archetype.choice.value, "Maestro");
+  assert.equal(preview.archetype.choice.missing, false);
+  assert.equal(preview.archetype.note, "SIMPLYPF2E.Preview.PCArchetypeBard");
+  const signatures = Array.from(preview.archetype.spells).filter((row) => row.signature).map((row) => [row.name, row.rank]);
+  assert.deepEqual(signatures, [["Fear", 1]], "one signature spell, the lowest-rank repertoire spell, from level 6");
+  const control = Array.from(app.context.pcEditor.controls).find((entry) => entry.control === "archetypeChoice");
+  assert.ok(control, "the muse is an editor control");
+  assert.deepEqual(Array.from(control.options, (option) => [option.label, option.selected]), [["Enigma", false], ["Maestro", true], ["Warrior", false]]);
+  assert.equal(app.context.pcEditor.blocked, false, "a valid default does not block");
+}
+{
+  // Level 4: no signature spell yet.
+  level = 4;
+  const app = await generate();
+  assert.equal(Array.from(app.context.pcPreview.archetype.spells).filter((row) => row.signature).length, 0);
+  level = 6;
+}
+{
+  // Maestro unavailable: no arbitrary substitute; Create is blocked by the completion manifest.
+  museOptions = [{ value: "enigma", label: "Enigma" }, { value: "warrior", label: "Warrior" }];
+  const app = await generate();
+  assert.match(String(app.context.error), /archetype-choice: dedicationMuse/, "a missing muse blocks the run");
+  museOptions = [];
+  const none = await generate();
+  assert.match(String(none.context.error), /archetype-choice/, "no eligible muse at all blocks as well");
+  museOptions = [{ value: "enigma", label: "Enigma" }, { value: "maestro", label: "Maestro" }, { value: "warrior", label: "Warrior" }];
+}
+{
+  // Spellcasting not allowed: no plan, no choice, no muse control, no call.
+  allowSpellcasting = false;
+  const app = await generate();
+  assert.equal(calls.select.length, 0);
+  assert.equal(app.context.pcPreview.archetype, null);
+  allowSpellcasting = true;
 }
 
 console.log("generator-app.casterArchetype.test.mjs: the archetype spellbook is planned from the held feats, previewed, blocked when empty, and not editable");

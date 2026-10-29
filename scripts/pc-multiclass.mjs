@@ -14,6 +14,7 @@
 // Removing a dedication therefore invalidates its later feats on re-validation.
 
 import { slugify } from "./text.mjs";
+import { isCasterPackage } from "./pc-caster-archetype.mjs";
 
 const ABILITY_LABELS = Object.freeze({
   str: "Strength", dex: "Dexterity", con: "Constitution", int: "Intelligence", wis: "Wisdom", cha: "Charisma"
@@ -81,6 +82,16 @@ export const MULTICLASS_PACKAGES = Object.freeze([
     feats: Object.freeze([
       Object.freeze({ name: "Basic Wizard Spellcasting", requires: Object.freeze([]) })
     ])
+  }),
+  // Bard spellcasting package (feat/bard-archetype): dedication "Charisma +2"
+  // (feats/archetype/bard/level-2/bard-dedication.json), Basic feat at level 4 (level-4/).
+  Object.freeze({
+    slug: "bard",
+    dedication: "Bard Dedication",
+    abilities: Object.freeze([Object.freeze({ key: "cha", min: 2 })]),
+    feats: Object.freeze([
+      Object.freeze({ name: "Basic Bard Spellcasting", requires: Object.freeze([]) })
+    ])
   })
 ]);
 
@@ -113,7 +124,8 @@ export const MULTICLASS_UNAVAILABLE = Object.freeze([
   Object.freeze({ name: "Master Wizard Spellcasting", reason: "legendary-in-Arcana prerequisite is not provable by the staged evaluator" }),
   Object.freeze({ name: "Cleric Dedication", reason: "grants a deity ChoiceSet the module cannot answer; spellcasting dedication not modeled" }),
   Object.freeze({ name: "Druid Dedication", reason: "ChoiceSet (druidic order) the module cannot answer; spellcasting dedication not modeled" }),
-  Object.freeze({ name: "Bard Dedication", reason: "ChoiceSet (muse) the module cannot answer; spellcasting dedication not modeled" }),
+  Object.freeze({ name: "Expert Bard Spellcasting", reason: "master-in-Occultism prerequisite is not provable by the staged evaluator" }),
+  Object.freeze({ name: "Master Bard Spellcasting", reason: "legendary-in-Occultism prerequisite is not provable by the staged evaluator" }),
   Object.freeze({ name: "Sorcerer Dedication", reason: "ChoiceSet (bloodline) decides the tradition; spellcasting dedication not modeled" }),
   Object.freeze({ name: "Witch Dedication", reason: "ChoiceSet (patron) decides the tradition and spells live on a familiar; not modeled" }),
   Object.freeze({ name: "Oracle Dedication", reason: "ChoiceSet (mystery) and a curse the module cannot answer; spellcasting dedication not modeled" }),
@@ -184,6 +196,8 @@ export function multiclassBlockers(names, className) {
       if (info.pkg === ownClass) reason = `${info.name} is a dedication of your own class`;
       else if (heldDedications.has(info.pkg)) reason = `${info.name} is already held`;
       else if (current && others < 2) reason = `complete ${current.name} (two more feats) before ${info.name}`;
+      // One spellcasting archetype per character: the generator plans and builds a single archetype entry.
+      else if (isCasterPackage(info.pkg) && [...heldDedications].some(isCasterPackage)) reason = `${info.name}: only one spellcasting archetype is supported`;
     } else if (!heldDedications.has(info.pkg)) {
       reason = `${info.name} needs ${packageDedication(info.pkg)} first`;
     } else {

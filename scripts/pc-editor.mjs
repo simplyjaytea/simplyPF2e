@@ -22,7 +22,7 @@ import { pcIdentityKey } from "./pc-identity.mjs";
 
 const NULLABLE = new Set(["heritage", "classPath"]);
 const KEY_FIELDS = new Set(["ancestry", "background", "class"]);
-const VALUE_FIELDS = new Set(["keyAbility", "backgroundLore"]);
+const VALUE_FIELDS = new Set(["keyAbility", "backgroundLore", "archetypeChoice"]);
 const FEAT_CONTROL = /^feat\.(\d+)$/;
 const EQUIPMENT_CONTROL = /^equipment\.(\d+)$/;
 const CLASS_PATH_CONTROL = /^classPath\.(.+)$/s;
@@ -84,6 +84,7 @@ export function pcEditorSelections(plan) {
     keyAbility: pick("keyAbility", concept.keyAbility ?? ""),
     backgroundLore: pick("backgroundLore", concept.backgroundLore ?? "")
   };
+  if (concept.archetypeSpellcasting?.choice) selections.archetypeChoice = concept.archetypeSpellcasting.choice.value ?? "";
   for (const [bridge, ref] of Object.entries(concept.classPathCandidates ?? {})) {
     selections[`classPath.${bridge}`] = pick(`classPath.${bridge}`, keyOf(ref));
   }
