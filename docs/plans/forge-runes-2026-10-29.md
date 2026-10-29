@@ -94,3 +94,41 @@ Other changed tests and their revert checks:
 - The family policy is a module decision. A GM who edits a created item by hand can still stack Flaming and Flaming (Greater), because pf2e does not stop it.
 - The drift tool still warns on the name-form Skillful Lessons uuid. That warning is accurate and is accepted.
 - `lesser` and `moderate` grades are not in the family policy. The question of whether they supersede a base rune is not answered by 8.5.0 data.
+
+## 7. Repair round (Code Reviewer, APPROVE WITH FIXES on `b0dec6c`)
+
+### Dropped runes reach the preview
+
+`normalizeRunedItemConcept` now returns `propertyDrops`: one entry per dropped property rune, with its `reason` (`slot`, `family`, `duplicate` or `category`), its `name`, and for `slot` the `slots` count and for `category` the base category. `category` is the fourth reason: the earlier record listed three, but a category drop is also a rune the GM asked for and did not get, so it is shown too. The `console.warn` lines are kept.
+
+`itemforge-app.mjs` builds one localized line per drop (`droppedRuneLines`, literal keys under `SIMPLYPF2E.ItemForge.Dropped`) and the runed preview renders them with `{{this}}`, under the rune list. Lines never block Create.
+
+Each line reads the English text in `lang/en.json`, for example: "Fire was not kept: a potency +1 rune leaves 1 property-rune slot(s) for this item."
+
+### Golden regression for the built concept
+
+`tests/fixtures/forge-runes/normalize-cases.json` holds eight rune combinations (valid two-rune plate, an overflow at potency +1, a light base with a light-only rune, Flaming with Flaming (Greater), a duplicate pick, a category drop, a weapon with one Flaming rune, and no property runes). Each case stores its candidate specs, the picks by label, and `expected`.
+
+How `expected` was captured: `git show 74acb07:scripts/item-builder.mjs` was copied to a temporary module next to the scripts. Each case's candidates were issued with `issueCandidate({ packId: "test.runes", _id })`, labels were mapped to the issued ids, and `normalizeRunedItemConcept` ran with the same arguments the test uses. The output was written as JSON. The temporary module and capture script were deleted afterwards, and no capture artifacts are in the fixture.
+
+`tests/item-builder.golden.test.mjs` replays each case through the current code. The built concept must equal `expected` exactly, except for the new `propertyDrops` key, which is checked separately to be an array.
+
+### Tests and revert checks (this round)
+
+| Revert | Caught by |
+| --- | --- |
+| drops removed from the preview context | `itemforge-app.runedDrops`: overflow line |
+| preview block removed from the template | `itemforge-app.runedDrops`: wiring check |
+| preview block changed to unescaped output | `itemforge-app.runedDrops`: escaping check |
+| family drop not returned | `itemforge-app.runedDrops`: family line |
+| duplicate drop not returned | `itemforge-app.runedDrops`: duplicate line |
+| slot drop not returned | `itemforge-app.runedDrops`: overflow line |
+| slot cap removed | `item-builder.golden`: overflow case differs from main@74acb07 |
+| a drop blocks Create | `itemforge-app.runedDrops`: Create still writes |
+| a lang key removed | `check.mjs` integrity: "Missing localization key" (the key is now literal) |
+
+All revert checks were run on the file and restored from a copy. The app test also checks that the console warning still appears.
+
+### Gate
+
+`node tools/check.mjs </dev/null` exits 0 on Node 22.23.4: `Integrity passed: 386 imports, 992 exports, 15 templates, 640 localization keys; 0 unused keys`; `Links passed: 209 links in 61 files`; `Regressions passed: 148 files`. `git diff --check main..HEAD` is clean.
