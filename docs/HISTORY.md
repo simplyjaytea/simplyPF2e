@@ -2,6 +2,12 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-29 — Third release: small-gaps fixes (v0.3.5.83)
+
+- After shipping v0.3.5.82, the user asked to work through todo item #2 (the open decisions) plus the backlog, ledger rows and small gaps. Three tracks fanned out from `main@1c7f0cc` and were merged into `integrate/2026-10-30-fixes` (`3cd1705`): Code Monkey 2 (encounter preview skipped-items line + tests killing the three surviving mutants), Code Monkey Plus (`requestJSON` retry progress — found already guarded, added a regression pin — plus the rarity cap in the Character editor recompute and the Forge runed-item pools), and Code Monkey 3 (strike range list 150 → 200 ft, the published thunderbird maximum).
+- The six "open decisions" resolved: the `magical` trait, deck rarity and platinum threshold were already settled in code; strike cap fixed at 200; attribution stays `jt`; speed/sense tops are a data caveat.
+- Code Reviewer APPROVE and QA APPROVE on `1c7f0cc..3cd1705`. QA's two LOW notes (unknown-rarity test gap, runed-pool ledger/docs note) folded in on the release branch. Not verified: Foundry, rendered templates.
+
 ## 2026-10-29 — Second release: world folder, speeds and senses, Wizard archetype, experimental default on
 
 - The user asked for four features in one fan-out. Code Monkey (W0/W0b release fixes on `fix/release-0.82`), Code Monkey 2 (W1 world folder on `feat/re-folder`), Code Monkey 3 (W2 speeds and the experimental default on `feat/speeds-default`) and Code Monkey Plus (W3 Wizard archetype on `feat/caster-multiclass`) each worked in their own worktree; the Lead merged them into `integrate/2026-10-30` (`1ae0a6d`) and resolved the PLAYBOOK, README, ledger, `pc-builder.mjs` and `generator-app.mjs` conflicts by keeping both sides.

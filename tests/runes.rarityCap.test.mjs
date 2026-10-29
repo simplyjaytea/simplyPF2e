@@ -10,6 +10,7 @@ const indexEntries = [
   entry("kris", "Kris", "weapon", { level: { value: 0 } }, "uncommon"),
   entry("katar-rare", "Rare Blade", "weapon", { level: { value: 0 } }, "rare"),
   entry("untagged", "Plain Mace", "weapon", { level: { value: 0 } }),
+  entry("bogus", "Bogus Blade", "weapon", { level: { value: 0 } }, "bogus"),
   entry("flaming", "Flaming", "equipment", { level: { value: 8 }, usage: { value: "etched-onto-a-weapon" } }, "common"),
   entry("ghost", "Ghost Touch", "equipment", { level: { value: 4 }, usage: { value: "etched-onto-a-weapon" } }, "uncommon"),
   entry("vorpal", "Vorpal", "equipment", { level: { value: 17 }, usage: { value: "etched-onto-a-weapon" } }, "rare"),
@@ -23,13 +24,14 @@ globalThis.game = { settings: { get: () => ({}) }, packs: new Map([["pf2e.equipm
 const names = (list) => list.map((candidate) => candidate.name);
 
 // No cap: nothing is filtered (existing callers and the unlimited default).
-assert.deepEqual(names(await getBaseItemCandidates("weapon", 20)), ["Kris", "Longsword", "Plain Mace", "Rare Blade"]);
-assert.deepEqual(names(await getBaseItemCandidates("weapon", 20, { maxRarity: null })), ["Kris", "Longsword", "Plain Mace", "Rare Blade"]);
+assert.deepEqual(names(await getBaseItemCandidates("weapon", 20)), ["Bogus Blade", "Kris", "Longsword", "Plain Mace", "Rare Blade"]);
+assert.deepEqual(names(await getBaseItemCandidates("weapon", 20, { maxRarity: null })), ["Bogus Blade", "Kris", "Longsword", "Plain Mace", "Rare Blade"]);
 
 // Base items: common keeps common and rarity-less (default common); uncommon adds Kris; rare adds Rare Blade.
 assert.deepEqual(names(await getBaseItemCandidates("weapon", 20, { maxRarity: "common" })), ["Longsword", "Plain Mace"]);
 assert.deepEqual(names(await getBaseItemCandidates("weapon", 20, { maxRarity: "uncommon" })), ["Kris", "Longsword", "Plain Mace"]);
 assert.deepEqual(names(await getBaseItemCandidates("weapon", 20, { maxRarity: "rare" })), ["Kris", "Longsword", "Plain Mace", "Rare Blade"]);
+assert.ok(!names(await getBaseItemCandidates("weapon", 20, { maxRarity: "rare" })).includes("Bogus Blade"), "an unknown rarity is dropped when a cap is set");
 
 // Property runes.
 assert.deepEqual(names(await getPropertyRuneCandidates("weapon", 20, { maxRarity: "common" })), ["Flaming"]);
