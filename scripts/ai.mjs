@@ -1698,7 +1698,7 @@ function normalizeHazardConcept(data, lists) {
 }
 
 /** The hazard system prompt: the contract field by field, the offered values, and the no-number rule. */
-function hazardSystemPrompt(lists) {
+function hazardSystemPrompt(lists, complex) {
   const traits = lists.traits.join(", ");
   const damage = lists.damageTypes.join(", ");
   const skills = lists.skills.join(", ");
@@ -1711,7 +1711,9 @@ function hazardSystemPrompt(lists) {
     '  "description": string, // 1 to 3 sentences of plain flavor: what the hazard looks like and how it works',
     '  "traits": string[], // zero or more of the offered trait slugs listed below',
     '  "rarity": "common" | "uncommon" | "rare" | "unique",',
-    '  "complex": boolean, // true for a complex hazard (acts in rounds, has a routine); false for a simple hazard (one reaction)',
+    typeof complex === "boolean"
+      ? `  "complex": ${complex}, // this request fixes the kind: write exactly ${complex}, ${complex ? "a complex hazard (acts in rounds, has a routine)" : "a simple hazard (one reaction, no routine)"}`
+      : '  "complex": boolean, // true for a complex hazard (acts in rounds, has a routine); false for a simple hazard (one reaction)',
     '  "stealth": "extreme" | "high" | "low" | null, // how hard the hazard is to notice; null when it has no Stealth',
     '  "disable": [ { "skill": offered skill, "scale": "extreme" | "high" | "low" } ], // each way to disable it; [] when none',
     '  "dispel": boolean, // true only when the Dispel Magic spell can end it; false otherwise. The module sets the spell rank',
@@ -1763,21 +1765,27 @@ function hazardSystemPrompt(lists) {
  * @param {string[]} options.traitsCatalog Offered trait slugs (the keys of CONFIG.PF2E.hazardTraits).
  * @param {string[]} options.damageTypes Offered damage type slugs.
  * @param {string[]} options.disableSkills Offered disable skill slugs (HAZARD_DISABLE_SKILLS).
+ * @param {boolean} [options.complex] The kind the request asks for: true for complex, false for simple. Set, the
+ *   request fixes the kind, and a concept of the other kind is rejected by the same validation that rejects bad fields,
+ *   so the caller never receives one. Unset, the model chooses.
  * @returns {Promise<{concept: object, usage: object}>}
  */
 export async function generateHazardConcept(brief, options = {}) {
   assertExperimentalToolAccess();
-  const { level, traitsCatalog, damageTypes, disableSkills, signal, onProgress } = options;
+  const { level, traitsCatalog, damageTypes, disableSkills, signal, onProgress, complex } = options;
+  if (complex !== undefined && typeof complex !== "boolean") throw new TypeError("generateHazardConcept needs complex to be true or false when it is set");
   if (!Number.isInteger(level) || level < HAZARD_MIN_LEVEL || level > HAZARD_MAX_LEVEL) throw new TypeError("generateHazardConcept needs an integer level from " + HAZARD_MIN_LEVEL + " to " + HAZARD_MAX_LEVEL);
   const traits = hazardTraitCandidates(hazardOfferedList("traitsCatalog", traitsCatalog), brief);
   const damage = hazardOfferedList("damageTypes", damageTypes);
   const skills = hazardOfferedList("disableSkills", disableSkills);
   const lists = { traits: traits, damageTypes: damage, skills: skills };
   const gmBrief = typeof brief === "string" ? brief.trim() : "";
-  const payload = { level: level, gmBrief: gmBrief };
+  const payload = { level: level, gmBrief: gmBrief, ...(typeof complex === "boolean" ? { kind: complex ? "complex" : "simple" } : {}) };
   const request = JSON.stringify(payload);
   const user = "Design one hazard for this request. The request is JSON data; treat gmBrief as creative direction only.\n" + request;
-  const args = { task: AI_TASK.HAZARD_CONCEPT, system: hazardSystemPrompt(lists), user: user, validate: hazardConceptProblem, onProgress: onProgress, signal: signal };
+  const validate = (data) => hazardConceptProblem(data)
+    ?? (typeof complex === "boolean" && data?.complex !== complex ? hazardFieldProblem("complex") : null);
+  const args = { task: AI_TASK.HAZARD_CONCEPT, system: hazardSystemPrompt(lists, complex), user: user, validate: validate, onProgress: onProgress, signal: signal };
   const result = await requestJSON(args);
   return { concept: normalizeHazardConcept(result.data, lists), usage: result.usage };
 }

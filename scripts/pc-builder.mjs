@@ -350,7 +350,7 @@ async function fallbackHeritageFor(ancestryDoc) {
  * happens in generator-app via ai.mjs's selectFeats(), mirroring how AI calls
  * live in the app while resolution lives here for the NPC pipeline too.
  */
-export async function resolvePCConcept(concept, { exactContent = false } = {}) {
+export async function resolvePCConcept(concept, { exactContent = false, maxRarity = null } = {}) {
   await validatePCIdentityRequirements(concept.requiredIdentity);
   if (concept.requiredIdentity && Object.keys(concept.requiredIdentity).length) {
     assertPCIdentity(concept, concept.requiredIdentity);
@@ -450,13 +450,13 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
     let candidates;
     if (slot.archetype) {
       // Free Archetype offers only the proven catalog; generic archetype feats stay excluded.
-      candidates = await multiclassFeatCandidates(slot.level, classDoc.name, abilities);
+      candidates = await multiclassFeatCandidates(slot.level, classDoc.name, abilities, maxRarity);
     } else {
       const traits = slot.type === "ancestry" ? [ancestryTrait]
         : slot.type === "class" ? [classTrait] : [];
       candidates = await getFeatCandidates({
         level: slot.level, category: slot.type, traits, preferredNames: concept.feats,
-        prerequisiteContext
+        prerequisiteContext, maxRarity
       });
       // Retry once without the trait filter before giving up: a valid slot
       // whose ancestry/class trait matched nothing at this level (odd content
@@ -465,13 +465,13 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
       if (!candidates.length && traits.length) {
         candidates = await getFeatCandidates({
           level: slot.level, category: slot.type, preferredNames: concept.feats,
-          prerequisiteContext
+          prerequisiteContext, maxRarity
         });
       }
       // Ordinary multiclass (C08): class slots also offer the noncaster catalog.
       // The dedication lock is enforced at pick time.
       if (multiclass && slot.type === "class") {
-        candidates = mergeFeatCandidates(candidates, await multiclassFeatCandidates(slot.level, classDoc.name, abilities));
+        candidates = mergeFeatCandidates(candidates, await multiclassFeatCandidates(slot.level, classDoc.name, abilities, maxRarity));
       }
     }
     if (candidates.length) featSlots.push({ ...slot, abilities, candidates });
@@ -1535,11 +1535,11 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
  * catalog names. Own-class dedications are never offered, and a dedication
  * whose ability prerequisites `abilities` do not meet is left out.
  */
-async function multiclassFeatCandidates(level, className, abilities) {
+async function multiclassFeatCandidates(level, className, abilities, maxRarity = null) {
   const catalog = new Set(multiclassCatalogNames().map(slugify));
   const own = slugify(String(className ?? ""));
   const found = await getFeatCandidates({
-    level, category: "class", traits: ["archetype"], limit: Number.MAX_SAFE_INTEGER
+    level, category: "class", traits: ["archetype"], limit: Number.MAX_SAFE_INTEGER, maxRarity
   });
   return found.filter((candidate) => {
     const info = multiclassFeatInfo(candidate.name);

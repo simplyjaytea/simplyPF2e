@@ -540,7 +540,7 @@ export function limitFeatCandidates(
  * @param {object} [plannedPicks] module-owned PC base plan; reserves rank candidates
  * @returns {Promise<{name: string, rank: number, traits: string[]}[]>} sorted by rank then name
  */
-export async function getSpellCandidates(tradition, maxRank, keywords = [], plannedPicks = null) {
+export async function getSpellCandidates(tradition, maxRank, keywords = [], plannedPicks = null, { maxRarity = null } = {}) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("spells")) {
@@ -555,6 +555,7 @@ export async function getSpellCandidates(tradition, maxRank, keywords = [], plan
       const isCantrip = traits.includes("cantrip");
       const rank = isCantrip ? 0 : (entry.system?.level?.value ?? 1);
       if (rank > maxRank) continue;
+      if (maxRarity && !rarityAtMost(entry.system?.traits?.rarity ?? "common", maxRarity)) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
       candidates.push(candidateRecord(entry, { name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity }));
@@ -627,7 +628,7 @@ export async function getCantripCandidates(keywords = [], { maxRarity = "common"
  * their trait data, and their legal source is established by the class/grant
  * pipeline rather than the spell's own tradition field.
  */
-export async function getFocusSpellCandidates(maxRank, keywords = []) {
+export async function getFocusSpellCandidates(maxRank, keywords = [], { maxRarity = null } = {}) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("spells")) {
@@ -639,6 +640,7 @@ export async function getFocusSpellCandidates(maxRank, keywords = []) {
       if (!traits.includes("focus")) continue;
       const rank = traits.includes("cantrip") ? 0 : (entry.system?.level?.value ?? 1);
       if (rank > maxRank || seen.has(entry.normalized)) continue;
+      if (maxRarity && !rarityAtMost(entry.system?.traits?.rarity ?? "common", maxRarity)) continue;
       seen.add(entry.normalized);
       candidates.push(candidateRecord(entry, { name: entry.name, rank, traits, rarity: entry.system?.traits?.rarity }));
     }
@@ -666,7 +668,7 @@ export async function getFocusSpellCandidates(maxRank, keywords = []) {
  * @returns {Promise<{name: string, type: string, level: number}[]>} sorted by level then name
  */
 export async function getEquipmentCandidates(
-  level, keywords = [], { treasure = false, includeCoins = true, limit = EQUIPMENT_CANDIDATE_LIMIT } = {}
+  level, keywords = [], { treasure = false, includeCoins = true, limit = EQUIPMENT_CANDIDATE_LIMIT, maxRarity = null } = {}
 ) {
   const maxLevel = Math.max(level, 0);
   const candidates = [];
@@ -689,6 +691,7 @@ export async function getEquipmentCandidates(
       if (entry.type === "consumable" && entry.system?.category === "scroll" && entry.system?.spell == null) continue;
       const itemLevel = entry.system?.level?.value ?? 0;
       if (itemLevel > maxLevel) continue;
+      if (maxRarity && !rarityAtMost(entry.system?.traits?.rarity ?? "common", maxRarity)) continue;
       if (seen.has(entry.normalized)) continue;
       seen.add(entry.normalized);
       candidates.push(candidateRecord(entry, {
@@ -711,9 +714,9 @@ export async function getEquipmentCandidates(
  * resolve. Coins are preserved from the first draft and resolved as sheet
  * currency, so they are intentionally absent from this selector catalog.
  */
-export function getLootCandidates(level, keywords = []) {
+export function getLootCandidates(level, keywords = [], { maxRarity = null } = {}) {
   return getEquipmentCandidates(level + 2, keywords, {
-    treasure: true, includeCoins: false, limit: LOOT_CANDIDATE_LIMIT
+    treasure: true, includeCoins: false, limit: LOOT_CANDIDATE_LIMIT, maxRarity
   });
 }
 
@@ -850,7 +853,7 @@ export function getHeritageCandidates(maxRarity, options) {
  */
 export async function getFeatCandidates({
   level, category, traits = [], preferredNames = [], requireNoPrerequisites = false, prerequisiteContext = null,
-  limit = FEAT_CANDIDATE_LIMIT
+  limit = FEAT_CANDIDATE_LIMIT, maxRarity = null
 } = {}) {
   const candidates = [];
   const seen = new Set();
@@ -861,6 +864,7 @@ export async function getFeatCandidates({
       if (entry.type !== "feat") continue;
       if ((entry.system?.level?.value ?? 0) > level) continue;
       if (category && entry.system?.category !== category) continue;
+      if (maxRarity && !rarityAtMost(entry.system?.traits?.rarity ?? "common", maxRarity)) continue;
       // PF2e stores prerequisite text as authored strings, not an eligibility
       // API. Complete-only catalogs evaluate that text against a staged actor
       // when one is supplied; otherwise they still accept only an explicit
@@ -934,7 +938,7 @@ export function rankCreatureFeatCandidates(candidates, {
  * trait and staged-prerequisite semantics remain unchanged.
  */
 export async function getCreatureFeatCandidates({
-  level, preferredNames = [], prompt = "", preferredTraits = [], limit = FEAT_CANDIDATE_LIMIT
+  level, preferredNames = [], prompt = "", preferredTraits = [], limit = FEAT_CANDIDATE_LIMIT, maxRarity = null
 } = {}) {
   if (!Number.isFinite(level)) return [];
   const candidates = [];
@@ -946,6 +950,7 @@ export async function getCreatureFeatCandidates({
       const traits = entry.system?.traits?.value;
       if (entry.type !== "feat" || entry.system?.category !== "class"
         || !Number.isInteger(itemLevel) || itemLevel < 1 || itemLevel > level || !Array.isArray(traits)) continue;
+      if (maxRarity && !rarityAtMost(entry.system?.traits?.rarity ?? "common", maxRarity)) continue;
       const identity = candidateId(entry);
       if (!identity || seen.has(identity)) continue;
       seen.add(identity);
