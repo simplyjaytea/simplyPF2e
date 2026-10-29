@@ -17,7 +17,7 @@ import { SpfApp } from "./app-base.mjs";
 import {
   getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, priceToGp, toItemData,
   getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuable,
-  getRunedCandidates
+  getRunedCandidates, pickParcelValuables
 } from "./compendium.mjs";
 import {
   spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName, cantripDeckMaxRarity
@@ -663,16 +663,17 @@ export class ItemForgeApp extends SpfApp {
     }
     const permanents = await this.#assemblePermanents(permanentSlots, permanentPicks, pool, permanentFailure);
     const budgetCopper = copperFromGp(plan.currencyGp);
-    let valuable = null;
+    let valuables = [];
     let valuableReason = null;
     if (this.#input.valuables) {
-      const picked = await this.#pickValuable(keywords, budgetCopper);
-      if (picked.source) valuable = picked;
-      else valuableReason = picked.reason;
+      const found = await this.#pickValuables(keywords, budgetCopper);
+      valuables = found.picked;
+      valuableReason = found.reason;
     }
-    // The valuable replaces part of the currency once; the exact remainder is split into coins.
+    // The valuables replace part of the currency once; the exact remainder is split into coins.
     // All-or-nothing: a coin that cannot be cloned drops the whole coin remainder, never part of it.
-    const remainderCopper = budgetCopper - (valuable?.copper ?? 0);
+    const valuableCopper = valuables.reduce((sum, valuable) => sum + valuable.copper, 0);
+    const remainderCopper = budgetCopper - valuableCopper;
     let currency = null;
     let coinsMissingCopper = 0;
     try {
@@ -691,15 +692,15 @@ export class ItemForgeApp extends SpfApp {
       coinsMissingCopper = remainderCopper;
     }
     const built = permanents.filter((entry) => entry.filled);
-    if (!items.length && !currency && !built.length && !valuable) {
+    if (!items.length && !currency && !built.length && !valuables.length) {
       throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoPicks", { kind: "scroll" }));
     }
     const valueItems = [
       ...items.map((item) => ({ priceGp: item.priceGp, quantity: item.quantity })),
       ...built.map((entry) => ({ priceGp: entry.copper / COIN_COPPER_RATES.gp, quantity: 1 })),
-      ...(valuable ? [{ priceGp: valuable.copper / COIN_COPPER_RATES.gp, quantity: 1 }] : [])
+      ...valuables.map((valuable) => ({ priceGp: valuable.copper / COIN_COPPER_RATES.gp, quantity: 1 }))
     ];
-    this.#parcel = { items, currency, coinsMissingCopper, permanents, valuable, valuableReason, unfilled, dropped,
+    this.#parcel = { items, currency, coinsMissingCopper, permanents, valuables, valuableReason, unfilled, dropped,
       row, partySize: row.partySize, rarity: this.#input.rarity,
       valueGp: parcelValueGp({ items: valueItems, currencyGp: currency ? remainderCopper / COIN_COPPER_RATES.gp : 0 }) };
     this._throwIfCancelled();
@@ -820,20 +821,24 @@ export class ItemForgeApp extends SpfApp {
     return { source, name: source.name, level: source.system.level.value, copper: priceCopper(source.system.price.value) };
   }
 
-  /** The one valuable the parcel may hold, or the reason none is offered. */
-  async #pickValuable(keywords, budgetCopper) {
+  /**
+   * Up to three valuables, deterministically chosen within the currency. Returns the picks and, when none fits,
+   * the reason: the pack is missing, nothing is offered, every candidate costs more, or the reads failed.
+   */
+  async #pickValuables(keywords, budgetCopper) {
     try {
       const pool = await getValuableCandidates(keywords, { maxRarity: this.#input.rarity });
-      if (!pool.available) return { reason: "pack" };
-      if (!pool.candidates.length) return { reason: "none-offered" };
-      const picked = await pickParcelValuable(pool.candidates, budgetCopper, this.#input.rarity);
-      if (!picked.source) return { reason: picked.reason };
-      return { name: picked.source.name, source: picked.source, copper: picked.copper };
+      if (!pool.available) return { picked: [], reason: "pack" };
+      if (!pool.candidates.length) return { picked: [], reason: "none-offered" };
+      const result = await pickParcelValuables(pool.candidates, budgetCopper, this.#input.rarity);
+      if (result.picked.length) return { picked: result.picked, reason: null };
+      const failed = result.skipped.some((skip) => skip.reason === "unavailable" || skip.reason === "invalid");
+      return { picked: [], reason: failed ? "unavailable" : "too-expensive" };
     } catch (err) {
       // The valuable is optional: a failed search keeps the full currency as coins.
       if (isCancellation(err)) throw err;
       console.warn(`${MODULE_ID} | parcel valuable search failed`, err);
-      return { reason: "unavailable" };
+      return { picked: [], reason: "unavailable" };
     }
   }
 
@@ -873,8 +878,9 @@ export class ItemForgeApp extends SpfApp {
         reason: entry.filled ? null : game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.Reason.${entry.reason}`)
       })),
       permanentSummary: game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentSummary", { built, total: p.permanents.length }),
-      valuable: p.valuable ? { name: p.valuable.name, price: `${formatGp(p.valuable.copper)} gp` } : null,
-      valuableNote: this.#input.valuables && !p.valuable ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.ValuableNone", { reason: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.ValuableReason.${p.valuableReason}`) }) : null,
+      valuables: p.valuables.map((valuable) => ({ name: valuable.candidate.name, price: `${formatGp(valuable.copper)} gp` })),
+      valuableSubtotal: formatGp(p.valuables.reduce((sum, valuable) => sum + valuable.copper, 0)),
+      valuableNote: this.#input.valuables && !p.valuables.length ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.ValuableNone", { reason: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.ValuableReason.${p.valuableReason}`) }) : null,
       valueGp: p.valueGp, totalGp: p.row.totalGp };
   }
 
@@ -939,7 +945,7 @@ export class ItemForgeApp extends SpfApp {
       const items = p ? [
         ...p.items.map((i) => i.source),
         ...built.map((entry) => entry.source),
-        ...(p.valuable ? [p.valuable.source] : []),
+        ...p.valuables.map((valuable) => valuable.source),
         ...(p.currency ? p.currency.sources : [])
       ] : this.#consumables.items.map((i) => i.source);
       const presentationWarning = await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines, lootSheetType: this.#input.sheetType });

@@ -1179,6 +1179,43 @@ export async function pickParcelValuable(ranked, budgetCopper, maxRarity = "comm
   return { reason: "unavailable" };
 }
 
+/** Most valuables one parcel may hold (parcel v3). */
+export const PARCEL_VALUABLE_LIMIT = 3;
+
+/**
+ * Up to `limit` distinct valuables, taken in the caller's deterministic order. Each is taken only when its
+ * exact copper value is no more than the budget left (equality is allowed) and its full document still passes
+ * valuableProblem. A candidate that is too expensive, unpriced or unreadable is skipped and the search goes on,
+ * within a bounded number of document loads. Returns the picks in order, the skipped reasons and what is left.
+ */
+export async function pickParcelValuables(ranked, budgetCopper, maxRarity = "common", { limit = PARCEL_VALUABLE_LIMIT, attempts = VALUABLE_LOAD_ATTEMPTS } = {}) {
+  if (!Number.isSafeInteger(budgetCopper) || budgetCopper < 0) throw new Error(`Valuable budget must be a whole, non-negative copper amount (got ${String(budgetCopper)})`);
+  const picked = [];
+  const skipped = [];
+  const seen = new Set();
+  let remaining = budgetCopper;
+  let loads = 0;
+  for (const entry of Array.isArray(ranked) ? ranked : []) {
+    if (picked.length >= limit || loads >= attempts) break;
+    if (seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    if (!(entry.copper > 0)) { skipped.push({ name: entry.name, reason: "unpriced" }); continue; }
+    if (entry.copper > remaining) { skipped.push({ name: entry.name, reason: "too-expensive" }); continue; }
+    loads += 1;
+    const data = await readItemData(entry.packId, entry._id);
+    if (!data) { skipped.push({ name: entry.name, reason: "unavailable" }); continue; }
+    const copper = priceCopper(data.system?.price?.value);
+    if (valuableProblem(data, maxRarity) || copper === null || copper > remaining) {
+      skipped.push({ name: entry.name, reason: "invalid" });
+      continue;
+    }
+    data.system.quantity = 1;
+    picked.push({ candidate: entry, source: data, copper });
+    remaining -= copper;
+  }
+  return { picked, skipped, remaining };
+}
+
 export function toItemData(doc) {
   const data = doc.toObject();
   delete data._id;

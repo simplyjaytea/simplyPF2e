@@ -69,12 +69,18 @@ let runedPool = [];
 async function getRunedCandidates() { return runedPool; }
 async function getParcelWandCandidates(level) { return permanentPools.get(level)?.wands ?? []; }
 async function getValuableCandidates() { return valuablePool; }
-async function pickParcelValuable(ranked, budgetCopper) {
+async function pickParcelValuables(ranked, budgetCopper) {
   if (valuableReadError) throw valuableReadError;
-  const { entry, reason } = permanent.chooseValuable(ranked, budgetCopper);
-  if (!entry) return { reason };
-  const raw = entry.id === "c-silk" ? SILK : AGATE;
-  return { candidate: entry, copper: entry.copper, source: { name: raw.name, type: "treasure", img: "x.webp", system: { category: raw.system.category, price: { value: raw.system.price.value }, quantity: 1, rules: [] } } };
+  const picked = []; const skipped = []; let remaining = budgetCopper;
+  for (const entry of ranked) {
+    if (picked.length >= 3) break;
+    if (entry.copper > remaining) { skipped.push({ name: entry.name, reason: "too-expensive" }); continue; }
+    const raw = entry.id === "c-silk" ? SILK : entry.id === "c-agate" ? AGATE : null;
+    if (!raw) { skipped.push({ name: entry.name, reason: "unavailable" }); continue; }
+    picked.push({ candidate: entry, copper: entry.copper, source: { name: raw.name, type: "treasure", img: "x.webp", system: { category: raw.system.category, price: { value: raw.system.price.value }, quantity: 1, rules: [] } } });
+    remaining -= entry.copper;
+  }
+  return { picked, skipped, remaining };
 }
 async function selectParcelPermanents(brief, opts) {
   permanentCalls.push(opts);
@@ -107,7 +113,7 @@ const mocks = {
   taskMaxTokens: () => 100, RUNED_ITEM_KINDS: new Set(["weapon", "armor"]), MIN_ITEM_LEVEL: 1, MAX_ITEM_LEVEL: 24,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   getScrollSpellCandidates, getCandidateDocument, selectSpellConsumables, selectParcelSpells, toItemData, priceToGp,
-  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuable, selectParcelPermanents,
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuables, selectParcelPermanents,
   getRunedCandidates,
   briefKeywords: () => []
 };
@@ -326,26 +332,30 @@ parcelPicks = initialPicks;
 
 // Gems and art replace part of the currency: 40 gp with a 10 gp art object leaves 30 gp of coins, 40 gp in all.
 const SILK_CANDIDATE = { id: "c-silk", name: "Silk ceremonial armor", copper: 1000, packId: "pf2e.equipment-srd", _id: SILK._id };
-valuablePool.candidates = [SILK_CANDIDATE, { id: "c-agate", name: "Agate", copper: 50, packId: "pf2e.equipment-srd", _id: AGATE._id }];
+valuablePool.candidates = [{ id: "c-agate", name: "Agate", copper: 50, packId: "pf2e.equipment-srd", _id: AGATE._id }, SILK_CANDIDATE];
 parcelPicks = []; permanentPicks = [];
+// The pool arrives in rankByBrief order (by name with no keywords): Agate before Silk.
+valuablePool.candidates = [{ id: "c-agate", name: "Agate", copper: 50, packId: "pf2e.equipment-srd", _id: AGATE._id }, SILK_CANDIDATE];
 c = ctl({ valuables: { checked: true } }); a = app(c);
 await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable.name, "Silk ceremonial armor");
-assert.equal(ctx.preview.valuable.price, "10 gp");
-assert.equal(ctx.preview.currency, "30 gp", "the coins are the exact remainder");
-assert.equal(ctx.preview.valueGp, 40, "built value counts the valuable and the coins once each");
+// Spec example: 40 gp with a 5 sp agate and a 10 gp art object leaves 29 gp 5 sp of coins; the built total is 40 gp.
+assert.deepEqual(ctx.preview.valuables.map((v) => v.name), ["Agate", "Silk ceremonial armor"], "both fit, in the brief's deterministic order");
+assert.equal(ctx.preview.valuables[1].price, "10 gp");
+assert.equal(ctx.preview.valuableSubtotal, "10.5", "the valuables subtotal is their exact sum, 10.5 gp");
+assert.equal(ctx.preview.currency, "29 gp, 5 sp", "the coins are the exact remainder");
+assert.equal(ctx.preview.valueGp, 40, "built value counts each valuable and the coins once each");
 await A.createItem.call(a);
 created = createCalls.at(-1).actor;
 assert.deepEqual(created.items.map((item) => [item.type, item.name, item.system.quantity]), [
-  ["treasure", "Silk ceremonial armor", 1], ["treasure", "Gold Pieces", 30]
-], "the valuable is one item and the remainder is gold coins");
+  ["treasure", "Agate", 1], ["treasure", "Silk ceremonial armor", 1], ["treasure", "Gold Pieces", 29], ["treasure", "Silver Pieces", 5]
+], "each valuable is one item and the remainder is gold and silver coins");
 
 // Exact equality: a valuable worth the whole currency leaves no coins at all.
 valuablePool.candidates = [{ ...SILK_CANDIDATE, copper: 4000 }];
 a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable.name, "Silk ceremonial armor");
+assert.equal(ctx.preview.valuables[0].name, "Silk ceremonial armor");
 assert.equal(ctx.preview.currency, "", "no coins remain");
 assert.equal(ctx.preview.valueGp, 40, "exact equality keeps the built value at the currency total");
 
@@ -353,7 +363,7 @@ assert.equal(ctx.preview.valueGp, 40, "exact equality keeps the built value at t
 valuablePool.candidates = [{ ...SILK_CANDIDATE, copper: 5000 }];
 a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable, null);
+assert.equal(ctx.preview.valuables.length, 0);
 assert.ok(ctx.preview.valuableNote.includes("ValuableNone") && ctx.preview.valuableNote.includes("ValuableReason.too-expensive"),
   "a fitting valuable that is missing names the reason");
 assert.equal(ctx.preview.currency, "40 gp", "the full currency stays as coins");
@@ -362,7 +372,7 @@ assert.equal(ctx.preview.currency, "40 gp", "the full currency stays as coins");
 c = ctl(); a = app(c);
 await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable, null); assert.equal(ctx.preview.valuableNote, null);
+assert.equal(ctx.preview.valuables.length, 0); assert.equal(ctx.preview.valuableNote, null);
 
 // The valuable pack is not installed: the preview gives that reason and the currency stays whole.
 valuablePool.available = false; valuablePool.candidates = [];
@@ -388,7 +398,7 @@ coinAvailable = false;
 c = ctl({ valuables: { checked: true } }); a = app(c);
 await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable.name, "Silk ceremonial armor", "the built valuable is kept");
+assert.equal(ctx.preview.valuables[0].name, "Silk ceremonial armor", "the built valuable is kept");
 assert.equal(ctx.preview.currency, null, "no partial coin is written");
 assert.ok(ctx.preview.coinsMissing.includes("CoinsMissing"), "the missing coin value is reported");
 assert.equal(ctx.preview.valueGp, 10, "built value counts only the valuable, not the missing coins");
@@ -434,7 +444,7 @@ c = ctl({ valuables: { checked: true } }); a = app(c);
 await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
 assert.equal(ctx.error, null, "a failed valuable search does not fail the parcel");
-assert.equal(ctx.preview.valuable, null);
+assert.equal(ctx.preview.valuables.length, 0);
 assert.ok(ctx.preview.valuableNote.includes("ValuableReason.unavailable"), "the valuable's failure is named");
 assert.equal(ctx.preview.currency, "40 gp", "the full currency stays as coins");
 valuableReadError = null;
