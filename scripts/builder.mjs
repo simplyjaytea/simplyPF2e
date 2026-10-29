@@ -22,18 +22,22 @@ const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
 const SCALE4 = new Set(["extreme", "high", "moderate", "low"]);
 const SCALE5 = new Set(["extreme", "high", "moderate", "low", "terrible"]);
 const TRADITIONS = new Set(["arcane", "divine", "occult", "primal"]);
+/** Values 5, 10 … top, in steps of 5 (feet). */
+const stepsOf5 = (top) => Array.from({ length: top / 5 }, (_, i) => (i + 1) * 5);
+
 /*
  * Movement values the AI may pick from, per movement type (invariant 4: the
- * model chooses from this list and never writes a free number). Module
- * convention, not a published table: land and fly run 5-60 ft, swim and climb
- * 5-40 ft, burrow 5-30 ft, all in steps of 5. Off-list values are dropped.
+ * model chooses from this list and never writes a free number). Each top is
+ * the published maximum in the pf2e 8.5.0 NPC bestiary, in steps of 5
+ * (record: docs/plans/speeds-senses-2026-10-30.md). An off-list value snaps to
+ * the nearest listed one.
  */
 const SPEED_VALUES = new Map([
-  ["land", [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]],
-  ["fly", [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]],
-  ["swim", [5, 10, 15, 20, 25, 30, 35, 40]],
-  ["climb", [5, 10, 15, 20, 25, 30, 35, 40]],
-  ["burrow", [5, 10, 15, 20, 25, 30]]
+  ["land", stepsOf5(120)],
+  ["fly", stepsOf5(240)],
+  ["swim", stepsOf5(100)],
+  ["climb", stepsOf5(60)],
+  ["burrow", stepsOf5(60)]
 ]);
 const STANDARD_SKILLS = new Set([
   "acrobatics", "arcana", "athletics", "crafting", "deception", "diplomacy",
@@ -82,16 +86,33 @@ function filterStrikeValues(values, configKey, fallback, label) {
 
 /*
  * Ranged strike increments the AI may pick (feet). Module convention, like the
- * speed list above; off-list values become null and the sheet keeps its default.
+ * speed list above; an off-list value snaps to the nearest listed increment.
  */
-const STRIKE_RANGES = new Set([10, 20, 30, 40, 60, 80, 100, 120, 150]);
+const STRIKE_RANGES = [10, 20, 30, 40, 60, 80, 100, 120, 150];
 
-/** Senses range the AI may pick (feet). Imprecise or range-less senses stay null. */
-const SENSE_RANGES = new Set([30, 60, 120]);
+/*
+ * Senses range the AI may pick (feet): steps of 5 to 1000, the published
+ * maximum (lifesense, Night of the Gray Death, gray-death.json). Imprecise or
+ * range-less senses stay null.
+ */
+const SENSE_RANGES = stepsOf5(1000);
+
+/**
+ * The listed value nearest to `value` (ties go to the lower one). Returns null
+ * for a nonsense value: not a number, or 0 and below. `listed` is ascending.
+ */
+function nearestListed(value, listed) {
+  const numeric = typeof value === "string" || typeof value === "number" ? Number(value) : NaN;
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  let best = listed[0];
+  for (const candidate of listed) {
+    if (Math.abs(candidate - numeric) < Math.abs(best - numeric)) best = candidate;
+  }
+  return best;
+}
 
 function normalizeStrikeRange(value) {
-  const numeric = Number(value);
-  return STRIKE_RANGES.has(numeric) ? numeric : null;
+  return nearestListed(value, STRIKE_RANGES);
 }
 
 function thrownRangeFromTraits(traits) {
@@ -248,12 +269,13 @@ export function normalizeConcept(raw, { level, rarity }) {
   }
 
   const speeds = (Array.isArray(c.speeds) ? c.speeds : [])
-    .filter((s) => {
-      const legal = SPEED_VALUES.get(s?.type)?.includes(Number(s?.value));
-      if (!legal) console.warn(`simplypf2e | dropped creature speed ${s?.type} ${s?.value}: not on the module's list for that movement`);
-      return legal;
+    .map((s) => {
+      const listed = SPEED_VALUES.get(s?.type);
+      const value = listed ? nearestListed(s.value, listed) : null;
+      if (value == null) console.warn(`simplypf2e | dropped creature speed ${s?.type} ${s?.value}: not a usable value for that movement`);
+      return value == null ? null : { type: s.type, value };
     })
-    .map((s) => ({ type: s.type, value: Number(s.value) }));
+    .filter(Boolean);
   if (!speeds.length) speeds.push({ type: "land", value: 25 });
 
   const strikes = (Array.isArray(c.strikes) ? c.strikes : [])
@@ -358,7 +380,7 @@ export function normalizeConcept(raw, { level, rarity }) {
       .map((s) => ({
         type: slugify(s.type),
         acuity: ["precise", "imprecise", "vague"].includes(s.acuity) ? s.acuity : null,
-        range: SENSE_RANGES.has(Number(s.range)) ? Number(s.range) : null
+        range: nearestListed(s.range, SENSE_RANGES)
       }))
       .filter((s) => {
         if (SENSE_TYPES.has(s.type)) return true;

@@ -151,8 +151,8 @@ JSON schema (all keys required unless marked optional):
   "hpScale": "high"|"moderate"|"low",
   "perceptionScale": SCALE5,
   "saveScales": { "fortitude": SCALE5, "reflex": SCALE5, "will": SCALE5 },
-  "speeds": [ { "type": "land"|"fly"|"swim"|"climb"|"burrow", "value": number } ], // value is picked from the list for that type: land and fly 5-60, swim and climb 5-40, burrow 5-30, steps of 5 (other values are dropped); include land unless immobile
-  "senses": [ { "type": string, "acuity": "precise"|"imprecise"|"vague"|null, "range": 30|60|120|null } ], // range is 30, 60, 120 or null (imprecise or no range); e.g. darkvision, scent
+  "speeds": [ { "type": "land"|"fly"|"swim"|"climb"|"burrow", "value": number } ], // value is picked from the list for that type, in steps of 5: land 5-120, fly 5-240, swim 5-100, climb and burrow 5-60 (an off-list value snaps to the nearest listed one); include land unless immobile
+  "senses": [ { "type": string, "acuity": "precise"|"imprecise"|"vague"|null, "range": 5|10|15|...|1000|null } ], // range is picked in steps of 5 from 5 to 1000, or null (imprecise or no range); e.g. darkvision, scent
   "skills": [ { "name": string, "scale": "extreme"|"high"|"moderate"|"low" } ], // 2-5; standard skill names or "<Topic> Lore"
   "strikes": [ // 1-4 strikes (including any feat attacks — see "feats")
     {
