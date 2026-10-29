@@ -1926,7 +1926,10 @@ async function requestCompletion({ task, system, user, onProgress, signal, retry
       resetIdle();
       let data;
       try { data = await response.json(); }
-      catch {
+      catch (err) {
+        // A cancel or timeout while the body is being read is not a bad body: rethrow the
+        // abort so the request's outer handler reports cancellation or the timeout.
+        if (err?.name === "AbortError" || controller.signal.aborted) throw err;
         throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.InvalidResponse"));
       }
       if (isRealProviderError(data?.error)) throw providerStreamError(data.error);
