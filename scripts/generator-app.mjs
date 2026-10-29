@@ -537,7 +537,7 @@ export class GeneratorApp extends SpfApp {
     return {
       ...catalogs,
       heritage: await this.#pcEligibleHeritages(catalogs.heritage ?? [], plan.resolved.ancestryDoc),
-      equipment: (await getEquipmentCandidates(plan.concept.level)) ?? [],
+      equipment: (await getEquipmentCandidates(plan.concept.level, [], { maxRarity: this.#input.rarityCap })) ?? [],
       editableClass: editableClassCandidates(offeredClass, classDocsByKey, pcIdentityKey({ ref: plan.concept.classCandidate }))
     };
   }
@@ -1483,7 +1483,7 @@ export class GeneratorApp extends SpfApp {
       // The theme describes a group. An AI-authored brief cannot prove which
       // member owns an explicit power, so stop before provider spend rather
       // than assigning every mentioned feat to every creature.
-      const requirementCatalog = await getCreatureFeatCandidates({ level: 24, limit: null, prompt: theme });
+      const requirementCatalog = await getCreatureFeatCandidates({ level: 24, limit: null, prompt: theme, maxRarity: this.#input.rarityCap });
       this._throwIfCancelled();
       const named = creatureFeatRequirements(theme, [], requirementCatalog);
       if (named.length) throw creatureFeatError(
@@ -1609,12 +1609,12 @@ export class GeneratorApp extends SpfApp {
    */
   async #encounterHazardMember(slot, { i, design, theme, catalogs, signal, label }) {
     await this._setStep(`member${i}`);
-    // The request names the kind the composition selected. ai.mjs takes no kind option, so the
-    // brief carries it; a concept of the other kind is still dropped below.
+    // The composition fixes the kind: generateHazardConcept rejects a concept of the other kind inside the
+    // request, so the drop below is only a backstop for a result that bypasses that validation.
     const kind = slot.complex ? "a complex hazard (it acts in rounds)" : "a simple hazard (it acts once)";
     const brief = `${theme} (Part of the encounter "${design.name}"; the hazard is ${kind})`;
     const { concept: raw, usage } = await generateHazardConcept(brief, {
-      level: slot.level, ...catalogs, disableSkills: HAZARD_DISABLE_SKILLS, signal,
+      level: slot.level, complex: Boolean(slot.complex), ...catalogs, disableSkills: HAZARD_DISABLE_SKILLS, signal,
       onProgress: this._progressCallback()
     });
     this._recordTokens(label, usage);
@@ -1743,7 +1743,7 @@ export class GeneratorApp extends SpfApp {
       // Resolve ABC + grants + feat-slot candidates now (index lookups are
       // cheap/cached) so the reused equipment/spell refine helpers below have
       // real ancestry/class trait slugs for thematic context.
-      let resolved = await resolvePCConcept(concept);
+      let resolved = await resolvePCConcept(concept, { maxRarity: this.#input.rarityCap });
       concept.traits = [slugify(resolved.ancestryDoc.name), slugify(resolved.classDoc.name)];
 
       // The real class document owns the casting mode and base slot plan.
@@ -1808,7 +1808,7 @@ export class GeneratorApp extends SpfApp {
       // re-resolve those parts (the ABC/grants/feat-slot lookups above are
       // cheap and index-cached, so redoing them here is harmless; keep the
       // feat picks already made).
-      const final = await resolvePCConcept(concept, { exactContent: true });
+      const final = await resolvePCConcept(concept, { exactContent: true, maxRarity: this.#input.rarityCap });
       resolved = { ...final, feats: resolved.feats };
       // Cross-bucket dedup BEFORE any budget math sees the loot list: the AI
       // sometimes lists the same named item as both starting equipment and
@@ -1861,7 +1861,7 @@ export class GeneratorApp extends SpfApp {
           // Keep the already-grounded items, add the new draft, re-ground and re-budget.
           concept.loot = [...concept.loot.filter((l) => !parseCoins(l.name)), ...normalizeLoot(draft)];
           await this.#refineLoot(concept, signal);
-          const topUp = await resolvePCConcept(concept, { exactContent: true });
+          const topUp = await resolvePCConcept(concept, { exactContent: true, maxRarity: this.#input.rarityCap });
           resolved = { ...topUp, feats: resolved.feats };
           resolved.loot = dedupeLootAgainstEquipment(resolved.loot, resolved.equipment);
           resolved.loot = enforceNamedLootBudget(resolved.loot, lootBudget);
@@ -1924,11 +1924,12 @@ export class GeneratorApp extends SpfApp {
         spellcasting.tradition,
         spellcasting.maxRank,
         [...spellcasting.spells.map((spell) => spell.name), ...keywords],
-        spellcasting.plannedPicks
+        spellcasting.plannedPicks, { maxRarity: this.#input.rarityCap }
       );
       const focusCandidates = focus ? await getFocusSpellCandidates(
         spellcasting.maxRank,
-        [...concept.focusSpells.map((spell) => spell.name), ...keywords]
+        [...concept.focusSpells.map((spell) => spell.name), ...keywords],
+        { maxRarity: this.#input.rarityCap }
       ) : [];
       if (!candidates.length) {
         console.warn(`${MODULE_ID} | no spell candidates found, dropping spellcasting (unconstrained first-draft spells discarded)`);
@@ -1999,7 +2000,7 @@ export class GeneratorApp extends SpfApp {
       const catalog = await getCreatureFeatCandidates({
         level: 24, limit: null,
         preferredNames: draft.map((feat) => typeof feat === "string" ? feat : feat.name),
-        prompt: concept.gmPrompt ?? ""
+        prompt: concept.gmPrompt ?? "", maxRarity: this.#input.rarityCap
       });
       this._throwIfCancelled();
       const required = creatureFeatRequirements(concept.gmPrompt, draft, catalog);
@@ -2110,7 +2111,7 @@ export class GeneratorApp extends SpfApp {
         ...draftNames,
         ...draftNames.flatMap((name) => name.split(/[^a-z0-9]+/)).filter((token) => token.length > 2)
       ])];
-      const candidates = await getEquipmentCandidates(concept.level, keywords);
+      const candidates = await getEquipmentCandidates(concept.level, keywords, { maxRarity: this.#input.rarityCap });
       if (!candidates.length) return;
       const { equipment, omitted, usage } = await selectEquipment({
         concept,
@@ -2150,7 +2151,7 @@ export class GeneratorApp extends SpfApp {
         .map((loot) => parseScroll(loot.name)?.spellName)
         .filter(Boolean);
       const [candidates, scrollCandidates] = await Promise.all([
-        getLootCandidates(concept.level, keywords),
+        getLootCandidates(concept.level, keywords, { maxRarity: this.#input.rarityCap }),
         scrollKeywords.length ? getScrollSpellCandidates(10, scrollKeywords) : []
       ]);
       if (!candidates.length && !scrollCandidates.length) return;

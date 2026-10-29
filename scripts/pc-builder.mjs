@@ -124,12 +124,11 @@ export function normalizePCConcept(raw, { level }) {
       .slice(0, 3),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
-        if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
+        if (typeof e === "string" && e) return { name: e, quantity: 1 };
         if (e?.name) {
           return {
             name: String(e.name),
-            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10),
-            value: Math.max(Number(e.value) || 0, 0)
+            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10)
           };
         }
         return null;
@@ -351,7 +350,7 @@ async function fallbackHeritageFor(ancestryDoc) {
  * happens in generator-app via ai.mjs's selectFeats(), mirroring how AI calls
  * live in the app while resolution lives here for the NPC pipeline too.
  */
-export async function resolvePCConcept(concept, { exactContent = false } = {}) {
+export async function resolvePCConcept(concept, { exactContent = false, maxRarity = null } = {}) {
   await validatePCIdentityRequirements(concept.requiredIdentity);
   if (concept.requiredIdentity && Object.keys(concept.requiredIdentity).length) {
     assertPCIdentity(concept, concept.requiredIdentity);
@@ -451,15 +450,15 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
     let candidates;
     if (slot.archetype) {
       // Free Archetype offers only the proven catalog; generic archetype feats stay excluded.
-      candidates = await multiclassFeatCandidates(slot.level, classDoc.name, abilities);
+      candidates = await multiclassFeatCandidates(slot.level, classDoc.name, abilities, maxRarity);
     } else {
       const traits = slot.type === "ancestry" ? [ancestryTrait]
         : slot.type === "class" ? [classTrait] : [];
-      candidates = await featSlotCandidates(slot, traits, { preferredNames: concept.feats, prerequisiteContext });
+      candidates = await featSlotCandidates(slot, traits, { preferredNames: concept.feats, prerequisiteContext, maxRarity });
       // Ordinary multiclass (C08): class slots also offer the noncaster catalog.
       // The dedication lock is enforced at pick time.
       if (multiclass && slot.type === "class") {
-        candidates = mergeFeatCandidates(candidates, await multiclassFeatCandidates(slot.level, classDoc.name, abilities));
+        candidates = mergeFeatCandidates(candidates, await multiclassFeatCandidates(slot.level, classDoc.name, abilities, maxRarity));
       }
     }
     if (candidates.length) featSlots.push({ ...slot, abilities, candidates });
@@ -752,10 +751,10 @@ function resolveKeyAbility(classSystem, requested) {
  * content packs, sparse low levels) is better filled with an on-category feat than silently dropped.
  * Issue #64 item 4a. `fetch` defaults to the compendium query.
  */
-export async function featSlotCandidates(slot, traits, { preferredNames = [], prerequisiteContext = null } = {}, fetch = getFeatCandidates) {
-  const candidates = await fetch({ level: slot.level, category: slot.type, traits, preferredNames, prerequisiteContext });
+export async function featSlotCandidates(slot, traits, { preferredNames = [], prerequisiteContext = null, maxRarity } = {}, fetch = getFeatCandidates) {
+  const candidates = await fetch({ level: slot.level, category: slot.type, traits, preferredNames, prerequisiteContext, maxRarity });
   if (candidates.length || !traits.length) return candidates;
-  return fetch({ level: slot.level, category: slot.type, preferredNames, prerequisiteContext });
+  return fetch({ level: slot.level, category: slot.type, preferredNames, prerequisiteContext, maxRarity });
 }
 
 /**
@@ -1535,11 +1534,11 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
  * catalog names. Own-class dedications are never offered, and a dedication
  * whose ability prerequisites `abilities` do not meet is left out.
  */
-async function multiclassFeatCandidates(level, className, abilities) {
+async function multiclassFeatCandidates(level, className, abilities, maxRarity = null) {
   const catalog = new Set(multiclassCatalogNames().map(slugify));
   const own = slugify(String(className ?? ""));
   const found = await getFeatCandidates({
-    level, category: "class", traits: ["archetype"], limit: Number.MAX_SAFE_INTEGER
+    level, category: "class", traits: ["archetype"], limit: Number.MAX_SAFE_INTEGER, maxRarity
   });
   return found.filter((candidate) => {
     const info = multiclassFeatInfo(candidate.name);

@@ -123,7 +123,7 @@ The preview shows each member with count, level, role and key stats, plus the XP
 
 ### Player Character mode
 
-Describe a concept ("a grizzled dwarf ranger who hunts undead") and set a level (1–20), or use the **dice button** to ignore the prompt and roll a local adventurer brief at that level. In **Advanced options**, optionally cap the **Max rarity** of the ancestry/background/heritage the AI may pick — capping at Uncommon rules out Rare options like Fetchling, so they're never even offered.
+Describe a concept ("a grizzled dwarf ranger who hunts undead") and set a level (1–20), or use the **dice button** to ignore the prompt and roll a local adventurer brief at that level. In **Advanced options**, optionally cap the **Max rarity** of the ancestry, background, heritage, feats, spells and equipment the AI may pick — capping at Uncommon rules out Rare options like Fetchling, so they're never even offered.
 
 Nothing here is scale-word math. A PC is assembled from real Ancestry, Background and Class items plus feats at every level slot (ancestry/class/skill/general from the real class schedules, including first-level class feats, accelerated Rogue/Investigator skill feats, and any feat the background itself grants — like Acolyte's *Student of the Canon*), ability boosts, and skill increases past Trained. The PF2e system then computes AC, HP, saves and proficiencies exactly as it would for a character built by hand.
 
@@ -225,9 +225,9 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 - PC loadout readiness currently covers published equipment proficiency, one armor slot, the two-hand limit, and compatible selected ammunition for non-repeating reload-0 weapons. Reloadable/repeating ammunition, item investment, container placement, and broader item-specific activation requirements still use the native sheet controls.
 - NPC discovery includes enabled class-feat sources across classes, but execution is limited to supported rule and dependency packages. Feats become NPC action items because PF2e forbids raw feats on NPC sheets. PC-only resources, unproven prose prerequisites, unsupported native choices and incompatible grants remain unavailable. This is not universal automation for every PC feat.
 - Explicit named NPC abilities use bounded local requirement matching. Ambiguous names or exclusions stop rather than granting unintended powers. Encounter themes containing named ability constraints stop before generation because the module cannot reliably assign a free-form requirement to a particular member; generate that constrained NPC separately.
-- Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget.
+- Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget. The AI writes no prices or coin amounts: a name with no compendium match is dropped with a console warning, and only real compendium prices count.
 - The benchmark tables were transcribed by hand from GM Core. If a value disagrees with the book, please open an issue.
-- The rarity cap covers ancestry/background/heritage only — feats, spells and equipment aren't filtered by it yet.
+- The Max rarity cap covers ancestry, background, heritage, feats, spells and equipment. Forge pools keep their own rarity input, and the Character editor's exact-content edit path does not filter by rarity.
 
 **Remaining live-acceptance gaps** (built, reviewed, and source-verified; the cases below still need actual-game coverage)
 
@@ -251,7 +251,7 @@ Built, not native-accepted, and off by default:
 Not yet available as user-facing features:
 
 - **Level shifting** is available behind the default-off **Enable experimental tools** setting, GM only, through the Creature Tools app and `module.api.levelShift`. Not native-accepted.
-- **Hazard generator** (GM Core Building Hazards, simple and complex) is built behind the default-off **Enable experimental tools** setting as a Generator mode with a reviewed preview and Create. Not native-accepted.
+- **Hazard generator** (GM Core Building Hazards, simple and complex) is built behind the default-off **Enable experimental tools** setting as a Generator mode with a reviewed preview and Create. An encounter's hazard member is requested with its simple or complex kind fixed in the request; a wrong first answer costs one extra provider call before the retry. Not native-accepted.
 - **Caster multiclass dedications** and spell editing in the Character editor.
 - **Native acceptance** of every experimental and multiclass row listed under Remaining live-acceptance gaps.
 

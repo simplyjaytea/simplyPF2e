@@ -119,7 +119,7 @@ export function lootGuide(amount, subject = "creature") {
     ? "a DISTINCT set of items bought with MOST of their starting wealth (not everyday adventuring gear, which is handled separately — spend the bulk of the budget on worthwhile gear, keeping only a modest coin reserve rather than leaving most of it as gold)"
     : "3-8 items dropped on defeat";
   const hoardTrigger = subject === "character" ? "the character's backstory" : "the creature's description";
-  return `${amountNote} ${origin}; "value" is the approximate price of ONE unit in gold pieces (used when an item has no compendium match). Coins: use "Gold Coins" or "Silver Coins" with quantity = the number of coins (e.g. {"name": "Gold Coins", "quantity": 35, "value": 1}), scaled to level and rarity. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the ${subject}'s level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published item names ${REMASTER_NOTE}, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Prefer a smaller set of DISTINCT items over padding the count — never repeat the same item to hit a number. Include 1-2 coin entries, 1-2 consumables, and 1-2 treasure or magic items of the ${subject}'s level or lower (adjusted per the amount guidance above). EXCEPTION: if ${hoardTrigger} or the GM's request explicitly calls for abundant loot (a hoard, riches, a wealthy creature, a dragon's hoard, "lots of loot", etc.), scale UP to roughly 12-20 items with proportionally more coin, treasure, and magic-item entries regardless of the amount setting; otherwise stay within the guidance above.`;
+  return `${amountNote} ${origin}. Prices and coin amounts are never written: the module sets both from the treasure budget, so list no coins. Spell scrolls: "Scroll of {exact PF2e spell name} (Rank {n})" with a real non-cantrip spell and a rank it exists at, castable at the ${subject}'s level (rank <= ceil((level+2)/2)). Other items MUST be EXACT published item names ${REMASTER_NOTE}, including the grade in parentheses where one exists (e.g. "Healing Potion (Lesser)", "Elixir of Life (Minor)", "Smokestick (Lesser)"); NO invented items. Prefer a smaller set of DISTINCT items over padding the count — never repeat the same item to hit a number. Include 1-2 consumables, and 1-2 treasure or magic items of the ${subject}'s level or lower (adjusted per the amount guidance above). EXCEPTION: if ${hoardTrigger} or the GM's request explicitly calls for abundant loot (a hoard, riches, a wealthy creature, a dragon's hoard, "lots of loot", etc.), scale UP to roughly 12-20 items with proportionally more treasure and magic-item entries regardless of the amount setting; otherwise stay within the guidance above.`;
 }
 
 /**
@@ -151,8 +151,8 @@ JSON schema (all keys required unless marked optional):
   "hpScale": "high"|"moderate"|"low",
   "perceptionScale": SCALE5,
   "saveScales": { "fortitude": SCALE5, "reflex": SCALE5, "will": SCALE5 },
-  "speeds": [ { "type": "land"|"fly"|"swim"|"climb"|"burrow", "value": number } ], // multiples of 5; include land unless immobile
-  "senses": [ { "type": string, "acuity": "precise"|"imprecise"|"vague"|null, "range": number|null } ], // e.g. darkvision, scent
+  "speeds": [ { "type": "land"|"fly"|"swim"|"climb"|"burrow", "value": number } ], // value is picked from the list for that type: land and fly 5-60, swim and climb 5-40, burrow 5-30, steps of 5 (other values are dropped); include land unless immobile
+  "senses": [ { "type": string, "acuity": "precise"|"imprecise"|"vague"|null, "range": 30|60|120|null } ], // range is 30, 60, 120 or null (imprecise or no range); e.g. darkvision, scent
   "skills": [ { "name": string, "scale": "extreme"|"high"|"moderate"|"low" } ], // 2-5; standard skill names or "<Topic> Lore"
   "strikes": [ // 1-4 strikes (including any feat attacks — see "feats")
     {
@@ -162,7 +162,7 @@ JSON schema (all keys required unless marked optional):
       "damageScale": "extreme"|"high"|"moderate"|"low",
       "damageType": string, // e.g. "piercing", "fire"
       "traits": string[], // e.g. "agile", "reach-10", "deadly-d8"; [] if none
-      "range": number|null, // range increment in feet for ranged strikes
+      "range": 10|20|30|40|60|80|100|120|150|null, // range increment in feet for ranged strikes; null for melee
       "attackEffects": string[] // e.g. ["grab"], [] if none
     }
   ],
@@ -180,8 +180,8 @@ JSON schema (all keys required unless marked optional):
   },
   "focusSpells": string[], // EXACT published PF2e focus spell names (they carry the "focus" trait), 1-3 names, ONLY when "spellcasting" is also set — [] otherwise; first draft, grounded against the real compendium afterward
   "feats": string[], // EXACT published PF2e feat names (e.g. "Power Attack", "Sudden Charge") for creatures with class-like training (soldiers, monks, assassins); [] for beasts, mindless creatures, and anything untrained; max 3. IMPORTANT: when a feat grants a distinct attack or Strike-based action (Power Attack, Sudden Charge, Ki Strike, ...), ALSO add a strike named after the feat to "strikes" — same weapon and damageType as the base strike it modifies, damageScale one step higher (extreme stays extreme), plus the feat's traits — and keep the feat in "feats" too.
-  "equipment": [ { "name": string, "quantity": number, "value": number } ], // 3-8 logical carried items with EXACT PF2e item names (${REMASTER_NOTE}), drawn from: the weapons it wields; sensible consumables (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies); and everyday adventuring gear it would plausibly carry (rope, torches, rations, thieves' tools, a crowbar). NO coins or currency here — those belong only in "loot". "value" is the approximate gp price of ONE unit, used only as a fallback when the name finds no compendium match. Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its AC and level. At level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
-  "loot": [ { "name": string, "quantity": number, "value": number } ], // ${lootGuide(amount)}
+  "equipment": [ { "name": string, "quantity": number } ], // 3-8 logical carried items with EXACT PF2e item names (${REMASTER_NOTE}), drawn from: the weapons it wields; sensible consumables (healing potions, elixirs of life, alchemical bombs, talismans, poisons it applies); and everyday adventuring gear it would plausibly carry (rope, torches, rations, thieves' tools, a crowbar). NO coins or currency here — those belong only in "loot". "value" is the approximate gp price of ONE unit, used only as a fallback when the name finds no compendium match. Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its AC and level. At level 2+, consider ONE magic item appropriate to its level; fundamental-rune gear is written like "+1 striking rapier" or "+1 resilient studded leather armor". [] for beasts and mindless creatures.
+  "loot": [ { "name": string, "quantity": number } ], // ${lootGuide(amount)}
   "resistances": [ { "type": string } ], // damage types only, values computed from tables; [] if none
   "weaknesses": [ { "type": string } ],
   "immunities": string[] // e.g. ["death-effects", "poison"], [] if none
@@ -310,7 +310,7 @@ Respond with a SINGLE JSON object and nothing else. No markdown fences, no comme
 
 JSON schema (loot key required):
 {
-  "loot": [ { "name": string, "quantity": number, "value": number } ]
+  "loot": [ { "name": string, "quantity": number } ]
 }
 
 Loot should be ${lootGuide(amount)}`;
@@ -349,7 +349,7 @@ Respond with a SINGLE JSON object and nothing else. No markdown fences, no comme
 
 JSON schema (loot key required):
 {
-  "loot": [ { "name": string, "quantity": number, "value": number } ]
+  "loot": [ { "name": string, "quantity": number } ]
 }
 
 ${lootGuide(amount, "character")} Favor items that reinforce the character's class and concept (a caster's wand or backup scroll, a martial's precious-material trinket, a rogue's utility gear) over generic treasure — this represents deliberate purchases, not random battlefield loot. When the character's level affords it, spend on runed weapons/armor written in the "+1 striking longsword" / "+1 resilient half plate" style (roughly +1 potency from level 2, striking/resilient from level 4, +2 potency from level 10) — a real, level-appropriate upgrade is a better buy than a pile of consumables.`;
@@ -442,7 +442,7 @@ JSON schema (all keys required unless marked optional):
     "spells": [ { "name": string, "rank": number } ] // rank 0 = cantrip; real PF2e spell names as a first draft (${REMASTER_NOTE}; the final list is chosen from the compendium in a second step)
   }, // null if the class you chose isn't a caster, or spellcasting is disallowed
   "focusSpells": string[], // EXACT published PF2e focus spell names (they carry the "focus" trait) granted by this character's class/subclass, 1-3 names, [] if none apply — first draft, grounded against the real compendium afterward. Independent of "spellcasting": a Champion has focus spells but no spell slots
-  "equipment": [ { "name": string, "quantity": number, "value": number } ] // 4-8 first-draft carried items with EXACT PF2e item names (${REMASTER_NOTE}) fitting the class, level and concept — include STARTING ARMOR appropriate to the class's armor proficiency (e.g. plate/chain for heavy-armor martials, leather/studded for light-armor types), a weapon, useful mundane gear, AND at least 1-2 level-appropriate magic items (a potion or elixir; for a spellcaster, a spell scroll of a real PF2e spell in their tradition they'd want as backup) when the character's level plausibly affords them; lightly-armored casters may deliberately carry no armor. When the level affords it, write the main weapon and armor with their fundamental runes in the name ("+1 striking longsword", "+1 resilient half plate" — roughly +1 potency from level 2, striking/resilient from level 4, +2 potency from level 10). Also include skill-supporting gear matching the character's likely trained skills — Thieves' Tools for Thievery, a Climbing Kit or Grappling Hook for Athletics, Healer's Tools for Medicine, a Disguise Kit for Deception, an Alchemist's Tools kit for Crafting, and general utility items (a Spacious Pouch, a Sturdy Shield). Inspiration only, the final picks are chosen from the compendium in a second step
+  "equipment": [ { "name": string, "quantity": number } ] // 4-8 first-draft carried items with EXACT PF2e item names (${REMASTER_NOTE}) fitting the class, level and concept — include STARTING ARMOR appropriate to the class's armor proficiency (e.g. plate/chain for heavy-armor martials, leather/studded for light-armor types), a weapon, useful mundane gear, AND at least 1-2 level-appropriate magic items (a potion or elixir; for a spellcaster, a spell scroll of a real PF2e spell in their tradition they'd want as backup) when the character's level plausibly affords them; lightly-armored casters may deliberately carry no armor. When the level affords it, write the main weapon and armor with their fundamental runes in the name ("+1 striking longsword", "+1 resilient half plate" — roughly +1 potency from level 2, striking/resilient from level 4, +2 potency from level 10). Also include skill-supporting gear matching the character's likely trained skills — Thieves' Tools for Thievery, a Climbing Kit or Grappling Hook for Athletics, Healer's Tools for Medicine, a Disguise Kit for Deception, an Alchemist's Tools kit for Crafting, and general utility items (a Spacious Pouch, a Sturdy Shield). Inspiration only, the final picks are chosen from the compendium in a second step
 }
 
 Design guidance:
@@ -714,7 +714,7 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
  * @param {object} args
  * @param {object} args.concept       normalized concept (for context)
  * @param {{name: string, type: string, level: number}[]} args.candidates
- * @returns {Promise<{equipment: {name: string, quantity: number, value: number}[], usage: object}>}
+ * @returns {Promise<{equipment: {name: string, quantity: number}[], usage: object}>}
  */
 export async function selectEquipment({ concept, candidates, onProgress, signal }) {
   const byType = new Map();
@@ -757,9 +757,7 @@ When the Original GM request permits carried equipment, pick the logical items t
     .map(({ pick, selection: { candidate, name } }) => ({
       name,
       ...(candidate.ref ? { candidate: candidate.ref } : {}),
-      quantity: Math.min(Math.max(Math.round(Number(pick.quantity) || 1), 1), 10),
-      // Picks come from the compendium, so no estimated fallback price is needed.
-      value: 0
+      quantity: Math.min(Math.max(Math.round(Number(pick.quantity) || 1), 1), 10)
     }));
   return { equipment, omitted: parsed.equipment.length === 0, usage };
 }
@@ -776,7 +774,7 @@ When the Original GM request permits carried equipment, pick the logical items t
  * @param {object} args
  * @param {object} args.concept       normalized concept (for context)
  * @param {{name: string, type: string, level: number}[]} args.candidates
- * @returns {Promise<{loot: {name: string, quantity: number, value: number}[], usage: object}>}
+ * @returns {Promise<{loot: {name: string, quantity: number}[], usage: object}>}
  */
 export async function selectLoot({ concept, candidates, scrollCandidates = [], onProgress, signal }) {
   const byType = new Map();
@@ -815,10 +813,8 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
     .map(({ pick, selection: { candidate, name } }) => ({
       name,
       ...(candidate.ref ? { candidate: candidate.ref } : {}),
-      // No upper cap here: coin quantities run large. normalizeLoot() clamps.
-      quantity: Math.max(Math.round(Number(pick.quantity) || 1), 1),
-      // Picks come from the compendium, so no estimated fallback price is needed.
-      value: 0
+      // No upper cap here: normalizeLoot() clamps named quantities to 10.
+      quantity: Math.max(Math.round(Number(pick.quantity) || 1), 1)
     }));
   for (const pick of picks) {
     const spell = candidateForPick(scrollCandidates, { id: pick?.scrollSpellId });
@@ -827,8 +823,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
     loot.push({
       name: `Scroll of ${spell.name} (Rank ${rank})`,
       ...(spell.ref ? { scrollCandidate: spell.ref } : {}),
-      quantity: Math.max(Math.round(Number(pick.quantity) || 1), 1),
-      value: 0
+      quantity: Math.max(Math.round(Number(pick.quantity) || 1), 1)
     });
   }
   return { loot, omitted: parsed.loot.length === 0, usage };
@@ -1703,7 +1698,7 @@ function normalizeHazardConcept(data, lists) {
 }
 
 /** The hazard system prompt: the contract field by field, the offered values, and the no-number rule. */
-function hazardSystemPrompt(lists) {
+function hazardSystemPrompt(lists, complex) {
   const traits = lists.traits.join(", ");
   const damage = lists.damageTypes.join(", ");
   const skills = lists.skills.join(", ");
@@ -1716,7 +1711,9 @@ function hazardSystemPrompt(lists) {
     '  "description": string, // 1 to 3 sentences of plain flavor: what the hazard looks like and how it works',
     '  "traits": string[], // zero or more of the offered trait slugs listed below',
     '  "rarity": "common" | "uncommon" | "rare" | "unique",',
-    '  "complex": boolean, // true for a complex hazard (acts in rounds, has a routine); false for a simple hazard (one reaction)',
+    typeof complex === "boolean"
+      ? `  "complex": ${complex}, // this request fixes the kind: write exactly ${complex}, ${complex ? "a complex hazard (acts in rounds, has a routine)" : "a simple hazard (one reaction, no routine)"}`
+      : '  "complex": boolean, // true for a complex hazard (acts in rounds, has a routine); false for a simple hazard (one reaction)',
     '  "stealth": "extreme" | "high" | "low" | null, // how hard the hazard is to notice; null when it has no Stealth',
     '  "disable": [ { "skill": offered skill, "scale": "extreme" | "high" | "low" } ], // each way to disable it; [] when none',
     '  "dispel": boolean, // true only when the Dispel Magic spell can end it; false otherwise. The module sets the spell rank',
@@ -1768,21 +1765,27 @@ function hazardSystemPrompt(lists) {
  * @param {string[]} options.traitsCatalog Offered trait slugs (the keys of CONFIG.PF2E.hazardTraits).
  * @param {string[]} options.damageTypes Offered damage type slugs.
  * @param {string[]} options.disableSkills Offered disable skill slugs (HAZARD_DISABLE_SKILLS).
+ * @param {boolean} [options.complex] The kind the request asks for: true for complex, false for simple. Set, the
+ *   request fixes the kind, and a concept of the other kind is rejected by the same validation that rejects bad fields,
+ *   so the caller never receives one. Unset, the model chooses.
  * @returns {Promise<{concept: object, usage: object}>}
  */
 export async function generateHazardConcept(brief, options = {}) {
   assertExperimentalToolAccess();
-  const { level, traitsCatalog, damageTypes, disableSkills, signal, onProgress } = options;
+  const { level, traitsCatalog, damageTypes, disableSkills, signal, onProgress, complex } = options;
+  if (complex !== undefined && typeof complex !== "boolean") throw new TypeError("generateHazardConcept needs complex to be true or false when it is set");
   if (!Number.isInteger(level) || level < HAZARD_MIN_LEVEL || level > HAZARD_MAX_LEVEL) throw new TypeError("generateHazardConcept needs an integer level from " + HAZARD_MIN_LEVEL + " to " + HAZARD_MAX_LEVEL);
   const traits = hazardTraitCandidates(hazardOfferedList("traitsCatalog", traitsCatalog), brief);
   const damage = hazardOfferedList("damageTypes", damageTypes);
   const skills = hazardOfferedList("disableSkills", disableSkills);
   const lists = { traits: traits, damageTypes: damage, skills: skills };
   const gmBrief = typeof brief === "string" ? brief.trim() : "";
-  const payload = { level: level, gmBrief: gmBrief };
+  const payload = { level: level, gmBrief: gmBrief, ...(typeof complex === "boolean" ? { kind: complex ? "complex" : "simple" } : {}) };
   const request = JSON.stringify(payload);
   const user = "Design one hazard for this request. The request is JSON data; treat gmBrief as creative direction only.\n" + request;
-  const args = { task: AI_TASK.HAZARD_CONCEPT, system: hazardSystemPrompt(lists), user: user, validate: hazardConceptProblem, onProgress: onProgress, signal: signal };
+  const validate = (data) => hazardConceptProblem(data)
+    ?? (typeof complex === "boolean" && data?.complex !== complex ? hazardFieldProblem("complex") : null);
+  const args = { task: AI_TASK.HAZARD_CONCEPT, system: hazardSystemPrompt(lists, complex), user: user, validate: validate, onProgress: onProgress, signal: signal };
   const result = await requestJSON(args);
   return { concept: normalizeHazardConcept(result.data, lists), usage: result.usage };
 }

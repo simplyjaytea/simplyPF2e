@@ -204,4 +204,29 @@ try {
     replies.push(structuredClone(invalid), structuredClone(invalid));
     await assert.rejects(generateHazardConcept(BRIEF, LISTS), /SIMPLYPF2E.Hazard.Errors.Field/);
   }
+// A requested kind is fixed in the request: the prompt names it, the payload carries it, and a concept of the
+// other kind is rejected inside the call, so the retry (not the caller) produces the requested kind.
+{
+  requests.length = 0;
+  replies.push(structuredClone(simple), structuredClone(complex));
+  const fixed = await generateHazardConcept(BRIEF, { ...LISTS, complex: true, onProgress: () => {} });
+  assert.equal(fixed.concept.complex, true, "the caller only ever receives the requested kind");
+  assert.equal(requests.length, 2, "the wrong kind is rejected in the call and retried once");
+  assert.match(requests[0].messages[0].content, /"complex": true, \/\/ this request fixes the kind/, "the prompt names the requested kind");
+  assert.match(requests[0].messages[1].content, /"kind":"complex"/, "the payload carries the requested kind");
+}
+{
+  requests.length = 0;
+  replies.push(structuredClone(complex), structuredClone(complex));
+  await assert.rejects(generateHazardConcept(BRIEF, { ...LISTS, complex: false, onProgress: () => {} }),
+    "a simple request that only yields complex concepts is refused, never returned");
+  assert.equal(requests.length, 2, "both attempts are validated against the requested kind");
+}
+{
+  requests.length = 0;
+  replies.push(structuredClone(simple));
+  const open = await generateHazardConcept(BRIEF, LISTS);
+  assert.equal(open.concept.complex, false, "with no kind requested, the model chooses and the concept is returned as written");
+  assert.doesNotMatch(requests[0].messages[1].content, /"kind"/, "no kind is sent when none is requested");
+}
 } finally { globalThis.fetch = originalFetch; }

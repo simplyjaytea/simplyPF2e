@@ -42,6 +42,11 @@ const hit = await featSlotCandidates({ type: "class", level: 4 }, ["rogue"], {},
 assert.deepEqual(hit, [{ name: "rogue-feat", level: 4 }], "a trait hit is returned as is");
 assert.equal(calls.length, 1, "no retry when the trait query already hits");
 
+// The rarity cap reaches both the trait query and the loosened retry (merge of fix/safety and fix/numbers).
+calls.length = 0;
+await featSlotCandidates({ type: "ancestry", level: 1 }, ["elf"], { maxRarity: "common" }, fetch);
+assert.deepEqual(calls.map((q) => q.maxRarity), ["common", "common"], "both queries carry the rarity cap");
+
 // Nothing matches even loosened: the empty list is returned for the caller to warn about.
 const none = await featSlotCandidates({ type: "general", level: 3 }, [], {}, async () => []);
 assert.deepEqual(none, [], "an unfillable slot stays empty for the caller to report");

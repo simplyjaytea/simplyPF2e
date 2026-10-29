@@ -92,9 +92,9 @@ for (const [denomination, id] of [["pp", PLATINUM_ID], ["gp", GOLD_ID], ["sp", S
   assert.equal(parseCoins("Bag of Gold"), null, "incidental gold in a name is not a coin line");
   assert.equal(parseCoins("Scroll of Fear"), null);
   assert.deepEqual(
-    normalizeLoot([{ name: "Gold Coins", quantity: 35, value: 1 }]),
-    [{ name: "Gold Pieces", quantity: 35, value: 1 }],
-    "normalizeLoot folds AI coin names onto the canonical published name"
+    normalizeLoot([{ name: "Gold Coins", quantity: 35 }]),
+    [],
+    "normalizeLoot drops AI coin lines: the treasure budget, not the AI, sets coin amounts"
   );
 }
 
@@ -109,19 +109,19 @@ assert.equal(isCoinageDocument({ type: "treasure", system: { price: { value: { g
  * ---------------------------------------------------------------------- */
 
 {
+  // Module-built coin lines reach resolveLoot directly (normalizeLoot drops AI coin lines).
   const resolved = await resolveLoot({
     level: 1,
-    loot: normalizeLoot([
-      { name: "Gold Coins", quantity: 35, value: 1 },
-      { name: "Mysterious Relic", quantity: 1, value: 12 }
-    ])
+    loot: [
+      { name: "Gold Pieces", quantity: 35 },
+      { name: "Mysterious Relic", quantity: 1 }
+    ]
   }, { exactContent: true });
-  assert.equal(resolved.length, 2);
+  assert.equal(resolved.length, 1, "a named loot line that cannot match an issued source is dropped under exactContent");
   assert.equal(resolved[0].name, "Gold Pieces");
   assert.equal(resolved[0].quantity, 35);
   assert.equal(resolved[0].entry?._id, GOLD_ID, "coins resolve to the official Gold Pieces document under exactContent");
   assert.equal(resolved[0].resolvedValue, 1);
-  assert.equal(resolved[1].entry, null, "named loot still cannot fuzzy-match under exactContent");
 }
 
 {
@@ -130,13 +130,11 @@ assert.equal(isCoinageDocument({ type: "treasure", system: { price: { value: { g
   console.warn = (...args) => warnings.push(args.join(" "));
   const resolved = await resolveLoot({
     level: 1,
-    loot: [{ name: "Electrum Coins", quantity: 4, value: 2 }]
+    loot: [{ name: "Electrum Coins", quantity: 4 }]
   }, { exactContent: true });
   console.warn = original;
-  assert.equal(resolved.length, 1, "unknown denomination stays on the generic loot path");
-  assert.equal(resolved[0].name, "Electrum Coins");
-  assert.equal(resolved[0].entry, null);
-  assert.equal(warnings.length, 0, "unknown denomination is not a coin drop; parseCoins already rejected it");
+  assert.equal(resolved.length, 0, "an unknown denomination is not currency and matches no item, so it is dropped");
+  assert.equal(warnings.length, 1, "the drop is reported");
 }
 
 /* ---------------------------------------------------------------------- *
@@ -146,10 +144,10 @@ assert.equal(isCoinageDocument({ type: "treasure", system: { price: { value: { g
 {
   const resolved = await resolveLoot({
     level: 1,
-    loot: normalizeLoot([
-      { name: "Gold Coins", quantity: 35, value: 1 },
-      { name: "5 sp", quantity: 1, value: 0.1 }
-    ])
+    loot: [
+      { name: "Gold Pieces", quantity: 35 },
+      { name: "Silver Pieces", quantity: 5 }
+    ]
   }, { exactContent: true });
   const items = await buildLootItems(resolved);
   assert.equal(items.length, 2);
@@ -170,20 +168,19 @@ assert.equal(isCoinageDocument({ type: "treasure", system: { price: { value: { g
 
 {
   await assert.rejects(buildLootItems([
-    { name: "Gold Pieces", quantity: 12, value: 1, entry: null }
+    { name: "Gold Pieces", quantity: 12, entry: null }
   ]), /Cannot create coin loot "Gold Pieces"/,
   "missing coinage must stop assembly before a partial actor is written");
 }
 
 {
+  // An unmatched non-coin line is skipped, not written as a priced custom treasure item.
   const items = await buildLootItems([
-    { name: "Gold Pieces", quantity: 8, value: 1, entry: { packId: "pf2e.equipment-srd", _id: GOLD_ID } },
-    { name: "Unmatched Gem", quantity: 1, value: 15, entry: null }
+    { name: "Gold Pieces", quantity: 8, entry: { packId: "pf2e.equipment-srd", _id: GOLD_ID } },
+    { name: "Unmatched Gem", quantity: 1, entry: null }
   ]);
+  assert.equal(items.length, 1, "the unmatched gem is dropped");
   assert.equal(items[0].system.category, "coin");
-  assert.equal(items[1].type, "treasure");
-  assert.equal(items[1].system.category, undefined, "non-coin unmatched loot may still be custom treasure");
-  assert.match(items[1].system.description.value, /CustomItem/);
 }
 
 /* ---------------------------------------------------------------------- *
