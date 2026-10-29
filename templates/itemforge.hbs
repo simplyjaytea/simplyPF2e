@@ -50,6 +50,7 @@
             <option value="{{this.value}}" {{#if (eq this.value @root.input.rarity)}}selected{{/if}}>{{localize this.label}}</option>
           {{/each}}
         </select>
+        {{#if isCantripDeck}}<p class="hint">{{localize "SIMPLYPF2E.ItemForge.Consumables.DeckRarityNote"}}</p>{{/if}}
       </div>
     </div>
     {{#if showDestination}}<div class="form-group spf-loot-destination"><label for="spf-destination">{{localize "SIMPLYPF2E.ItemForge.Loot.CreateAs"}}</label><select id="spf-destination" name="destination"><option value="items" {{#if (eq input.destination "items")}}selected{{/if}}>{{localize "SIMPLYPF2E.ItemForge.Loot.Items"}}</option><option value="loot" {{#if (eq input.destination "loot")}}selected{{/if}}>{{localize "SIMPLYPF2E.ItemForge.Loot.Actor"}}</option></select></div>{{/if}}

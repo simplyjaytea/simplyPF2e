@@ -528,6 +528,7 @@
         "KindCantripDeck": "Cantrip deck",
         "KindCantripDeckHint": "Five cards of one real common or uncommon cantrip",
         "NoCantripCandidates": "No cantrips at this rarity are available in enabled spell packs.",
+        "DeckRarityNote": "A cantrip deck uses common or uncommon cantrips; a rare or unique choice is capped at uncommon.",
         "DeckNote": "A cantrip deck casts its cantrip as a 1st-rank spell; as in pf2e, the spell is not embedded.",
         "KindScroll": "Scroll",
         "KindScrollHint": "Real spells cast from a scroll at a chosen rank",
