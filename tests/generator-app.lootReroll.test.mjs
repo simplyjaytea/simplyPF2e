@@ -1,4 +1,5 @@
 // Exercise production reroll/create actions without provider or Foundry writes.
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
@@ -36,6 +37,7 @@ let abortController;
 let abortDuringResolve = false;
 const ref = { packId: "test.equipment", _id: "potion" };
 const mocks = {
+  needsExtraPurchasePass,
   getCreatureFeatCandidates: async () => [], normalizeCreatureFeatName: (name) => String(name ?? "").toLowerCase(),
   MODULE_ID: "simplypf2e",
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,

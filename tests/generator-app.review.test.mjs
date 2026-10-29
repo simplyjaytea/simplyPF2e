@@ -1,5 +1,6 @@
 // Execute the unmodified production app with mocked imports/platform services.
 // No provider calls, Foundry documents, or test-only production hooks.
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import * as identityHelpers from "../scripts/pc-identity.mjs";
 import { getBackgroundLoreOptions } from "../scripts/pc-background-lore.mjs";
@@ -69,6 +70,7 @@ const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fig
   backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [],
   equipment: pcEquipment().map((item) => ({ ...item, entry: {} })), loot: previewLoot });
 const mocks = {
+  needsExtraPurchasePass,
   ...identityHelpers, getBackgroundLoreOptions, getDocument: async () => null, validatePCIdentityRequirements: async () => {},
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   AI_TASK: {}, taskMaxTokens: () => 100,

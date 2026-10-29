@@ -4,6 +4,7 @@
 // generator stores. Covers the school-spell preview on both paths: a school the prompt declares (fixed before
 // Create) and a class with two closed schools left to Create.
 // Run: node tests/generator-app.schoolSpellPreview.test.mjs
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
@@ -98,6 +99,7 @@ const resolved = () => ({
   featSlots: [], feats: [], spells: [], focusSpells: [], equipment: [], loot: []
 });
 const mocks = {
+  needsExtraPurchasePass,
   ...identityHelpers, getBackgroundLoreOptions, getDocument, getClassPathCandidates, validatePCIdentityRequirements,
   supportedClassCandidates, classModelsFocusSpells, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" },

@@ -108,8 +108,14 @@ assert.match(
 );
 assert.match(
   appSource,
-  /coinGp > lootBudget \* 0\.25/,
-  "the unspent-coin shortfall check must compare against the equipment-adjusted loot budget, not the raw wealth target"
+  /needsExtraPurchasePass\(resolved\.loot, lootBudget\)/,
+  "the unspent-coin shortfall check must test the equipment-adjusted loot budget, not the raw wealth target"
+);
+const purchasePassSource = await readFile(new URL("../scripts/purchase-pass.mjs", import.meta.url), "utf8");
+assert.match(
+  purchasePassSource,
+  /lootValueGp\(loot\.filter\(\(l\) => parseCoins\(l\.name\)\)\) > lootBudget \* 0\.25/,
+  "the shortfall predicate counts coin against a quarter of that same budget"
 );
 
 // Duplicate names must be counted once — buildEquipmentItems({ dedup: true })

@@ -1,5 +1,6 @@
 // Production GeneratorApp lifecycle integration with the real SpfApp/progress
 // implementation. Foundry documents and AI calls are isolated at import edges.
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import * as identityHelpers from "../scripts/pc-identity.mjs";
 import { getBackgroundLoreOptions } from "../scripts/pc-background-lore.mjs";
@@ -113,6 +114,7 @@ const create = async () => {
   return { actor: actor(), expectedItems: [] };
 };
 const mocks = {
+  needsExtraPurchasePass,
   ...identityHelpers, getBackgroundLoreOptions, getDocument: async () => pathDiscovery ? { toObject: () => ({}) } : null,
   getClassPathCandidates: async () => pathDiscovery ?? [], validatePCIdentityRequirements: async () => {},
   getCreatureFeatCandidates: async () => [{ id: "charge", name: "Sudden Charge", level: 1, ref: { packId: "pf2e.feats-srd", _id: "charge" } }],

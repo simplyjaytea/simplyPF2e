@@ -455,20 +455,7 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
     } else {
       const traits = slot.type === "ancestry" ? [ancestryTrait]
         : slot.type === "class" ? [classTrait] : [];
-      candidates = await getFeatCandidates({
-        level: slot.level, category: slot.type, traits, preferredNames: concept.feats,
-        prerequisiteContext
-      });
-      // Retry once without the trait filter before giving up: a valid slot
-      // whose ancestry/class trait matched nothing at this level (odd content
-      // packs, sparse low levels) is better filled with an on-category feat than
-      // silently dropped. Issue #64 item 4a.
-      if (!candidates.length && traits.length) {
-        candidates = await getFeatCandidates({
-          level: slot.level, category: slot.type, preferredNames: concept.feats,
-          prerequisiteContext
-        });
-      }
+      candidates = await featSlotCandidates(slot, traits, { preferredNames: concept.feats, prerequisiteContext });
       // Ordinary multiclass (C08): class slots also offer the noncaster catalog.
       // The dedication lock is enforced at pick time.
       if (multiclass && slot.type === "class") {
@@ -760,6 +747,18 @@ function resolveKeyAbility(classSystem, requested) {
 }
 
 /**
+ * Candidates for one non-archetype feat slot. The trait-filtered query is retried once without the
+ * trait before giving up: a valid slot whose ancestry/class trait matched nothing at this level (odd
+ * content packs, sparse low levels) is better filled with an on-category feat than silently dropped.
+ * Issue #64 item 4a. `fetch` defaults to the compendium query.
+ */
+export async function featSlotCandidates(slot, traits, { preferredNames = [], prerequisiteContext = null } = {}, fetch = getFeatCandidates) {
+  const candidates = await fetch({ level: slot.level, category: slot.type, traits, preferredNames, prerequisiteContext });
+  if (candidates.length || !traits.length) return candidates;
+  return fetch({ level: slot.level, category: slot.type, preferredNames, prerequisiteContext });
+}
+
+/**
  * Resolve the AI's freeform language names against the world's real language
  * list (`CONFIG.PF2E.languages`, a slug -> localized-label map read at
  * runtime rather than hardcoded, since installed content packs can add to
@@ -772,7 +771,7 @@ function resolveKeyAbility(classSystem, requested) {
  * character/document.ts merges into system.details.languages.value at
  * runtime), so listing them here would just be redundant, not wrong.
  */
-function resolveLanguages(names, ancestryDoc, bonus = 0) {
+export function resolveLanguages(names, ancestryDoc, bonus = 0) {
   const known = CONFIG?.PF2E?.languages ?? {};
   const bySlug = new Set(Object.keys(known));
   const byLabel = new Map(

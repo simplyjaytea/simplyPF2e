@@ -6,52 +6,27 @@
 // character whose feat call came back empty got ten copies of one class feat.
 // Run: node tests/pc-builder.featdedup.test.mjs
 //
-// resolveFeatPicks calls findEntry against the compendium, so the loop is
-// copied verbatim below with a stub findEntry (source of truth — keep in sync).
+// The real resolveFeatPicks runs against a stub feats pack (index only), so
+// findEntry and the duplicate guard are the production code paths.
 
 import assert from "node:assert/strict";
-import { slugify } from "../scripts/text.mjs";
 
-/* Stub compendium: every candidate name is a real feat of the right category. */
-const findEntry = async (_packs, name, filter) => {
-  const entry = { name, type: "feat", system: { category: name.split(":")[0], level: { value: 1 } } };
-  return filter(entry) ? entry : null;
+/* Stub feats pack: every candidate name is a real feat of the right category. */
+const feat = (name) => ({
+  _id: name.replace(/\W/g, ""), name, type: "feat", system: { category: name.split(":")[0], level: { value: 1 }, traits: { value: [] } }
+});
+const names = ["class:Alpha", "class:Beta", "class:Gamma"];
+const pack = { collection: "test.feats", metadata: { type: "Item", label: "Feats" }, getIndex: async () => names.map(feat) };
+globalThis.game = {
+  settings: { get: () => ({ feats: ["test.feats"] }) },
+  packs: { get: (id) => (id === "test.feats" ? pack : undefined), [Symbol.iterator]: () => [pack].values() }
 };
-const getPacksFor = () => [];
+const { resolveFeatPicks } = await import("../scripts/pc-builder.mjs");
 
 const origWarn = console.warn;
 console.warn = () => {};
 
-// --- Copied verbatim from scripts/pc-builder.mjs resolveFeatPicks() ---
-async function resolveFeatPicks(featSlots, picks) {
-  const bySlot = new Map(picks.map((p) => [p.slot, p.name]));
-  const taken = new Set();
-  const resolved = [];
-  const resolveFor = (slot, name) => findEntry(
-    getPacksFor("feats"),
-    name,
-    (e) => e.type === "feat"
-      && e.system?.category === slot.type
-      && (e.system?.level?.value ?? 0) <= slot.level
-      && !taken.has(slugify(e.name))
-  );
-  for (let i = 0; i < featSlots.length; i++) {
-    const slot = featSlots[i];
-    let name = bySlot.get(i + 1) ?? null;
-    let entry = name ? await resolveFor(slot, name) : null;
-    if (!entry) {
-      for (const candidate of slot.candidates ?? []) {
-        entry = await resolveFor(slot, candidate.name);
-        if (entry) { name = entry.name; break; }
-      }
-    }
-    if (entry) taken.add(slugify(entry.name));
-    resolved.push({ type: slot.type, level: slot.level, name: name ?? `${slot.type} feat`, entry });
-  }
-  return resolved;
-}
-
-const candidates = [{ name: "class:Alpha" }, { name: "class:Beta" }, { name: "class:Gamma" }];
+const candidates = names.map((name) => ({ name }));
 const classSlots = [
   { type: "class", level: 2, candidates },
   { type: "class", level: 4, candidates },

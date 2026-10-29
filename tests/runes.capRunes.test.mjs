@@ -8,12 +8,12 @@
 //      wealth target by orders of magnitude.
 // Run: node tests/runes.capRunes.test.mjs
 //
-// parseRunes and runedName are pure and imported directly. capRunes/runeGp
-// read the compendium for real rune levels and prices, so their tier-selection
-// arithmetic is copied verbatim below (source of truth — keep in sync).
+// Everything here imports the real functions. capRunes/runeGp read the compendium
+// for the rune catalog, so the tests run their pure cores (capRuneTiers, runeGpFor)
+// against a catalog fixture shaped like fundamentalRunes() returns.
 
 import assert from "node:assert/strict";
-import { parseRunes, runedName } from "../scripts/runes.mjs";
+import { parseRunes, runedName, capRuneTiers, runeGpFor } from "../scripts/runes.mjs";
 
 /* Stand-in for fundamentalRunes(): the real levels/prices of the weapon
    fundamental runes, shaped exactly as the compendium scan returns them. */
@@ -22,18 +22,8 @@ const WEAPON = {
   secondary: [{ tier: 1, level: 4, gp: 65 }, { tier: 2, level: 12, gp: 1065 }, { tier: 3, level: 19, gp: 31065 }]
 };
 
-// --- Copied verbatim from scripts/runes.mjs capRunes() / runeGp() ---
-function capRunes(runes, { potency, secondary }, level, field = "striking") {
-  const best = (tiers, requested) => {
-    const legal = tiers.filter((r) => r.level <= level && r.tier <= requested);
-    return legal.length ? Math.max(...legal.map((r) => r.tier)) : 0;
-  };
-  return { ...runes, potency: best(potency, runes.potency), [field]: best(secondary, runes[field]) };
-}
-function runeGp(runes, { potency, secondary }, field = "striking") {
-  const gpFor = (tiers, tier) => tiers.find((r) => r.tier === tier)?.gp ?? 0;
-  return gpFor(potency, runes.potency) + gpFor(secondary, runes[field]);
-}
+const capRunes = (runes, catalog, level, field = "striking") => capRuneTiers(runes, catalog, level, field);
+const runeGp = (runes, catalog, field = "striking") => runeGpFor(runes, catalog, field);
 
 /* ---------------- parsing ---------------- */
 

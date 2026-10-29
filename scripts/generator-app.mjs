@@ -17,6 +17,7 @@ import {
   applyTreasureBudget, equipmentValueGp, lootValueGp, parseCoins, parseScroll, slugify,
   dedupeLootAgainstEquipment, enforceNamedLootBudget
 } from "./builder.mjs";
+import { needsExtraPurchasePass } from "./purchase-pass.mjs";
 import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp, validatePCIdentityRequirements
 } from "./pc-builder.mjs";
@@ -1851,8 +1852,7 @@ export class GeneratorApp extends SpfApp {
       // after the first purchase pass, make ONE more pass to convert it into
       // real items (issue #64 item 6: PCs were leaving too much unspent
       // gold). Bounded to a single retry.
-      const coinGp = lootValueGp(resolved.loot.filter((l) => parseCoins(l.name)));
-      if (lootBudget > 0 && coinGp > lootBudget * 0.25) {
+      if (needsExtraPurchasePass(resolved.loot, lootBudget)) {
         try {
           const { loot: draft, usage: extraUsage } = await generatePCLoot({
             concept, amount: this.#input.treasureAmount, onProgress: this._progressCallback(), signal
