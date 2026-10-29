@@ -81,6 +81,11 @@ assert.equal(base((d) => { d.system.runes.property = ["flaming"]; }), "property-
 assert.equal(base((d) => { d.system.runes.striking = 1; }), "existing-rune", "an existing striking rune is refused");
 assert.equal(base((d) => { d.system.rules = [{ key: "X" }]; }), "rules", "a base with Rule Elements is refused");
 assert.equal(base((d) => { d.system.traits.value.push("magical"); }), "magical", "an already magical base is not an ordinary base");
+// A magic tradition makes a base magical too (spell/values.ts MAGIC_TRADITIONS, primal included), so each word is refused on its own.
+for (const tradition of ["arcane", "divine", "occult", "primal"]) {
+  assert.equal(base((d) => { d.system.traits.value.push(tradition); }), "magical", `a ${tradition} base is refused as magical`);
+}
+assert.equal(base((d) => { d.system.traits.value.push("fire"); }), null, "a non-tradition trait leaves the base ordinary");
 assert.equal(base((d) => { d.system.usage = { value: "etched-onto-a-weapon" }; }), "attachment", "an attachment usage is not a base");
 assert.equal(base((d) => { d.system.traits.rarity = "legendary"; }), "rarity", "an unknown base rarity is refused");
 assert.equal(base((d) => { d.system.traits.value = undefined; }), "classification", "a base without traits fails closed");
