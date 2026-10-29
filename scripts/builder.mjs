@@ -4,6 +4,7 @@ import { slugify, capitalized, esc, inertText, toHtml } from "./text.mjs";
 import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
 import { persistedExpectedItems } from "./post-create.mjs";
 import { coinEntry } from "./loot-actor.mjs";
+import { splitCurrencyGp } from "./treasure-parcel.mjs";
 import { buildSpellConsumable, spellConsumableTemplateRef } from "./spell-consumables.mjs";
 import {
   resolveNpcAbilityPackages, revalidateNpcAbilityPackages, npcPackageUnarmedStrike,
@@ -452,6 +453,9 @@ const COIN_DENOMINATION = {
   "Copper Pieces": "cp"
 };
 const COIN_UNIT_GP = { "Platinum Pieces": 10, "Gold Pieces": 1, "Silver Pieces": 0.1, "Copper Pieces": 0.01 };
+const COIN_NAME_BY_DENOMINATION = { pp: "Platinum Pieces", gp: "Gold Pieces", sp: "Silver Pieces", cp: "Copper Pieces" };
+/** Largest quantity one coin line holds; a bigger remainder is split into more lines. */
+const MAX_COIN_STACK = 100000;
 
 /**
  * Recognize coin loot like "Gold Coins", "150 gold pieces" or "20 gp" and map
@@ -638,8 +642,9 @@ export async function resolveLoot(concept, { exactContent = false, skipped = [] 
 
 /** Total gp value of a resolved loot list (per-unit resolvedValue × quantity). */
 export function lootValueGp(loot) {
+  // A line with no quantity counts once; a line with quantity 0 counts nothing (an empty coin stack).
   return (Array.isArray(loot) ? loot : []).reduce(
-    (sum, l) => sum + (Number(l?.resolvedValue) || 0) * (Number(l?.quantity) || 1),
+    (sum, l) => sum + (Number(l?.resolvedValue) || 0) * (l?.quantity == null ? 1 : Number(l.quantity) || 0),
     0
   );
 }
@@ -674,24 +679,44 @@ export async function applyTreasureBudget(loot, targetGp) {
     if (total >= targetGp * 0.8 && total <= targetGp * 1.2) return loot;
 
     if (total < targetGp * 0.8) {
-      const gap = targetGp - total;
-      const gold = loot.find((l) => parseCoins(l.name)?.name === "Gold Pieces");
-      if (gold) {
-        const unit = coinUnitGp(gold) || 1;
-        gold.quantity = Math.min(gold.quantity + Math.max(Math.round(gap / unit), 1), 100000);
-      } else {
-        const resolved = await resolveCoinage("Gold Pieces");
+      // The remainder is paid in whole coins, split as the Treasure parcel splits currency: whole pp at 100 gp
+      // and up, then gp, sp and cp. Each stack holds at most MAX_COIN_STACK, so a large remainder is a few stacks
+      // and its value is exact. Resolve every coinage the padding will need before the list changes: if one is
+      // unavailable, the list is left as it was.
+      const plan = Object.entries(splitCurrencyGp(Math.max(Math.round(targetGp - total), 1)))
+        .filter(([, count]) => count > 0);
+      const coinage = new Map();
+      for (const [denomination, count] of plan) {
+        const name = COIN_NAME_BY_DENOMINATION[denomination];
+        const lines = loot.filter((l) => parseCoins(l.name)?.name === name);
+        const room = lines.reduce((sum, l) => sum + Math.max(MAX_COIN_STACK - (Number(l.quantity) || 0), 0), 0);
+        if (count <= room) continue;
+        const resolved = await resolveCoinage(name);
         if (!resolved) {
-          console.warn("simplypf2e | treasure-budget coin padding skipped: no published Gold Pieces coinage document");
+          console.warn(`simplypf2e | treasure-budget coin padding skipped: no published ${name} coinage document`);
           return loot;
         }
-        loot.push({
-          name: "Gold Pieces",
-          quantity: Math.min(Math.max(Math.round(gap), 1), 100000),
-          runes: parseRunes("Gold Pieces"),
-          entry: resolved.entry,
-          resolvedValue: resolved.resolvedValue || 1
-        });
+        coinage.set(name, resolved);
+      }
+      for (const [denomination, count] of plan) {
+        const name = COIN_NAME_BY_DENOMINATION[denomination];
+        let remaining = count;
+        for (const line of loot.filter((l) => parseCoins(l.name)?.name === name)) {
+          const take = Math.min(MAX_COIN_STACK - (Number(line.quantity) || 0), remaining);
+          if (take <= 0) continue;
+          line.quantity = (Number(line.quantity) || 0) + take;
+          remaining -= take;
+          if (!remaining) break;
+        }
+        const resolved = coinage.get(name);
+        while (remaining > 0) {
+          const take = Math.min(MAX_COIN_STACK, remaining);
+          loot.push({
+            name, quantity: take, runes: parseRunes(name), entry: resolved.entry,
+            resolvedValue: resolved.resolvedValue || COIN_UNIT_GP[name]
+          });
+          remaining -= take;
+        }
       }
       return loot;
     }

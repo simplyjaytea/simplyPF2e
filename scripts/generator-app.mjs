@@ -1443,9 +1443,11 @@ export class GeneratorApp extends SpfApp {
       this.#resolved = await resolveConcept(this.#concept, { exactContent: true });
       // Treasure budget: the module owns the numbers (level + rarity from the
       // tables, scaled by the Treasure amount control); only coins flex.
+      // The GM's Include treasure setting decides whether there is a budget. An empty AI draft still gets the
+      // module's coin fill (the coins are the budget's, not the AI's).
       this.#resolved.loot = await applyTreasureBudget(
         this.#resolved.loot,
-        this.#concept.loot.length ? treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount) : 0
+        this.#input.includeLoot ? treasureBudget(this.#concept.level, this.#concept.rarity, this.#input.treasureAmount) : 0
       );
       const manifest = completionManifest({ mode: this.#input.mode, concept: this.#concept, resolved: this.#resolved });
       this._throwIfCancelled();
@@ -1590,7 +1592,7 @@ export class GeneratorApp extends SpfApp {
         // regardless of copy count — only the per-copy split changes
         // (#stepMemberCount recomputes it the same way).
         member.treasureGroupBudget =
-          member.concept.loot.length ? treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / npc.length : 0;
+          this.#input.includeLoot ? treasureBudget(partyLevel, member.concept.rarity, this.#input.treasureAmount) / npc.length : 0;
         member.treasureBudgetEach = member.treasureGroupBudget / Math.max(member.count, 1);
         member.resolved.loot = await applyTreasureBudget(member.resolved.loot, member.treasureBudgetEach);
         member.manifest = completionManifest({ mode: "monster", concept: member.concept, resolved: member.resolved });
@@ -2626,7 +2628,7 @@ export class GeneratorApp extends SpfApp {
       const lootSkipped = [];
       const resolved = { ...this.#resolved, loot: await applyTreasureBudget(
         await resolveLoot(concept, { exactContent: true, skipped: lootSkipped }),
-        concept.loot.length ? treasureBudget(concept.level, concept.rarity, this.#input.treasureAmount) : 0
+        this.#input.includeLoot ? treasureBudget(concept.level, concept.rarity, this.#input.treasureAmount) : 0
       ), skipped: { ...this.#resolved.skipped, loot: lootSkipped } };
       const manifest = completionManifest({ mode: this.#manifest?.mode ?? "monster", concept, resolved });
       this._throwIfCancelled();
