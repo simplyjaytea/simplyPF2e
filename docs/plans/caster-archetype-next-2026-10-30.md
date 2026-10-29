@@ -1,0 +1,42 @@
+# Next caster archetype: Bard (spec, 2026-10-30)
+
+Base: `main@728aaa0`. Recommendation: **Bard Dedication**, Basic Bard Spellcasting. Bard has one single-valued muse choice and fixed occult/Charisma casting; unlike the other choice-bearing casters it grants no feature or companion and its choice does not change the spell list. Magus avoids a choice but requires new OR-prerequisite handling. Bard is the smallest choice-handling slice; this comparison is an engineering judgment, not a claim that the ChoiceSet already works. Do not silently treat an unanswered choice as complete.
+
+## Pinned source and behavior
+
+PF2e `pf2e-8.5.0`, `packs/pf2e/feats/archetype/bard/level-2/bard-dedication.json` ([source](https://github.com/foundryvtt/pf2e/blob/pf2e-8.5.0/packs/pf2e/feats/archetype/bard/level-2/bard-dedication.json)) has prerequisite **“Charisma +2”**. Its description says “Choose a muse as you would if you were a bard” and expressly excludes its starting feat, spell and other abilities. Its rules are a `ChoiceSet` flag `dedicationMuse` filtering `item:tag:bard-muse` excluding `item:tag:class-archetype`, with `slugsAsValues: true`; a `RollOption` uses `feature:{item|flags.system.rulesSelections.dedicationMuse}`; two `ActiveEffectLike` rules upgrade Performance and Occultism to trained. There is **no GrantItem**. Its subfeature sets spellcasting rank 1. The feat says two occult cantrips, trained spell attacks/DC, Charisma, and occult bard spells. Already-trained skills instead grant a skill choice: this is not implemented by the two upgrade rules and must be disclosed as a manual step, consistent with the existing Wizard limitation.
+
+The Basic, Expert and Master Bard Spellcasting feats have `rules: []`; none creates an entry. PF2e's entry is created through its sheet dialog as a plain `spellcastingEntry`, as documented with source paths in [the existing spike](caster-multiclass-2026-10-30.md). Basic requires Bard Dedication; Expert requires Basic and master Occultism; Master requires Expert and legendary Occultism. Expert and Master subfeatures set spellcasting proficiency ranks 2 and 3 respectively. The [spellcasting archetypes journal](https://github.com/foundryvtt/pf2e/blob/pf2e-8.5.0/packs/pf2e/journals/archetypes.json) specifies the progression below.
+
+## Choice and user experience
+
+Provide an explicit muse selection in the existing character preview before Create. Populate it from eligible PF2e class-feature documents using the dedication's exact filter and slug values; show readable names, not raw slugs. A deterministic eligible default of **Maestro**, if present and eligible, is acceptable as a module choice, visibly labelled and changeable before Create. The GM must see the chosen muse; no global user decision is required to use this default. If Maestro is unavailable, do not silently choose an arbitrary value: require an eligible choice or block Create with a clear message. The exact selection must be persisted in the native `flags.pf2e.rulesSelections.dedicationMuse` format verified against PF2e 8.5.0 before embedding, and the resulting roll option must resolve. Verify the precise source/creation flag handling against the system; do not assume a guessed flag shape works. Clone the dedication's rules unchanged; do not grant the selected muse item, starting feat, or spell. Choice applies only to this dedication, not a primary bard class. Existing own-class, level, ability and dedication-lock checks remain in force.
+
+On narrow screens the labelled selection and preview remain usable without horizontal scrolling; keyboard and screen-reader users can identify the label, default, current selection and any error. If candidates cannot load or the saved selection is no longer eligible, show an actionable error and disable Create until resolved. A character without Bard Dedication has no muse control or bard entry. Continue to refuse unsupported caster feat or identity edits in the editor; do not offer edits that silently discard the selection or repertoire.
+
+## Entry, progression and decisions
+
+Create one separate spontaneous, non-flexible occult entry with Charisma and a trained proficiency floor (`proficiency.value: 1`); PF2e may raise the prepared statistic from the character's base spellcasting proficiency. Dedication supplies two common occult cantrips in its repertoire. No ranked slots exist without Basic. With the feat, supply one slot and one common occult repertoire spell of the corresponding rank at each threshold:
+
+| Feat held | Character level | New rank / slots | Spell attack/DC floor | Signature choices |
+| --- | --- | --- | --- | --- |
+| Basic | 4 / 6 / 8 | 1 / 2 / 3, one each | trained | one at 6 |
+| Expert | 12 / 14 / 16 | 4 / 5 / 6, one each | expert | second at 12 |
+| Master | 18 / 20 | 7 / 8, one each | master | third at 18 |
+
+Slots persist at higher levels; no threshold grants its slot without the corresponding feat. Basic explicitly adds a repertoire spell each time a new bard-archetype slot rank is gained; check the PF2e journal and native repertoire representation when implementing Expert/Master. Signature spells must be distinct eligible repertoire spells, using PF2e's native representation, and can heighten as normal; do not represent them as extra slots. At level 6 select one deterministically from eligible ranked repertoire spells and display it for GM review. **Initial scope:** Expert and Master remain unavailable, as the current staged evaluator cannot prove master/legendary Occultism. The table is the target behavior if that prerequisite capability is later built; do not offer the feats or claim their sheet behavior until then.
+
+The AI may choose only identifiers from module-supplied, common occult candidates for each module-determined rank and count, as in Wizard. It does not choose muse, ability, tradition, proficiency, level, slot counts, ranks, signature count or numeric values. Module validates candidate IDs, own rank, tradition, rarity, uniqueness and required counts again at Create; missing/invalid selections block creation before actor write. Display the repertoire and selected signature spell in preview. A class casting entry must remain separate. Muse and signature defaults are product choices, not rules requirements; a GM can adjust the final character in Foundry.
+
+## Acceptance and native ledger proposals
+
+Automated coverage should use pinned 8.5.0 fixtures for the dedication, choices, journal and feats; exercise valid/invalid selection, candidate filtering, actual embedded flag/roll option, per-level slot and spell counts, prerequisites, class coexistence, validation failure before writes, and editor refusal. Test actual system behavior in Foundry; fixtures alone cannot prove ChoiceSet resolution.
+
+Reserve IDs at integration time to avoid collisions. Add OPEN native rows:
+
+- **Bard choice:** generate an eligible non-bard with Charisma +2; choose a different eligible muse from the visible default. On the created sheet, dedication retains the selected muse and corresponding roll option, no extra muse feature/starting feat/spell appears, and Occultism/Performance are trained. If either was already trained, the preview explicitly identifies the manual replacement-skill choice. Reload the actor and confirm persistence. Test missing or invalid muse blocks Create without an actor.
+- **Bard casting:** dedication-only has a separate spontaneous occult/Charisma entry with two cantrips and trained-or-higher spell statistic; at levels 4, 6 and 8 with Basic it has exactly the cumulative one slot and repertoire spell at ranks 1, 1–2 and 1–3 respectively, with one visible signature spell from level 6. Confirm no Basic means no ranked slots, and any existing class entry is unchanged. Confirm Expert/Master are not offered. Check an invalid or missing spell blocks Create without an actor.
+
+## Open risks / non-goals
+
+The native ChoiceSet flag and signature-spell document representation require an implementation spike and Foundry verification; if either cannot be set safely, keep Bard unavailable and report the blocker. Native acceptance is unperformed. No user decision is required for the proposed visible, changeable Maestro default; product owner approval would be needed only if a different policy requires a mandatory manual muse choice. Other bard feats, expert/master prerequisite evaluation, automatic replacement skill training, and editor spell editing are out of scope.
