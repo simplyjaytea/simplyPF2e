@@ -421,6 +421,10 @@ export async function resolvePCConcept(concept, { exactContent = false } = {}) {
   // remain unavailable until their native selection is known. Match the real
   // feature's source identity, never its display name alone.
   // pf2e-8.5.0/packs/pf2e/class-features/skillful-lessons.json (dmK1wya8GBi9MmCB).
+  // The 8.5.0 Investigator class document stores the NAME form of this uuid in
+  // its level-3 item (packs/pf2e/classes/investigator.json lines 165–166), so
+  // the name form is live data, not a stale alias. Both forms name the same
+  // feature; keep both.
   const skillfulLessons = Object.values(classDoc.system?.items ?? {}).some((feature) =>
     feature?.level === 3 && [
       "Compendium.pf2e.classfeatures.Item.dmK1wya8GBi9MmCB",

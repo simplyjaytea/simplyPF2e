@@ -191,11 +191,9 @@ export function normalizeRunedItemConcept(raw, {
   }
   const secondaryTier = secondaryRune?.tier ?? 0;
 
-  // PF2e itself calls prunePropertyRunes() before determining valuation: it
-  // removes duplicate/lower grades when greater, major, or true shares the
-  // same rune family (8.5.0 runes.ts lines 37–48). Do that before the potency
-  // slot cap, so e.g. Flaming + Flaming (Greater) consumes one slot and keeps
-  // the exact issued greater candidate for both assembly and preview price.
+  // Every property rune the module drops is also returned as data (propertyDrops),
+  // so the Forge preview can show the GM why. A drop never blocks Create.
+  const propertyDrops = [];
   const selectedProperties = [];
   for (const id of Array.isArray(c.propertyRuneIds) ? c.propertyRuneIds : []) {
     const match = findById(runeCandidates, id);
@@ -208,11 +206,39 @@ export function normalizeRunedItemConcept(raw, {
     // dropped, never bent to fit.
     if (!propertyRuneFitsBase(kind, match.usage, base?.category)) {
       console.warn(`simplypf2e | itemforge: dropped property rune "${match.name}" (${match.usage}) — not etchable onto ${base?.category ?? "unknown-category"} ${kind} "${base?.name}"`);
+      propertyDrops.push({ reason: "category", name: match.name, category: base?.category ?? "unknown-category" });
       continue;
     }
     selectedProperties.push(match);
   }
-  const propertyRuneCandidates = prunePropertyRuneCandidates(selectedProperties).slice(0, potency);
+  // One rune per family, then the potency slot cap. The family rule is this
+  // module's policy: pf2e 8.5.0 defines prunePropertyRunes (physical/runes.ts
+  // lines 37–49) but never calls it, so nothing native removes Flaming beside
+  // Flaming (Greater). Both the policy and the cap are applied before the
+  // valuation, so e.g. Flaming + Flaming (Greater) uses one slot and keeps the
+  // exact issued greater candidate for assembly and preview price.
+  const kept = prunePropertyRuneCandidates(selectedProperties);
+  const seen = new Set();
+  for (const candidate of selectedProperties) {
+    if (seen.has(candidate)) {
+      console.warn(`simplypf2e | itemforge: dropped property rune "${candidate.name}" — the same rune was picked twice`);
+      propertyDrops.push({ reason: "duplicate", name: candidate.name });
+    } else if (!kept.includes(candidate)) {
+      console.warn(`simplypf2e | itemforge: dropped property rune "${candidate.name}" — one rune per family (the greater, major or true grade of the same rune is kept)`);
+      propertyDrops.push({ reason: "family", name: candidate.name });
+    }
+    seen.add(candidate);
+  }
+  // pf2e 8.5.0 physical/runes.ts getPropertyRuneSlots: an item's property-rune
+  // slots are its potency rune (plus one for orichalcum material, which a
+  // Forge base never carries: specific armor and weapons are excluded from the
+  // base list). armor/document.ts 105–106 and weapon/document.ts 440 truncate
+  // any excess silently, so the excess is dropped here, with a warning.
+  const propertyRuneCandidates = kept.slice(0, potency);
+  for (const candidate of kept.slice(potency)) {
+    console.warn(`simplypf2e | itemforge: dropped property rune "${candidate.name}" — ${potency} property-rune slot(s) at potency +${potency}`);
+    propertyDrops.push({ reason: "slot", name: candidate.name, slots: potency });
+  }
 
   return {
     kind,
@@ -227,6 +253,7 @@ export function normalizeRunedItemConcept(raw, {
     secondaryTier,
     propertyRunes: propertyRuneCandidates.map((candidate) => candidate.name),
     propertyRuneCandidates,
+    propertyDrops,
     rarity: RARITIES.has(rarity) ? rarity : RARITIES.has(c.rarity) ? c.rarity : "common",
     description: String(c.description ?? "").slice(0, 800)
   };

@@ -181,6 +181,12 @@ assert.ok(deckBlock, "the deck condition has a closing block");
 assert.match(deckBlock[1], /name="level"/, "a deck hides the level control");
 assert.doesNotMatch(deckBlock[1], /name="rarity"/, "the rarity control is not hidden for a deck");
 assert.ok(template.indexOf('name="rarity"') > deckBlock.index + deckBlock[0].length, "the rarity control follows the deck condition, so it shows for decks");
+// The rarity select lists every rarity for a deck (H1 keeps the choice across kind switches), so the deck note
+// says what a rare or unique choice becomes instead of hiding the option.
+const noteAt = template.indexOf("DeckRarityNote");
+assert.ok(noteAt > template.indexOf('name="rarity"') && template.slice(noteAt - 120, noteAt).includes("isCantripDeck"),
+  "the deck rarity note sits under the rarity select, for decks only");
+assert.ok(template.includes('{{#each rarities}}'), "the rarity select still lists every rarity");
 assert.equal(prepared.preview.isCantripDeck, true);
 assert.equal(createCalls, 0);
 await actions.createItem.call(app);

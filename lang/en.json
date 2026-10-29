@@ -516,6 +516,12 @@
       "RunesHeading": "Runes",
       "Potency": "Potency",
       "SecondaryTier": "Secondary rune tier:",
+      "Dropped": {
+        "Slot": "{rune} was not kept: a potency +{slots} rune leaves {slots} property-rune slot(s) for this item.",
+        "Family": "{rune} was not kept: only the greater, major or true grade of its rune family is kept.",
+        "Duplicate": "{rune} was picked more than once; it is kept once.",
+        "Category": "{rune} was not kept: it cannot be etched onto this {category} base."
+      },
       "GeneratePlan": "Generate Item Plan",
       "CreatedTitle": "Item created",
       "CreatedSummary": "{name} is ready in the Items directory.",
@@ -528,6 +534,7 @@
         "KindCantripDeck": "Cantrip deck",
         "KindCantripDeckHint": "Five cards of one real common or uncommon cantrip",
         "NoCantripCandidates": "No cantrips at this rarity are available in enabled spell packs.",
+        "DeckRarityNote": "A cantrip deck uses common or uncommon cantrips; a rare or unique choice is capped at uncommon.",
         "DeckNote": "A cantrip deck casts its cantrip as a 1st-rank spell; as in pf2e, the spell is not embedded.",
         "KindScroll": "Scroll",
         "KindScrollHint": "Real spells cast from a scroll at a chosen rank",
