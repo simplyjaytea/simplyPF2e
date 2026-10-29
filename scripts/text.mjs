@@ -28,16 +28,21 @@ export function esc(text) {
     .replaceAll("'", "&#39;");
 }
 
+/** U+2060 WORD JOINER: zero width, no visible glyph, and not matched by \s or by any enricher pattern. */
+const WORD_JOINER = "\u2060";
+
 /**
- * Escape AI prose and make it enricher-inert. Foundry finds enrichers in the
- * stored HTML by their source text: @UUID[…], @Check[…], @Damage[…], @Localize[…]
- * and inline rolls [[/r …]]. Escaping leaves those sequences intact, so a
- * description could become a live link or roll. Here "@" and "[" are written
- * as character references. The page shows the same characters, and no enricher
- * sequence is left in the stored HTML. Module-authored mechanics never pass
- * through this helper.
+ * Escape AI prose and make it enricher-inert. Foundry finds enrichers in the stored HTML by their source text:
+ * @UUID[…], @Check[…], @Damage[…], @Localize[…], @Embed[…], &Reference[…] and inline rolls [[/r …]]. Escaping
+ * leaves those sequences intact. Character references (&#64;, &#91;) do not work either: Foundry enriches text
+ * nodes, and an HTML parser decodes those references back to "@" and "[" before the enrichers run. So a
+ * word joiner goes after every "@" and before every "[". The bracket syntax then never reads as adjacent
+ * characters, whether or not the HTML is parsed first. The page shows the same text. Module-authored mechanics
+ * never pass through this helper.
  */
-export const inertText = (text) => esc(text).replaceAll("@", "&#64;").replaceAll("[", "&#91;");
+export const inertText = (text) => esc(text)
+  .replaceAll("@", `@${WORD_JOINER}`)
+  .replaceAll("[", `${WORD_JOINER}[`);
 
 /**
  * Escape plain multi-paragraph AI text and wrap it in <p> tags (blank-line
