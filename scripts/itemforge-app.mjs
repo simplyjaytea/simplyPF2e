@@ -16,7 +16,7 @@ import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
 import {
   getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, priceToGp, toItemData,
-  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuable,
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates,
   getRunedCandidates, pickParcelValuables
 } from "./compendium.mjs";
 import {
