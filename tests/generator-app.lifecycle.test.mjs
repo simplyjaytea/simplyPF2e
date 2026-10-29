@@ -686,4 +686,3 @@ appUnderTest._test_input.includeLoot = false;
 await appUnderTest._test_runGeneration(false, { create: false });
 assert.ok(budgetTargets.length > 0 && budgetTargets.every((target) => target === 0), "Include treasure off gives every budget call zero");
 draftLootNames = ["Silver Ring"];
-
