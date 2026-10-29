@@ -159,6 +159,7 @@
           <li>{{this}}</li>
         {{/each}}
       </ul>
+      {{#each preview.droppedRunes}}<p class="notification warning" role="status">{{this}}</p>{{/each}}
     {{else}}
       <div class="spf-statline">
         <span><strong>{{localize "SIMPLYPF2E.ItemForge.Usage"}}</strong> {{preview.usage}}{{#if preview.invested}} ({{localize "SIMPLYPF2E.ItemForge.Invested"}}){{/if}}</span>

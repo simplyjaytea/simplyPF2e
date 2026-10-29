@@ -516,6 +516,12 @@
       "RunesHeading": "Runes",
       "Potency": "Potency",
       "SecondaryTier": "Secondary rune tier:",
+      "Dropped": {
+        "Slot": "{rune} was not kept: a potency +{slots} rune leaves {slots} property-rune slot(s) for this item.",
+        "Family": "{rune} was not kept: only the greater, major or true grade of its rune family is kept.",
+        "Duplicate": "{rune} was picked more than once; it is kept once.",
+        "Category": "{rune} was not kept: it cannot be etched onto this {category} base."
+      },
       "GeneratePlan": "Generate Item Plan",
       "CreatedTitle": "Item created",
       "CreatedSummary": "{name} is ready in the Items directory.",

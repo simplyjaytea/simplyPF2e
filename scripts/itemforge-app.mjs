@@ -53,6 +53,21 @@ function consumableMaxRank(kind, level) {
 }
 
 /** Words from the GM's brief that rank spell candidates by name and trait. */
+/**
+ * Localized lines for the property runes the Forge dropped. Each line names the rune and the reason, and is shown
+ * in the preview (escaped by the template). A dropped rune never blocks Create.
+ */
+function droppedRuneLines(drops) {
+  // Complete keys, so the integrity check verifies each line exists.
+  const key = {
+    slot: "SIMPLYPF2E.ItemForge.Dropped.Slot", family: "SIMPLYPF2E.ItemForge.Dropped.Family",
+    duplicate: "SIMPLYPF2E.ItemForge.Dropped.Duplicate", category: "SIMPLYPF2E.ItemForge.Dropped.Category"
+  };
+  return drops.map((drop) => game.i18n.format(key[drop.reason], {
+    rune: drop.name, slots: drop.slots ?? "", category: drop.category ?? ""
+  }));
+}
+
 function briefKeywords(brief) {
   return [...new Set(String(brief ?? "").toLowerCase().split(/[^a-z]+/).filter((word) => word.length >= 4))];
 }
@@ -259,7 +274,8 @@ export class ItemForgeApp extends SpfApp {
       runed: true,
       potency: runes.potency ?? 0,
       secondary: secondaryTier ? SECONDARY_ADJECTIVE[this.#kind][secondaryTier] : null,
-      propertyRunes: this.#concept?.propertyRunes ?? []
+      propertyRunes: this.#concept?.propertyRunes ?? [],
+      droppedRunes: droppedRuneLines(this.#concept?.propertyDrops ?? [])
     };
   }
 
