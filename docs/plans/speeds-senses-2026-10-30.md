@@ -44,7 +44,7 @@ Excluded from the scan: one `otherSpeeds` entry with type `Freedom Of Movement` 
 | climb | 5–60 | 12 |
 | burrow | 5–60 | 12 |
 | senses range (one list for all senses) | 5–1,000 | 200 |
-| ranged strike increment | 10, 20, 30, 40, 60, 80, 100, 120, 150 | 9 (unchanged) |
+| ranged strike increment | 10, 20, 30, 40, 60, 80, 100, 120, 150, 200 | 10 (was 9; 200 added after the user decision) |
 
 ## Rules
 
@@ -56,6 +56,6 @@ Excluded from the scan: one `otherSpeeds` entry with type `Freedom Of Movement` 
 ## Gaps and decisions for the Lead
 
 - **Outlier maxima.** Each top is set by one creature (fly 240 by Warden of Peaks and Skies, land 120 by Tolokand, sense 1,000 by Gray Death). That gives long lists. If you want the tops at the round numbers the rest of the data uses, say which and I will trim.
-- **Strike list not derived.** The published maximum increment is 200 ft (`pathfinder-bestiary-2/thunderbird.json`, Thunderbolt). The list stays 10–150 because the brief covers speeds and senses and the prompt line for strikes was out of scope. Off-list values now snap to 150. Decide whether to derive it in steps of 5 to 200.
+- **Strike list extended to the published maximum.** The published maximum increment is 200 ft (`pathfinder-bestiary-2/thunderbird.json`, Thunderbolt). The list originally stopped at 150 because the brief covered speeds and senses; on the user's decision it now ends at 200 (same increments, 200 appended). Off-list values snap to 200 at the top.
 - **Land 0.** 97 published land speeds are 0. A creature whose only entry is land 0 falls back to 25 ft, as before. This is unchanged and not covered by this record.
 - **Not native-checked.** Foundry's sheet is not run here (N46–N47).

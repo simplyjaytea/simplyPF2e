@@ -162,7 +162,7 @@ JSON schema (all keys required unless marked optional):
       "damageScale": "extreme"|"high"|"moderate"|"low",
       "damageType": string, // e.g. "piercing", "fire"
       "traits": string[], // e.g. "agile", "reach-10", "deadly-d8"; [] if none
-      "range": 10|20|30|40|60|80|100|120|150|null, // range increment in feet for ranged strikes; null for melee
+      "range": 10|20|30|40|60|80|100|120|150|200|null, // range increment in feet for ranged strikes; null for melee
       "attackEffects": string[] // e.g. ["grab"], [] if none
     }
   ],
