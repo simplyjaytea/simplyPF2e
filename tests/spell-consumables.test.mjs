@@ -347,3 +347,18 @@ for (const forge of ["uncommon", "rare", "unique"]) assert.equal(cantripDeckMaxR
 for (const bogus of [undefined, null, "", "Common", "Uncommon", "epic", "legendary"]) {
   assert.equal(cantripDeckMaxRarity(bogus), "common", `${JSON.stringify(bogus)} fails closed to common`);
 }
+
+// "magical" is dropped when traits.value carries any of the four magic traditions (spell/values.ts line 2),
+// primal included; a non-tradition trait does not drop it. Each word is tested on its own so a mutated
+// MAGIC_TRADITIONS set (for example, primal removed) fails on that word.
+for (const tradition of ["arcane", "divine", "occult", "primal"]) {
+  const withTradition = { ...HEAL, system: { ...HEAL.system, traits: { ...HEAL.system.traits, value: ["healing", "magical", tradition] } } };
+  const built = buildSpellConsumable({ kind: "scroll", rank: 1, templateData: SCROLL_1, spellData: withSource(withTradition, HEAL_UUID) });
+  assert.equal(built.system.traits.value.includes("magical"), false, `${tradition} in traits.value drops magical`);
+  assert.ok(built.system.traits.value.includes(tradition), `${tradition} stays in the trait list`);
+}
+{
+  const plain = { ...HEAL, system: { ...HEAL.system, traits: { ...HEAL.system.traits, value: ["healing", "magical", "fire"] } } };
+  const built = buildSpellConsumable({ kind: "scroll", rank: 1, templateData: SCROLL_1, spellData: withSource(plain, HEAL_UUID) });
+  assert.ok(built.system.traits.value.includes("magical"), "a non-tradition trait keeps magical");
+}
