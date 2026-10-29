@@ -76,8 +76,8 @@ In Character mode, **Generate spell lists** controls generated spell lists. Turn
 | **Player Character mode** | Released for GM-reviewed use with **Fighter**, **Rogue**, **Investigator**, and **Wizard** offered. Native Fighter and Investigator paths have bounded live coverage; Rogue acceptance remains incomplete, and Wizard has no live coverage yet. Wizard now also embeds the chosen school's initial focus spell (not live-verified). Standard presets guide flavor only. Review the class, heritage, choices, equipment, and numbers before play. |
 | **Item forge** | Core flows live-verified on Foundry 14 / PF2e 8.5: cancellation isolation, runed sheet parity, and generated-macro escaping. GMs open it from the Items directory; the v0.3.5.57 entry point passed live click and singleton-window checks. Scrolls and wands are implemented but not yet live-verified. Cantrip decks are implemented, ungated, and not live-verified. The loot actor destination and the Treasure parcel are built behind `experimentalTools` and not live-verified. |
 | **Ordinary multiclass (noncaster)** | Behind the default-off world setting **Ordinary multiclass archetypes (noncaster)**. Only the noncaster catalog is offered; no live Foundry acceptance is recorded. |
-| **Experimental tools** | Behind the default-off **Enable experimental tools** setting, GM only. Includes the `/forge` chat command, the Creature Tools reskin and elite/weak flows, and `openCreatureTools`. Not native-accepted; may create actors or fail differently from the stable generator. |
-| **Level shifting** | Behind the default-off **Enable experimental tools** setting, GM only. Creates a new NPC shifted by one or two levels using GM Core benchmark deltas; the source is unchanged. Not native-accepted. |
+| **Experimental tools** | Behind the **Enable experimental tools** setting (on by default since 2026-10-30; a GM can turn it off), GM only. Includes the `/forge` chat command, the Creature Tools reskin and elite/weak flows, and `openCreatureTools`. Not native-accepted; may create actors or fail differently from the stable generator. |
+| **Level shifting** | Behind the **Enable experimental tools** setting (on by default since 2026-10-30; a GM can turn it off), GM only. Creates a new NPC shifted by one or two levels using GM Core benchmark deltas; the source is unchanged. Not native-accepted. |
 | **Hazard** | Built behind `experimentalTools`, not native-accepted. While the **Enable experimental tools** setting is on (GM only), the Generator offers a Hazard mode: the AI picks words and scale words, the module fills every number from the GM Core Building Hazards tables, and you review the preview before Create makes the hazard actor. Nothing is written before Create. |
 
 ## What's new
@@ -167,7 +167,7 @@ Pick **Wondrous Item**, **Weapon**, **Armor**, **Scroll**, or **Wand**, describe
 
 ### Experimental tools
 
-Off by default. A GM turns on **Enable experimental tools** in world settings to use the `/forge <brief> <level>` chat command (add `--preview` to plan without creating) and the **Creature Tools** directory button. Creature Tools offers AI reskins of an existing bestiary-based creature and native elite/weak adjustments to an explicitly selected NPC. Each action rechecks the setting before any provider request or world write. These flows have no live Foundry acceptance yet.
+On by default in a fresh world since 2026-10-30 (a user decision, before native acceptance). A GM can turn off **Enable experimental tools** in world settings to hide the `/forge <brief> <level>` chat command (add `--preview` to plan without creating) and the **Creature Tools** directory button. Creature Tools offers AI reskins of an existing bestiary-based creature and native elite/weak adjustments to an explicitly selected NPC. Each action rechecks the setting before any provider request or world write. These flows have no live Foundry acceptance yet.
 
 ### Presets
 
@@ -243,15 +243,15 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 
 ## Roadmap
 
-Built, not native-accepted, and off by default:
+Built, not native-accepted, and on by default behind **Enable experimental tools** (a GM can turn it off):
 
 - **Chat command** `/forge <brief> <level>` (with `--preview`) and the **Creature Tools** reskin and elite/weak flows, behind **Enable experimental tools**.
 - **Ordinary multiclass archetypes** (noncaster catalog), behind their own setting.
 
 Not yet available as user-facing features:
 
-- **Level shifting** is available behind the default-off **Enable experimental tools** setting, GM only, through the Creature Tools app and `module.api.levelShift`. Not native-accepted.
-- **Hazard generator** (GM Core Building Hazards, simple and complex) is built behind the default-off **Enable experimental tools** setting as a Generator mode with a reviewed preview and Create. An encounter's hazard member is requested with its simple or complex kind fixed in the request; a wrong first answer costs one extra provider call before the retry. Not native-accepted.
+- **Level shifting** is available behind the **Enable experimental tools** setting (on by default), GM only, through the Creature Tools app and `module.api.levelShift`. Not native-accepted.
+- **Hazard generator** (GM Core Building Hazards, simple and complex) is built behind the **Enable experimental tools** setting (on by default) as a Generator mode with a reviewed preview and Create. An encounter's hazard member is requested with its simple or complex kind fixed in the request; a wrong first answer costs one extra provider call before the retry. Not native-accepted.
 - **Caster multiclass dedications** and spell editing in the Character editor.
 - **Native acceptance** of every experimental and multiclass row listed under Remaining live-acceptance gaps.
 

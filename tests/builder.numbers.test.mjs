@@ -55,41 +55,69 @@ async function warnings(fn) {
 
 const concept = (raw) => normalizeConcept({ name: "Test Creature", ...raw }, { level: 3, rarity: "common" });
 
-/* ---- speeds: fixed list per movement type; off-list dropped, land default kept ---- */
+/* ---- speeds: fixed list per movement type (published maxima, pf2e 8.5.0); off-list snaps to nearest ---- */
 {
-  const c = concept({ speeds: [
-    { type: "land", value: 25 }, { type: "fly", value: 35 }, { type: "land", value: 27 },
-    { type: "swim", value: 45 }, { type: "climb", value: 40 }, { type: "burrow", value: 30 }, { type: "land", value: 0 }
-  ] });
-  assert.deepEqual(c.speeds, [
-    { type: "land", value: 25 }, { type: "fly", value: 35 }, { type: "climb", value: 40 }, { type: "burrow", value: 30 }
-  ], "only listed values survive; 27 ft land, 45 ft swim and 0 ft land are dropped, never rounded");
-  assert.deepEqual(concept({ speeds: [{ type: "land", value: 27 }] }).speeds, [{ type: "land", value: 25 }],
-    "when no listed speed survives, the land default 25 ft stays");
-  assert.deepEqual(concept({ speeds: [{ type: "burrow", value: 35 }, { type: "land", value: 40 }] }).speeds,
-    [{ type: "land", value: 40 }], "burrow stops at 30 ft, so a 35 ft burrow is dropped and land is kept");
+  const speedsOf = (speeds) => concept({ speeds }).speeds;
+  assert.deepEqual(speedsOf([{ type: "fly", value: 120 }]), [{ type: "fly", value: 120 }],
+    "a fly-120 dragon keeps fly 120; it does not fall back to land 25");
+  assert.deepEqual(speedsOf([{ type: "fly", value: 90 }]), [{ type: "fly", value: 90 }], "fly 90 is kept");
+  assert.deepEqual(speedsOf([{ type: "swim", value: 60 }]), [{ type: "swim", value: 60 }], "swim 60 is kept");
+  assert.deepEqual(speedsOf([{ type: "land", value: 22 }]), [{ type: "land", value: 20 }],
+    "land 22 snaps to the nearest listed 20 ft, not dropped");
+  assert.deepEqual(speedsOf([{ type: "land", value: 27 }, { type: "burrow", value: 35 }]),
+    [{ type: "land", value: 25 }, { type: "burrow", value: 35 }],
+    "27 ft land snaps to 25; a 35 ft burrow is inside the 60 ft burrow list and is kept");
+  assert.deepEqual(speedsOf([{ type: "burrow", value: 75 }]), [{ type: "burrow", value: 60 }],
+    "a 75 ft burrow snaps to the 60 ft list top");
+  assert.deepEqual(speedsOf([{ type: "land", value: 0 }, { type: "fly", value: -10 }, { type: "swim", value: "fast" }]),
+    [{ type: "land", value: 25 }], "nonsense speeds (0, negative, non-numeric) are dropped; the land default stays");
+  assert.deepEqual(speedsOf([{ type: "teleport", value: 30 }, { type: "land", value: 40 }]), [{ type: "land", value: 40 }],
+    "an unknown movement type is dropped");
 }
 
-/* ---- senses range: 30, 60, 120 or null ---- */
+/* ---- speed list maxima: each top kept, one step over snaps back to the top ---- */
+{
+  for (const [type, top] of [["land", 120], ["fly", 240], ["swim", 100], ["climb", 60], ["burrow", 60]]) {
+    assert.deepEqual(concept({ speeds: [{ type, value: top }] }).speeds, [{ type, value: top }],
+      `${type} ${top} is the published maximum and stays`);
+    assert.deepEqual(concept({ speeds: [{ type, value: top + 5 }] }).speeds, [{ type, value: top }],
+      `${type} ${top + 5} is over the maximum and snaps to ${top}`);
+  }
+  assert.deepEqual(concept({ speeds: [{ type: "fly", value: 60 }] }).speeds, [{ type: "fly", value: 60 }],
+    "fly 60 is a listed step (it was the old cap, and the QA boundary) and stays");
+}
+
+/* ---- senses range: steps of 5 to 1000 (published maximum); off-list snaps; nonsense is null ---- */
 {
   const c = concept({ senses: [
-    { type: "darkvision", range: 60 }, { type: "scent", acuity: "imprecise", range: 45 }, { type: "tremorsense", range: 120 }
+    { type: "darkvision", range: 60 }, { type: "scent", acuity: "imprecise", range: 45 }, { type: "tremorsense", range: 62 }
   ] });
-  assert.deepEqual(c.senses.map((s) => [s.type, s.range]), [["darkvision", 60], ["scent", null], ["tremorsense", 120]],
-    "a listed range is kept; an off-list range (45 ft) becomes null, never a free number");
+  assert.deepEqual(c.senses.map((s) => [s.type, s.range]), [["darkvision", 60], ["scent", 45], ["tremorsense", 60]],
+    "listed ranges are kept and an off-list range snaps to the nearest 5 ft step (62 becomes 60)");
+  const nonsense = concept({ senses: [{ type: "scent", range: -30 }, { type: "tremorsense", range: "far" }] });
+  assert.deepEqual(nonsense.senses.map((s) => [s.type, s.range]), [["scent", null], ["tremorsense", null]],
+    "a nonsense sense range (negative, non-numeric) becomes null; the sense itself stays");
+  assert.deepEqual(concept({ senses: [{ type: "lifesense", range: 1000 }] }).senses.map((s) => s.range), [1000],
+    "lifesense 1000 ft, the published maximum, is kept");
+  assert.deepEqual(concept({ senses: [{ type: "lifesense", range: 1005 }] }).senses.map((s) => s.range), [1000],
+    "a range over the 1000 ft maximum snaps to 1000");
 }
 
-/* ---- strike ranges: fixed increments; thrown trait stays the real PF2e value ---- */
+/* ---- strike ranges: fixed increments snap to nearest; thrown trait stays the real PF2e value ---- */
 {
   const c = concept({ strikes: [
     { name: "shortbow", type: "ranged", range: 45 },
     { name: "longbow", type: "ranged", range: 60 },
     { name: "dagger", type: "melee", traits: ["thrown-20"], range: 999 }
   ] });
-  assert.equal(c.strikes[0].range, null, "an off-list ranged increment (45 ft) is dropped");
+  assert.equal(c.strikes[0].range, 40, "an off-list ranged increment (45 ft) snaps to the nearest listed 40 ft");
   assert.equal(c.strikes[1].range, 60, "a listed ranged increment is kept");
   assert.equal(c.strikes[2].type, "ranged", "the thrown-20 trait still makes the strike ranged");
   assert.equal(c.strikes[2].range, 20, "the thrown trait's own number is the increment, whatever the AI wrote");
+  const ranged = (range) => concept({ strikes: [{ name: "bow", type: "ranged", range }] }).strikes[0].range;
+  assert.equal(ranged(150), 150, "the strike list maximum 150 ft is kept");
+  assert.equal(ranged(200), 150, "a ranged increment over 150 ft snaps to 150");
+  assert.equal(ranged(-10), null, "a nonsense increment (negative) is dropped to the sheet default");
 }
 
 /* ---- AI loot and equipment carry no prices and no coin amounts ---- */

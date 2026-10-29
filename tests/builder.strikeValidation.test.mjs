@@ -54,8 +54,8 @@ const concept = normalizeConcept({
 
 assert.deepEqual(concept.strikes[0], {
   name: "ember sling", type: "ranged", attackScale: "high", damageScale: "high",
-  damageType: "bludgeoning", traits: ["agile"], range: null, attackEffects: ["grab"]
-}, "types absent from the installed PF2e catalog must fail closed, and an off-list ranged increment (503 ft) must drop to null, not clamp");
+  damageType: "bludgeoning", traits: ["agile"], range: 150, attackEffects: ["grab"]
+}, "types absent from the installed PF2e catalog must fail closed, and an off-list ranged increment (503 ft) snaps to the nearest listed increment (150 ft)");
 assert.equal(concept.strikes[1].range, null, "melee strikes must not retain a ranged increment");
 assert.deepEqual(
   concept.strikes[2],
@@ -72,8 +72,8 @@ await createActor(concept, {
 const strikes = created.items.filter((item) => item.type === "melee");
 assert.deepEqual(
   strikes[0].system.range,
-  { increment: 30, max: null },
-  "an off-list ranged increment (503 ft) falls back to the sheet's 30 ft default, not a clamped 500 ft"
+  { increment: 150, max: null },
+  "an off-list ranged increment (503 ft) snaps to the nearest listed 150 ft, not the sheet's 30 ft default"
 );
 assert.equal(strikes[1].system.range, null, "new melee NPC attacks must have no range object");
 assert.deepEqual(strikes[2].system.range, { increment: 20, max: null }, "thrown attacks must emit their trait-derived range");

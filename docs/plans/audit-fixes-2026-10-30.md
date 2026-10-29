@@ -177,19 +177,17 @@ Carve-out classes (c): named quantities 1–10, grounded quantities 1–10, scro
 
 ## B4. Speeds, senses, strikes
 
-Speed lists (module convention, not quoted from a published table; see B8):
+Speed lists, from the published pf2e 8.5.0 NPC maxima in steps of 5 (sourced 2026-10-30; [record](speeds-senses-2026-10-30.md)):
 
 | Type | Values (ft) |
 |---|---|
-| land | 5–60, steps of 5 |
-| fly | 5–60, steps of 5 |
-| swim | 5–40, steps of 5 |
-| climb | 5–40, steps of 5 |
-| burrow | 5–30, steps of 5 |
+| land | 5–120, steps of 5 |
+| fly | 5–240, steps of 5 |
+| swim | 5–100, steps of 5 |
+| climb | 5–60, steps of 5 |
+| burrow | 5–60, steps of 5 |
 
-Senses range: `30`, `60`, `120`, or null (imprecise or no range). Ranged strike increments: `10, 20, 30, 40, 60, 80, 100, 120, 150`, or null (the sheet keeps its default of 30).
-
-Off-list values are dropped, not rounded. The land default of 25 ft stays when no speed survives.
+Senses range: 5–1,000 ft in steps of 5, or null (imprecise or no range). Ranged strike increments: `10, 20, 30, 40, 60, 80, 100, 120, 150`, or null (the sheet keeps its default of 30). An off-list value snaps to the nearest listed value; only a nonsense value (not a number, or 0 and below) is dropped. The land default of 25 ft stays when no speed survives.
 
 ## B5. Hazard kind (PLAYBOOK §10)
 
@@ -215,8 +213,8 @@ Recorded in the final report. Each revert check was run against a copy and resto
 
 ## B8. Gaps and conventions
 
-- **Speed and sense lists are module conventions.** They are not quoted from the pf2e 8.5.0 source, which was not fetched in this part. The Lead's rule is to quote a published source or record a convention. This is the convention. To source it: pull the bestiary creature speeds and sense ranges from `foundryvtt/pf2e` at `pf2e-8.5.0` and tighten the lists if they differ.
-- **Strike increments** are a module convention, like the speed lists.
+- **Speed and sense lists are sourced now** (2026-10-30, [record](speeds-senses-2026-10-30.md)): the tops are the pf2e 8.5.0 bestiary maxima. The strike list is still a module convention; its published maximum is 200 ft, and the record lists the decision.
+- **Strike increments** are a module convention, like the speed lists before they were sourced.
 - **requestJSON retry**: `ai.mjs` calls `args.onProgress({ phase: "retrying" })` without a guard, so a caller that passes no `onProgress` gets a `TypeError` on the retry instead of the retry. Production always passes one. It is noted here, not changed in this part.
 - Coin lines from the AI are dropped rather than kept as a hint. The Lead allowed either; dropping is the simpler contract.
 

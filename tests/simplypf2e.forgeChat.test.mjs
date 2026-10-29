@@ -68,12 +68,17 @@ console.warn = (...args) => logs.push(args);
 await import("../scripts/simplypf2e.mjs");
 hooks.once.get("init")();
 
-// The setting exists for GMs, is visible, and is off unless a GM turns it on.
+// The setting exists for GMs, is visible, and is on in a fresh world (GM decision, 2026-10-30); a GM can turn it off.
 const setting = registeredSettings.get("simplypf2e.experimentalTools");
 assert.deepEqual(
   { scope: setting.scope, config: setting.config, restricted: setting.restricted, type: setting.type, default: setting.default },
-  { scope: "world", config: true, restricted: true, type: Boolean, default: false },
-  "the experimental setting is a visible, GM-restricted, world-scoped Boolean that defaults to off"
+  { scope: "world", config: true, restricted: true, type: Boolean, default: true },
+  "the experimental setting is a visible, GM-restricted, world-scoped Boolean that defaults to on"
+);
+assert.equal(
+  await game.settings.get("simplypf2e", "experimentalTools"),
+  true,
+  "a fresh world reads the experimental setting as on"
 );
 
 // Provider configuration bound to its endpoint, as a GM would have saved it.
@@ -110,7 +115,8 @@ assert.equal(typeChat("Hello table, the hag cackles."), "posted");
 assert.equal(typeChat("/roll 1d20"), "posted");
 assert.equal(providerCalls.length, 0);
 
-// Off by default: the command is consumed, the GM is told why, and no provider call happens.
+// Gate explicitly off (a GM turned it off): the command is consumed, the GM is told why, and no provider call happens.
+storedSettings.set("simplypf2e.experimentalTools", false);
 assert.equal(typeChat("/forge swamp hag 6"), "suppressed");
 assert.deepEqual(notices.warn, ["SIMPLYPF2E.Experimental.Disabled"]);
 assert.equal(providerCalls.length, 0, "a disabled gate never reaches the provider");
