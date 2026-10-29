@@ -124,12 +124,11 @@ export function normalizePCConcept(raw, { level }) {
       .slice(0, 3),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
-        if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
+        if (typeof e === "string" && e) return { name: e, quantity: 1 };
         if (e?.name) {
           return {
             name: String(e.name),
-            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10),
-            value: Math.max(Number(e.value) || 0, 0)
+            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10)
           };
         }
         return null;

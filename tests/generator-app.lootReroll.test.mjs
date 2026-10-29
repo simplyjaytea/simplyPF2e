@@ -128,8 +128,7 @@ providerFailure = null;
   selectedLoot = [{ name: "Gold Pieces", quantity: 9, candidate: ref }];
   await app._test_refineLoot(concept);
   const goldRows = concept.loot.filter((item) => parseCoins(item.name)?.name === "Gold Pieces");
-  assert.equal(goldRows.length, 1, "grounded loot refinement must retain one preserved coin denomination row");
-  assert.equal(goldRows[0].quantity, 5, "a malformed selected coin must not replace or add to the draft quantity");
+  assert.equal(goldRows.length, 0, "grounded loot refinement never keeps AI coin rows: the treasure budget adds coins");
 }
 {
   const app = preview();

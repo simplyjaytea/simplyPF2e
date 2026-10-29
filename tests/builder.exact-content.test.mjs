@@ -36,8 +36,8 @@ const concept = {
 const strictEquipment = await resolveEquipment(concept, { exactContent: true });
 const strictLoot = await resolveLoot(concept, { exactContent: true });
 const strictFocus = await resolveFocusSpells([{ name: "Fire Ray" }], { exactContent: true });
-assert.equal(strictEquipment[0].entry, null, "strict equipment cannot fuzzy-match a first-draft name");
-assert.equal(strictLoot[0].entry, null, "strict loot cannot fuzzy-match a first-draft name");
+assert.equal(strictEquipment.length, 0, "strict equipment drops a first-draft name it cannot match to an issued source");
+assert.equal(strictLoot.length, 0, "strict loot drops a first-draft name it cannot match to an issued source");
 assert.equal(strictFocus[0].entry, null, "strict focus spells cannot fuzzy-match a first-draft name");
 
 const exact = (await getEquipmentCandidates(1)).find((candidate) => candidate.name === "Longsword").ref;
@@ -82,7 +82,7 @@ assert.equal(legacyPCFeat[0].entry, legacyFeatRef, "non-strict callers retain th
 const scrollCandidate = { packId: "test.spells", _id: "fireball" };
 assert.deepEqual(
   normalizeLoot([{ name: "Scroll of Fireball (Rank 3)", scrollCandidate }]),
-  [{ name: "Scroll of Fireball (Rank 3)", quantity: 1, value: 0, scrollCandidate }],
+  [{ name: "Scroll of Fireball (Rank 3)", quantity: 1, scrollCandidate }],
   "a selected scroll retains its exact spell source through loot normalization"
 );
 

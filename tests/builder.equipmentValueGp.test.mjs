@@ -63,9 +63,9 @@ assert.equal(await equipmentValueGp(plain), 2, "real base price (1 gp) x quantit
 const runed = [{ name: "+1 striking longsword", quantity: 1, value: 5, runes: { potency: 1, striking: 1, resilient: 0 }, entry: { packId: PACK_ID, _id: LONGSWORD._id, type: "weapon" } }];
 assert.equal(await equipmentValueGp(runed), 101, "a runed item must value at real base + real rune price, not the base alone");
 
-// An unmatched name (no compendium entry) falls back to the AI's own gp estimate.
-const unmatched = [{ name: "Bespoke Trinket", quantity: 3, value: 10, runes: { potency: 0, striking: 0, resilient: 0 }, entry: null }];
-assert.equal(await equipmentValueGp(unmatched), 30, "an unresolved item must fall back to value x quantity, same as resolveLoot");
+// An unmatched name (no compendium entry) has no real price, so it values at 0. resolveEquipment drops it before this point.
+const unmatched = [{ name: "Bespoke Trinket", quantity: 3, runes: { potency: 0, striking: 0, resilient: 0 }, entry: null }];
+assert.equal(await equipmentValueGp(unmatched), 0, "an unresolved item has no real price and must value at 0");
 
 const startingEquipment = STARTING_EQUIPMENT.map(({ _id, name }) => ({
   name, quantity: 1, value: 0, runes: null,
@@ -77,7 +77,7 @@ assert.equal(Math.max(15 - await equipmentValueGp(startingEquipment), 0), 0,
   "the six-item set leaves a zero PC loot budget against 15 gp starting wealth");
 
 // Multiple lines sum together; empty/missing input is 0.
-assert.equal(await equipmentValueGp([...plain, ...unmatched]), 32, "equipmentValueGp must sum every line");
+assert.equal(await equipmentValueGp([...plain, ...unmatched]), 2, "equipmentValueGp must sum every line");
 assert.equal(await equipmentValueGp([]), 0, "an empty equipment list must value at 0");
 assert.equal(await equipmentValueGp(undefined), 0, "a missing equipment list must value at 0, not throw");
 
@@ -115,10 +115,11 @@ assert.match(
 // Duplicate names must be counted once — buildEquipmentItems({ dedup: true })
 // drops repeated names at embed time, so the budget deduction must match.
 {
+  const longsword = { packId: PACK_ID, _id: LONGSWORD._id, type: "weapon" };
   const dupes = [
-    { name: "Longsword", quantity: 1, value: 1, runes: null, entry: null },
-    { name: "Longsword", quantity: 1, value: 1, runes: null, entry: null },
-    { name: "longsword", quantity: 1, value: 1, runes: null, entry: null }
+    { name: "Longsword", quantity: 1, runes: null, entry: longsword },
+    { name: "Longsword", quantity: 1, runes: null, entry: longsword },
+    { name: "longsword", quantity: 1, runes: null, entry: longsword }
   ];
   const gp = await equipmentValueGp(dupes);
   assert.equal(gp, 1, "repeated equipment names must be valued once, matching the dedup embed");

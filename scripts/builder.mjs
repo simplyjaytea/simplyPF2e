@@ -22,7 +22,19 @@ const RARITIES = new Set(["common", "uncommon", "rare", "unique"]);
 const SCALE4 = new Set(["extreme", "high", "moderate", "low"]);
 const SCALE5 = new Set(["extreme", "high", "moderate", "low", "terrible"]);
 const TRADITIONS = new Set(["arcane", "divine", "occult", "primal"]);
-const SPEED_TYPES = new Set(["land", "fly", "swim", "climb", "burrow"]);
+/*
+ * Movement values the AI may pick from, per movement type (invariant 4: the
+ * model chooses from this list and never writes a free number). Module
+ * convention, not a published table: land and fly run 5-60 ft, swim and climb
+ * 5-40 ft, burrow 5-30 ft, all in steps of 5. Off-list values are dropped.
+ */
+const SPEED_VALUES = new Map([
+  ["land", [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]],
+  ["fly", [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]],
+  ["swim", [5, 10, 15, 20, 25, 30, 35, 40]],
+  ["climb", [5, 10, 15, 20, 25, 30, 35, 40]],
+  ["burrow", [5, 10, 15, 20, 25, 30]]
+]);
 const STANDARD_SKILLS = new Set([
   "acrobatics", "arcana", "athletics", "crafting", "deception", "diplomacy",
   "intimidation", "medicine", "nature", "occultism", "performance", "religion",
@@ -68,15 +80,24 @@ function filterStrikeValues(values, configKey, fallback, label) {
   return filterAllowed(values, allowed, label);
 }
 
+/*
+ * Ranged strike increments the AI may pick (feet). Module convention, like the
+ * speed list above; off-list values become null and the sheet keeps its default.
+ */
+const STRIKE_RANGES = new Set([10, 20, 30, 40, 60, 80, 100, 120, 150]);
+
+/** Senses range the AI may pick (feet). Imprecise or range-less senses stay null. */
+const SENSE_RANGES = new Set([30, 60, 120]);
+
 function normalizeStrikeRange(value) {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) return null;
-  return Math.min(500, Math.max(5, Math.round(numeric / 5) * 5));
+  return STRIKE_RANGES.has(numeric) ? numeric : null;
 }
 
 function thrownRangeFromTraits(traits) {
+  // The thrown-N trait is real PF2e data, so its number is taken as written.
   const thrownTrait = traits.find((trait) => /^thrown-\d+$/.test(trait));
-  return thrownTrait ? normalizeStrikeRange(Number(thrownTrait.slice("thrown-".length))) : null;
+  return thrownTrait ? Number(thrownTrait.slice("thrown-".length)) : null;
 }
 
 /*
@@ -227,8 +248,12 @@ export function normalizeConcept(raw, { level, rarity }) {
   }
 
   const speeds = (Array.isArray(c.speeds) ? c.speeds : [])
-    .filter((s) => SPEED_TYPES.has(s?.type) && Number(s?.value) > 0)
-    .map((s) => ({ type: s.type, value: Math.round(Number(s.value) / 5) * 5 }));
+    .filter((s) => {
+      const legal = SPEED_VALUES.get(s?.type)?.includes(Number(s?.value));
+      if (!legal) console.warn(`simplypf2e | dropped creature speed ${s?.type} ${s?.value}: not on the module's list for that movement`);
+      return legal;
+    })
+    .map((s) => ({ type: s.type, value: Number(s.value) }));
   if (!speeds.length) speeds.push({ type: "land", value: 25 });
 
   const strikes = (Array.isArray(c.strikes) ? c.strikes : [])
@@ -333,7 +358,7 @@ export function normalizeConcept(raw, { level, rarity }) {
       .map((s) => ({
         type: slugify(s.type),
         acuity: ["precise", "imprecise", "vague"].includes(s.acuity) ? s.acuity : null,
-        range: Number(s.range) > 0 ? Number(s.range) : null
+        range: SENSE_RANGES.has(Number(s.range)) ? Number(s.range) : null
       }))
       .filter((s) => {
         if (SENSE_TYPES.has(s.type)) return true;
@@ -385,12 +410,11 @@ export function normalizeConcept(raw, { level, rarity }) {
       .filter(Boolean).slice(0, 3),
     equipment: (Array.isArray(c.equipment) ? c.equipment : [])
       .map((e) => {
-        if (typeof e === "string" && e) return { name: e, quantity: 1, value: 0 };
+        if (typeof e === "string" && e) return { name: e, quantity: 1 };
         if (e?.name) {
           return {
             name: String(e.name),
-            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10),
-            value: Math.max(Number(e.value) || 0, 0)
+            quantity: Math.min(Math.max(Math.round(Number(e.quantity) || 1), 1), 10)
           };
         }
         return null;
@@ -488,25 +512,25 @@ async function resolveCoinage(canonicalName) {
 }
 
 /**
- * Coerce a raw AI loot array into {name, quantity} entries. Coin entries are
- * folded into their canonical treasure item name and may carry the large
- * quantities coins need; everything else keeps the equipment quantity cap.
+ * Coerce a raw AI loot array into {name, quantity} entries. The AI never sets
+ * coin amounts or prices (invariant 4): coin lines are dropped here, and the
+ * treasure budget pads or trims coins to the real remainder. Named items keep
+ * the equipment quantity cap (1-10, the documented carve-out in PLAYBOOK §3).
  */
 export function normalizeLoot(raw) {
   return (Array.isArray(raw) ? raw : [])
     .map((e) => {
       const name = typeof e === "string" ? e : e?.name;
       if (!name) return null;
+      if (parseCoins(name)) {
+        console.warn(`simplypf2e | dropped AI coin loot "${name}": the treasure budget sets coin amounts`);
+        return null;
+      }
       const quantity = Math.max(Math.round(Number(e?.quantity) || 1), 1);
-      const value = Math.max(Number(e?.value) || 0, 0);
       const candidate = e?.candidate?.packId && e?.candidate?._id ? e.candidate : null;
       const scrollCandidate = e?.scrollCandidate?.packId && e?.scrollCandidate?._id ? e.scrollCandidate : null;
-      const coins = parseCoins(name);
-      if (coins) {
-        return { name: coins.name, quantity: Math.min(coins.count ? coins.count * quantity : quantity, 100000), value };
-      }
       return {
-        name: String(name), quantity: Math.min(quantity, 10), value,
+        name: String(name), quantity: Math.min(quantity, 10),
         ...(candidate ? { candidate } : {}), ...(scrollCandidate ? { scrollCandidate } : {})
       };
     })
@@ -528,17 +552,17 @@ export function parseScroll(name) {
  * the scroll consumable is assembled from the rank template at creation.
  *
  * Each returned entry carries `resolvedValue`: the real per-unit gp price of
- * the matched compendium item (or the rank template, for scrolls), falling
- * back to the AI's own estimate when nothing matched or the match has no
- * price. The treasure-budget enforcement sums these, so real prices beat the
- * AI's guesses wherever a real item resolved. A runed name resolves to its
+ * the matched compendium item (or the rank template, for scrolls). A name that
+ * matches no compendium item is dropped with a warning: the AI writes no
+ * prices, so there is no real value to budget it at. The treasure-budget
+ * enforcement sums these. A runed name resolves to its
  * BASE item, so the runes' own real price is added on top (see runes.runeGp) —
  * otherwise a "+1 striking longsword" budgets as a 1 gp longsword while the
  * sheet renders a ~1,000 gp item, and the coin padding overshoots wildly.
  */
 export async function resolveLoot(concept, { exactContent = false } = {}) {
   const loot = [];
-  for (const { name, quantity, value, candidate, scrollCandidate } of concept.loot) {
+  for (const { name, quantity, candidate, scrollCandidate } of concept.loot) {
     // Coins are module-built currency, not AI-selected equipment. Always
     // resolve the published coinage document, even under exactContent —
     // there is no candidate catalog for "Gold Coins".
@@ -550,7 +574,7 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
         continue;
       }
       loot.push({
-        name: coins.name, quantity, value, runes: parseRunes(coins.name),
+        name: coins.name, quantity, runes: parseRunes(coins.name),
         entry: resolved.entry, resolvedValue: resolved.resolvedValue
       });
       continue;
@@ -576,13 +600,13 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
       // and the preview fails closed instead of failing at Create.
       const templateDoc = await getDocument(await findScrollTemplate(rank));
       if (!templateDoc) {
-        loot.push({ name, quantity, value, runes: parseRunes(name), entry: null, scroll: { rank }, resolvedValue: value });
+        loot.push({ name, quantity, runes: parseRunes(name), entry: null, scroll: { rank }, resolvedValue: 0 });
         continue;
       }
       const templateGp = priceToGp(templateDoc.system?.price?.value);
       loot.push({
-        name, quantity, value, runes: parseRunes(name), entry, scroll: { rank },
-        resolvedValue: templateGp > 0 ? templateGp : value
+        name, quantity, runes: parseRunes(name), entry, scroll: { rank },
+        resolvedValue: templateGp
       });
       continue;
     }
@@ -595,16 +619,18 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
         parseRunes(name).base,
         (e) => (e.system?.level?.value ?? 0) <= maxLevel
       ));
-    const runes = await capRunes(parseRunes(name), entry?.type, maxLevel);
-    let resolvedValue = value;
-    if (entry) {
-      const doc = await getDocument(entry);
-      const gp = unitPriceGp(doc);
-      // The matched entry is the BASE item, so add the runes' own real price.
-      if (gp > 0) resolvedValue = gp + await runeGp(runes, entry.type);
-      else if (hasRunes(runes)) resolvedValue = value + await runeGp(runes, entry.type);
+    if (!entry) {
+      console.warn(`simplypf2e | dropped loot "${name}": no compendium item matches, and the AI writes no prices`);
+      continue;
     }
-    loot.push({ name, quantity, value, runes, entry, resolvedValue });
+    const runes = await capRunes(parseRunes(name), entry.type, maxLevel);
+    let resolvedValue = 0;
+    const doc = await getDocument(entry);
+    const gp = unitPriceGp(doc);
+    // The matched entry is the BASE item, so add the runes' own real price.
+    if (gp > 0) resolvedValue = gp + await runeGp(runes, entry.type);
+    else if (hasRunes(runes)) resolvedValue = await runeGp(runes, entry.type);
+    loot.push({ name, quantity, runes, entry, resolvedValue });
   }
   return loot;
 }
@@ -661,7 +687,6 @@ export async function applyTreasureBudget(loot, targetGp) {
         loot.push({
           name: "Gold Pieces",
           quantity: Math.min(Math.max(Math.round(gap), 1), 100000),
-          value: 1,
           runes: parseRunes("Gold Pieces"),
           entry: resolved.entry,
           resolvedValue: resolved.resolvedValue || 1
@@ -743,45 +768,6 @@ async function buildScrollItem(spellEntry, rank) {
 }
 
 /**
- * Fallback for loot with no compendium match: a custom treasure item carrying
- * the AI's estimated value, so the haul keeps its worth instead of vanishing.
- */
-function customTreasureItem(name, quantity, value) {
-  const gp = Math.max(Math.round(Number(value) || 0), 0);
-  const item = {
-    name: capitalized(name),
-    type: "treasure",
-    img: "icons/svg/item-bag.svg",
-    system: {
-      price: { value: { gp } },
-      description: { value: `<p>${game.i18n.localize("SIMPLYPF2E.Loot.CustomItem")}</p>` }
-    }
-  };
-  if (quantity > 1) item.system.quantity = quantity;
-  return item;
-}
-
-/**
- * Fallback for carried equipment with no compendium match: a custom gear item
- * (type "equipment", not "treasure") at the AI's estimated price, so gear the
- * creature should be carrying doesn't silently vanish or masquerade as coins.
- */
-function customEquipmentItem(name, quantity, value) {
-  const gp = Math.max(Math.round(Number(value) || 0), 0);
-  const item = {
-    name: capitalized(name),
-    type: "equipment",
-    img: "icons/svg/item-bag.svg",
-    system: {
-      price: { value: { gp } },
-      description: { value: `<p>${game.i18n.localize("SIMPLYPF2E.Equipment.CustomItem")}</p>` }
-    }
-  };
-  if (quantity > 1) item.system.quantity = quantity;
-  return item;
-}
-
-/**
  * Resolve every compendium reference in a concept. Returns lookup results so
  * the preview can show what was found and what will become a custom ability.
  */
@@ -843,12 +829,12 @@ export async function resolveConcept(concept, { exactContent = false } = {}) {
 /**
  * Resolve a concept's carried equipment against the equipment packs. Shared
  * by NPC resolveConcept() and the PC pipeline (pc-builder.mjs), which both
- * carry the same {name, quantity, value} equipment shape and level cap.
+ * carry the same {name, quantity} equipment shape and level cap.
  */
 export async function resolveEquipment(concept, { exactContent = false } = {}) {
   const equipment = [];
   const maxLevel = Math.max(concept.level, 0);
-  for (const { name, quantity, value, candidate } of concept.equipment) {
+  for (const { name, quantity, candidate } of concept.equipment) {
     // Strip fundamental runes ("+1 striking rapier" -> "rapier") so the base
     // item matches; the runes are re-applied as system data at creation.
     const entry = isIssuedCandidate(candidate, getPacksFor("equipment"))
@@ -857,20 +843,26 @@ export async function resolveEquipment(concept, { exactContent = false } = {}) {
         parseRunes(name).base,
         (e) => (e.system?.level?.value ?? 0) <= maxLevel
       ));
+    // No compendium match means no real price and no real item: drop it. The
+    // AI's name is never embedded as a priced custom item.
+    if (!entry) {
+      console.warn(`simplypf2e | dropped equipment "${name}": no compendium item matches`);
+      continue;
+    }
     // The item-level cap above only gates the BASE item — without this the AI's
     // chosen rune tier is ungated, so a level-1 character asked for "+1
     // striking" could be handed "+3 major striking" (a level-19 item).
     const runes = await capRunes(parseRunes(name), entry?.type, maxLevel);
-    equipment.push({ name, quantity, value, runes, entry });
+    equipment.push({ name, quantity, runes, entry });
   }
   return equipment;
 }
 
 /**
  * Total gp value of a resolved equipment list (real base price + real rune
- * price where a compendium entry matched, else the AI's own estimate) —
- * mirrors resolveLoot()'s resolvedValue logic exactly, since resolveEquipment
- * doesn't precompute a resolvedValue field the way resolveLoot does. PC
+ * price, from the compendium entry resolveEquipment matched) — mirrors
+ * resolveLoot()'s resolvedValue logic, since resolveEquipment doesn't
+ * precompute a resolvedValue field the way resolveLoot does. PC
  * equipment embeds at this real value (buildEquipmentItems), so the PC
  * pipeline deducts this from starting wealth before budgeting loot; NPC gear
  * is free by design and never calls this.
@@ -883,16 +875,16 @@ export async function equipmentValueGp(equipment) {
   // embed drops repeated names (AI pads thin lists), so a duplicate's value
   // must not be deducted from the wealth budget either.
   const seen = new Set();
-  for (const { name, quantity, value, runes, entry } of equipment ?? []) {
+  for (const { name, quantity, runes, entry } of equipment ?? []) {
     const key = slugify(name);
     if (seen.has(key)) continue;
     seen.add(key);
-    let unitGp = Number(value) || 0;
+    let unitGp = 0;
     if (entry) {
       const doc = await getDocument(entry);
       const gp = unitPriceGp(doc);
       if (gp > 0) unitGp = gp + await runeGp(runes, entry.type);
-      else if (hasRunes(runes)) unitGp = unitGp + await runeGp(runes, entry.type);
+      else if (hasRunes(runes)) unitGp = await runeGp(runes, entry.type);
     }
     total += unitGp * (Number(quantity) || 1);
   }
@@ -904,9 +896,9 @@ function unitPriceGp(doc) {
   return priceToGp(doc?.system?.price?.value) / Math.max(1, Number(doc?.system?.price?.per) || 1);
 }
 
-/** Resolved loot/equipment line's total gp value (per-unit resolvedValue/value × quantity). */
+/** Resolved loot/equipment line's total gp value (per-unit resolvedValue × quantity). */
 function lineGp(line) {
-  const unit = Number(line?.resolvedValue ?? line?.value) || 0;
+  const unit = Number(line?.resolvedValue) || 0;
   return unit * (Number(line?.quantity) || 1);
 }
 
@@ -1076,9 +1068,8 @@ function recallKnowledgeSkill(traits) {
 
 /**
  * Turn resolved equipment into embeddable item data: real compendium clones
- * with quantities, fundamental runes and sensible carry states applied;
- * anything unmatched becomes a custom gear item at the AI's estimated price so
- * it doesn't silently vanish. Shared verbatim by the NPC and PC pipelines —
+ * with quantities, fundamental runes and sensible carry states applied.
+ * Unmatched names were already dropped by resolveEquipment. Shared verbatim by the NPC and PC pipelines —
  * the only difference between them was PC-side name dedup, which is now the
  * `dedup` flag (the AI pads a thin list by repeating items; a repeated NAME is
  * filler, since a genuine stack arrives as one entry with quantity > 1).
@@ -1089,7 +1080,7 @@ function recallKnowledgeSkill(traits) {
 export async function buildEquipmentItems(equipment, { dedup = false } = {}) {
   const items = [];
   const seen = new Set();
-  for (const { name, quantity, value, runes, entry } of equipment ?? []) {
+  for (const { name, quantity, runes, entry } of equipment ?? []) {
     if (dedup) {
       const key = slugify(name);
       if (seen.has(key)) continue;
@@ -1097,7 +1088,7 @@ export async function buildEquipmentItems(equipment, { dedup = false } = {}) {
     }
     const doc = await getSelectedDocument(entry);
     if (!doc) {
-      items.push(customEquipmentItem(name, quantity, value));
+      console.warn(`simplypf2e | dropped equipment "${name}": its compendium item is unavailable`);
       continue;
     }
     const data = toItemData(doc);
@@ -1130,10 +1121,9 @@ export function applySourceEquipState(data) {
  * Turn resolved loot into embeddable item data (unequipped, in inventory):
  * published coinage clones (sheet currency via TreasurePF2e#isCoinage),
  * scrolls assembled from their rank template, everything else a real
- * compendium clone with quantities and runes, and unmatched non-coin names a
- * custom treasure item at the AI's estimated value so the haul keeps its
- * worth. Coin lines never use that custom fallback. Shared by the NPC
- * pipeline (dropped loot) and the PC one (starting wealth). Deduped by name
+ * compendium clone with quantities and runes. Unmatched names were already
+ * dropped by resolveLoot. Shared by the NPC pipeline (dropped loot) and the
+ * PC one (starting wealth). Deduped by name
  * for the same reason equipment is, except coins which may repeat.
  * @param {object[]} loot  entries from resolveLoot()
  * @returns {Promise<object[]>} item data ready to embed
@@ -1141,7 +1131,7 @@ export function applySourceEquipState(data) {
 export async function buildLootItems(loot) {
   const items = [];
   const seen = new Set();
-  for (const { name, quantity, value, runes, entry, scroll } of loot ?? []) {
+  for (const { name, quantity, runes, entry, scroll } of loot ?? []) {
     const coins = parseCoins(name);
     // Coins are the one line that legitimately repeats (applyTreasureBudget
     // may add a Gold Pieces line next to an AI-drafted one), so they skip
@@ -1166,7 +1156,7 @@ export async function buildLootItems(loot) {
     }
     const doc = await getSelectedDocument(entry);
     if (!doc) {
-      items.push(customTreasureItem(name, quantity, value));
+      console.warn(`simplypf2e | dropped loot "${name}": its compendium item is unavailable`);
       continue;
     }
     const data = toItemData(doc);
