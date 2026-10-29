@@ -6,7 +6,7 @@ Users start with the root [README](../README.md) for installation, supported beh
 
 | Record | Purpose |
 | --- | --- |
-| [Acceptance ledger](acceptance-ledger.md) | The single live native-QA ledger (R01–R25, N01–N28 and N40–N42 (N25–N39 are reserved for parcel v3)). Rows are updated in place when native evidence lands. |
+| [Acceptance ledger](acceptance-ledger.md) | The single live native-QA ledger (R01–R25, N01–N28, N40–N48 and N50–N53 (N29–N39 and N49 unused)). Rows are updated in place when native evidence lands. |
 
 ## Plans
 
