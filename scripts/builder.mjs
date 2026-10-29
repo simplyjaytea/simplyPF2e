@@ -88,8 +88,9 @@ function filterStrikeValues(values, configKey, fallback, label) {
 /*
  * Ranged strike increments the AI may pick (feet). Module convention, like the
  * speed list above; an off-list value snaps to the nearest listed increment.
+ * The top, 200, is the published maximum (thunderbird, Thunderbolt).
  */
-const STRIKE_RANGES = [10, 20, 30, 40, 60, 80, 100, 120, 150];
+const STRIKE_RANGES = [10, 20, 30, 40, 60, 80, 100, 120, 150, 200];
 
 /*
  * Senses range the AI may pick (feet): steps of 5 to 1000, the published
