@@ -73,6 +73,8 @@ const context = vm.createContext({
     return { id: "item-0", name: data.name, sheet: { render: async () => {} } };
   } }
 });
+// What each Forge pool was asked for (the rarity cap), per run.
+const poolOptions = [];
 const mocks = {
   experimentalToolsEnabled: () => false, assertExperimentalToolAccess() {},
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
@@ -80,9 +82,9 @@ const mocks = {
   RUNED_ITEM_KINDS, SECONDARY_ADJECTIVE, normalizeRunedItemConcept,
   MIN_ITEM_LEVEL: 0, MAX_ITEM_LEVEL: 24,
   getProviderRequestConfig: () => ({ provider: {}, connections: [] }), getProviderAuthWarningKey: () => null,
-  getBaseItemCandidates: async () => CANDIDATES.baseCandidates,
-  getPropertyRuneCandidates: async () => CANDIDATES.runeCandidates,
-  getFundamentalRuneTiers: async () => ({
+  getBaseItemCandidates: async (_kind, _level, options) => { poolOptions.push(["base", options]); return CANDIDATES.baseCandidates; },
+  getPropertyRuneCandidates: async (_kind, _level, options) => { poolOptions.push(["rune", options]); return CANDIDATES.runeCandidates; },
+  getFundamentalRuneTiers: async (_kind, _level, options) => (poolOptions.push(["tier", options]), {
     potencyTiers: [1, 2, 3], secondaryTiers: [], minPotencyLevel: 5,
     potencyCandidates: CANDIDATES.potencyCandidates, secondaryCandidates: CANDIDATES.secondaryCandidates
   }),
@@ -109,22 +111,22 @@ const actions = App.DEFAULT_OPTIONS.actions;
 // Console warnings from the real normalizer, kept per run so the tests can check them too.
 let consoleWarnings = [];
 // One runed run: the GM picks the kind and generates; the context is what the preview renders.
-async function preview({ base, potency, propertyRuneIds, secondaryRuneId = "none" }) {
+async function preview({ base, potency, propertyRuneIds, secondaryRuneId = "none", rarity = "common" }) {
   const realWarn = console.warn;
   console.warn = (...args) => consoleWarnings.push(args.join(" "));
   consoleWarnings = [];
   try {
-    return await runPreview({ base, potency, propertyRuneIds, secondaryRuneId });
+    return await runPreview({ base, potency, propertyRuneIds, secondaryRuneId, rarity });
   } finally {
     console.warn = realWarn;
   }
 }
-async function runPreview({ base, potency, propertyRuneIds, secondaryRuneId }) {
+async function runPreview({ base, potency, propertyRuneIds, secondaryRuneId, rarity }) {
   raw = {
     baseItemId: base.id, potencyRuneId: POTENCY[potency - 1].id, secondaryRuneId,
     propertyRuneIds: propertyRuneIds.map((rune) => rune.id), description: ""
   };
-  const form = { prompt: { value: "a runed piece" }, level: { value: "8" }, rarity: { value: "common" }, destination: { value: "items" } };
+  const form = { prompt: { value: "a runed piece" }, level: { value: "8" }, rarity: { value: rarity }, destination: { value: "items" } };
   const app = new App();
   app.element = { querySelector: (selector) => form[selector.match(/name="(\w+)"/)?.[1]] ?? null };
   await actions.selectKind.call(app, null, { dataset: { kind: "armor" } });
@@ -195,5 +197,13 @@ async function runPreview({ base, potency, propertyRuneIds, secondaryRuneId }) {
   assert.ok(template.indexOf("droppedRunes") > template.indexOf("{{#if preview.runed}}"), "the lines sit in the runed section");
 }
 assert.ok(source.includes("droppedRunes: droppedRuneLines("), "the preview context carries the dropped runes");
+
+// The chosen Forge rarity caps the base-item, property-rune and fundamental-rune pools (rarity cap gap fix).
+for (const rarity of ["common", "uncommon", "rare"]) {
+  poolOptions.length = 0;
+  await preview({ base: BASES.plate, potency: 1, propertyRuneIds: [RUNES.acid], rarity });
+  assert.deepEqual(poolOptions.map(([pool]) => pool).sort(), ["base", "rune", "tier"], "all three runed pools are requested");
+  assert.ok(poolOptions.every(([, options]) => options?.maxRarity === rarity), `every runed pool is capped at the chosen ${rarity} rarity`);
+}
 
 console.log("itemforge-app.runedDrops.test.mjs: the preview shows each dropped rune with its reason; a drop never blocks Create");

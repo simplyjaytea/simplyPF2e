@@ -59,6 +59,8 @@ const wizardDoc = {
 
 // ---- Scenario state read by the mocks.
 let promptText = "A scholar";
+let rarityCapValue = "unique";
+const editOptions = [];
 let previewFails = false;
 let editRebuildsDraft = false;
 let editSwapsSchool = false;
@@ -69,6 +71,7 @@ class App {
   element = { querySelector: (selector) => selector.includes('name="mode"') ? { value: "character" }
     : selector.includes('name="level"') ? { value: "1" }
       : selector.includes('name="prompt"') ? { value: promptText }
+        : selector.includes('name="rarityCap"') ? { value: rarityCapValue }
         : selector.includes('name="allowSpellcasting"') ? { checked: true } : null, querySelectorAll: () => [] };
   async render() { this.context = await this._prepareContext(); }
   _beginProgress() { this.abort = new AbortController(); return this.abort.signal; }
@@ -130,7 +133,8 @@ const mocks = {
   // An edit that rebuilds the draft as a new object, as a feat or class-path swap does.
   // An edit that rebuilds the draft as a new object, as a feat or class-path swap does. A school swap rebinds the
   // identity's Arcane School candidate to another school.
-  applyPCEdit: async (plan) => {
+  applyPCEdit: async (plan, _edit, options) => {
+    editOptions.push(options);
     if (editSwapsSchool) {
       const concept = { ...plan.concept, requiredIdentity: { ...plan.concept.requiredIdentity, classPaths: { "Arcane School": mentalismCandidate } } };
       return { plan: { ...plan, concept, resolved: { ...plan.resolved } }, changed: ["classPath"], invalidated: [], equipmentGp: 0 };
@@ -211,6 +215,21 @@ const schoolLines = (app) => (app.context.pcPreview.schoolSpells ? Array.from(ap
   assert.equal(afterEdit.pcEditor?.notice, "SIMPLYPF2E.PCEdit.Applied", "the swap is reported as applied");
   assert.deepEqual(Array.from(afterEdit.pcPreview.schoolSpells.lines), [`SIMPLYPF2E.Preview.SchoolSpell ${JSON.stringify({ school: "School of Mentalism", spell: "Charming Push" })}`],
     "the swapped school's spell is shown, not the old one");
+}
+
+// (f) The editor passes the GM's rarity cap to the edit contract, so its recompute honors it.
+{
+  rarityCapValue = "common";
+  editOptions.length = 0;
+  const capped = await generate("Class: Wizard\nSchool: School of Battle Magic");
+  await actions.applyPCEdit.call(capped, null, { dataset: { control: "class" } });
+  assert.equal(editOptions.length, 1, "the edit reaches the contract");
+  assert.equal(editOptions[0].maxRarity, "common", "the GM's rarity cap rides along with the edit");
+  rarityCapValue = "unique";
+  editOptions.length = 0;
+  const open = await generate("Class: Wizard\nSchool: School of Battle Magic");
+  await actions.applyPCEdit.call(open, null, { dataset: { control: "class" } });
+  assert.equal(editOptions[0].maxRarity, "unique", "the default cap is passed through as well");
 }
 
 // (c) A preview that throws warns and shows no school line, and the run still completes (advisory, fail closed).

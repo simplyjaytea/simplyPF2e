@@ -16,7 +16,7 @@
  *     real component documents chosen by the AI.
  */
 
-import { getPacksFor, getAllEquipmentEntries, getEquipmentIndex, issueCandidate } from "./compendium.mjs";
+import { getPacksFor, getAllEquipmentEntries, getEquipmentIndex, issueCandidate, RARITY_RANK } from "./compendium.mjs";
 import { slugify, capitalized } from "./text.mjs";
 
 /* Catalog names of the fundamental rune items, exactly as published. */
@@ -78,12 +78,22 @@ async function getForgeEquipmentEntries() {
         level: entry.system?.level?.value ?? 0,
         gp: entry.system?.price?.value,
         usage: entry.system?.usage?.value ?? null,
+        rarity: entry.system?.traits?.rarity ?? "common",
         category: entry.system?.category ?? null,
         specific: entry.system?.specific != null
       });
     }
   }
   return entries;
+}
+
+/**
+ * Whether an equipment entry is no rarer than `maxRarity` (the Forge's chosen item rarity). A null cap filters
+ * nothing; a cap that is set drops an entry whose rarity is unknown, as the other Forge pools do.
+ */
+function withinRarityCap(entry, maxRarity) {
+  if (!maxRarity) return true;
+  return Object.hasOwn(RARITY_RANK, entry.rarity) && RARITY_RANK[entry.rarity] <= (RARITY_RANK[maxRarity] ?? 0);
 }
 
 /**
@@ -222,13 +232,13 @@ async function fundamentalRunes(kind) {
  * regardless of the filter, so callers can explain why nothing is available.
  * @returns {Promise<{potencyTiers: number[], secondaryTiers: number[], minPotencyLevel: number}>}
  */
-export async function getFundamentalRuneTiers(kind, maxLevel) {
+export async function getFundamentalRuneTiers(kind, maxLevel, { maxRarity = null } = {}) {
   const potencyNames = new Map([1, 2, 3].map((tier) => [slugify(POTENCY_CATALOG_NAME[kind](tier)), tier]));
   const secondaryNames = new Map([1, 2, 3].map((tier) => [slugify(SECONDARY_CATALOG_NAME[kind][tier]), tier]));
   const all = await getForgeEquipmentEntries();
   const makeCandidates = (names, slot) => all
     .map((entry) => ({ entry, tier: names.get(slugify(entry.name)) }))
-    .filter(({ entry, tier }) => entry.type === "equipment" && tier && entry.level <= maxLevel)
+    .filter(({ entry, tier }) => entry.type === "equipment" && tier && entry.level <= maxLevel && withinRarityCap(entry, maxRarity))
     .sort(({ entry: a }, { entry: b }) => a.level - b.level || a.name.localeCompare(b.name) || a.packId.localeCompare(b.packId) || a._id.localeCompare(b._id))
     .map(({ entry, tier }) => issueCandidate(entry, { name: entry.name, level: entry.level, tier, slot }));
   const potencyCandidates = makeCandidates(potencyNames, "potency");
@@ -304,10 +314,10 @@ export function runeGpFor(runes, { potency, secondary }, field) {
  * armor), which gates category-restricted property runes downstream.
  * @returns {Promise<{name: string, level: number, category: string|null}[]>}
  */
-export async function getBaseItemCandidates(kind, maxLevel) {
+export async function getBaseItemCandidates(kind, maxLevel, { maxRarity = null } = {}) {
   const entries = await getForgeEquipmentEntries();
   return entries
-    .filter((e) => e.type === kind && !e.specific && e.level <= maxLevel)
+    .filter((e) => e.type === kind && !e.specific && e.level <= maxLevel && withinRarityCap(e, maxRarity))
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name) || a.packId.localeCompare(b.packId) || a._id.localeCompare(b._id))
     .map((e) => issueCandidate(e, { name: e.name, level: e.level, category: e.category ?? null }));
 }
@@ -329,13 +339,13 @@ function fundamentalRuneNames(kind) {
  * runes against the chosen base (see propertyRuneFitsBase).
  * @returns {Promise<{name: string, level: number, usage: string}[]>}
  */
-export async function getPropertyRuneCandidates(kind, maxLevel) {
+export async function getPropertyRuneCandidates(kind, maxLevel, { maxRarity = null } = {}) {
   const usageSet = kind === "weapon" ? WEAPON_RUNE_USAGE : ARMOR_RUNE_USAGE;
   const excluded = fundamentalRuneNames(kind);
   const entries = await getForgeEquipmentEntries();
   return entries
     .filter((e) => e.type === "equipment" && usageSet.has(e.usage) && e.level <= maxLevel
-      && !excluded.has(slugify(e.name)))
+      && withinRarityCap(e, maxRarity) && !excluded.has(slugify(e.name)))
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name) || a.packId.localeCompare(b.packId) || a._id.localeCompare(b._id))
     .map((e) => issueCandidate(e, { name: e.name, level: e.level, usage: e.usage }));
 }

@@ -626,7 +626,7 @@ export class GeneratorApp extends SpfApp {
     try {
       const plan = this.#pcPlan();
       const edit = pcEditFromControl(control, this.#pcEditDrafts[control]);
-      const result = await applyPCEdit(plan, edit, { catalogs: await this.#pcEditCatalogs(plan) });
+      const result = await applyPCEdit(plan, edit, { catalogs: await this.#pcEditCatalogs(plan), maxRarity: this.#input.rarityCap });
       this.#pcConcept = result.plan.concept;
       this.#pcResolved = result.plan.resolved;
       this.#pcSchoolSpells = await this.#schoolSpellPreview(this.#pcConcept, this.#pcResolved);

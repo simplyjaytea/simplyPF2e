@@ -229,7 +229,7 @@ Loot volume also follows your framing: describe a hoard or ask for "lots of loot
 - Explicit named NPC abilities use bounded local requirement matching. Ambiguous names or exclusions stop rather than granting unintended powers. Encounter themes containing named ability constraints stop before generation because the module cannot reliably assign a free-form requirement to a particular member; generate that constrained NPC separately.
 - Only coin entries flex to hit the treasure budget. A haul whose named items already exceed it is left alone rather than losing items. Carried gear isn't counted against the budget. The AI writes no prices or coin amounts: a name with no compendium match is dropped with a console warning, and only real compendium prices count.
 - The benchmark tables were transcribed by hand from GM Core. If a value disagrees with the book, please open an issue.
-- The Max rarity cap covers ancestry, background, heritage, feats, spells and equipment. Forge pools keep their own rarity input, and the Character editor's exact-content edit path does not filter by rarity.
+- The Max rarity cap covers ancestry, background, heritage, feats, spells and equipment. The Character editor applies it when it recomputes after an identity edit. The Item Forge caps its pools (including base weapons and armor and runes for a runed item) by its own rarity input.
 
 **Remaining live-acceptance gaps** (built, reviewed, and source-verified; the cases below still need actual-game coverage)
 
