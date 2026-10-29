@@ -1,12 +1,12 @@
 import * as T from "./tables.mjs";
-import { findEntry, getCandidateDocument, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates, isIssuedCandidate } from "./compendium.mjs";
+import { findEntry, getCandidateDocument, getDocument, toItemData, getPacksFor, getAllPacksFor, getFeatCandidates, getHeritageCandidates, getClassFeatureCandidates, isIssuedCandidate } from "./compendium.mjs";
 import {
   parseCoins, resolveLoot, resolveEquipment, resolveFocusSpells,
   buildEquipmentItems, buildLootItems, filterItemTypes, heightenedLevelFor
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { multiclassAbilityBlocker, multiclassCatalogNames, multiclassFeatInfo, multiclassPickBlocker } from "./pc-multiclass.mjs";
-import { CASTER_ARCHETYPES, assembleCasterArchetypeEntry, casterArchetypePlans, isCasterPackage } from "./pc-caster-archetype.mjs";
+import { CASTER_ARCHETYPES, applyArchetypeChoice, assembleCasterArchetypeEntry, casterArchetypeFeat, casterArchetypePlans, eligibleArchetypeChoices, isCasterPackage } from "./pc-caster-archetype.mjs";
 import { isAdvancedSchoolSpellFeat, isArcaneSchoolSource, schoolAdvancedSpellLink, schoolInitialSpellLink } from "./school-spells.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
@@ -1079,10 +1079,16 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // and system.level.taken the slot level, or the system's feat-slotting
   // (verified in feats/group.ts assignFeat) can't place it and dumps it into
   // Bonus feats (issue #50 item 4).
+  const archetypeChoice = await validatedArchetypeChoice(concept, resolved);
   for (const { entry, type, level, archetype = false } of resolved.feats ?? []) {
     const doc = await getDocument(entry);
     if (!doc) continue;
     const data = toItemData(doc);
+    // The dedication's ChoiceSet is answered with the previewed choice (the same `selection` pf2e writes), so no prompt opens.
+    if (archetypeChoice && casterArchetypeFeat(data.name)?.archetype === archetypeChoice.archetype
+      && casterArchetypeFeat(data.name)?.role === "dedication") {
+      applyArchetypeChoice(data, archetypeChoice.archetype.choice, archetypeChoice.value);
+    }
     const location = featSlotLocation({ type, level, archetype });
     if (location) {
       data.system.location = location;
@@ -1542,6 +1548,28 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   return { actor, expectedItems, skillReport: { rows, warnings, loadoutWarnings, automatic: skillPlan?.automatic ?? !normalizeSkillPriorities(concept.skillPriorities).length,
     trainingBudget: skillPlan?.trainingBudget ?? null, unspentTraining: skillPlan?.unspentTraining ?? null,
     unspentIncreases: skillPlan?.unspentIncreases ?? null } };
+}
+
+/** Eligible answers of a spellcasting archetype's ChoiceSet, from the enabled class-feature sources (the dedication's own filter). */
+export async function casterArchetypeChoiceOptions(choice) {
+  return eligibleArchetypeChoices(choice, await getClassFeatureCandidates(choice.tag));
+}
+
+/**
+ * The previewed ChoiceSet answer for the held spellcasting archetype, re-checked against the live sources: the plan must
+ * still name an eligible answer, or Create throws before anything is written. Null when the PC holds no archetype with a choice.
+ */
+async function validatedArchetypeChoice(concept, resolved) {
+  const heldFeats = (resolved.feats ?? []).map((pick) => (pick?.entry ? pick.name : null));
+  const [plan] = casterArchetypePlans(heldFeats, concept.level).filter((entry) => entry.archetype.choice);
+  if (!plan) return null;
+  const { archetype } = plan;
+  const planned = concept.archetypeSpellcasting?.pkg === archetype.pkg ? concept.archetypeSpellcasting.choice : null;
+  const options = await casterArchetypeChoiceOptions(archetype.choice);
+  if (!planned || !options.some((option) => option.value === planned.value)) {
+    throw new Error(game.i18n.format("SIMPLYPF2E.Errors.PCArchetypeChoice", { archetype: archetype.dedication }));
+  }
+  return { archetype, value: planned.value };
 }
 
 /**

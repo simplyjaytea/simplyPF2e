@@ -60,6 +60,11 @@ function archetypeSpellLines(concept, resolved) {
       records.push(line("archetype-spell", `Rank ${rank} pick ${slot}`, "unresolved"));
     }
   }
+  const choice = plan.choice;
+  if (choice) {
+    const valid = Array.isArray(choice.options) && choice.options.some((option) => option?.value === choice.value);
+    records.push(line("archetype-choice", String(choice.flag ?? "choice"), valid ? "native" : "unresolved"));
+  }
   if (spells.some((spell) => spell?.entry)) records.push(line("spellcasting-entry", "Archetype Spellcasting Entry", "module-built"));
   return records;
 }

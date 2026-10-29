@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
-  BASIC_SPELLCASTING_RANK_LEVELS, CASTER_ARCHETYPES, assembleCasterArchetypeEntry, casterArchetypeFeat,
-  casterArchetypePlans, isCasterPackage
+  BASIC_SPELLCASTING_RANK_LEVELS, CASTER_ARCHETYPES, applyArchetypeChoice, assembleCasterArchetypeEntry, casterArchetypeFeat,
+  casterArchetypePlans, chooseSignatureIndexes, defaultArchetypeChoice, eligibleArchetypeChoices, isCasterPackage
 } from "../scripts/pc-caster-archetype.mjs";
 import { MULTICLASS_PACKAGES, multiclassAbilityBlocker, multiclassPickBlocker } from "../scripts/pc-multiclass.mjs";
 
@@ -170,6 +170,135 @@ assert.deepEqual(reasonFor(make("fireball", 4)), ["the archetype has no rank 4 p
     spells: [make("fear", 1), make("grim-tendrils", 1), { ...make("fear", 1), identity: "Compendium.pf2e.spells-srd.Item.third" }]
   });
   assert.deepEqual(cap.rejected.map((r) => r.reason), ["rank 1 picks are full"], "a third rank-1 spell exceeds the two the feat adds");
+}
+
+// ================= Bard (feat/bard-archetype) =================
+const bard = CASTER_ARCHETYPES.bard;
+const bardDedication = await load("bard-dedication");
+const bardBasic = await load("basic-bard-spellcasting");
+const bardExpert = await load("expert-bard-spellcasting");
+const bardMaster = await load("master-bard-spellcasting");
+assert.equal(bardDedication.name, bard.dedication);
+assert.equal(bardBasic.name, bard.basic);
+assert.deepEqual(bardDedication.system.prerequisites.value, [{ value: "Charisma +2" }]);
+assert.equal(bardDedication.system.level.value, 2);
+assert.ok(bardDedication.system.traits.otherTags.includes("spellcasting-multiclass-archetype"));
+assert.deepEqual(bardBasic.system.rules, [], "Basic Bard Spellcasting creates no entry");
+assert.deepEqual(bardBasic.system.prerequisites.value, [{ value: "Bard Dedication" }]);
+assert.equal(bardBasic.system.level.value, 4);
+assert.deepEqual(bardExpert.system.prerequisites.value.map((p) => p.value), ["Basic Bard Spellcasting", "master in Occultism"]);
+assert.deepEqual(bardMaster.system.prerequisites.value.map((p) => p.value), ["Expert Bard Spellcasting", "legendary in Occultism"]);
+
+// The dedication's rules: a muse ChoiceSet (slug values, bard-muse minus class-archetype), a RollOption reading it,
+// two skill upgrades, and no GrantItem (so no muse feature, starting feat or spell is granted).
+const bardRules = bardDedication.system.rules;
+assert.deepEqual(bardRules.map((rule) => rule.key), ["ChoiceSet", "RollOption", "ActiveEffectLike", "ActiveEffectLike"]);
+assert.equal(bardRules[0].flag, bard.choice.flag);
+assert.deepEqual(bardRules[0].choices, { filter: [`item:tag:${bard.choice.tag}`, { not: `item:tag:${bard.choice.excludeTag}` }], slugsAsValues: true });
+assert.equal(bardRules[1].option, `feature:{item|flags.system.rulesSelections.${bard.choice.flag}}`);
+const bardText = plain(bardDedication.system.description.value);
+assert.match(bardText, /spell repertoire with two common cantrips from the occult spell list/);
+assert.equal(bard.cantripsKnown, 2);
+assert.match(bardText, /key spellcasting attribute for bard archetype spells is Charisma, and they are occult bard spells/);
+assert.equal(bard.ability, "cha");
+assert.equal(bard.tradition, "occult");
+assert.equal(bard.mode, "spontaneous");
+assert.match(plain(bardBasic.system.description.value), /add a common occult spell of the appropriate rank/);
+assert.equal(bard.spellsPerRank, 1);
+assert.equal(bard.cantripSlots, 0, "spontaneous cantrips are not slot-based");
+assert.match(basicParagraph, /At 6th level, they grant you a 2nd-rank spell slot, and if you have a spell repertoire, you can select one spell from your repertoire as a signature spell/);
+assert.equal(bard.signatureFromLevel, 6);
+
+// Catalog wiring.
+const bardPkg = MULTICLASS_PACKAGES.find((entry) => entry.slug === "bard");
+assert.equal(bardPkg.dedication, "Bard Dedication");
+assert.deepEqual(bardPkg.feats.map((feat) => feat.name), ["Basic Bard Spellcasting"]);
+assert.deepEqual(bardPkg.abilities, [{ key: "cha", min: 2 }]);
+assert.equal(isCasterPackage("bard"), true);
+assert.equal(multiclassAbilityBlocker("Bard Dedication", { cha: 1 }) !== null, true);
+assert.equal(multiclassAbilityBlocker("Bard Dedication", { cha: 2 }), null);
+assert.match(multiclassPickBlocker([], "Bard Dedication", "Bard"), /own class/);
+assert.match(multiclassPickBlocker([], "Basic Bard Spellcasting", "Fighter"), /Bard Dedication first/);
+// One spellcasting archetype per character. The lock already keeps a second dedication out until two more feats of the
+// current package are held, and a caster package has only one feat, so this guard is defence in depth; it is reached by an
+// order the lock would otherwise allow.
+assert.match(multiclassPickBlocker(["Wizard Dedication", "Basic Wizard Spellcasting", "Basic Wizard Spellcasting"], "Bard Dedication", "Fighter"), /only one spellcasting archetype/);
+assert.match(multiclassPickBlocker(["Bard Dedication", "Basic Bard Spellcasting", "Basic Bard Spellcasting"], "Wizard Dedication", "Fighter"), /only one spellcasting archetype/);
+assert.match(multiclassPickBlocker(["Wizard Dedication", "Basic Wizard Spellcasting"], "Bard Dedication", "Fighter"), /complete Wizard Dedication/, "and a package in progress blocks a second dedication anyway");
+assert.equal(multiclassPickBlocker(["Fighter Dedication", "Basic Maneuver", "Reactive Striker"], "Bard Dedication", "Wizard"), null, "a completed noncaster package leaves a Bard dedication open");
+
+// Plans: dedication = two cantrips, Basic adds one slot and one spell per rank by level; signature from level 6.
+const bardPlan = (feats, level) => {
+  const [plan] = casterArchetypePlans(feats, level);
+  return plan && { slots: plan.slots, picks: plan.picks, maxRank: plan.maxRank, signatures: plan.signatures };
+};
+assert.deepEqual(bardPlan(["Bard Dedication"], 20), { slots: { 0: 0 }, picks: { 0: 2 }, maxRank: 0, signatures: 0 });
+assert.deepEqual(bardPlan(["Bard Dedication", "Basic Bard Spellcasting"], 3), { slots: { 0: 0 }, picks: { 0: 2 }, maxRank: 0, signatures: 0 });
+assert.deepEqual(bardPlan(["Bard Dedication", "Basic Bard Spellcasting"], 4), { slots: { 0: 0, 1: 1 }, picks: { 0: 2, 1: 1 }, maxRank: 1, signatures: 0 });
+assert.deepEqual(bardPlan(["Bard Dedication", "Basic Bard Spellcasting"], 5), { slots: { 0: 0, 1: 1 }, picks: { 0: 2, 1: 1 }, maxRank: 1, signatures: 0 });
+assert.deepEqual(bardPlan(["Bard Dedication", "Basic Bard Spellcasting"], 6), { slots: { 0: 0, 1: 1, 2: 1 }, picks: { 0: 2, 1: 1, 2: 1 }, maxRank: 2, signatures: 1 });
+assert.deepEqual(bardPlan(["Bard Dedication", "Basic Bard Spellcasting"], 8), { slots: { 0: 0, 1: 1, 2: 1, 3: 1 }, picks: { 0: 2, 1: 1, 2: 1, 3: 1 }, maxRank: 3, signatures: 1 });
+assert.deepEqual(bardPlan(["Bard Dedication", "Basic Bard Spellcasting"], 20), bardPlan(["Bard Dedication", "Basic Bard Spellcasting"], 8), "Basic stops at rank 3");
+assert.equal(bardPlan(["Basic Bard Spellcasting"], 8), undefined, "Basic without its dedication yields nothing");
+assert.equal(casterArchetypePlans(["Wizard Dedication", "Basic Wizard Spellcasting"], 8)[0].signatures, 0, "Wizard has no signature spells");
+
+// Signature choice: the first spell of the lowest ranked rank; none without a plan allowance; never a cantrip.
+const ranks = (...list) => list.map((rank) => ({ rank }));
+assert.deepEqual([...chooseSignatureIndexes(ranks(0, 0, 1, 2), 1)], [2]);
+assert.deepEqual([...chooseSignatureIndexes(ranks(0, 0, 2, 1), 1)], [3], "the lowest ranked spell");
+assert.deepEqual([...chooseSignatureIndexes(ranks(0, 0, 1, 1), 1)], [2], "the first of equal ranks");
+assert.deepEqual([...chooseSignatureIndexes(ranks(0, 0), 1)], [], "cantrips are never signature spells");
+assert.deepEqual([...chooseSignatureIndexes(ranks(1, 2), 0)], []);
+
+// Choice options: the dedication's own filter, slug values, sorted; the default only when eligible.
+const loadTagged = async (name) => { const json = await load(name); return { name: json.name, tags: json.system.traits.otherTags }; };
+const muses = await Promise.all(["enigma", "maestro", "polymath", "warrior", "zoophonia"].map(loadTagged));
+const options = eligibleArchetypeChoices(bard.choice, muses);
+assert.deepEqual(options.map((option) => option.value), ["enigma", "maestro", "polymath", "warrior", "zoophonia"]);
+assert.deepEqual(options.map((option) => option.label), ["Enigma", "Maestro", "Polymath", "Warrior", "Zoophonia"]);
+assert.equal(defaultArchetypeChoice(bard.choice, options), "maestro");
+assert.equal(defaultArchetypeChoice(bard.choice, options.filter((option) => option.value !== "maestro")), null, "no arbitrary substitute");
+assert.deepEqual(eligibleArchetypeChoices(bard.choice, [...muses, { name: "Archetype Muse", tags: ["bard-muse", "class-archetype"] }, { name: "Not A Muse", tags: ["other"] }, { name: "Untagged" }]).map((o) => o.value),
+  ["enigma", "maestro", "polymath", "warrior", "zoophonia"], "class-archetype and untagged features are excluded");
+assert.deepEqual(eligibleArchetypeChoices(bard.choice, []), []);
+
+// applyArchetypeChoice writes pf2e's own persisted shape and nothing else.
+{
+  const data = structuredClone(bardDedication);
+  const before = structuredClone(data.system.rules);
+  applyArchetypeChoice(data, bard.choice, "maestro");
+  assert.equal(data.system.rules[0].selection, "maestro");
+  data.system.rules[0].selection = undefined; delete data.system.rules[0].selection;
+  assert.deepEqual(data.system.rules, before, "every other member of every rule is unchanged");
+  assert.throws(() => applyArchetypeChoice({ name: "X", system: { rules: [] } }, bard.choice, "maestro"), /exactly one dedicationMuse ChoiceSet/);
+  assert.throws(() => applyArchetypeChoice({ name: "X", system: { rules: [bardRules[0], bardRules[0]] } }, bard.choice, "maestro"), /exactly one/);
+}
+
+// Entry: spontaneous occult Charisma, slots one per rank, no prepared slots, one signature spell at level 6+.
+{
+  const spell = async (file) => load(file);
+  const mk = async (file, rank) => ({ rank, identity: `Compendium.pf2e.spells-srd.Item.${(await spell(file))._id}`, source: await spell(file) });
+  const picks = [await mk("detect-magic", 0), await mk("light", 0), await mk("fear", 1), await mk("mirror-image", 2), await mk("haste", 3)];
+  const plan = casterArchetypePlans(["Bard Dedication", "Basic Bard Spellcasting"], 8)[0];
+  const built = assembleCasterArchetypeEntry({ plan, entryId: "bard-entry", spells: picks, newId: (() => { let i = 0; return () => `b${++i}`; })() });
+  assert.deepEqual(built.rejected, []);
+  const system = built.entry.system;
+  assert.equal(built.entry.name, "Bard Archetype Spells");
+  assert.equal(system.tradition.value, "occult");
+  assert.equal(system.ability.value, "cha");
+  assert.deepEqual(system.prepared, { value: "spontaneous", flexible: false });
+  assert.equal(system.proficiency.value, 1);
+  assert.deepEqual(Object.entries(system.slots).filter(([, slot]) => slot.max).map(([key, slot]) => [key, slot.max, slot.value, slot.prepared.length]),
+    [["slot1", 1, 1, 0], ["slot2", 1, 1, 0], ["slot3", 1, 1, 0]]);
+  assert.equal(built.spells.length, 5);
+  assert.ok(built.spells.every((item) => item.system.location.value === "bard-entry" && !("heightenedLevel" in item.system.location)));
+  assert.deepEqual(built.spells.filter((item) => item.system.location.signature).map((item) => item.name), ["Fear"], "one signature: the rank-1 spell");
+  // Level 4: no signature; arcane-only spell rejected as non-occult.
+  const l4 = assembleCasterArchetypeEntry({ plan: casterArchetypePlans(["Bard Dedication", "Basic Bard Spellcasting"], 4)[0], entryId: "e", newId: () => "x",
+    spells: [await mk("detect-magic", 0), await mk("light", 0), await mk("fear", 1)] });
+  assert.equal(l4.spells.filter((item) => item.system.location.signature).length, 0, "no signature before level 6");
+  const wrong = assembleCasterArchetypeEntry({ plan, entryId: "e", newId: () => "x", spells: [await mk("fireball", 3)].filter(Boolean) }).rejected.map((r) => r.reason);
+  assert.deepEqual(wrong, ["not an occult spell"], "an arcane/primal-only spell is not an occult bard spell");
 }
 
 console.log("pc-caster-archetype.test.mjs: the table matches the real 8.5.0 feats and journal, plans follow the Basic feat by level, and the entry builder fails closed");

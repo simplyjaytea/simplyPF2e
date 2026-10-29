@@ -11,14 +11,17 @@ const basic = await load("basic-wizard-spellcasting");
 const expert = await load("expert-wizard-spellcasting");
 const master = await load("master-wizard-spellcasting");
 const fighterDedication = { _id: "fighterded", name: "Fighter Dedication", type: "feat", system: { level: { value: 2 }, category: "class", traits: { value: ["archetype", "dedication", "multiclass"], rarity: "common" }, prerequisites: { value: [{ value: "Strength +2" }] } } };
-const feats = [dedication, basic, expert, master, fighterDedication].map((json) => ({ _id: json._id, name: json.name, type: "feat", system: json.system }));
+const bardDedication = await load("bard-dedication");
+const bardBasic = await load("basic-bard-spellcasting");
+const bardExpert = await load("expert-bard-spellcasting");
+const feats = [dedication, basic, expert, master, bardDedication, bardBasic, bardExpert, fighterDedication].map((json) => ({ _id: json._id, name: json.name, type: "feat", system: json.system }));
 
 const source = (name, type, system) => ({ _id: name, name, type, system });
 const entries = {
   ancestry: source("Human", "ancestry", {}),
   background: source("Scholar", "background", { trainedSkills: { value: ["society"], lore: [] } }),
   class: source("Fighter", "class", {
-    keyAbility: { value: ["str", "int"] }, trainedSkills: { value: [], additional: 3 },
+    keyAbility: { value: ["str", "int", "cha"] }, trainedSkills: { value: [], additional: 3 },
     ancestryFeatLevels: { value: [1, 5] }, classFeatLevels: { value: [1, 2, 4, 6] }, generalFeatLevels: { value: [3] },
     skillFeatLevels: { value: [2, 4, 6] }
   })
@@ -101,6 +104,20 @@ const archetypeSlots = (slot) => slot.archetype === true;
   const refused = await resolvePCConcept({ ...base });
   assert.ok(!names(refused, archetypeSlots).some((name) => /Wizard/.test(name)), "and not otherwise");
   freeArchetype = false;
+}
+
+// Bard (feat/bard-archetype): Charisma +2, the same switches and levels, Expert never offered.
+{
+  const offeredBard = (resolved) => resolved.featSlots.filter(classSlots).map((slot) => [slot.level, slot.candidates.map((c) => c.name).filter((name) => /Bard/.test(name)).sort()]);
+  const allowed = await resolvePCConcept({ ...base, keyAbility: "cha", casterArchetypes: true });
+  assert.deepEqual(offeredBard(allowed), [[1, []], [2, ["Bard Dedication"]], [4, ["Bard Dedication", "Basic Bard Spellcasting"]]]);
+  assert.ok(!names(allowed, classSlots).includes("Expert Bard Spellcasting"), "Expert is never offered");
+  const refused = await resolvePCConcept({ ...base, keyAbility: "cha" });
+  assert.ok(!names(refused, classSlots).some((name) => /Bard/.test(name)), "no caster feat without the GM option");
+  const lowCha = await resolvePCConcept({ ...base, keyAbility: "str", casterArchetypes: true });
+  assert.ok(!names(lowCha, classSlots).includes("Bard Dedication"), "a Strength-keyed character lacks Charisma +2");
+  const wizardOnly = await resolvePCConcept({ ...base, keyAbility: "int", casterArchetypes: true });
+  assert.ok(names(wizardOnly, classSlots).includes("Wizard Dedication") && !names(wizardOnly, classSlots).includes("Bard Dedication"), "Intelligence qualifies for Wizard, not Bard");
 }
 
 console.log("pc-builder.casterCandidates.test.mjs: Wizard archetype feats are offered only when allowed, by level and by Intelligence +2");

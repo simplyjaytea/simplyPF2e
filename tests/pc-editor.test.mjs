@@ -160,4 +160,15 @@ assert.deepEqual(pcEditorInvalidatedControls([
     "a candidate with no doc is excluded");
 }
 
+// Archetype ChoiceSet control (Bard muse).
+assert.deepEqual(pcEditFromControl("archetypeChoice", " warrior "), { field: "archetypeChoice", value: "warrior" });
+assert.throws(() => pcEditFromControl("archetypeChoice", "  "), (error) => error.code === "PC_EDIT_INVALID");
+{
+  const plan = { concept: { archetypeSpellcasting: { choice: { value: "maestro", options: [] } } }, resolved: { feats: [], equipment: [] }, pending: [] };
+  assert.equal(pcEditorSelections(plan).archetypeChoice, "maestro", "the current answer is the control's selection");
+  plan.concept.archetypeSpellcasting.choice.value = null;
+  assert.equal(pcEditorSelections(plan).archetypeChoice, "", "a missing answer shows the placeholder");
+  assert.ok(!("archetypeChoice" in pcEditorSelections({ concept: {}, resolved: { feats: [], equipment: [] }, pending: [] })), "no control without an archetype choice");
+}
+
 console.log("pc-editor.test.mjs: ok");

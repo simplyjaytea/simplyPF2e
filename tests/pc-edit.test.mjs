@@ -335,4 +335,39 @@ async function expectCode(promise, code) {
   assert.ok(validatePCEditCompletion(wrongPicks).errors.some((line) => /disagree/.test(line)), "stale picks are an error");
 }
 
+// Bard muse (feat/bard-archetype): the archetype ChoiceSet is an editable value; only an eligible answer is accepted, nothing
+// else is recomputed, and an invalid or missing answer blocks completion.
+{
+  const museOptions = [{ value: "enigma", label: "Enigma" }, { value: "maestro", label: "Maestro" }, { value: "warrior", label: "Warrior" }];
+  const bardPlan = (value = "maestro") => {
+    const plan = basePlan();
+    plan.concept.level = 2;
+    plan.concept.archetypeSpellcasting = { pkg: "bard", tradition: "occult", plannedPicks: { 0: 2 }, maxRank: 0, spells: [],
+      choice: { flag: "dedicationMuse", labelKey: "k", options: museOptions, value } };
+    plan.resolved.archetypeSpells = [];
+    const bardDedication = candidate("barded", "Bard Dedication");
+    plan.resolved.featSlots = [featSlot([attack, block, bardDedication])];
+    plan.resolved.feats = [{ type: "class", level: 1, archetype: false, name: "Bard Dedication", entry: ref("barded") }];
+    return plan;
+  };
+  const edited = await applyPCEdit(bardPlan(), { field: "archetypeChoice", value: "warrior" }, { services, catalogs });
+  assert.deepEqual(edited.changed, ["archetypeChoice"]);
+  assert.equal(edited.plan.concept.archetypeSpellcasting.choice.value, "warrior");
+  assert.equal(bardPlan().concept.archetypeSpellcasting.choice.value, "maestro", "the input plan is not mutated");
+  const original = bardPlan();
+  const again = await applyPCEdit(original, { field: "archetypeChoice", value: "warrior" }, { services, catalogs });
+  assert.equal(original.concept.archetypeSpellcasting.choice.value, "maestro");
+  assert.equal(again.plan.concept.archetypeSpellcasting.choice.value, "warrior");
+  assert.deepEqual((await applyPCEdit(bardPlan(), { field: "archetypeChoice", value: "maestro" }, { services, catalogs })).changed, [], "an unchanged answer is a no-op");
+  await expectCode(applyPCEdit(bardPlan(), { field: "archetypeChoice", value: "not-a-muse" }, { services, catalogs }), PC_EDIT_CODES.INVALID);
+  await expectCode(applyPCEdit(bardPlan(), { field: "archetypeChoice", value: 5 }, { services, catalogs }), PC_EDIT_CODES.INVALID);
+  await expectCode(applyPCEdit(basePlan(), { field: "archetypeChoice", value: "maestro" }, { services, catalogs }), PC_EDIT_CODES.INVALID);
+  // Completion: a valid answer passes the check; a missing or ineligible one is an error.
+  assert.ok(!validatePCEditCompletion(bardPlan()).errors.some((line) => /choice/.test(line)));
+  assert.ok(validatePCEditCompletion(bardPlan(null)).errors.some((line) => /archetype choice is missing or not eligible/.test(line)));
+  assert.ok(validatePCEditCompletion(bardPlan("bogus")).errors.some((line) => /archetype choice is missing or not eligible/.test(line)));
+  // The Bard dedication is still a caster feat: it cannot be swapped away.
+  await expectCode(applyPCEdit(bardPlan(), { field: "feat", slot: 0, key: "test.pack:block" }, { services, catalogs }), PC_EDIT_CODES.DEFERRED);
+}
+
 console.log("pc-edit tests passed");

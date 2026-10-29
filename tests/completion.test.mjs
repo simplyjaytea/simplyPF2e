@@ -82,4 +82,19 @@ assert.deepEqual(summary, {
   assert.equal(completionManifest({ mode: "monster", concept: { archetypeSpellcasting: { plannedPicks: { 0: 1 } } }, resolved: { abilities: [], spells: [], focusSpells: [], feats: [], equipment: [], loot: [], archetypeSpells: [] } }).complete, true,
     "creatures never carry an archetype plan");
 }
+// Archetype ChoiceSet (Bard muse): an unanswered or ineligible choice is a blocking record.
+{
+  const withChoice = (choice) => completionManifest({ mode: "character",
+    concept: { archetypeSpellcasting: { pkg: "bard", plannedPicks: {}, spells: [], choice } },
+    resolved: { ancestryDoc: { name: "Human" }, backgroundDoc: { name: "Warrior" }, classDoc: { name: "Fighter" }, spells: [], focusSpells: [], archetypeSpells: [], feats: [], equipment: [], loot: [] } });
+  const options = [{ value: "maestro", label: "Maestro" }];
+  const ok = withChoice({ flag: "dedicationMuse", options, value: "maestro" });
+  assert.equal(ok.complete, true);
+  assert.ok(ok.records.some((r) => r.category === "archetype-choice" && r.status === "native"));
+  for (const bad of [{ flag: "dedicationMuse", options, value: null }, { flag: "dedicationMuse", options, value: "other" }, { flag: "dedicationMuse", options: [], value: "maestro" }]) {
+    const manifest = withChoice(bad);
+    assert.equal(manifest.complete, false);
+    assert.deepEqual(manifest.unresolved.map((r) => [r.category, r.name]), [["archetype-choice", "dedicationMuse"]]);
+  }
+}
 console.log("completion.test.mjs: manifest statuses and complete-only boundary passed");
