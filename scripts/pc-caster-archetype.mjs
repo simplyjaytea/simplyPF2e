@@ -166,9 +166,9 @@ export function chooseSignatureIndexes(spells, count) {
 
 /**
  * Eligible choices of an archetype's ChoiceSet from class-feature candidates, by the dedication's own filter
- * (`item:tag:<tag>` and not `item:tag:<excludeTag>`), as pf2e's `slugsAsValues` names them (the slug of the name).
+ * (`item:tag:<tag>` and not `item:tag:<excludeTag>`), as pf2e's `slugsAsValues` names them (`f.slug ?? sluggify(f.name)`, pf2e's choice-set/rule-element.ts queryCompendium).
  * @param {NonNullable<CasterArchetype["choice"]>} choice
- * @param {{name: string, tags?: string[]}[]} candidates
+ * @param {{name: string, slug?: string|null, tags?: string[]}[]} candidates
  * @returns {{value: string, label: string}[]} sorted by label
  */
 export function eligibleArchetypeChoices(choice, candidates) {
@@ -177,7 +177,7 @@ export function eligibleArchetypeChoices(choice, candidates) {
   for (const candidate of candidates ?? []) {
     const tags = Array.isArray(candidate?.tags) ? candidate.tags : [];
     if (!tags.includes(choice.tag) || tags.includes(choice.excludeTag)) continue;
-    const value = slugify(candidate.name);
+    const value = (typeof candidate.slug === "string" && candidate.slug) || slugify(candidate.name);
     if (!value || seen.has(value)) continue;
     seen.add(value);
     options.push({ value, label: candidate.name });

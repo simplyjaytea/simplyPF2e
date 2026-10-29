@@ -261,6 +261,10 @@ assert.equal(defaultArchetypeChoice(bard.choice, options.filter((option) => opti
 assert.deepEqual(eligibleArchetypeChoices(bard.choice, [...muses, { name: "Archetype Muse", tags: ["bard-muse", "class-archetype"] }, { name: "Not A Muse", tags: ["other"] }, { name: "Untagged" }]).map((o) => o.value),
   ["enigma", "maestro", "polymath", "warrior", "zoophonia"], "class-archetype and untagged features are excluded");
 assert.deepEqual(eligibleArchetypeChoices(bard.choice, []), []);
+// An explicit indexed slug is the value (pf2e: f.slug ?? sluggify(f.name)); a missing or empty slug falls back to the name.
+assert.deepEqual(eligibleArchetypeChoices(bard.choice, [
+  { name: "Maestro", slug: "maestro-of-sound", tags: ["bard-muse"] }, { name: "Polymath", slug: null, tags: ["bard-muse"] }, { name: "Warrior", slug: "", tags: ["bard-muse"] }
+]).map((o) => [o.value, o.label]), [["maestro-of-sound", "Maestro"], ["polymath", "Polymath"], ["warrior", "Warrior"]]);
 
 // applyArchetypeChoice writes pf2e's own persisted shape and nothing else.
 {

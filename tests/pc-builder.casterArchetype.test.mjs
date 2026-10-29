@@ -225,6 +225,24 @@ const spells = () => embedded.filter((item) => item.type === "spell");
   globalThis.Actor.create = realCreate;
 }
 
+// CR MEDIUM 2 (Wizard path): a held dedication or Basic feat that cannot be reloaded at Create fails closed, no actor.
+{
+  let created = 0;
+  const realCreate = globalThis.Actor.create;
+  globalThis.Actor.create = async (...args) => { created += 1; return realCreate(...args); };
+  for (const ref of [dedicationRef, basicRef]) {
+    const key = `feats:${ref._id}`;
+    const stashed = docs.get(key);
+    docs.delete(key);
+    created = 0; embedded = undefined;
+    await assert.rejects(createCharacterActor({ ...common, archetypeSpellcasting: { pkg: "wizard" } }, base()), (error) => /Errors\.PCArchetypeFeat/.test(error.message));
+    assert.equal(created, 0, `no actor when ${ref.name} is gone`);
+    assert.equal(embedded, undefined);
+    docs.set(key, stashed);
+  }
+  globalThis.Actor.create = realCreate;
+}
+
 // A class caster and the archetype coexist as two entries (the archetype's own tradition and attribute).
 {
   const wizardLike = base();

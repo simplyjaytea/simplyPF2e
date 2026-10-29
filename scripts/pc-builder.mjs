@@ -1080,9 +1080,15 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
   // (verified in feats/group.ts assignFeat) can't place it and dumps it into
   // Bonus feats (issue #50 item 4).
   const archetypeChoice = await validatedArchetypeChoice(concept, resolved);
-  for (const { entry, type, level, archetype = false } of resolved.feats ?? []) {
+  for (const { entry, type, level, archetype = false, name } of resolved.feats ?? []) {
     const doc = await getDocument(entry);
-    if (!doc) continue;
+    if (!doc) {
+      // A held spellcasting-archetype feat that can no longer be loaded would leave its entry and spells without the
+      // feat (and the muse answer); fail before anything is written. Other feats keep their skip-and-continue behavior.
+      const held = entry ? casterArchetypeFeat(name) : null;
+      if (held) throw new Error(game.i18n.format("SIMPLYPF2E.Errors.PCArchetypeFeat", { feat: name }));
+      continue;
+    }
     const data = toItemData(doc);
     // The dedication's ChoiceSet is answered with the previewed choice (the same `selection` pf2e writes), so no prompt opens.
     if (archetypeChoice && casterArchetypeFeat(data.name)?.archetype === archetypeChoice.archetype

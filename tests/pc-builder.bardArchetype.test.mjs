@@ -23,7 +23,7 @@ for (const file of ["detect-magic", "light", "telekinetic-projectile", "fear", "
   refs[file] = stub(spellJson[file], "spells");
 }
 const museJson = await Promise.all(["enigma", "maestro", "polymath", "warrior", "zoophonia"].map(load));
-let museIndex = museJson.map((json) => ({ _id: json._id, name: json.name, type: json.type, system: { category: json.system.category, level: json.system.level, traits: json.system.traits } }));
+let museIndex = museJson.map((json) => ({ _id: json._id, name: json.name, type: json.type, system: { slug: json.system.slug ?? null, category: json.system.category, level: json.system.level, traits: json.system.traits } }));
 
 globalThis.foundry = { utils: { randomID: (() => { let i = 0; return () => `id-${++i}`; })() } };
 globalThis.CONST = { TOKEN_DISPLAY_MODES: { OWNER_HOVER: 50 } };
@@ -152,6 +152,26 @@ await refuse({ ...common, archetypeSpellcasting: null }, base(), /Errors\.PCArch
   spellJson["mirror-image"].system.level.value = 3;
   await refuse(concept(), base(), /own rank does not match rank 2/);
   spellJson["mirror-image"].system.level.value = 2;
+}
+// CR MEDIUM 1: a muse with an explicit indexed slug is offered, persisted and revalidated under that slug (pf2e: f.slug ?? sluggify(name)).
+{
+  const saved = museIndex;
+  setMuses(museIndex.map((entry) => entry.name === "Maestro" ? { ...entry, system: { ...entry.system, slug: "maestro-of-sound" } } : entry));
+  const options = await casterArchetypeChoiceOptions(CASTER_ARCHETYPES.bard.choice);
+  assert.deepEqual(options.map((o) => o.value), ["enigma", "maestro-of-sound", "polymath", "warrior", "zoophonia"], "the explicit slug is the value");
+  await createCharacterActor(concept({ choice: { flag: "dedicationMuse", value: "maestro-of-sound", options: [] } }), base());
+  assert.equal(embedded.find((item) => item.name === "Bard Dedication").system.rules[0].selection, "maestro-of-sound", "the slug is persisted");
+  await refuse(concept({ choice: { flag: "dedicationMuse", value: "maestro", options: [] } }), base(), /Errors\.PCArchetypeChoice/);
+  setMuses(saved);
+}
+// CR MEDIUM 2: a held dedication or Basic feat that cannot be reloaded at Create fails closed with no actor.
+for (const [label, ref] of [["dedication", dedicationRef], ["Basic feat", basicRef]]) {
+  const key = `feats:${ref._id}`;
+  const stashed = docs.get(key);
+  docs.delete(key);
+  await refuse(concept(), base(), /Errors\.PCArchetypeFeat/);
+  docs.set(key, stashed);
+  void label;
 }
 // Still valid afterwards (the scenarios restored their changes).
 await createCharacterActor(concept(), base());

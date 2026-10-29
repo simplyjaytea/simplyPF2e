@@ -673,6 +673,7 @@
     "Errors": {
       "GMOnly": "Only a GM can use SimplyPF2e generation and provider setup.",
       "NoPrompt": "Describe the creature first.",
+      "PCArchetypeFeat": "{feat} is no longer available in your compendium, so its spellcasting cannot be built. Nothing was created. Generate the character again.",
       "PCArchetypeChoice": "The {archetype} choice is missing or no longer available in your compendium. Nothing was created. Generate the character again or pick another choice.",
       "PCArchetypeLabel": "Spellcasting archetype",
       "PCArchetypeSpellbook": "The {archetype} spell list no longer matches the preview ({reason}). Nothing was created. Generate the character again.",

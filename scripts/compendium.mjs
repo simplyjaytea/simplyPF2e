@@ -820,6 +820,7 @@ export async function getClassFeatureCandidates(tag) {
         level: entry.system?.level?.value ?? 0,
         traits: entry.system?.traits?.value ?? [],
         tags: entry.system.traits.otherTags,
+        slug: entry.system?.slug ?? null,
         uuid: `Compendium.${entry.packId}.Item.${entry._id}`
       }));
     }

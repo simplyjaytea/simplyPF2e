@@ -42,6 +42,11 @@ Tests: `pc-caster-archetype.test.mjs` (Bard table pinned to the feat and journal
 
 Revert checks: 18 mutations, all killed (selection not written; Create validation skipped; `class-archetype` not excluded; default falls back to the first muse; signature from level 4; signature on the highest rank; signature flag not set; tradition arcane; prepared mode; three cantrips; Charisma minimum 1; editor accepts any muse; completion ignores the choice; generator takes the first muse; muse control not offered; second-caster guard removed; editor selection missing; "repertoire" wording dropped).
 
+## Code Reviewer repairs (`fix/bard-cr`)
+
+- **Explicit muse slug.** `getClassFeatureCandidates` now returns the indexed `system.slug`; `eligibleArchetypeChoices` uses `slug` before the name's slug, matching pf2e's `f.slug ?? sluggify(f.name)`. The stock 8.5.0 muses have null slugs, so behavior for them is unchanged. Tests: a muse with slug `maestro-of-sound` is offered, persisted and revalidated under that slug, and the name's slug is refused.
+- **Missing feat at Create.** `createCharacterActor` throws `SIMPLYPF2E.Errors.PCArchetypeFeat` before any write when a held spellcasting-archetype feat (dedication or Basic) can no longer be loaded, instead of skipping it. This covers Wizard too. Tests: each feat removed after preview, no actor, no items.
+
 ## Gaps
 
 - Not native-accepted (rows N55, N56). The preselected `selection` suppressing the prompt, the resolved `feature:<muse>` roll option and the signature display are read from source, not observed.
