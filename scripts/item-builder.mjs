@@ -14,7 +14,7 @@ import {
   getPacksFor, EQUIPMENT_TYPES, getCandidateDocument, toItemData, getEquipmentIndex,
   priceToGp, RARITY_RANK
 } from "./compendium.mjs";
-import { slugify, capitalized, esc } from "./text.mjs";
+import { slugify, capitalized, esc, inertText } from "./text.mjs";
 import {
   RUNED_ITEM_KINDS, SECONDARY_ADJECTIVE, SECONDARY_RUNE_FIELD, propertyRuneKey, propertyRuneFitsBase,
   getBaseItemCandidates, getPropertyRuneCandidates, getFundamentalRuneTiers, prunePropertyRuneCandidates
@@ -323,11 +323,12 @@ export async function buildRunedItem(concept) {
   data.system.traits = { ...(data.system.traits ?? {}), value: [...traits], rarity };
 
   const paragraphs = String(concept.description ?? "")
-    .split(/\n{2,}/).map((p) => `<p>${esc(p.trim())}</p>`).filter((p) => p !== "<p></p>");
+    .split(/\n{2,}/).map((p) => `<p>${inertText(p.trim())}</p>`).filter((p) => p !== "<p></p>");
   const runeSummary = [
     `+${concept.potency} potency`,
     concept.secondaryTier ? SECONDARY_ADJECTIVE[concept.kind][concept.secondaryTier] : null,
-    ...propertyDocs.map((d) => d.name)
+    // Property-rune names come from the compendium: escaped and inert like any other text (CR #3).
+    ...propertyDocs.map((d) => inertText(d.name))
   ].filter(Boolean).join(", ");
   paragraphs.push(`<hr /><p><strong>${game.i18n.localize("SIMPLYPF2E.ItemForge.RunesHeading")}</strong> ${runeSummary}.</p>`);
   data.system.description = { value: paragraphs.join("\n") };
@@ -525,8 +526,8 @@ function normalizeActivation(raw, { level, rarity, usage, available, effectCatal
       // These two are AI free text concatenated into the macro's chat/effect
       // HTML — escaped here at build time, same as every other AI string.
       params = {
-        effectName: esc(String(p.effectName || "Magic Effect").slice(0, 80)),
-        description: esc(String(p.description ?? "").slice(0, 600)),
+        effectName: inertText(String(p.effectName || "Magic Effect").slice(0, 80)),
+        description: inertText(String(p.description ?? "").slice(0, 600)),
         durationRounds: duration.rounds ?? null,
         durationMinutes: duration.minutes ?? null,
         ruleEffectKinds
@@ -711,7 +712,7 @@ export async function buildMagicItemData(concept) {
   const { rules, applied } = await cloneRulesForEffects(concept.effects);
 
   const paragraphs = String(concept.description ?? "")
-    .split(/\n{2,}/).map((p) => esc(p.trim())).filter(Boolean);
+    .split(/\n{2,}/).map((p) => inertText(p.trim())).filter(Boolean);
   const descriptionParts = paragraphs.map((p) => `<p>${p}</p>`);
   if (applied.length) {
     // Plain-English mechanical summary so the GM can read what the item
