@@ -1034,7 +1034,12 @@ export class ItemForgeApp extends SpfApp {
       // Nothing after the loot actor's commit can roll back; before it, the world items and folder are removed too.
       if (!committed && (folder || worldItems.length)) {
         const survivors = await this.#rollbackRuleFolder(folder, worldItems);
-        if (survivors.length) this.#error = [this.#error, ...survivors].filter(Boolean).join(" ");
+        if (survivors.length) {
+          // A surviving world item or folder is already written. Discard the draft, as the actor-survivor path does,
+          // so a second Create cannot write a duplicate of it.
+          this.#clearPreview();
+          this.#error = [this.#error, ...survivors].filter(Boolean).join(" ");
+        }
       }
     }
     finally { this.#busy = false; this._finishRun(outcome); await this.render(); }

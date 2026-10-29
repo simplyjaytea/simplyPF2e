@@ -34,9 +34,33 @@ export function splitPermanents(entries) {
 }
 
 /**
+ * The compendium identity of a document: its `_stats.compendiumSource`, read from the item or its stored
+ * `_source`. This is the rule post-create verification uses (`sourceIdentity` in post-create.mjs).
+ */
+function sourceIdentityOf(item) {
+  return item?._stats?.compendiumSource ?? item?._source?._stats?.compendiumSource ?? null;
+}
+
+/**
+ * A stable serialization for deep equality: object keys are sorted and `undefined` members are skipped, as JSON
+ * does, so two equal rule lists compare equal whatever order their keys were stored in.
+ */
+export function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map((entry) => canonicalJson(entry)).join(",")}]`;
+  if (value && typeof value === "object") {
+    const members = Object.keys(value).sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`);
+    return `{${members.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
  * The world items Foundry returned must be the sources that were sent: the same count and order, the same names,
- * the same number of Rule Elements (an unchanged clone), and each one inside the new folder. Returns a problem
- * code, or null when they match.
+ * each carrying the issued compendium identity, each with Rule Elements deep-equal to the issued source (the stored
+ * `_source` when Foundry keeps one, as post-create verification reads it), and each inside the new folder.
+ * Returns a problem code, or null when they match.
  */
 export function folderItemProblem(created, sources, folderId) {
   if (!Array.isArray(created) || created.length !== sources.length) return "count";
@@ -45,7 +69,10 @@ export function folderItemProblem(created, sources, folderId) {
     const source = sources[index];
     if (!item?.id) return "missing";
     if (item.name !== source.name) return "name";
-    if ((item.system?.rules?.length ?? 0) !== source.system.rules.length) return "rules";
+    const issued = source._stats?.compendiumSource ?? null;
+    if (!issued || sourceIdentityOf(item) !== issued) return "source";
+    const stored = item._source ?? item;
+    if (canonicalJson(stored.system?.rules ?? null) !== canonicalJson(source.system?.rules ?? null)) return "rules";
     if ((item.folder?.id ?? item.folder) !== folderId) return "folder";
   }
   return null;
