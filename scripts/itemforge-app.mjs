@@ -453,10 +453,12 @@ export class ItemForgeApp extends SpfApp {
       // which fundamental rune tiers actually fit under the target level.
       await this._setStep("templates");
       const maxLevel = this.#input.level;
+      // The chosen Forge rarity caps every pool, as it does the wondrous effect catalog and the parcel pools.
+      const pool = { maxRarity: this.#input.rarity };
       const [baseCandidates, runeCandidates, tiers] = await Promise.all([
-        getBaseItemCandidates(kind, maxLevel),
-        getPropertyRuneCandidates(kind, maxLevel),
-        getFundamentalRuneTiers(kind, maxLevel)
+        getBaseItemCandidates(kind, maxLevel, pool),
+        getPropertyRuneCandidates(kind, maxLevel, pool),
+        getFundamentalRuneTiers(kind, maxLevel, pool)
       ]);
       if (!baseCandidates.length) {
         throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.NoBaseItems", { kind }));

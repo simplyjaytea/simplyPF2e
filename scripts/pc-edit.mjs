@@ -37,7 +37,7 @@
  * drops every path choice.
  *
  * Services (injectable for tests): load(ref), classPaths(classDoc),
- * recompute(concept), resolveEquipmentLine(concept), equipmentValue(equipment).
+ * recompute(concept, { maxRarity }), resolveEquipmentLine(concept), equipmentValue(equipment).
  */
 import { getDocument, isIssuedCandidate, toItemData } from "./compendium.mjs";
 import { resolvePCConcept, heritageMatchesAncestry } from "./pc-builder.mjs";
@@ -91,8 +91,8 @@ function fail(code, field, detail) {
 const DEFAULT_SERVICES = Object.freeze({
   load: (ref) => getDocument(ref),
   classPaths: (classDoc) => getClassPathCandidates(toItemData(classDoc)),
-  recompute: async (concept) => {
-    const resolved = await resolvePCConcept(concept, { exactContent: true });
+  recompute: async (concept, { maxRarity = null } = {}) => {
+    const resolved = await resolvePCConcept(concept, { exactContent: true, maxRarity });
     return {
       ancestryDoc: resolved.ancestryDoc,
       heritageDoc: resolved.heritageDoc,
@@ -503,9 +503,9 @@ function remapFeats(previous, slots, invalidated, className = null) {
   return feats;
 }
 
-async function refresh(next, deps, invalidated) {
+async function refresh(next, deps, invalidated, maxRarity = null) {
   const { concept } = next;
-  const fresh = await deps.recompute(concept);
+  const fresh = await deps.recompute(concept, { maxRarity });
   for (const field of ["ancestry", "background", "class"]) {
     if (fresh[`${field}Doc`]?.name !== concept[field]) {
       fail(PC_EDIT_CODES.UNRESOLVED, field, `resolved document does not match "${concept[field]}"`);
@@ -531,7 +531,7 @@ async function refresh(next, deps, invalidated) {
  * Apply one exact edit. Returns `{ plan, changed, invalidated, equipmentGp }`.
  * An unchanged selection returns the same content with `changed: []`.
  */
-export async function applyPCEdit(plan, edit, { catalogs = {}, services = {} } = {}) {
+export async function applyPCEdit(plan, edit, { catalogs = {}, services = {}, maxRarity = null } = {}) {
   assertPlan(plan);
   if (!isObject(edit)) fail(PC_EDIT_CODES.INVALID, "edit", "edit must be an object");
   if (SPELL_FIELDS.includes(edit.field)) {
@@ -557,7 +557,7 @@ export async function applyPCEdit(plan, edit, { catalogs = {}, services = {} } =
   }
 
   if (changed.length && next.pending.length === 0 && !["feat", "equipment"].includes(edit.field)) {
-    await refresh(next, deps, invalidated);
+    await refresh(next, deps, invalidated, maxRarity);
   }
   const equipmentGp = await deps.equipmentValue(next.resolved.equipment);
   return { plan: next, changed, invalidated, equipmentGp };
