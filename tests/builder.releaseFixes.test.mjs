@@ -3,7 +3,7 @@
 // value that a one-line mutation would change, and the expected values come from literal numbers or computeStats.
 // Run: node tests/builder.releaseFixes.test.mjs
 import assert from "node:assert/strict";
-import { normalizeConcept, computeStats, createActor, applyTreasureBudget, lootValueGp } from "../scripts/builder.mjs";
+import { normalizeConcept, computeStats, createActor, applyTreasureBudget, lootValueGp, resolveEquipment, resolveLoot } from "../scripts/builder.mjs";
 
 globalThis.game = { settings: { get: () => ({}) }, packs: new Map(), i18n: { localize: (key) => key, format: (key) => key } };
 globalThis.foundry = { utils: { randomID: () => "test-id" } };
@@ -41,7 +41,8 @@ const named = (value) => ({ name: "Healing Potion", quantity: 1, runes: {}, entr
   const before = JSON.stringify(loot);
   const out = await applyTreasureBudget(loot, 1000);
   assert.equal(lootValueGp(out), 800);
-  assert.equal(JSON.stringify(out), before, "a total exactly at 0.8x is inside the band and untouched");
+  assert.equal(out, loot, "a total exactly at 0.8x is inside the band: the same list comes back");
+  assert.equal(JSON.stringify(out), before, "and it is untouched");
 }
 {
   // 799 gp: just below the band, so coin pads up by the 201 gp gap to the 1000 gp target.
@@ -54,7 +55,8 @@ const named = (value) => ({ name: "Healing Potion", quantity: 1, runes: {}, entr
   const loot = [named(1100), gold(100)];
   const before = JSON.stringify(loot);
   const out = await applyTreasureBudget(loot, 1000);
-  assert.equal(JSON.stringify(out), before, "a total exactly at 1.2x is inside the band and untouched");
+  assert.equal(out, loot, "a total exactly at 1.2x is inside the band: the same list comes back");
+  assert.equal(JSON.stringify(out), before, "and it is untouched");
 }
 {
   // 1201 gp: just above the band, so the 201 gp excess is trimmed from coin, leaving the 1000 gp target.
@@ -94,6 +96,18 @@ const named = (value) => ({ name: "Healing Potion", quantity: 1, runes: {}, entr
   const other = await createActor(aberration, none);
   assert.match(other.actor.system.details.publicNotes, /<strong>Occultism<\/strong> @Check\[type:occultism\|dc:\d+\]/,
     "an aberration is identified by Occultism");
+}
+
+// 6. An item with no compendium match is dropped and its name reported, for equipment and loot alike.
+{
+  const skippedEquipment = [];
+  const equipment = await resolveEquipment({ level: 2, equipment: [{ name: "Phantom Lantern", quantity: 1 }] }, { skipped: skippedEquipment });
+  assert.equal(equipment.length, 0, "an unmatched equipment name is dropped");
+  assert.deepEqual([...skippedEquipment], ["Phantom Lantern"], "and reported as skipped");
+  const skippedLoot = [];
+  const loot = await resolveLoot({ level: 2, loot: [{ name: "Gleaming Rubble", quantity: 1 }] }, { skipped: skippedLoot });
+  assert.equal(loot.length, 0, "an unmatched loot name is dropped");
+  assert.deepEqual([...skippedLoot], ["Gleaming Rubble"], "and reported as skipped");
 }
 
 console.log("builder.releaseFixes.test.mjs: saves and Perception on the actor, the budget band, coin cap, trim order and undead recall are pinned");

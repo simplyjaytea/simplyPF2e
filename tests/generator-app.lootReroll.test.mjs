@@ -35,6 +35,7 @@ let resolveOptions;
 let writes = 0;
 let abortController;
 let abortDuringResolve = false;
+let skippedLootNames = [];
 const ref = { packId: "test.equipment", _id: "potion" };
 const mocks = {
   needsExtraPurchasePass,
@@ -71,6 +72,7 @@ const mocks = {
   selectLoot: async () => ({ loot: selectedLoot, omitted: omittedLoot }),
   resolveLoot: async (concept, options) => {
     resolveOptions = options;
+    options?.skipped?.push(...skippedLootNames);
     if (abortDuringResolve) abortController.abort();
     return concept.loot.map((item) => ({ ...item,
       entry: item.candidate === ref || !options?.exactContent ? ref : null
@@ -189,6 +191,16 @@ providerFailure = null;
   assertRetained(app, before);
   assert.equal(app._test_error, null, "cancelling during local resolution is neutral and preserves the old plan");
   abortDuringResolve = false;
+}
+{
+  // A reroll replaces the loot skip list: the fresh draft's unmatched names show, the old ones do not.
+  const app = preview();
+  app._test_resolved.skipped = { equipment: [], loot: ["Stale Rubble"] };
+  skippedLootNames = ["Fresh Gizmo"];
+  selectedLoot = [{ name: "Healing Potion", quantity: 1, candidate: ref }];
+  await App.DEFAULT_OPTIONS.actions.rerollLoot.call(app);
+  skippedLootNames = [];
+  assert.equal(app._test_resolved.skipped.loot.join(","), "Fresh Gizmo", "the preview lists the reroll's skipped loot, not the stale list");
 }
 {
   const app = preview();
