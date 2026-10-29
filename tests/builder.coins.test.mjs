@@ -61,6 +61,18 @@ const {
 } = await import("../scripts/builder.mjs");
 
 /* ---------------------------------------------------------------------- *
+ * The ids this test assumes are the ones the module looks up. The name
+ * fallback would still find the test's own documents if a published id
+ * changed, so the pin is explicit: loot-actor.mjs COIN_UUIDS, the only table.
+ * ---------------------------------------------------------------------- */
+
+const { coinEntry } = await import("../scripts/loot-actor.mjs");
+for (const [denomination, id] of [["pp", PLATINUM_ID], ["gp", GOLD_ID], ["sp", SILVER_ID], ["cp", COPPER_ID]]) {
+  assert.equal(coinEntry(denomination)._id, id, `${denomination} is looked up by its published id`);
+  assert.equal(coinEntry(denomination).packId, "pf2e.equipment-srd");
+}
+
+/* ---------------------------------------------------------------------- *
  * parseCoins: known denominations map to canonical names; unknown fail closed
  * ---------------------------------------------------------------------- */
 
