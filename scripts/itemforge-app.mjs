@@ -958,10 +958,16 @@ export class ItemForgeApp extends SpfApp {
     }
   }
 
-  /** Remove the world items, then the folder, of a parcel create that did not commit. Returns the survivor sentences. */
+  /**
+   * Remove the world items, then the folder, of a parcel create that did not commit. Returns the survivor sentences.
+   * `worldItems` holds every item whose create returned; the folder's own contents are added, so an item a failing
+   * create wrote but never returned (N44) is removed too rather than left to be duplicated by a retry.
+   */
   async #rollbackRuleFolder(folder, worldItems) {
     const survivors = [];
-    for (const item of [...worldItems].reverse()) {
+    const known = new Set(worldItems.map((item) => item?.id));
+    const written = [...(folder?.contents ?? [])].filter((item) => item?.id && !known.has(item.id));
+    for (const item of [...worldItems, ...written].reverse()) {
       try { await item.delete(); } catch (cleanupErr) {
         console.warn(`${MODULE_ID} | failed to roll back parcel world item "${item.name}"`, cleanupErr);
         survivors.push(game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.SurvivorItem", { name: item.name }));
@@ -1023,7 +1029,12 @@ export class ItemForgeApp extends SpfApp {
       if (folderSources.length) {
         this._lockCreation();
         folder = await Folder.create({ name: parcelName, type: "Item" });
-        worldItems = await Item.create(folderSources.map((source) => ({ ...source, folder: folder.id })));
+        // One create per item, each recorded as it returns: a batch that fails partway would return nothing, leaving
+        // the items it had already written unknown to the rollback (N44).
+        for (const source of folderSources) {
+          const [item] = await Item.create([{ ...source, folder: folder.id }]);
+          if (item) worldItems.push(item);
+        }
         if (folderItemProblem(worldItems, folderSources, folder.id)) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.Verify"));
       }
       const presentationWarning = await this.#createLootActor({ items, name: parcelName, level: p ? p.row.level : this.#consumables.level, descriptionLines, lootSheetType: this.#input.sheetType });

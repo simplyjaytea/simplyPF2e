@@ -57,6 +57,11 @@ async function getCandidateDocument(c) {
     lastCloakSource = plain(CLOAK);
     return { name: CLOAK.name, uuid: "Compendium.pf2e.equipment-srd.Item." + CLOAK._id, toObject: () => lastCloakSource };
   }
+  if (c?.id === "c-cloak2") {
+    // A second rule-bearing item (same published cloak under another name) so a parcel can hold two folder items.
+    const second = plain(CLOAK); second.name = "Aerial Cloak II";
+    return { name: second.name, uuid: "Compendium.pf2e.equipment-srd.Item." + CLOAK._id + "b", toObject: () => second };
+  }
   if (c?.id === "c-hearing" && candidateReadError) throw candidateReadError;
   if (c?.id === "c-hearing") {
     // The built source is this object, so a test can change it between Generate and Create.
@@ -132,6 +137,7 @@ const mocks = {
   briefKeywords: () => []
 };
 let actorBehavior = "ok"; const createCalls = []; const deletes = []; const notices = [];
+let worldIds = 0; let itemWrites = 0; const worldItemsWritten = [];
 let itemBehavior = "ok"; let folderBehavior = "ok"; const itemDeletes = []; const folderCreates = []; const folderDeletes = [];
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} }, structuredClone,
@@ -146,18 +152,32 @@ const context = vm.createContext({
   Item: { create: async (s) => {
     createCalls.push({ item: s });
     if (itemBehavior === "fail") throw new Error("item create refused");
-    return s.map((x, i) => {
+    // "partial": the world keeps what it wrote before the call failed, as Foundry does for a batch that dies midway
+    // ("partial") or for a create that writes the item and then throws ("writeThenThrow"); those items are never returned.
+    const makeDoc = (x, i) => {
       const name = itemBehavior === "rename" ? x.name + " (renamed)" : x.name;
       // The persisted copy: a stored modifier or source identity can differ from what was sent (CR HIGH #2).
       const system = plain(x.system);
       if (itemBehavior === "alter") system.rules[0].value = 99;
       const _stats = plain(x._stats ?? {});
       if (itemBehavior === "identity") _stats.compendiumSource = "Compendium.other.Item.x";
-      return { id: "i" + i, name, folder: x.folder ?? null, system, _stats, sheet: { render: async () => {} },
-        delete: async () => { if (itemBehavior === "deleteFail") throw new Error("item delete refused"); itemDeletes.push(name); } };
-    });
+      const doc = { id: "i" + (++worldIds), name, folder: x.folder ?? null, system, _stats, sheet: { render: async () => {} },
+        delete: async () => { if (itemBehavior === "deleteFail") throw new Error("item delete refused"); doc.deleted = true; itemDeletes.push(name); } };
+      return doc;
+    };
+    const docs = [];
+    for (const [i, x] of s.entries()) {
+      if (itemBehavior === "partial" && itemWrites >= 1) throw new Error("batch failed midway");
+      const doc = makeDoc(x, i);
+      itemWrites += 1; worldItemsWritten.push(doc);
+      if (itemBehavior === "writeThenThrow" && itemWrites === 2) throw new Error("create threw after writing");
+      docs.push(doc);
+    }
+    return docs;
   } },
-  Folder: { create: async (data) => { folderCreates.push(data); return { id: "f1", name: data.name, delete: async () => {
+  Folder: { create: async (data) => { folderCreates.push(data); return { id: "f1", name: data.name,
+    get contents() { return worldItemsWritten.filter((item) => !item.deleted && item.folder === "f1"); },
+    delete: async () => {
     folderDeletes.push(data.name); if (folderBehavior === "stuck") throw new Error("nope"); } }; } },
   Actor: { create: async (data) => {
     createCalls.push({ actor: data });
@@ -666,7 +686,7 @@ const PARCEL_NAME = "SIMPLYPF2E.ItemForge.Loot.DefaultName";
 const resetFolderRun = () => {
   gate = true; actorBehavior = "ok"; itemBehavior = "ok"; folderBehavior = "ok"; parcelPicks = initialPicks; permanentMode = "ok";
   permanentPools.clear(); permanentPools.set(3, { equipment: [CLOAK_CANDIDATE], wands: [] }); permanentPicks = [{ slotId: "perm-1", candidateId: "c-cloak" }];
-  permanentCandidateCalls.length = 0; createCalls.length = 0; itemDeletes.length = 0; folderCreates.length = 0; folderDeletes.length = 0;
+  permanentCandidateCalls.length = 0; createCalls.length = 0; itemWrites = 0; worldItemsWritten.length = 0; itemDeletes.length = 0; folderCreates.length = 0; folderDeletes.length = 0;
 };
 const folderRun = async (controls = {}) => {
   const run = app(ctl({ level: { value: "2" }, ...controls }));
@@ -809,4 +829,34 @@ await A.createItem.call(a); ctx = await a._prepareContext();
 assert.equal(createCalls.length, writesBeforeFolderRetry, "a second Create after a surviving folder writes nothing");
 assert.equal(folderCreates.length, foldersBeforeFolderRetry, "a second Create after a surviving folder creates no second folder");
 folderBehavior = "ok"; actorBehavior = "ok";
+resetFolderRun()// N44: a world-item write that fails partway leaves no untracked survivor. Two rule-bearing items; the second create fails,
+// or writes and then throws. Every item the world holds is removed, the folder goes, and a retry starts clean.
+const twoCloaks = () => {
+  resetFolderRun();
+  permanentPools.set(3, { equipment: [CLOAK_CANDIDATE, { ...CLOAK_CANDIDATE, id: "c-cloak2", name: "Aerial Cloak II" }], wands: [] });
+  permanentPicks = [{ slotId: "perm-1", candidateId: "c-cloak" }, { slotId: "perm-2", candidateId: "c-cloak2" }];
+};
+const survivorsInWorld = () => worldItemsWritten.filter((item) => !item.deleted).map((item) => item.name);
+twoCloaks();
+a = await folderRun(folderOn); ctx = await a._prepareContext();
+same(ctx.preview.ruleFolder.items.map((item) => item.name), ["Aerial Cloak", "Aerial Cloak II"], "the setup holds two folder items");
+await A.createItem.call(a); ctx = await a._prepareContext();
+assert.equal(ctx.error, null, "two folder items create cleanly");
+assert.equal(worldItemsWritten.length, 2, "both items are written when nothing fails");
+
+for (const mode of ["partial", "writeThenThrow"]) {
+  twoCloaks(); itemBehavior = mode;
+  a = await folderRun(folderOn); await A.createItem.call(a); ctx = await a._prepareContext();
+  assert.ok(String(ctx.error).length > 0, `${mode}: the failure is reported`);
+  assert.equal(worldItemsWritten.length >= 1, true, `${mode}: the world did write an item before the failure`);
+  same(survivorsInWorld(), [], `${mode}: no world item survives the rollback`);
+  same(folderDeletes, [PARCEL_NAME], `${mode}: the folder is removed`);
+  assert.equal(createCalls.filter((call) => call.actor).length, 0, `${mode}: no loot actor is written`);
+  assert.equal(ctx.hasPreview, true, `${mode}: a clean rollback keeps the draft for a retry`);
+  // The retry succeeds and holds exactly the two items, not duplicates of the earlier write.
+  itemBehavior = "ok"; itemWrites = 0; worldItemsWritten.length = 0; itemDeletes.length = 0; folderDeletes.length = 0; createCalls.length = 0;
+  await A.createItem.call(a); ctx = await a._prepareContext();
+  assert.equal(ctx.error, null, `${mode}: the retry creates`);
+  same(survivorsInWorld(), ["Aerial Cloak", "Aerial Cloak II"], `${mode}: the retry leaves exactly the two planned items`);
+}
 resetFolderRun();

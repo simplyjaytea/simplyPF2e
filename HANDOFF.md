@@ -9,7 +9,7 @@ Read [PLAYBOOK.md](PLAYBOOK.md) first. This file holds only what the last sessio
 - **Behavior change to watch:** a runed Forge item at Common rarity no longer offers uncommon/rare base items, property runes or rune tiers (N54). The `requestJSON` retry guard was already on `main`; the old "no guard" note predates commit 23bb97a.
 - **Ledger:** N15–N28, N40–N48, N50–N54 OPEN. Nothing has been run in Foundry or against a provider.
 - **Open user decisions:** speed and sense tops from single outlier creatures; pp from 100 gp; `magical` trait on runed clones (N26); rare/unique cantrip decks. (Strike cap resolved at 200 ft; commit attribution stays `jt`.)
-- **Known gaps:** a partial `Item.create` batch can survive a world-folder rollback (N44); other caster archetypes unbuilt; the PC editor cannot edit spells.
+- **Known gaps:** other caster archetypes unbuilt; the PC editor cannot edit spells.
 - **Drift:** weekly workflow first run **2026-11-02 06:23 UTC** (dispatch gets HTTP 403 from this server).
 - **Next step:** push to `main` (auto-publishes v0.3.5.83), then the user runs QA's 13-step Foundry checklist, then the backlog in PLAYBOOK §9.
 
