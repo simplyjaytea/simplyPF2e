@@ -14,6 +14,8 @@ const tables = await import(R + "scripts/treasure-tables.mjs");
 const parcel = await import(R + "scripts/treasure-parcel.mjs");
 const loot = await import(R + "scripts/loot-actor.mjs");
 const permanent = await import(R + "scripts/treasure-permanent.mjs");
+const runed = await import(R + "scripts/parcel-runed.mjs");
+const runes = await import(R + "scripts/runes.mjs");
 const post = await import(R + "scripts/post-create.mjs");
 const text = await import(R + "scripts/text.mjs");
 const source = readFileSync(new URL(R + "scripts/itemforge-app.mjs"), "utf8");
@@ -28,6 +30,9 @@ const WAND_1 = parcelFixture("magic-wand-1st-rank-spell");
 const HEARING = parcelFixture("magical-hearing-aid");
 const SILK = parcelFixture("silk-ceremonial-armor");
 const AGATE = parcelFixture("agate");
+const MERCY = parcelFixture("wand-of-mercy-1st-rank");
+const v3Fixture = (n) => JSON.parse(readFileSync(new URL(R + "tests/fixtures/parcel-v3/" + n + ".json"), "utf8"));
+const RUNED_BASE = v3Fixture("longsword");
 const COIN_NAMES = { pp: "Platinum Pieces", gp: "Gold Pieces", sp: "Silver Pieces", cp: "Copper Pieces" };
 const coinDoc = (denomination) => ({ _id: loot.COIN_UUIDS[denomination].split(".").at(-1), name: COIN_NAMES[denomination], type: "treasure", img: "x.webp",
   system: { category: "coin", price: { value: { [denomination]: 1 } }, quantity: 1, rules: [] } });
@@ -40,9 +45,11 @@ let coinAvailable = true; let emptyBuildError = false;
 async function fromUuid(uuid) { if (emptyBuildError && uuid === SCROLL_1) throw new Error(""); if (Object.values(loot.COIN_UUIDS).includes(uuid) && !coinAvailable) return null; return docs.get(uuid) ?? null; }
 const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "common" };
 // Failure modes for the read and provider paths: an error object is thrown on the next call.
-let lastHearingSource = null; let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
+let lastHearingSource = null; let lastRunedSource = null; let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
 async function getCandidateDocument(c) {
   if (c?.id === "c-heal") return { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) };
+  if (c?.id === "c-runedbase") return { name: RUNED_BASE.name, uuid: "Compendium.pf2e.equipment-srd.Item." + RUNED_BASE._id, toObject: () => plain(RUNED_BASE) };
+  if (c?.id === "c-mercy") return { name: MERCY.name, uuid: "Compendium.pf2e.equipment-srd.Item." + MERCY._id, toObject: () => plain(MERCY) };
   if (c?.id === "c-hearing" && candidateReadError) throw candidateReadError;
   if (c?.id === "c-hearing") {
     // The built source is this object, so a test can change it between Generate and Create.
@@ -56,14 +63,24 @@ async function getCandidateDocument(c) {
 const permanentPools = new Map(); const permanentCalls = []; let permanentPicks = []; let permanentMode = "ok";
 const valuablePool = { available: true, candidates: [] };
 async function getPermanentEquipmentCandidates(level) { return permanentPools.get(level)?.equipment ?? []; }
+async function getSpecialWandCandidates(level) { return permanentPools.get(level)?.special ?? []; }
+// The runed pool is offered in one call across the levels; a test sets it directly.
+let runedPool = [];
+async function getRunedCandidates() { return runedPool; }
 async function getParcelWandCandidates(level) { return permanentPools.get(level)?.wands ?? []; }
 async function getValuableCandidates() { return valuablePool; }
-async function pickParcelValuable(ranked, budgetCopper) {
+async function pickParcelValuables(ranked, budgetCopper) {
   if (valuableReadError) throw valuableReadError;
-  const { entry, reason } = permanent.chooseValuable(ranked, budgetCopper);
-  if (!entry) return { reason };
-  const raw = entry.id === "c-silk" ? SILK : AGATE;
-  return { candidate: entry, copper: entry.copper, source: { name: raw.name, type: "treasure", img: "x.webp", system: { category: raw.system.category, price: { value: raw.system.price.value }, quantity: 1, rules: [] } } };
+  const picked = []; const skipped = []; let remaining = budgetCopper;
+  for (const entry of ranked) {
+    if (picked.length >= 3) break;
+    if (entry.copper > remaining) { skipped.push({ name: entry.name, reason: "too-expensive" }); continue; }
+    const raw = entry.id === "c-silk" ? SILK : entry.id === "c-agate" ? AGATE : null;
+    if (!raw) { skipped.push({ name: entry.name, reason: "unavailable" }); continue; }
+    picked.push({ candidate: entry, copper: entry.copper, source: { name: raw.name, type: "treasure", img: "x.webp", system: { category: raw.system.category, price: { value: raw.system.price.value }, quantity: 1, rules: [] } } });
+    remaining -= entry.copper;
+  }
+  return { picked, skipped, remaining };
 }
 async function selectParcelPermanents(brief, opts) {
   permanentCalls.push(opts);
@@ -88,7 +105,9 @@ class MockSpfApp {
   _lockCreation() { this._throwIfCancelled(); } _finishRun(o) { this.outcome = o; }
 }
 const mocks = {
-  ...consumables, ...tables, ...parcel, ...permanent, ...loot, ...post, ...text,
+  ...consumables, ...tables, ...parcel, ...permanent, ...runed, ...loot, ...post, ...text, applyRunes: runes.applyRunes,
+  // Keeps the built runed source, so a test can change the stored draft after Generate (the real stale-draft case).
+  runedSourceFrom: (...args) => { lastRunedSource = runed.runedSourceFrom(...args); return lastRunedSource; },
   experimentalToolsEnabled: () => gate,
   assertExperimentalToolAccess: () => { if (!gate) throw Object.assign(new Error("GATE-CLOSED"), { code: "disabled" }); },
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
@@ -96,7 +115,8 @@ const mocks = {
   taskMaxTokens: () => 100, RUNED_ITEM_KINDS: new Set(["weapon", "armor"]), MIN_ITEM_LEVEL: 1, MAX_ITEM_LEVEL: 24,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   getScrollSpellCandidates, getCandidateDocument, selectSpellConsumables, selectParcelSpells, toItemData, priceToGp,
-  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates, pickParcelValuable, selectParcelPermanents,
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuables, selectParcelPermanents,
+  getRunedCandidates,
   briefKeywords: () => []
 };
 let actorBehavior = "ok"; const createCalls = []; const deletes = []; const notices = [];
@@ -314,26 +334,30 @@ parcelPicks = initialPicks;
 
 // Gems and art replace part of the currency: 40 gp with a 10 gp art object leaves 30 gp of coins, 40 gp in all.
 const SILK_CANDIDATE = { id: "c-silk", name: "Silk ceremonial armor", copper: 1000, packId: "pf2e.equipment-srd", _id: SILK._id };
-valuablePool.candidates = [SILK_CANDIDATE, { id: "c-agate", name: "Agate", copper: 50, packId: "pf2e.equipment-srd", _id: AGATE._id }];
+valuablePool.candidates = [{ id: "c-agate", name: "Agate", copper: 50, packId: "pf2e.equipment-srd", _id: AGATE._id }, SILK_CANDIDATE];
 parcelPicks = []; permanentPicks = [];
+// The pool arrives in rankByBrief order (by name with no keywords): Agate before Silk.
+valuablePool.candidates = [{ id: "c-agate", name: "Agate", copper: 50, packId: "pf2e.equipment-srd", _id: AGATE._id }, SILK_CANDIDATE];
 c = ctl({ valuables: { checked: true } }); a = app(c);
 await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable.name, "Silk ceremonial armor");
-assert.equal(ctx.preview.valuable.price, "10 gp");
-assert.equal(ctx.preview.currency, "30 gp", "the coins are the exact remainder");
-assert.equal(ctx.preview.valueGp, 40, "built value counts the valuable and the coins once each");
+// Spec example: 40 gp with a 5 sp agate and a 10 gp art object leaves 29 gp 5 sp of coins; the built total is 40 gp.
+assert.deepEqual(ctx.preview.valuables.map((v) => v.name), ["Agate", "Silk ceremonial armor"], "both fit, in the brief's deterministic order");
+assert.equal(ctx.preview.valuables[1].price, "10 gp");
+assert.equal(ctx.preview.valuableSubtotal, "10.5", "the valuables subtotal is their exact sum, 10.5 gp");
+assert.equal(ctx.preview.currency, "29 gp, 5 sp", "the coins are the exact remainder");
+assert.equal(ctx.preview.valueGp, 40, "built value counts each valuable and the coins once each");
 await A.createItem.call(a);
 created = createCalls.at(-1).actor;
 assert.deepEqual(created.items.map((item) => [item.type, item.name, item.system.quantity]), [
-  ["treasure", "Silk ceremonial armor", 1], ["treasure", "Gold Pieces", 30]
-], "the valuable is one item and the remainder is gold coins");
+  ["treasure", "Agate", 1], ["treasure", "Silk ceremonial armor", 1], ["treasure", "Gold Pieces", 29], ["treasure", "Silver Pieces", 5]
+], "each valuable is one item and the remainder is gold and silver coins");
 
 // Exact equality: a valuable worth the whole currency leaves no coins at all.
 valuablePool.candidates = [{ ...SILK_CANDIDATE, copper: 4000 }];
 a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable.name, "Silk ceremonial armor");
+assert.equal(ctx.preview.valuables[0].name, "Silk ceremonial armor");
 assert.equal(ctx.preview.currency, "", "no coins remain");
 assert.equal(ctx.preview.valueGp, 40, "exact equality keeps the built value at the currency total");
 
@@ -341,7 +365,7 @@ assert.equal(ctx.preview.valueGp, 40, "exact equality keeps the built value at t
 valuablePool.candidates = [{ ...SILK_CANDIDATE, copper: 5000 }];
 a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable, null);
+assert.equal(ctx.preview.valuables.length, 0);
 assert.ok(ctx.preview.valuableNote.includes("ValuableNone") && ctx.preview.valuableNote.includes("ValuableReason.too-expensive"),
   "a fitting valuable that is missing names the reason");
 assert.equal(ctx.preview.currency, "40 gp", "the full currency stays as coins");
@@ -350,7 +374,7 @@ assert.equal(ctx.preview.currency, "40 gp", "the full currency stays as coins");
 c = ctl(); a = app(c);
 await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable, null); assert.equal(ctx.preview.valuableNote, null);
+assert.equal(ctx.preview.valuables.length, 0); assert.equal(ctx.preview.valuableNote, null);
 
 // The valuable pack is not installed: the preview gives that reason and the currency stays whole.
 valuablePool.available = false; valuablePool.candidates = [];
@@ -376,7 +400,7 @@ coinAvailable = false;
 c = ctl({ valuables: { checked: true } }); a = app(c);
 await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
-assert.equal(ctx.preview.valuable.name, "Silk ceremonial armor", "the built valuable is kept");
+assert.equal(ctx.preview.valuables[0].name, "Silk ceremonial armor", "the built valuable is kept");
 assert.equal(ctx.preview.currency, null, "no partial coin is written");
 assert.ok(ctx.preview.coinsMissing.includes("CoinsMissing"), "the missing coin value is reported");
 assert.equal(ctx.preview.valueGp, 10, "built value counts only the valuable, not the missing coins");
@@ -422,7 +446,7 @@ c = ctl({ valuables: { checked: true } }); a = app(c);
 await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
 ctx = await a._prepareContext();
 assert.equal(ctx.error, null, "a failed valuable search does not fail the parcel");
-assert.equal(ctx.preview.valuable, null);
+assert.equal(ctx.preview.valuables.length, 0);
 assert.ok(ctx.preview.valuableNote.includes("ValuableReason.unavailable"), "the valuable's failure is named");
 assert.equal(ctx.preview.currency, "40 gp", "the full currency stays as coins");
 valuableReadError = null;
@@ -484,3 +508,117 @@ const writesBefore = createCalls.length;
 await A.createItem.call(a);
 assert.equal(createCalls.length, writesBefore + 1, "an unchanged source is created");
 permanentPools.clear(); permanentPicks = [];
+
+// Published special wands (parcel v3): a level-4 slot takes the Wand of Mercy unchanged, at its own level 4.
+const MERCY_CANDIDATE = { id: "c-mercy", name: "Wand of Mercy (1st-rank)", level: 4, kind: "special-wand", traits: ["magical", "wand"], rarity: "common" };
+permanentPools.clear(); permanentPools.set(4, { equipment: [], wands: [], special: [MERCY_CANDIDATE] });
+permanentPicks = [{ slotId: "perm-3", candidateId: "c-mercy" }]; parcelPicks = [];
+c = ctl({ level: { value: "4" } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.permanents[2].filled, true, "the special wand fills its level-4 slot");
+assert.equal(ctx.preview.permanents[2].name, "Wand of Mercy (1st-rank)");
+assert.equal(ctx.preview.permanents[2].itemLevel, 4, "the published wand keeps its own level");
+assert.equal(ctx.preview.permanents[2].kind, "SIMPLYPF2E.ItemForge.Parcel.PermanentKind.special-wand", "the row says it is a published wand");
+await A.createItem.call(a);
+created = createCalls.at(-1).actor;
+const mercyItem = created.items.find((item) => item.name === "Wand of Mercy (1st-rank)");
+assert.ok(mercyItem, "the wand is written to the loot actor");
+assert.equal(mercyItem.type, "equipment"); assert.equal(mercyItem.system.level.value, 4); assert.deepEqual(mercyItem.system.rules, []);
+assert.equal(mercyItem.system.price.value.gp, 75, "the published price is carried unchanged");
+permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
+
+// The pinned tier documents the runed build verifies (the same pinned uuids as scripts/parcel-runed.mjs).
+docs.set(runed.RUNE_TIERS.weapon.potency[1].uuid, { uuid: runed.RUNE_TIERS.weapon.potency[1].uuid, toObject: () => plain(v3Fixture("weapon-potency-1")) });
+docs.set(runed.RUNE_TIERS.weapon.striking[1].uuid, { uuid: runed.RUNE_TIERS.weapon.striking[1].uuid, toObject: () => plain(v3Fixture("striking")) });
+// Fundamental-runed items (parcel v3): a level-4 slot takes a +1 striking longsword built from verified tiers.
+const RUNED_CANDIDATE = { id: "rn-c-runedbase-p1s1", name: "+1 Striking Longsword", level: 4, rarity: "common", kind: "runed", traits: [],
+  runeKind: "weapon", base: { id: "c-runedbase", name: "Longsword" }, baseName: "Longsword",
+  computed: { baseLevel: 0, baseRarity: "common", potency: 1, secondary: 1, copper: 10000, level: 4, rarity: "common" } };
+const runedFlow = async (candidate) => {
+  runedPool = [candidate]; permanentPools.clear(); permanentPicks = [{ slotId: "perm-3", candidateId: candidate.id }]; parcelPicks = [];
+  const cc = ctl({ level: { value: "4" } }); const aa = app(cc);
+  await A.selectKind.call(aa, null, { dataset: { kind: "parcel" } }); await A.generate.call(aa);
+  return { cc, aa, ctx: await aa._prepareContext() };
+};
+{
+  const { cc, aa, ctx: rctx } = await runedFlow(RUNED_CANDIDATE);
+  assert.equal(rctx.preview.permanents[2].filled, true, "the runed item fills its level-4 slot");
+  assert.equal(rctx.preview.permanents[2].name, "+1 Striking Longsword");
+  assert.equal(rctx.preview.permanents[2].itemLevel, 4, "the item level is the computed pf2e level");
+  assert.equal(rctx.preview.permanents[2].price, "100 gp", "the value is the two rune prices, with no base added");
+  assert.ok(rctx.preview.permanents[2].kind.includes("PermanentKind.runed"), "the row says it is runed");
+  assert.ok(rctx.preview.permanents[2].detail.includes("PermanentBase") && rctx.preview.permanents[2].detail.includes("Longsword"), "the base is shown");
+  const writes = createCalls.length;
+  await A.createItem.call(aa);
+  const built = createCalls.at(-1).actor.items.find((item) => item.name === "+1 Striking Longsword");
+  assert.ok(built, "the runed item is written to the loot actor");
+  assert.equal(built.type, "weapon"); assert.equal(built.system.runes.potency, 1); assert.equal(built.system.runes.striking, 1);
+  assert.deepEqual(built.system.rules, []); assert.ok(built.system.traits.value.includes("magical"));
+  assert.equal(createCalls.length, writes + 1, "one write for the actor");
+}
+
+// A stored value that disagrees with the recomputed valuation is refused at build; the slot says so and nothing is invented.
+{
+  const wrong = { ...RUNED_CANDIDATE, computed: { ...RUNED_CANDIDATE.computed, copper: 9999 } };
+  const { ctx: wctx } = await runedFlow(wrong);
+  assert.equal(wctx.preview.permanents[2].filled, false, "a disagreeing value is not built");
+  assert.equal(wctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.build", "the reason is a build failure");
+}
+
+// A rune document that cannot be read leaves the slot unavailable, with its reason.
+{
+  const striking = runed.RUNE_TIERS.weapon.striking[1].uuid;
+  const saved = docs.get(striking); docs.delete(striking);
+  const { ctx: uctx } = await runedFlow(RUNED_CANDIDATE);
+  docs.set(striking, saved);
+  assert.equal(uctx.preview.permanents[2].filled, false);
+  assert.equal(uctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.unavailable", "a missing rune document is unavailable, not guessed");
+}
+// A rune document whose value no longer matches the pinned tier is refused at build, not used.
+{
+  const striking = runed.RUNE_TIERS.weapon.striking[1].uuid;
+  const saved = docs.get(striking);
+  docs.set(striking, { uuid: striking, toObject: () => { const tampered = plain(v3Fixture("striking")); tampered.system.price.value = { gp: 66 }; return tampered; } });
+  const { ctx: tctx } = await runedFlow(RUNED_CANDIDATE);
+  docs.set(striking, saved);
+  assert.equal(tctx.preview.permanents[2].filled, false, "a tampered rune document is not built");
+  assert.equal(tctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.unavailable", "its slot says the tier could not be verified");
+}
+// Create refuses a runed item whose stored source changed after Generate, and writes nothing.
+for (const [label, change, reason] of [
+  ["base level set to 20", (source) => { source.system.level.value = 20; }, "base-level"],
+  ["a shoddy tag added", (source) => { source.system.traits.otherTags = ["shoddy"]; }, "base-otherTags"]
+]) {
+  const { aa: staleApp, ctx: staleCtx } = await runedFlow(RUNED_CANDIDATE);
+  assert.equal(staleCtx.preview.permanents[2].filled, true, `${label}: the runed item is built first`);
+  change(lastRunedSource);
+  const writesBeforeStale = createCalls.length;
+  await A.createItem.call(staleApp); const sctx = await staleApp._prepareContext();
+  assert.equal(createCalls.length, writesBeforeStale, `${label}: nothing is written`);
+  assert.equal(sctx.error, "SIMPLYPF2E.ItemForge.Parcel.Revalidate", `${label}: Create refuses the changed base`);
+}
+runedPool = []; permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
+
+// Gate-off defences in the Forge's #readForm (release repair): with experimentalTools closed, a parcel's Merchant
+// sheet and valuables box read as Loot and off, even when the form still shows them as chosen. The read happens in
+// Generate, before the gate check refuses the run, so the input is what the form would have sent.
+{
+  gate = true;
+  c = ctl({ lootSheetType: { value: "Merchant" }, valuables: { checked: true } }); a = app(c);
+  await A.selectKind.call(a, null, { dataset: { kind: "parcel" } });
+  gate = false;
+  await A.generate.call(a);
+  const gateCtx = await a._prepareContext();
+  assert.equal(gateCtx.input.sheetType, "Loot", "with the gate closed the Merchant sheet reads as Loot");
+  assert.equal(gateCtx.input.valuables, false, "with the gate closed the valuables box reads as off");
+  assert.equal(gateCtx.error, "GATE-CLOSED", "and generation is refused");
+  gate = true;
+  // The same form with the gate open keeps both choices.
+  a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } });
+  await A.generate.call(a);
+  const openCtx = await a._prepareContext();
+  assert.equal(openCtx.input.sheetType, "Merchant", "with the gate open the Merchant sheet is kept");
+  assert.equal(openCtx.input.valuables, true, "with the gate open the valuables box is kept");
+  permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
+}

@@ -75,7 +75,7 @@ export function priceCopper(price) {
  * Works on index entries (no rules field) and on loaded documents; `permanentDocumentProblem`
  * adds the Rule Elements check that only a full document can answer.
  */
-export function permanentEquipmentProblem(data, level, maxRarity) {
+export function permanentEquipmentProblem(data, level, maxRarity, { allowWand = false } = {}) {
   if (!data || typeof data !== "object") return "malformed";
   const system = data.system ?? {};
   if (data.type !== "equipment") return "type";
@@ -83,7 +83,8 @@ export function permanentEquipmentProblem(data, level, maxRarity) {
   if (!rarityAllowed(system.traits?.rarity, maxRarity)) return "rarity";
   const traits = Array.isArray(system.traits?.value) ? system.traits.value : null;
   if (!traits) return "classification";
-  if (traits.some((trait) => EXCLUDED_TRAITS.has(trait))) return "classification";
+  // The `wand` trait is excluded for generic equipment. Only the special-wand branch may admit it.
+  if (traits.some((trait) => EXCLUDED_TRAITS.has(trait) && !(allowWand && trait === "wand"))) return "classification";
   // A mundane item carries no magic trait at all (GM Core's Chapter 6 items are out of scope).
   if (!traits.some((trait) => MAGIC_TRAITS.has(trait))) return "classification";
   const usage = system.usage?.value;
@@ -93,8 +94,8 @@ export function permanentEquipmentProblem(data, level, maxRarity) {
 }
 
 /** As permanentEquipmentProblem, plus the loaded document must carry no Rule Elements. */
-export function permanentDocumentProblem(data, level, maxRarity) {
-  const problem = permanentEquipmentProblem(data, level, maxRarity);
+export function permanentDocumentProblem(data, level, maxRarity, options = {}) {
+  const problem = permanentEquipmentProblem(data, level, maxRarity, options);
   if (problem) return problem;
   if (!Array.isArray(data.system?.rules) || data.system.rules.length) return "rules";
   return null;
@@ -117,7 +118,21 @@ export function permanentSourceProblem(source, allowedLevels, maxRarity) {
     if (priceCopper(system.price?.value) === null) return "price";
     return null;
   }
+  if (Array.isArray(system.traits?.value) && system.traits.value.includes("wand")) {
+    return specialWandProblem(source, system.level.value, maxRarity);
+  }
   return permanentDocumentProblem(source, system.level.value, maxRarity);
+}
+
+/**
+ * A published special wand (parcel v3): published equipment with the `wand` trait, judged by the same
+ * checks as any permanent item, except that the wand trait is allowed here and nowhere else. Its own
+ * level is exact; the generic 2r+1 formula is not applied to it (the spec's special-wand branch).
+ */
+export function specialWandProblem(data, level, maxRarity) {
+  const traits = data?.system?.traits?.value;
+  if (!Array.isArray(traits) || !traits.includes("wand")) return "classification";
+  return permanentDocumentProblem(data, level, maxRarity, { allowWand: true });
 }
 
 /** Why a published treasure document cannot be a parcel valuable, or null. */

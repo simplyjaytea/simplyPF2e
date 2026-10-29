@@ -1001,7 +1001,7 @@ export async function selectParcelPermanents(brief, { partyLevel, slots, candida
 
   const slotList = issued.map((slot) => `${slot.id} | item level ${slot.allowedLevels.join(" or ")}`).join("\n");
   const list = offered.map((candidate) => {
-    const kind = candidate.kind === "wand" ? `wand, rank ${candidate.rank}` : "equipment";
+    const kind = candidate.kind === "wand" ? `wand, rank ${candidate.rank}` : candidate.kind === "special-wand" ? "published wand" : "equipment";
     const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
     return `${candidate.id} | ${candidate.name} | item level ${candidate.level} | ${kind}${traits}`;
   }).join("\n");

@@ -16,7 +16,8 @@ import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
 import {
   getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, priceToGp, toItemData,
-  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates, pickParcelValuable
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates,
+  getRunedCandidates, pickParcelValuables
 } from "./compendium.mjs";
 import {
   spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName, cantripDeckMaxRarity
@@ -34,6 +35,8 @@ import {
 import { LOOT_NAME_MAX, LOOT_MANIFEST, COIN_UUIDS, coinItemSource, buildLootActorSource } from "./loot-actor.mjs";
 import { persistedExpectedItems, verifyCreatedActor, rollbackCreatedActor } from "./post-create.mjs";
 import { esc } from "./text.mjs";
+import { applyRunes } from "./runes.mjs";
+import { runedBaseProblem, runeTierProblem, runedValuation, runedSourceFrom, runedSourceProblem, runedBaseSnapshot, pinnedTier } from "./parcel-runed.mjs";
 
 /** Item Forge kinds that build real spells into scrolls or wands (spell-consumables.mjs). */
 const CONSUMABLE_KINDS = new Set(["scroll", "wand", "cantripDeck"]);
@@ -676,16 +679,17 @@ export class ItemForgeApp extends SpfApp {
     }
     const permanents = await this.#assemblePermanents(permanentSlots, permanentPicks, pool, permanentFailure);
     const budgetCopper = copperFromGp(plan.currencyGp);
-    let valuable = null;
+    let valuables = [];
     let valuableReason = null;
     if (this.#input.valuables) {
-      const picked = await this.#pickValuable(keywords, budgetCopper);
-      if (picked.source) valuable = picked;
-      else valuableReason = picked.reason;
+      const found = await this.#pickValuables(keywords, budgetCopper);
+      valuables = found.picked;
+      valuableReason = found.reason;
     }
-    // The valuable replaces part of the currency once; the exact remainder is split into coins.
+    // The valuables replace part of the currency once; the exact remainder is split into coins.
     // All-or-nothing: a coin that cannot be cloned drops the whole coin remainder, never part of it.
-    const remainderCopper = budgetCopper - (valuable?.copper ?? 0);
+    const valuableCopper = valuables.reduce((sum, valuable) => sum + valuable.copper, 0);
+    const remainderCopper = budgetCopper - valuableCopper;
     let currency = null;
     let coinsMissingCopper = 0;
     try {
@@ -704,15 +708,15 @@ export class ItemForgeApp extends SpfApp {
       coinsMissingCopper = remainderCopper;
     }
     const built = permanents.filter((entry) => entry.filled);
-    if (!items.length && !currency && !built.length && !valuable) {
+    if (!items.length && !currency && !built.length && !valuables.length) {
       throw new Error(game.i18n.format("SIMPLYPF2E.ItemForge.Consumables.NoPicks", { kind: "scroll" }));
     }
     const valueItems = [
       ...items.map((item) => ({ priceGp: item.priceGp, quantity: item.quantity })),
       ...built.map((entry) => ({ priceGp: entry.copper / COIN_COPPER_RATES.gp, quantity: 1 })),
-      ...(valuable ? [{ priceGp: valuable.copper / COIN_COPPER_RATES.gp, quantity: 1 }] : [])
+      ...valuables.map((valuable) => ({ priceGp: valuable.copper / COIN_COPPER_RATES.gp, quantity: 1 }))
     ];
-    this.#parcel = { items, currency, coinsMissingCopper, permanents, valuable, valuableReason, unfilled, dropped,
+    this.#parcel = { items, currency, coinsMissingCopper, permanents, valuables, valuableReason, unfilled, dropped,
       row, partySize: row.partySize, rarity: this.#input.rarity,
       valueGp: parcelValueGp({ items: valueItems, currencyGp: currency ? remainderCopper / COIN_COPPER_RATES.gp : 0 }) };
     this._throwIfCancelled();
@@ -728,8 +732,11 @@ export class ItemForgeApp extends SpfApp {
     for (const level of levels) {
       this._throwIfCancelled();
       candidates.push(...await getPermanentEquipmentCandidates(level, keywords, { maxRarity: this.#input.rarity }));
+      candidates.push(...await getSpecialWandCandidates(level, keywords, { maxRarity: this.#input.rarity }));
       candidates.push(...await getParcelWandCandidates(level, keywords, { maxRarity: this.#input.rarity }));
     }
+    // Runed candidates are bounded across all levels in one pass, so the base documents are read once.
+    candidates.push(...await getRunedCandidates(levels, keywords, { maxRarity: this.#input.rarity }));
     return { candidates, offered: new Map(candidates.map((candidate) => [candidate.id, candidate])) };
   }
 
@@ -750,7 +757,8 @@ export class ItemForgeApp extends SpfApp {
       if (candidate) {
         const result = await this.#buildPermanentSafely(candidate, slot);
         if (result.source) {
-          entries.push({ slot, filled: true, source: result.source, name: result.name, level: result.level, copper: result.copper });
+          entries.push({ slot, filled: true, kind: candidate.kind, source: result.source, name: result.name, level: result.level, copper: result.copper,
+            computed: result.computed ?? null, baseName: candidate.baseName ?? null });
           continue;
         }
         console.warn(`${MODULE_ID} | dropped permanent parcel item`, result);
@@ -773,10 +781,39 @@ export class ItemForgeApp extends SpfApp {
       if (!built.source) return { reason: PERMANENT_REASON.BUILD, detail: built.reason };
       return this.#permanentResult(built.source, slot);
     }
+    if (candidate.kind === "runed") return this.#buildRuned(candidate, slot);
     const doc = await getCandidateDocument(candidate);
     if (!doc) return { reason: PERMANENT_REASON.UNAVAILABLE };
     const source = toItemData(doc);
     return this.#permanentResult(source, slot);
+  }
+
+  /**
+   * A fundamental-runed item: the base is read again, each pinned tier is verified against its real document,
+   * and the value and level are recomputed from the verified tiers. Anything that disagrees is refused.
+   */
+  async #buildRuned(candidate, slot) {
+    const doc = await getCandidateDocument(candidate.base);
+    if (!doc) return { reason: PERMANENT_REASON.UNAVAILABLE };
+    const base = toItemData(doc);
+    const kind = candidate.runeKind;
+    const problem = runedBaseProblem(base, kind);
+    if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
+    const { potency, secondary } = candidate.computed;
+    const field = kind === "weapon" ? "striking" : "resilient";
+    const tiers = [pinnedTier(kind, "potency", potency), secondary ? pinnedTier(kind, field, secondary) : null].filter(Boolean);
+    for (const tier of tiers) {
+      const tierDoc = await fromUuid(tier.uuid);
+      const data = tierDoc ? toItemData(tierDoc) : null;
+      if (!data || runeTierProblem(data, tier)) return { reason: PERMANENT_REASON.UNAVAILABLE, detail: "rune tier" };
+    }
+    const computed = runedValuation({ kind, baseLevel: base.system.level.value, baseRarity: base.system.traits.rarity, potency, secondary });
+    if (!computed || computed.level !== candidate.level || computed.copper !== candidate.computed.copper) {
+      return { reason: PERMANENT_REASON.BUILD, detail: "valuation" };
+    }
+    const source = runedSourceFrom(base, { kind, potency, secondary }, applyRunes);
+    // The validated base's valuation facts travel with the value, so Create can prove the source still matches them.
+    return this.#permanentResult(source, slot, { ...candidate.computed, base: runedBaseSnapshot(base, kind) });
   }
 
   /** A read or conversion failure on one chosen item is that slot's problem: it is unfilled, not the parcel's. */
@@ -790,26 +827,35 @@ export class ItemForgeApp extends SpfApp {
     }
   }
 
-  #permanentResult(source, slot) {
+  #permanentResult(source, slot, computed = null) {
+    if (computed) {
+      const problem = runedSourceProblem(source, slot.allowedLevels, this.#input.rarity, computed);
+      if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
+      return { source, name: source.name, level: computed.level, copper: computed.copper, computed };
+    }
     const problem = permanentSourceProblem(source, slot.allowedLevels, this.#input.rarity);
     if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
     return { source, name: source.name, level: source.system.level.value, copper: priceCopper(source.system.price.value) };
   }
 
-  /** The one valuable the parcel may hold, or the reason none is offered. */
-  async #pickValuable(keywords, budgetCopper) {
+  /**
+   * Up to three valuables, deterministically chosen within the currency. Returns the picks and, when none fits,
+   * the reason: the pack is missing, nothing is offered, every candidate costs more, or the reads failed.
+   */
+  async #pickValuables(keywords, budgetCopper) {
     try {
       const pool = await getValuableCandidates(keywords, { maxRarity: this.#input.rarity });
-      if (!pool.available) return { reason: "pack" };
-      if (!pool.candidates.length) return { reason: "none-offered" };
-      const picked = await pickParcelValuable(pool.candidates, budgetCopper, this.#input.rarity);
-      if (!picked.source) return { reason: picked.reason };
-      return { name: picked.source.name, source: picked.source, copper: picked.copper };
+      if (!pool.available) return { picked: [], reason: "pack" };
+      if (!pool.candidates.length) return { picked: [], reason: "none-offered" };
+      const result = await pickParcelValuables(pool.candidates, budgetCopper, this.#input.rarity);
+      if (result.picked.length) return { picked: result.picked, reason: null };
+      const failed = result.skipped.some((skip) => skip.reason === "unavailable" || skip.reason === "invalid");
+      return { picked: [], reason: failed ? "unavailable" : "too-expensive" };
     } catch (err) {
       // The valuable is optional: a failed search keeps the full currency as coins.
       if (isCancellation(err)) throw err;
       console.warn(`${MODULE_ID} | parcel valuable search failed`, err);
-      return { reason: "unavailable" };
+      return { picked: [], reason: "unavailable" };
     }
   }
 
@@ -841,14 +887,17 @@ export class ItemForgeApp extends SpfApp {
       permanents: p.permanents.map((entry) => ({
         levels: this.#levelsLabel(entry.slot.allowedLevels),
         filled: entry.filled,
+        kind: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.PermanentKind.${entry.kind ?? "equipment"}`),
+        detail: entry.filled && entry.baseName ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentBase", { base: entry.baseName }) : null,
         name: entry.filled ? entry.name : null,
         itemLevel: entry.filled ? entry.level : null,
         price: entry.filled ? `${formatGp(entry.copper)} gp` : null,
         reason: entry.filled ? null : game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.Reason.${entry.reason}`)
       })),
       permanentSummary: game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentSummary", { built, total: p.permanents.length }),
-      valuable: p.valuable ? { name: p.valuable.name, price: `${formatGp(p.valuable.copper)} gp` } : null,
-      valuableNote: this.#input.valuables && !p.valuable ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.ValuableNone", { reason: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.ValuableReason.${p.valuableReason}`) }) : null,
+      valuables: p.valuables.map((valuable) => ({ name: valuable.candidate.name, price: `${formatGp(valuable.copper)} gp` })),
+      valuableSubtotal: formatGp(p.valuables.reduce((sum, valuable) => sum + valuable.copper, 0)),
+      valuableNote: this.#input.valuables && !p.valuables.length ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.ValuableNone", { reason: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.ValuableReason.${p.valuableReason}`) }) : null,
       valueGp: p.valueGp, totalGp: p.row.totalGp };
   }
 
@@ -895,7 +944,9 @@ export class ItemForgeApp extends SpfApp {
       // Revalidate every built permanent source before anything is written (the preview may be old).
       for (const entry of p?.permanents ?? []) {
         if (!entry.filled) continue;
-        const problem = permanentSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity);
+        const problem = entry.computed
+          ? runedSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity, entry.computed)
+          : permanentSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity);
         if (problem) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.Revalidate"));
       }
       const built = p?.permanents.filter((entry) => entry.filled) ?? [];
@@ -911,7 +962,7 @@ export class ItemForgeApp extends SpfApp {
       const items = p ? [
         ...p.items.map((i) => i.source),
         ...built.map((entry) => entry.source),
-        ...(p.valuable ? [p.valuable.source] : []),
+        ...p.valuables.map((valuable) => valuable.source),
         ...(p.currency ? p.currency.sources : [])
       ] : this.#consumables.items.map((i) => i.source);
       const presentationWarning = await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines, lootSheetType: this.#input.sheetType });

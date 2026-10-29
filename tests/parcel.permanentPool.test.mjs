@@ -5,10 +5,11 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import {
-  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates, pickParcelValuable,
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates,
   getCandidateDocument
 } from "../scripts/compendium.mjs";
 import { PERMANENT_REASON } from "../scripts/treasure-permanent.mjs";
+import { getSpecialWandCandidates, pickParcelValuables } from "../scripts/compendium.mjs";
 
 const DIR = new URL("./fixtures/parcel/", import.meta.url);
 const fixture = (name) => JSON.parse(readFileSync(new URL(`${name}.json`, DIR), "utf8"));
@@ -45,7 +46,9 @@ function makePack(packId, raws, { loads, failing = new Map() } = {}) {
   };
 }
 
-const equipmentRaws = EQUIPMENT_FIXTURES.map(fixture);
+const v3Fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/parcel-v3/${name}.json`, import.meta.url), "utf8"));
+const V3_WANDS = ["wand-of-continuation-1st-rank-spell", "wand-of-widening-1st-rank-spell", "cyrusian-wand-1st-rank-spell"].map(v3Fixture);
+const equipmentRaws = [...EQUIPMENT_FIXTURES.map(fixture), ...V3_WANDS];
 const valuableRaws = [fixture("agate"), fixture("silk-ceremonial-armor")];
 const spellRaws = [
   { _id: "fireball0000000", name: "Fireball", type: "spell", system: { level: { value: 3 }, traits: { value: ["evocation", "fire"], rarity: "common" }, ritual: null } },
@@ -115,23 +118,23 @@ assert.deepEqual(pool.candidates.map((candidate) => [candidate.name, candidate.c
   ["Silk ceremonial armor", 1000], ["Agate", 50]
 ], "the brief ranks silk first; each valuable has its exact copper value");
 
-const exact = await pickParcelValuable(pool.candidates, 1000, "common");
-assert.equal(exact.source.name, "Silk ceremonial armor", "a valuable exactly equal to the currency is allowed");
-assert.equal(exact.copper, 1000);
-assert.equal(exact.source.system.quantity, 1, "a valuable is always one item");
+const exact = await pickParcelValuables(pool.candidates, 1000, "common", { limit: 1 });
+assert.equal(exact.picked[0].source.name, "Silk ceremonial armor", "a valuable exactly equal to the currency is allowed");
+assert.equal(exact.picked[0].copper, 1000);
+assert.equal(exact.picked[0].source.system.quantity, 1, "a valuable is always one item");
 
-const tooExpensive = await pickParcelValuable(pool.candidates, 40, "common");
-assert.equal(tooExpensive.reason, "too-expensive", "nothing fits a 40 cp currency");
-assert.equal(tooExpensive.source, undefined);
+const tooExpensive = await pickParcelValuables(pool.candidates, 40, "common");
+assert.equal(tooExpensive.picked.length, 0, "nothing fits a 40 cp currency");
+assert.ok(tooExpensive.skipped.every((skip) => skip.reason === "too-expensive"), "every candidate is skipped as too expensive");
 
-const none = await pickParcelValuable([], 4000, "common");
-assert.equal(none.reason, "none-offered", "an empty ranking is reported as none offered, not as an error");
+const none = await pickParcelValuables([], 4000, "common");
+assert.deepEqual([none.picked.length, none.skipped.length], [0, 0], "an empty ranking picks nothing and is not an error");
 
 // If the first fitting valuable cannot be loaded, the search goes on to the next one, deterministically.
 const originalGetDocument = packs.get("pf2e.equipment-srd").getDocument;
 packs.get("pf2e.equipment-srd").getDocument = async (_id) => (_id === fixture("silk-ceremonial-armor")._id ? null : originalGetDocument(_id));
-const fallback = await pickParcelValuable(pool.candidates, 4000, "common");
-assert.equal(fallback.source.name, "Agate", "an unloadable valuable falls through to the next fitting one");
+const fallback = await pickParcelValuables(pool.candidates, 4000, "common", { limit: 1 });
+assert.equal(fallback.picked[0].source.name, "Agate", "an unloadable valuable falls through to the next fitting one");
 packs.get("pf2e.equipment-srd").getDocument = originalGetDocument;
 
 // The valuable pack is missing: the search says so, so the preview can say why.
@@ -140,6 +143,38 @@ const missing = await getValuableCandidates([], { maxRarity: "common" });
 assert.deepEqual([missing.available, missing.candidates.length], [false, 0]);
 packs.set("pf2e.equipment-srd", makePack("pf2e.equipment-srd", [...equipmentRaws, ...valuableRaws], { failing: equipmentFailing }));
 
+// Published special wands (parcel v3): the wand trait is offered only here, at the document's own level.
+const specialAt4 = await getSpecialWandCandidates(4, [], { maxRarity: "rare" });
+assert.deepEqual(specialAt4.map((candidate) => [candidate.name, candidate.kind, candidate.level]), [["Wand of Mercy (1st-rank)", "special-wand", 4]],
+  "level 4 offers the Wand of Mercy only: Widening has Rule Elements, Cyrusian is mythic");
+assert.deepEqual(await getSpecialWandCandidates(3, [], { maxRarity: "rare" }), [], "no special wand is offered at level 3");
+assert.deepEqual((await getSpecialWandCandidates(5, [], { maxRarity: "common" })).map((candidate) => candidate.name), ["Wand of Continuation (1st-Rank Spell)"]);
+assert.ok(!(await getPermanentEquipmentCandidates(4, [], { maxRarity: "rare" })).some((candidate) => candidate.name === "Wand of Mercy (1st-rank)"),
+  "the generic equipment pool still refuses the wand trait");
+
+// Up to three valuables (parcel v3): each taken in the caller's order only while its exact copper value fits what
+// is left (equality allowed), each distinct, each read and validated; a rejected read is skipped.
+const agateCandidate = { id: "pf2e.equipment-srd/agate", name: "Agate", copper: 50, packId: "pf2e.equipment-srd", _id: fixture("agate")._id };
+const silkCandidate = { id: "pf2e.equipment-srd/silk", name: "Silk ceremonial armor", copper: 1000, packId: "pf2e.equipment-srd", _id: fixture("silk-ceremonial-armor")._id };
+const both = await pickParcelValuables([agateCandidate, silkCandidate], 4000, "common");
+assert.deepEqual(both.picked.map((p) => p.candidate.name), ["Agate", "Silk ceremonial armor"], "both fit 40 gp, in the caller's order");
+assert.equal(both.remaining, 2950, "the remainder is exact: 40 gp less 5 sp less 10 gp");
+assert.equal(both.picked[1].source.system.quantity, 1, "each valuable is one item");
+const exactly = await pickParcelValuables([silkCandidate], 1000, "common");
+assert.deepEqual([exactly.picked.length, exactly.remaining], [1, 0], "equality is allowed and leaves nothing");
+const tooBig = await pickParcelValuables([silkCandidate], 999, "common");
+assert.deepEqual([tooBig.picked.length, tooBig.skipped.map((skip) => skip.reason)], [0, ["too-expensive"]], "one copper short is refused");
+const firstOnly = await pickParcelValuables([agateCandidate, silkCandidate], 4000, "common", { limit: 1 });
+assert.deepEqual(firstOnly.picked.map((p) => p.candidate.name), ["Agate"], "the limit holds");
+const twice = await pickParcelValuables([agateCandidate, agateCandidate], 4000, "common");
+assert.equal(twice.picked.length, 1, "the same candidate is never taken twice");
+equipmentFailing.set(silkCandidate._id, new Error("pack damaged"));
+const skipsRead = await pickParcelValuables([silkCandidate, agateCandidate], 4000, "common");
+equipmentFailing.clear();
+assert.deepEqual(skipsRead.picked.map((p) => p.candidate.name), ["Agate"], "an unreadable valuable is skipped; the next still fits");
+assert.deepEqual(skipsRead.skipped.map((skip) => skip.reason), ["unavailable"]);
+await assert.rejects(() => pickParcelValuables([agateCandidate], -1, "common"), /whole, non-negative/, "a negative budget is refused");
+
 // A rejected read of one candidate is that candidate's problem: the pool drops it and the search goes on.
 equipmentFailing.set(fixture("magical-hearing-aid")._id, new Error("pack damaged"));
 assert.deepEqual(await getPermanentEquipmentCandidates(1, [], { maxRarity: "common" }), [],
@@ -147,13 +182,13 @@ assert.deepEqual(await getPermanentEquipmentCandidates(1, [], { maxRarity: "comm
 equipmentFailing.clear();
 
 equipmentFailing.set(fixture("silk-ceremonial-armor")._id, new Error("pack damaged"));
-const rejectedValuable = await pickParcelValuable(pool.candidates, 1000, "common");
-assert.equal(rejectedValuable.source.name, "Agate", "a valuable whose read rejects is passed over for the next one that fits");
+const rejectedValuable = await pickParcelValuables(pool.candidates, 1000, "common", { limit: 1 });
+assert.equal(rejectedValuable.picked[0].source.name, "Agate", "a valuable whose read rejects is passed over for the next one that fits");
 equipmentFailing.clear();
 
 // A user abort during a read is not a candidate problem: it propagates.
 equipmentFailing.set(fixture("silk-ceremonial-armor")._id, Object.assign(new Error("aborted"), { name: "AbortError" }));
-await assert.rejects(() => pickParcelValuable(pool.candidates, 1000, "common"), /aborted/, "an abort propagates");
+await assert.rejects(() => pickParcelValuables(pool.candidates, 1000, "common"), /aborted/, "an abort propagates");
 equipmentFailing.clear();
 
 // The reason codes used by the assignment match the stable constants.

@@ -620,6 +620,16 @@
           "too-expensive": "none costs no more than the currency",
           "unavailable": "the chosen one could not be loaded safely"
         },
+        "PermanentKindHeader": "Kind",
+        "PermanentBase": "base {base}",
+        "PermanentKind": {
+          "equipment": "Published equipment",
+          "wand": "Generic wand",
+          "special-wand": "Published wand",
+          "runed": "Fundamental-runed item"
+        },
+        "ValuablesHeading": "Valuables",
+        "ValuablesSubtotal": "Valuables subtotal: {gp} gp.",
         "CoinsMissing": "Coins could not be built: {gp} gp of currency is missing from the loot actor."
       }
     },
