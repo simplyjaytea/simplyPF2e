@@ -560,7 +560,7 @@ export function parseScroll(name) {
  * otherwise a "+1 striking longsword" budgets as a 1 gp longsword while the
  * sheet renders a ~1,000 gp item, and the coin padding overshoots wildly.
  */
-export async function resolveLoot(concept, { exactContent = false } = {}) {
+export async function resolveLoot(concept, { exactContent = false, skipped = [] } = {}) {
   const loot = [];
   for (const { name, quantity, candidate, scrollCandidate } of concept.loot) {
     // Coins are module-built currency, not AI-selected equipment. Always
@@ -621,6 +621,7 @@ export async function resolveLoot(concept, { exactContent = false } = {}) {
       ));
     if (!entry) {
       console.warn(`simplypf2e | dropped loot "${name}": no compendium item matches, and the AI writes no prices`);
+      skipped.push(name);
       continue;
     }
     const runes = await capRunes(parseRunes(name), entry.type, maxLevel);
@@ -818,12 +819,13 @@ export async function resolveConcept(concept, { exactContent = false } = {}) {
   const focusSpells = concept.spellcasting
     ? await resolveFocusSpells(concept.focusSpells ?? [], { exactContent }) : [];
 
-  const equipment = await resolveEquipment(concept, { exactContent });
-  const loot = await resolveLoot(concept, { exactContent });
+  const skipped = { equipment: [], loot: [] };
+  const equipment = await resolveEquipment(concept, { exactContent, skipped: skipped.equipment });
+  const loot = await resolveLoot(concept, { exactContent, skipped: skipped.loot });
 
   const abilityPackages = feats.length && feats.every((feat) => feat.entry)
     ? await resolveNpcAbilityPackages(feats, { concept }) : null;
-  return { abilities, spells, feats, focusSpells, equipment, loot, abilityPackages };
+  return { abilities, spells, feats, focusSpells, equipment, loot, abilityPackages, skipped };
 }
 
 /**
@@ -831,7 +833,7 @@ export async function resolveConcept(concept, { exactContent = false } = {}) {
  * by NPC resolveConcept() and the PC pipeline (pc-builder.mjs), which both
  * carry the same {name, quantity} equipment shape and level cap.
  */
-export async function resolveEquipment(concept, { exactContent = false } = {}) {
+export async function resolveEquipment(concept, { exactContent = false, skipped = [] } = {}) {
   const equipment = [];
   const maxLevel = Math.max(concept.level, 0);
   for (const { name, quantity, candidate } of concept.equipment) {
@@ -847,6 +849,7 @@ export async function resolveEquipment(concept, { exactContent = false } = {}) {
     // AI's name is never embedded as a priced custom item.
     if (!entry) {
       console.warn(`simplypf2e | dropped equipment "${name}": no compendium item matches`);
+      skipped.push(name);
       continue;
     }
     // The item-level cap above only gates the BASE item — without this the AI's
