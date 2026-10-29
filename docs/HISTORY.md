@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-29 — Second release: world folder, speeds and senses, Wizard archetype, experimental default on
+
+- The user asked for four features in one fan-out. Code Monkey (W0/W0b release fixes on `fix/release-0.82`), Code Monkey 2 (W1 world folder on `feat/re-folder`), Code Monkey 3 (W2 speeds and the experimental default on `feat/speeds-default`) and Code Monkey Plus (W3 Wizard archetype on `feat/caster-multiclass`) each worked in their own worktree; the Lead merged them into `integrate/2026-10-30` (`1ae0a6d`) and resolved the PLAYBOOK, README, ledger, `pc-builder.mjs` and `generator-app.mjs` conflicts by keeping both sides.
+- W3 spike: no pf2e caster dedication creates a spellcasting entry; the slot progression is prose in the archetypes journal. Only Wizard has no ChoiceSet, grant or either-or prerequisite, so only Wizard was built. Code Reviewer agreed the cited slot table is document data like the class spellcasting table, not a hand-authored Rule Element.
+- Code Reviewer rejected `1ae0a6d` on three points (parcel draft retryable after a rollback survivor; folder check compared only rule counts; Wizard spellbook skipped missing spells at Create). All three were fixed with fail-before tests and approved on `0d631d4`. QA approved with doc fixes and flagged that the default-on gate lets encounters add a hazard (one extra AI call).
+- The `experimentalTools` default flip overrides PLAYBOOK §9's earlier rule; it is recorded as §9 item 13. Not verified: Foundry, rendered templates, Foundry's own enricher patterns.
+
 ## 2026-10-29 — Overnight release: Treasure parcel v2, final reviews, push to `main`
 
 - New staff (Code Monkey 2, Product Designer, Code Reviewer) joined. Product Designer wrote the part 2 spec; Code Monkey 2 built parcel v2 part 1 (coin UUID single source, pp/gp/sp/cp split, dropped ids in the preview, gated Merchant sheet; N19–N21) and part 2 (permanent slots with published magical equipment, generic wands at 2r+1, one optional gem or art object; N22–N24) on `work/parcel-v2`, merged cleanly into `integrate/2026-10-29`.

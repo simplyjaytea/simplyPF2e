@@ -2,15 +2,16 @@
 
 Read [PLAYBOOK.md](PLAYBOOK.md) first. This file holds only what the last session left in flight. Overwrite it at every session end.
 
-## Session 2026-10-29 (OpenBot) — overnight release: cleanup, Wizard v2, Treasure parcel v2
+## Session 2026-10-29 (OpenBot), second release: world folder, speeds, Wizard archetype, experimental default on
 
-- **Released.** `integrate/2026-10-29` was pushed to `main` on 2026-10-29; Auto Release publishes the next tag after v0.3.5.80 (check `gh release list`). It holds the repo cleanup and drift follow-ups, Wizard v2, and Treasure parcel v2 parts 1 and 2 ([records](docs/plans/wizard-v2-2026-10-29.md), [parcel](docs/plans/parcel-v2-2026-10-29.md)).
-- **Reviews:** QA APPROVE and Code Reviewer APPROVE WITH FIXES on the combined branch (`d23ee18`). The two Code Reviewer findings (one failed compendium read or scroll provider error discarded the whole parcel after spend) and the QA test gaps (Create-time revalidation, `intelligent`/`artifact` exclusions) were fixed in `8e2e981`..`32386ed`, each with a mutation-checked test.
-- **Default path:** every parcel feature (permanent items, wands, valuables, Merchant sheet, coin split) is behind `experimentalTools`. With the gate off, QA found no behavior change; NPC loot coins resolve the same four ids.
-- **Ledger:** N15–N24 are OPEN. Nothing has been run in Foundry; N16 needs a provider-spend level-8 Wizard build.
-- **Drift:** with a token, default ref: 140 checked, 0 failures, 3 warnings. The weekly workflow's first run is **2026-11-02 06:23 UTC** (dispatch gets HTTP 403 from this server).
-- **Decisions taken by the Lead (reversible, recorded in the parcel record):** pp only from 100 gp; pf2e `values.ts` rates; rare/unique cantrips stay out of decks; workflow matrix `master` replaced by `v14-dev`.
-- **Next step:** install the release module-only in the `test` world and run the zero-spend preflights for N12–N24 with the gate on, then off. Then the backlog in PLAYBOOK §9.
+- **Released.** `integrate/2026-10-30` was pushed to `main` on 2026-10-29; Auto Release publishes the next tag after v0.3.5.81 (check `gh release list`). Contents and records: PLAYBOOK §8.
+- **Reviews:** Code Reviewer REJECT on `1ae0a6d` (parcel draft retry after a rollback survivor; folder check compared only rule counts; Wizard spellbook not revalidated at Create), fixed in `8559862` and `3b518ee`..`8798841`, re-review APPROVE on `0d631d4`. QA APPROVE WITH FIXES on `1ae0a6d`; doc fixes in `5cecb29`.
+- **Behavior change to watch:** `experimentalTools` now defaults to on (user decision, PLAYBOOK §9 item 13). Encounters may add one hazard member and one extra AI call (`generator-app.mjs` `allowHazard`); N15 is OPEN. A one-line gate can hold hazards back until N15 passes, if the user wants it.
+- **Ledger:** N15–N28, N40–N48, N50–N53 OPEN. Nothing has been run in Foundry or against a provider. U+2060 inertness is checked against pf2e's enricher patterns only.
+- **Open user decisions:** strike cap 150 (published max 200); speed and sense tops from single outlier creatures; pp from 100 gp; `magical` trait on runed clones (N26); rare/unique cantrip decks; commit attribution.
+- **Known gaps:** a partial `Item.create` batch can survive a world-folder rollback (N44); surviving mutants: single-rule routing threshold, speed tie direction, `ruleFolder` form gate; other caster archetypes unbuilt; the PC editor cannot edit spells.
+- **Drift:** with a token, default ref: 175 checked, 0 failures, 3 warnings. Weekly workflow first run **2026-11-02 06:23 UTC** (dispatch gets HTTP 403 from this server).
+- **Next step:** the user runs QA's 13-step Foundry checklist (install fresh; experimental off/on; NPC with enricher text; speeds/senses; encounter with hazard and cancel; PC Fighter; Wizard L1/L8; Wizard archetype; errors; Item Forge; rarity cap; parcel; parcel world folder). Then the backlog in PLAYBOOK §9.
 
 ## Preserved environment facts
 
