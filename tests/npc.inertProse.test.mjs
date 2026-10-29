@@ -30,10 +30,10 @@ const notes = actor.system.details.publicNotes;
 // except the module's own Recall Knowledge check.
 const aiPart = notes.replace("@Check[type:occultism|dc:15]", "");
 assert.equal(enricherTokens(aiPart).length, 0, "no AI enricher survives in the notes");
-assert.doesNotMatch(aiPart, /@|\[\[/, "no @ or [[ from the AI remains in the notes");
+assert.doesNotMatch(aiPart, /@\w|\[\[/, "no live @name or [[ from the AI remains in the notes");
 assert.ok(notes.includes("Lurks in the drains."), "the readable description is kept");
-assert.ok(notes.includes("&#64;UUID&#91;Compendium.pf2e.spells-srd.Item.Fireball]{Fireball}"), "the link text is visible but inert");
-assert.ok(notes.includes("&#64;Damage&#91;2d6&#91;fire]]"), "the read-aloud damage text is visible but inert");
+assert.ok(notes.includes("@⁠UUID⁠[Compendium.pf2e.spells-srd.Item.Fireball]{Fireball}"), "the link text is visible but inert");
+assert.ok(notes.includes("@⁠Damage⁠[2d6⁠[fire]]"), "the read-aloud damage text is visible but inert");
 
 // Intended mechanics still work: the module's Recall Knowledge check is a live enricher with the expected type and DC.
 assert.match(notes, /<strong>Occultism<\/strong> @Check\[type:occultism\|dc:\d+\]/, "the module's Recall Knowledge check stays live");
@@ -43,6 +43,6 @@ const narrative = actor.items.find((item) => item.name === "Narrative: Grab");
 assert.ok(narrative, "the narrative ability is written as an action");
 const narrativeText = narrative.system.description.value;
 assert.equal(enricherTokens(narrativeText).length, 0, "the narrative action carries no live enricher");
-assert.ok(narrativeText.includes("&#64;Template&#91;type:burst|distance:20]"), "the narrative action text stays readable");
+assert.ok(narrativeText.includes("@⁠Template⁠[type:burst|distance:20]"), "the narrative action text stays readable");
 
 console.log("npc.inertProse.test.mjs: AI description, read-aloud and narrative text come out inert; the module's Recall Knowledge check stays live");

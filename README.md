@@ -163,7 +163,7 @@ Pick **Wondrous Item**, **Weapon**, **Armor**, **Scroll**, or **Wand**, describe
 
 **Cantrip decks** are built from the pinned pf2e `Cantrip Deck (5-pack)` template. The forge makes one deck per distinct common or uncommon cantrip the AI picks from your enabled spell packs. Each deck holds the cantrip's name link but, as in pf2e, no embedded spell. Price, level and the 5 uses come from the template. A deck takes its cantrip's rarity: a common Forge offers common cantrips, and an uncommon, rare or unique Forge offers up to uncommon. Rare and unique cantrips, focus cantrips and rituals are never offered. The level control is hidden because a deck is always level 1.
 
-**Loot actor and Treasure parcel (experimental).** While **Enable experimental tools** is on, scrolls, wands and cantrip decks get a **Create as: Loot actor** choice. It puts the whole batch into one pf2e Loot actor. A **Treasure parcel** kind fills the GM Core Party Treasure by Level row for the party level (1–20) and party size (1–8) with scrolls of real spells, and adds the row's currency as Gold Pieces. The AI picks only a spell for each slot; the module supplies every level, rank, count and price. Permanent-item slots are listed but not built. pf2e's default LIMITED ownership is expected to let players loot a placed token without seeing the actor in the directory (not live-verified). Nothing is written before **Create**, and a failed create is rolled back.
+**Loot actor and Treasure parcel (experimental).** While **Enable experimental tools** is on, scrolls, wands and cantrip decks can be created as a **Loot actor**: one pf2e Loot actor holds the whole batch, and the Item Forge form chooses that destination. A **Treasure parcel** always goes to a Loot actor. It fills the GM Core Party Treasure by Level row for the party level (1–20) and party size (1–8) with scrolls of real spells and with permanent items from published equipment (not all slots always fill), and it splits the row's currency into pp, gp, sp and cp. The AI picks only spells and items by name from the candidate lists; the module supplies every level, rank, count and price. Nothing is written before **Create**, and a failed create is rolled back. pf2e's default LIMITED ownership is expected to let players loot a placed token without seeing the actor in the directory (not live-verified).
 
 ### Experimental tools
 
@@ -261,7 +261,7 @@ Shipped features and their versions are in the [release notes](https://github.co
 
 Development conventions, architecture, and the full bug history live in [PLAYBOOK.md](PLAYBOOK.md) and [HISTORY.md](docs/HISTORY.md). Use the [documentation map](docs/README.md) to find current acceptance records and historical plans.
 
-Runtime modules live in `scripts/`; regression tests and their published-source fixtures live under `tests/`, and repository tooling is under `tools/`. Fixtures, tests and tooling are excluded from the release archive.
+Runtime modules live in `scripts/`; regression tests and their published-source fixtures live under `tests/`, and repository tooling is under `tools/`. Fixtures, tests and tooling are excluded from the release archive. The parcel and loot code is `treasure-tables.mjs`, `treasure-parcel.mjs`, `treasure-permanent.mjs`, `parcel-runed.mjs` and `loot-actor.mjs`; the extra-purchase trigger for the PC loot pass is `purchase-pass.mjs`. The full module map is in [PLAYBOOK.md](PLAYBOOK.md) §4.
 
 Run the same dependency-free verification command used by pull-request and release CI with Node 22:
 

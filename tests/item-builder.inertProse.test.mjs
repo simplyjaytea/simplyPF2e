@@ -27,7 +27,7 @@ const magic = await buildMagicItemData({
 });
 const magicHtml = magic.system.description.value;
 assert.equal(enricherTokens(magicHtml).length, 0, "no AI enricher survives in the magic item description");
-assert.ok(magicHtml.includes("Hums &#64;UUID&#91;Compendium.pf2e.spells-srd.Item.Spark]{Spark}"), "the description keeps its readable text");
+assert.ok(magicHtml.includes("Hums @⁠UUID⁠[Compendium.pf2e.spells-srd.Item.Spark]{Spark}"), "the description keeps its readable text");
 
 // 2. Runed item: a compendium rune named with markup and an enricher. Its summary is escaped; the item builds.
 const HOSTILE = "<img src=x onerror=alert(1)> @UUID[Compendium.pf2e.feats-srd.Item.Zap]{Zap} [[/r 1d20]]";
@@ -53,7 +53,7 @@ const summary = runed.itemData.system.description.value;
 assert.doesNotMatch(summary, /<img/, "the rune name's markup is escaped, never a live tag");
 assert.ok(summary.includes("&lt;img src=x onerror=alert(1)&gt;"), "the escaped rune name is what the GM reads");
 assert.equal(enricherTokens(summary).length, 0, "the rune name's enricher is inert in the runed summary");
-assert.ok(summary.includes("&#64;UUID&#91;Compendium.pf2e.feats-srd.Item.Zap]{Zap}"), "the rune name keeps its readable text");
+assert.ok(summary.includes("@⁠UUID⁠[Compendium.pf2e.feats-srd.Item.Zap]{Zap}"), "the rune name keeps its readable text");
 assert.ok(summary.includes("A plate with a hostile rune."), "the AI description is kept");
 // The intended mechanic is the rune itself, which the build keeps as a real rune key.
 assert.ok(runed.itemData.system.runes.property.length === 1, "the property rune is still applied as a real rune");

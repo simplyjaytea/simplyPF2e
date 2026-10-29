@@ -35,6 +35,8 @@ let resolveOptions;
 let writes = 0;
 let abortController;
 let abortDuringResolve = false;
+let skippedLootNames = [];
+let draftLoot = [{ name: "Healing Potion", quantity: 1 }];
 const ref = { packId: "test.equipment", _id: "potion" };
 const mocks = {
   needsExtraPurchasePass,
@@ -58,7 +60,7 @@ const mocks = {
   generateLoot: async () => {
     lootCalls++;
     if (providerFailure) throw providerFailure;
-    return { loot: [{ name: "Healing Potion", quantity: 1 }] };
+    return { loot: draftLoot };
   },
   normalizeConcept, normalizeLoot, parseCoins, parseScroll, completionManifest, assertComplete,
   composeEncounter,
@@ -71,6 +73,7 @@ const mocks = {
   selectLoot: async () => ({ loot: selectedLoot, omitted: omittedLoot }),
   resolveLoot: async (concept, options) => {
     resolveOptions = options;
+    options?.skipped?.push(...skippedLootNames);
     if (abortDuringResolve) abortController.abort();
     return concept.loot.map((item) => ({ ...item,
       entry: item.candidate === ref || !options?.exactContent ? ref : null
@@ -191,14 +194,43 @@ providerFailure = null;
   abortDuringResolve = false;
 }
 {
+  // A reroll replaces the loot skip list: the fresh draft's unmatched names show, the old ones do not.
+  const app = preview();
+  app._test_resolved.skipped = { equipment: [], loot: ["Stale Rubble"] };
+  skippedLootNames = ["Fresh Gizmo"];
+  selectedLoot = [{ name: "Healing Potion", quantity: 1, candidate: ref }];
+  await App.DEFAULT_OPTIONS.actions.rerollLoot.call(app);
+  skippedLootNames = [];
+  assert.equal(app._test_resolved.skipped.loot.join(","), "Fresh Gizmo", "the preview lists the reroll's skipped loot, not the stale list");
+}
+{
   const app = preview();
   omittedLoot = true;
   selectedLoot = [];
   await App.DEFAULT_OPTIONS.actions.rerollLoot.call(app);
-  assert.equal(app._test_concept.loot.length, 0, "explicitly omitted replacement loot stays empty");
-  assert.equal(budgetTarget, 0, "empty requested loot cannot be repopulated by automatic coin padding");
+  assert.equal(app._test_concept.loot.length, 0, "an omitted replacement names no items");
+  assert.equal(budgetTarget, 10, "an empty replacement is an empty AI draft: the module's coin fill still applies");
   assert.equal(app._test_manifest.complete, true);
   omittedLoot = false;
+}
+{
+  // An empty AI draft under the standard treasure setting gets the module coin fill for the budget, not zero.
+  const app = preview();
+  draftLoot = [];
+  selectedLoot = [];
+  budgetTarget = null;
+  await App.DEFAULT_OPTIONS.actions.rerollLoot.call(app);
+  draftLoot = [{ name: "Healing Potion", quantity: 1 }];
+  assert.equal(budgetTarget, 10, "an empty reroll draft still receives the creature's treasure budget");
+  assert.equal(app._test_error, null, "the empty reroll completes");
+  // The GM's own no-treasure choice is still zero.
+  const off = preview();
+  off._test_input.includeLoot = false;
+  draftLoot = [];
+  budgetTarget = null;
+  await App.DEFAULT_OPTIONS.actions.rerollLoot.call(off);
+  draftLoot = [{ name: "Healing Potion", quantity: 1 }];
+  assert.equal(budgetTarget, null, "with Include treasure off the reroll makes no budget call, even for an empty draft");
 }
 for (const omitted of [false, true]) {
   const app = new App();
@@ -247,6 +279,6 @@ for (const omitted of [false, true]) {
   await app._test_runGeneration(false);
   assert.equal(app._test_error, null);
   assert.equal(app._test_concept.gmPrompt, gmPrompt, "normalization retains the original request for every refinement");
-  assert.equal(budgetTarget, 0, "initial empty loot remains empty despite default treasure budgets");
+  assert.equal(budgetTarget, 10, "an empty first draft still receives the creature's treasure budget, as coin");
 }
 console.log("generator-app.lootReroll.test.mjs: atomic exact-grounded rerolls and pre-write completion gate passed");

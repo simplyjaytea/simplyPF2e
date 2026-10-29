@@ -22,6 +22,7 @@ let pathDiscovery = null;
 let identityClasses = [{ name: "Fighter", ref: { packId: "pf2e.classes", _id: "fighter" } }];
 let identityBackgrounds = [];
 let offeredBackgrounds = [];
+let draftLootNames = ["Silver Ring"], budgetTargets = [];
 let npcFeats = [], npcFeatFailure = null, gmPrompt = "test brief", encounterDesigns = 0, encounterMemberCount = 1;
 let pcEditGate = { complete: true, pending: [], errors: [], unresolved: [], manifest: {} };
 let pcEditRefusal = null, pcEditInvalidated = [], pcEditSelections = {};
@@ -91,7 +92,7 @@ const form = {
     : identityControls && selector.startsWith('[name^="pcIdentity.classPaths."]') ? identityControls.filter((control) => control.name.startsWith("pcIdentity.classPaths.")) : [],
   contains: () => false
 };
-const concept = () => ({ name: "Test", level: 1, rarity: "common", spellcasting: null, focusSpells: [], specialAbilities: [], feats: [...npcFeats], equipment: [{ name: "Lantern" }], loot: [{ name: "Silver Ring", quantity: 1 }], strikes: [] });
+const concept = () => ({ name: "Test", level: 1, rarity: "common", spellcasting: null, focusSpells: [], specialAbilities: [], feats: [...npcFeats], equipment: [{ name: "Lantern" }], loot: draftLootNames.map((name) => ({ name, quantity: 1 })), strikes: [] });
 const actor = () => {
   const value = { id: `actor-${++creates}`, name: "Test", deleteCalls: 0,
     items: { contents: [] }, sheet: { render: async () => {} }, update: async () => {} };
@@ -134,7 +135,7 @@ const mocks = {
     loot: value.loot.map((item) => ({ ...item, entry: {} })) }),
   completionManifest: () => ({}), assertComplete: () => {}, verifyCreatedActor: () => {},
   findBestiaryScaffold: async () => ({ img: null }), createActor: create,
-  applyTreasureBudget: async (x) => x, treasureBudget: () => 0, lootValueGp: () => 0,
+  applyTreasureBudget: async (x, target) => { budgetTargets.push(target); return x; }, treasureBudget: () => 10, lootValueGp: () => 0,
   composeEncounter: () => ({ budget: 80, spent: 80, members: Array.from({ length: encounterMemberCount }, () => ({ level: 1, count: 1 })) }),
   designEncounter: async () => { encounterDesigns++; return { name: "Encounter", briefs: ["brief"], usage: { total: 1 } }; },
   // PC path: all choice/refinement catalogs are empty, but the real app still
@@ -669,3 +670,19 @@ assert.deepEqual({ providerCalls, writes, starts, finishes }, beforeHazard, "a c
 assert.equal(appUnderTest._test_input.mode, "monster", "a refused hazard selection returns to the Monster view");
 assert.equal(appUnderTest._test_hazard, null);
 mode = "npc";
+
+// An empty AI loot draft under the standard treasure setting still receives the creature's treasure budget, for
+// the NPC and for an encounter member. Include treasure off stays at zero.
+draftLootNames = [];
+mode = "npc"; appUnderTest = app(); budgetTargets = [];
+await appUnderTest._test_runGeneration(false, { create: false });
+assert.ok(budgetTargets.includes(10), `an NPC with empty AI loot still gets its treasure budget (saw ${budgetTargets})`);
+mode = "encounter"; appUnderTest = app(); budgetTargets = [];
+await actions.previewPlan.call(appUnderTest);
+assert.equal(appUnderTest._test_encounter.members[0].treasureBudgetEach, 10,
+  "an encounter member with empty AI loot still gets its share of the treasure budget");
+mode = "npc"; appUnderTest = app(); budgetTargets = [];
+appUnderTest._test_input.includeLoot = false;
+await appUnderTest._test_runGeneration(false, { create: false });
+assert.ok(budgetTargets.length > 0 && budgetTargets.every((target) => target === 0), "Include treasure off gives every budget call zero");
+draftLootNames = ["Silver Ring"];

@@ -470,9 +470,9 @@ const withAdvancedFeat = () => ({ ...resolved(), feats: [{ type: "class", level:
   const bio = actorData.system.details.biography;
   for (const field of ["backstory", "appearance", "allies"]) {
     assert.equal(enricherTokens(bio[field]).length, 0, `the ${field} carries no live enricher`);
-    assert.doesNotMatch(bio[field], /@|\[\[/, `the ${field} keeps no @ or [[ from the AI`);
+    assert.doesNotMatch(bio[field], /@\w|\[\[/, `the ${field} keeps no live @name or [[ from the AI`);
   }
-  assert.ok(bio.backstory.includes("Raised by &#64;UUID&#91;Compendium.pf2e.feats-srd.Item.Abc]{Abc}"), "the backstory text stays readable");
+  assert.ok(bio.backstory.includes("Raised by @⁠UUID⁠[Compendium.pf2e.feats-srd.Item.Abc]{Abc}"), "the backstory text stays readable");
 }
 
 console.warn = warn;

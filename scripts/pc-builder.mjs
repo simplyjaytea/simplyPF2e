@@ -482,13 +482,14 @@ export async function resolvePCConcept(concept, { exactContent = false, maxRarit
 
   const focusSpells = await resolveFocusSpells(concept.focusSpells ?? [], { exactContent });
 
-  const equipment = await resolveEquipment(concept, { exactContent });
+  const skipped = { equipment: [], loot: [] };
+  const equipment = await resolveEquipment(concept, { exactContent, skipped: skipped.equipment });
   // concept.loot starts empty (see normalizePCConcept) — resolveLoot() is a
   // no-op on it here; applyTreasureBudget() (called by generator-app with
   // pcStartingWealthGp()) is what actually fills it with coins.
-  const loot = await resolveLoot(concept, { exactContent });
+  const loot = await resolveLoot(concept, { exactContent, skipped: skipped.loot });
 
-  return { ancestryDoc, heritageDoc, backgroundDoc, backgroundLore, classDoc, featSlots, spells, focusSpells, equipment, loot };
+  return { ancestryDoc, heritageDoc, backgroundDoc, backgroundLore, classDoc, featSlots, spells, focusSpells, equipment, loot, skipped };
 }
 
 /**
