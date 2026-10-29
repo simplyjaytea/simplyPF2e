@@ -599,3 +599,26 @@ for (const [label, change, reason] of [
   assert.equal(sctx.error, "SIMPLYPF2E.ItemForge.Parcel.Revalidate", `${label}: Create refuses the changed base`);
 }
 runedPool = []; permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
+
+// Gate-off defences in the Forge's #readForm (release repair): with experimentalTools closed, a parcel's Merchant
+// sheet and valuables box read as Loot and off, even when the form still shows them as chosen. The read happens in
+// Generate, before the gate check refuses the run, so the input is what the form would have sent.
+{
+  gate = true;
+  c = ctl({ lootSheetType: { value: "Merchant" }, valuables: { checked: true } }); a = app(c);
+  await A.selectKind.call(a, null, { dataset: { kind: "parcel" } });
+  gate = false;
+  await A.generate.call(a);
+  const gateCtx = await a._prepareContext();
+  assert.equal(gateCtx.input.sheetType, "Loot", "with the gate closed the Merchant sheet reads as Loot");
+  assert.equal(gateCtx.input.valuables, false, "with the gate closed the valuables box reads as off");
+  assert.equal(gateCtx.error, "GATE-CLOSED", "and generation is refused");
+  gate = true;
+  // The same form with the gate open keeps both choices.
+  a = app(c); await A.selectKind.call(a, null, { dataset: { kind: "parcel" } });
+  await A.generate.call(a);
+  const openCtx = await a._prepareContext();
+  assert.equal(openCtx.input.sheetType, "Merchant", "with the gate open the Merchant sheet is kept");
+  assert.equal(openCtx.input.valuables, true, "with the gate open the valuables box is kept");
+  permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
+}
