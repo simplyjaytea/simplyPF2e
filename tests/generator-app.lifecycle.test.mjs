@@ -33,7 +33,20 @@ const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
   foundry: { applications: { api: { ApplicationV2: Application, HandlebarsApplicationMixin: (base) => base } } },
   game: {
-    i18n: { localize: (key) => key, format: (key) => key },
+    // The survivor sentence reads as English, as the GM sees it; other keys stay keys.
+    i18n: {
+      localize: (key) => ({
+        "SIMPLYPF2E.Generator.Survivor.Label.IncompleteActor": "incomplete actor",
+        "SIMPLYPF2E.Generator.Survivor.Label.IncompleteCharacter": "incomplete character",
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedActor": "unverified actor",
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedCharacter": "unverified character",
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedHazard": "unverified hazard",
+        "SIMPLYPF2E.Generator.Survivor.Label.EncounterActor": "encounter actor"
+      })[key] ?? key,
+      format: (key, data) => (key === "SIMPLYPF2E.Generator.Survivor.Actor"
+        ? `${data.label} "${data.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`
+        : key)
+    },
     settings: { get: () => false }, packs: null,
     actors: { get: () => null }
   },

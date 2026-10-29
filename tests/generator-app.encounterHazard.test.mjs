@@ -69,7 +69,8 @@ const CONFIG = {
 };
 const game = {
   system: { id: "pf2e" }, user: { id: "gm", isGM: true },
-  i18n: { localize: (key) => key, format: (key) => key },
+  // The stat-line labels read as English, as Foundry shows them; other keys stay keys.
+  i18n: { localize: (key) => ({ "SIMPLYPF2E.Preview.StatAC": "AC", "SIMPLYPF2E.Preview.StatHP": "HP", "SIMPLYPF2E.Preview.StatPerception": "Per", "SIMPLYPF2E.Preview.StatDC": "DC" })[key] ?? key, format: (key) => key },
   settings: { get: () => false }, packs: null, actors: { get: () => null }
 };
 class Application {

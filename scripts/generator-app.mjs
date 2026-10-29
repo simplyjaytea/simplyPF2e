@@ -152,14 +152,41 @@ function creatureFeatError(message, code, diagnostics = {}) {
   return Object.assign(new Error(`NPC ability selection: ${message}`), { code, diagnostics });
 }
 
-async function rollbackActor(actor, label) {
+async function rollbackActor(actor, labelKey) {
   if (!actor) return null;
   try {
     await actor.delete();
     return null;
   } catch (cleanupErr) {
-    console.warn(`${MODULE_ID} | failed to roll back ${label} "${actor.name}"`, cleanupErr);
-    return `${label} "${actor.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+    console.warn(`${MODULE_ID} | failed to roll back ${labelKey}`, cleanupErr);
+    return survivorText(labelKey, actor.name);
+  }
+}
+
+/** The GM-facing sentence for an actor that could not be removed after a failed create. `labelKey` is a lang key. */
+function survivorText(labelKey, name) {
+  return game.i18n.format("SIMPLYPF2E.Generator.Survivor.Actor", { label: game.i18n.localize(labelKey), name });
+}
+
+const SURVIVOR = Object.freeze({
+  UnverifiedActor: "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedActor",
+  UnverifiedCharacter: "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedCharacter",
+  UnverifiedHazard: "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedHazard",
+  EncounterActor: "SIMPLYPF2E.Generator.Survivor.Label.EncounterActor",
+  IncompleteActor: "SIMPLYPF2E.Generator.Survivor.Label.IncompleteActor",
+  IncompleteCharacter: "SIMPLYPF2E.Generator.Survivor.Label.IncompleteCharacter"
+});
+
+/**
+ * composeEncounter throws a localizable budget error (encounter.mjs keeps the English text for logs). The GM sees
+ * the localized message.
+ */
+function composeEncounterForGM(...args) {
+  try {
+    return composeEncounter(...args);
+  } catch (err) {
+    if (err?.messageKey) throw new Error(game.i18n.format(err.messageKey, err.messageData));
+    throw err;
   }
 }
 
@@ -787,9 +814,9 @@ export class GeneratorApp extends SpfApp {
           name: member.concept.name,
           level: member.concept.level,
           blurb: member.concept.blurb,
-          statline: `AC ${stats.ac}, ${game.i18n.localize("SIMPLYPF2E.Preview.Fort")} +${stats.saves.fortitude}, ${game.i18n.localize("SIMPLYPF2E.Preview.Ref")} +${stats.saves.reflex}, ${game.i18n.localize("SIMPLYPF2E.Preview.Will")} +${stats.saves.will}, HP ${stats.hp}, Per +${stats.perception}`
+          statline: `${game.i18n.localize("SIMPLYPF2E.Preview.StatAC")} ${stats.ac}, ${game.i18n.localize("SIMPLYPF2E.Preview.Fort")} +${stats.saves.fortitude}, ${game.i18n.localize("SIMPLYPF2E.Preview.Ref")} +${stats.saves.reflex}, ${game.i18n.localize("SIMPLYPF2E.Preview.Will")} +${stats.saves.will}, ${game.i18n.localize("SIMPLYPF2E.Preview.StatHP")} ${stats.hp}, ${game.i18n.localize("SIMPLYPF2E.Preview.StatPerception")} +${stats.perception}`
             + (strike ? `, ${strike.name} +${strike.bonus} (${strike.damage})` : "")
-            + (stats.spellDC ? `, ${game.i18n.localize("SIMPLYPF2E.Preview.Spells")} DC ${stats.spellDC}` : "")
+            + (stats.spellDC ? `, ${game.i18n.localize("SIMPLYPF2E.Preview.Spells")} ${game.i18n.localize("SIMPLYPF2E.Preview.StatDC")} ${stats.spellDC}` : "")
         };
       })
     };
@@ -1249,7 +1276,7 @@ export class GeneratorApp extends SpfApp {
   async #runEncounterGeneration(isRandom, { create }) {
     let composition;
     try {
-      composition = composeEncounter(this.#input.threat, this.#input.partySize, this.#input.level);
+      composition = composeEncounterForGM(this.#input.threat, this.#input.partySize, this.#input.level);
     } catch (err) {
       this.#noteGenerationFailure(err, "encounter generation");
       this.#busy = false;
@@ -1442,7 +1469,7 @@ export class GeneratorApp extends SpfApp {
    */
   async #generateEncounter(isRandom = false, { signal = null, composition = null, create = false } = {}) {
     const { level: partyLevel, rarity } = this.#input;
-    composition ??= composeEncounter(this.#input.threat, this.#input.partySize, partyLevel);
+    composition ??= composeEncounterForGM(this.#input.threat, this.#input.partySize, partyLevel);
     // The plan is the no-hazard composition until the design asks for a hazard, which reshapes it.
     let plan = composition;
     const memberLabel = (i) => game.i18n.format("SIMPLYPF2E.Progress.Member", {
@@ -1476,7 +1503,7 @@ export class GeneratorApp extends SpfApp {
       // A hazard request reshapes the plan: the hazard takes its XP first, then the minions take the rest.
       const requested = allowHazard ? design.hazard : "none";
       if (requested !== "none") {
-        plan = composeEncounter(this.#input.threat, this.#input.partySize, partyLevel, { hazard: requested });
+        plan = composeEncounterForGM(this.#input.threat, this.#input.partySize, partyLevel, { hazard: requested });
         this.#replanEncounterSteps(plan, create);
       }
       // Briefs are per slot of the no-hazard composition, matched by role. The hazard has no brief:
@@ -1498,7 +1525,7 @@ export class GeneratorApp extends SpfApp {
           }
           // Dropped: the no-hazard composition replaces the plan. Its boss is the creature already
           // generated, so only the minion after it changes; i-- re-enters the loop at that minion.
-          plan = composeEncounter(this.#input.threat, this.#input.partySize, partyLevel);
+          plan = composeEncounterForGM(this.#input.threat, this.#input.partySize, partyLevel);
           this.#replanEncounterSteps(plan, create);
           i--;
           continue;
@@ -1629,7 +1656,7 @@ export class GeneratorApp extends SpfApp {
       name: concept.name,
       level: member.level,
       blurb: concept.description,
-      statline: [`AC ${preview.ac.value}`, ...saves, ...(preview.hp ? [`HP ${preview.hp}`] : [])].join(", ") + strike
+      statline: [`${game.i18n.localize("SIMPLYPF2E.Preview.StatAC")} ${preview.ac.value}`, ...saves, ...(preview.hp ? [`${game.i18n.localize("SIMPLYPF2E.Preview.StatHP")} ${preview.hp}`] : [])].join(", ") + strike
     };
   }
 
@@ -2238,9 +2265,9 @@ export class GeneratorApp extends SpfApp {
         let survivor = null;
         if (err?.simplyPF2eRollbackActor) {
           const stranded = err.simplyPF2eRollbackActor;
-          survivor = `incomplete actor "${stranded.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+          survivor = survivorText(SURVIVOR.IncompleteActor, stranded.name);
         } else {
-          survivor = await rollbackActor(actor, "unverified actor");
+          survivor = await rollbackActor(actor, SURVIVOR.UnverifiedActor);
         }
         if (survivor) {
           this.#concept = null;
@@ -2366,10 +2393,10 @@ export class GeneratorApp extends SpfApp {
       outcome = err?.cancelled ? "cancelled" : "error";
       let survivor = null;
       if (actor && !committed) {
-        survivor = await rollbackActor(actor, "unverified character");
+        survivor = await rollbackActor(actor, SURVIVOR.UnverifiedCharacter);
       } else if (err?.simplyPF2eRollbackActor) {
         const stranded = err.simplyPF2eRollbackActor;
-        survivor = `incomplete character "${stranded.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+        survivor = survivorText(SURVIVOR.IncompleteCharacter, stranded.name);
       }
       if (survivor) {
         this.#pcConcept = null;
@@ -2510,26 +2537,26 @@ export class GeneratorApp extends SpfApp {
         const survivors = [];
         const stranded = err?.simplyPF2eRollbackActor ?? null;
         if (stranded) {
-          survivors.push(`incomplete actor "${stranded.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`);
+          survivors.push(survivorText(SURVIVOR.IncompleteActor, stranded.name));
         }
         for (const actor of actors.reverse()) {
           // The package builder already attempted this actor's deletion and
           // identified it on the error. It never reaches the actors list in
           // the normal path, but identity checking keeps this catch robust.
           if (stranded && (actor === stranded || (actor.id && actor.id === stranded.id))) continue;
-          const survivor = await rollbackActor(actor, "encounter actor");
+          const survivor = await rollbackActor(actor, SURVIVOR.EncounterActor);
           if (survivor) survivors.push(survivor);
         }
         if (folder) {
           try { await folder.delete(); } catch (cleanupErr) {
             console.warn(`${MODULE_ID} | failed to roll back encounter folder "${folder.name}"`, cleanupErr);
-            survivors.push(`encounter folder "${folder.name}" still exists`);
+            survivors.push(game.i18n.format("SIMPLYPF2E.Generator.Survivor.Folder", { name: folder.name }));
           }
         }
         if (survivors.length) {
           this.#encounter = null;
           this.#manifest = null;
-          this.#error = `${err.message} ${survivors.join(" ")} The plan was discarded to prevent a duplicate.`;
+          this.#error = `${err.message} ${survivors.join(" ")} ${game.i18n.localize("SIMPLYPF2E.Generator.Survivor.Discarded")}`;
         } else this.#error = err.message;
       }
     } finally {
@@ -2769,7 +2796,7 @@ export class GeneratorApp extends SpfApp {
     } catch (err) {
       outcome = err?.cancelled ? "cancelled" : "error";
       if (!committed) {
-        const survivor = await rollbackActor(actor, "unverified hazard");
+        const survivor = await rollbackActor(actor, SURVIVOR.UnverifiedHazard);
         // A survivor means the retry would duplicate it: the draft is discarded.
         if (survivor) this.#hazard = null;
         console.error(MODULE_ID + " | hazard creation failed", err);

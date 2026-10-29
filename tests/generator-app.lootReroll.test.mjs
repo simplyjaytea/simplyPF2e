@@ -15,7 +15,13 @@ const source = (await readFile(new URL("../scripts/generator-app.mjs", import.me
   .replace(/#(input|concept|resolved|manifest|error|busy|generateEncounter|readForm|runGeneration|assertGenerationReady|refineEquipment|refineLoot)\b/g, "_test_$1");
 const context = vm.createContext({
   console: { warn() {}, error() {}, log() {} },
-  game: { i18n: { localize: (key) => key } }
+  // The encounter budget message is formatted from its lang key, as the GM sees it.
+  game: { i18n: {
+    localize: (key) => key,
+    format: (key, data) => (key === "SIMPLYPF2E.Generator.EncounterBudgetTooSmall"
+      ? `The ${data.budget} XP encounter budget is too small: the lowest supported creature costs ${data.bossXP} XP. Increase the threat or party size.`
+      : key)
+  } }
 });
 let providerFailure;
 let selectedLoot = [];

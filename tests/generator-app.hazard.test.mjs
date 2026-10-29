@@ -40,9 +40,22 @@ let gmUser = true;
 const game = {
   get system() { return { id: "pf2e" }; },
   get user() { return { id: "gm", isGM: gmUser }; },
+  // The survivor sentence and its labels read as English, as the GM sees them.
   i18n: {
-    localize: (key) => key,
-    format: (key, data) => (data ? key + " " + JSON.stringify(data) : key)
+    localize: (key) => ({
+      "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedHazard": "unverified hazard",
+      "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedActor": "unverified actor",
+      "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedCharacter": "unverified character",
+      "SIMPLYPF2E.Generator.Survivor.Label.EncounterActor": "encounter actor",
+      "SIMPLYPF2E.Generator.Survivor.Label.IncompleteActor": "incomplete actor",
+      "SIMPLYPF2E.Generator.Survivor.Label.IncompleteCharacter": "incomplete character"
+    })[key] ?? key,
+    format: (key, data) => {
+      if (key === "SIMPLYPF2E.Generator.Survivor.Actor") {
+        return `${data.label} "${data.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+      }
+      return data ? key + " " + JSON.stringify(data) : key;
+    }
   },
   settings: { get: (moduleId, key) => stored.get(moduleId + "." + key) },
   packs: null

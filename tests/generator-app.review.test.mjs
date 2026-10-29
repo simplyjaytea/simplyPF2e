@@ -47,7 +47,18 @@ class App {
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
   game: {
-    i18n: { localize: (key) => key, format: (key) => key },
+    // The survivor sentence reads as English, as the GM sees it.
+    i18n: {
+      localize: (key) => ({
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedActor": "unverified actor",
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedCharacter": "unverified character",
+        "SIMPLYPF2E.Generator.Survivor.Label.IncompleteActor": "incomplete actor",
+        "SIMPLYPF2E.Generator.Survivor.Label.IncompleteCharacter": "incomplete character"
+      })[key] ?? key,
+      format: (key, data) => (key === "SIMPLYPF2E.Generator.Survivor.Actor"
+        ? `${data.label} "${data.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`
+        : key)
+    },
     actors: { get: (id) => id === actor?.id ? actor : null },
     settings: { get: () => false }
   },

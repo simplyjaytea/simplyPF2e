@@ -925,7 +925,9 @@ export class ItemForgeApp extends SpfApp {
         ui.notifications.warn(game.i18n.localize("SIMPLYPF2E.ItemForge.CreatedPresentationFailed"));
         return true;
       }
-      const survivor = await rollbackCreatedActor(actor, "loot actor");
+      const survivor = await rollbackCreatedActor(actor, "SIMPLYPF2E.Generator.Survivor.Label.LootActor", {
+        survivor: (labelKey, name) => game.i18n.format("SIMPLYPF2E.Generator.Survivor.Actor", { label: game.i18n.localize(labelKey), name })
+      });
       if (survivor) { this.#clearPreview(); throw new Error(`${err.message} ${survivor}`); }
       throw err;
     }
