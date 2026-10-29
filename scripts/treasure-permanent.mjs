@@ -93,11 +93,15 @@ export function permanentEquipmentProblem(data, level, maxRarity, { allowWand = 
   return null;
 }
 
-/** As permanentEquipmentProblem, plus the loaded document must carry no Rule Elements. */
+/**
+ * As permanentEquipmentProblem, plus the loaded document must carry no Rule Elements. With `allowRules` (the Forge's
+ * world-folder option) a rule-bearing document is eligible; its rules must still be a list.
+ */
 export function permanentDocumentProblem(data, level, maxRarity, options = {}) {
   const problem = permanentEquipmentProblem(data, level, maxRarity, options);
   if (problem) return problem;
-  if (!Array.isArray(data.system?.rules) || data.system.rules.length) return "rules";
+  if (!Array.isArray(data.system?.rules)) return "rules";
+  if (!options.allowRules && data.system.rules.length) return "rules";
   return null;
 }
 
@@ -108,7 +112,7 @@ export function permanentDocumentProblem(data, level, maxRarity, options = {}) {
  * is a consumable built from the pinned template: no Rule Elements, a level the slot allows, within the
  * rarity cap and a valid price. Its `wand` trait is by design, so the equipment exclusions do not apply.
  */
-export function permanentSourceProblem(source, allowedLevels, maxRarity) {
+export function permanentSourceProblem(source, allowedLevels, maxRarity, options = {}) {
   if (!source || typeof source !== "object" || !Array.isArray(allowedLevels)) return "malformed";
   const system = source.system ?? {};
   if (!allowedLevels.includes(system.level?.value)) return "level";
@@ -121,7 +125,7 @@ export function permanentSourceProblem(source, allowedLevels, maxRarity) {
   if (Array.isArray(system.traits?.value) && system.traits.value.includes("wand")) {
     return specialWandProblem(source, system.level.value, maxRarity);
   }
-  return permanentDocumentProblem(source, system.level.value, maxRarity);
+  return permanentDocumentProblem(source, system.level.value, maxRarity, { allowRules: options.allowRules === true });
 }
 
 /**

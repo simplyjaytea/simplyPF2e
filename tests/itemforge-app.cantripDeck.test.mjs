@@ -13,6 +13,7 @@ import vm from "node:vm";
 import * as consumables from "../scripts/spell-consumables.mjs";
 import { priceToGp, toItemData } from "../scripts/compendium.mjs";
 import { buildLootActorSource } from "../scripts/loot-actor.mjs";
+import { DESTINATION, destinationFor, splitPermanents, folderItemProblem } from "../scripts/parcel-folder.mjs";
 
 if (!vm.SourceTextModule) {
   const run = spawnSync(process.execPath, ["--experimental-vm-modules", import.meta.filename], { stdio: "inherit" });
@@ -104,6 +105,7 @@ let gate = false;
 const mocks = {
   experimentalToolsEnabled: () => gate,
   assertExperimentalToolAccess: () => { if (!gate) throw new Error("gate closed"); },
+  DESTINATION, destinationFor, splitPermanents, folderItemProblem,
   buildLootActorSource, persistedExpectedItems: async () => [], verifyCreatedActor: () => {}, esc: (s) => s,
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
   AI_TASK: { MAGIC_ITEM_CONCEPT: "magic", RUNED_ITEM_CONCEPT: "runed", SPELL_CONSUMABLE_CONCEPT: "consumable" },

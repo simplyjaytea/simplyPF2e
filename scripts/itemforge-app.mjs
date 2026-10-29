@@ -37,6 +37,7 @@ import { persistedExpectedItems, verifyCreatedActor, rollbackCreatedActor } from
 import { esc } from "./text.mjs";
 import { applyRunes } from "./runes.mjs";
 import { runedBaseProblem, runeTierProblem, runedValuation, runedSourceFrom, runedSourceProblem, runedBaseSnapshot, pinnedTier } from "./parcel-runed.mjs";
+import { DESTINATION, destinationFor, splitPermanents, folderItemProblem } from "./parcel-folder.mjs";
 
 /** Item Forge kinds that build real spells into scrolls or wands (spell-consumables.mjs). */
 const CONSUMABLE_KINDS = new Set(["scroll", "wand", "cantripDeck"]);
@@ -130,7 +131,7 @@ export class ItemForgeApp extends SpfApp {
   };
 
   /** Form values, kept across re-renders. "kind": "wondrous"|"weapon"|"armor". */
-  #input = { prompt: "", level: 4, rarity: "common", kind: "wondrous", destination: "items", partySize: 4, containerName: "", sheetType: "Loot", valuables: false };
+  #input = { prompt: "", level: 4, rarity: "common", kind: "wondrous", destination: "items", partySize: 4, containerName: "", sheetType: "Loot", valuables: false, ruleFolder: false };
   #busy = false;
   #error = null;
   #concept = null;
@@ -256,7 +257,10 @@ export class ItemForgeApp extends SpfApp {
     // Gems and art objects are a parcel option behind the same gate; the box is absent for other kinds.
     const valuablesBox = form.querySelector('[name="valuables"]');
     const valuables = experimentalToolsEnabled() && (valuablesBox ? valuablesBox.checked : this.#input.valuables) === true;
-    this.#input = { prompt, level, rarity, kind, destination, partySize, containerName, sheetType, valuables };
+    // The world-folder option is a parcel option behind the same gate, read like the valuables box.
+    const ruleFolderBox = form.querySelector('[name="ruleFolder"]');
+    const ruleFolder = experimentalToolsEnabled() && (ruleFolderBox ? ruleFolderBox.checked : this.#input.ruleFolder) === true;
+    this.#input = { prompt, level, rarity, kind, destination, partySize, containerName, sheetType, valuables, ruleFolder };
   }
 
   _preserveForm() {
@@ -625,7 +629,8 @@ export class ItemForgeApp extends SpfApp {
     const permanentSlots = planPermanentSlots(row);
     const keywords = briefKeywords(this.#input.prompt);
     const candidates = await getScrollSpellCandidates(Math.max(...plan.slots.map((s) => s.rank)), keywords, { maxRarity: this.#input.rarity });
-    const pool = await this.#permanentPool(permanentSlots, keywords);
+    const ruleFolder = this.#input.ruleFolder === true;
+    const pool = await this.#permanentPool(permanentSlots, keywords, ruleFolder);
     await this._setStep("concept");
     // A scroll provider failure leaves the scroll slots unfilled; the permanent slots and currency still build.
     let picks = [];
@@ -716,8 +721,17 @@ export class ItemForgeApp extends SpfApp {
       ...built.map((entry) => ({ priceGp: entry.copper / COIN_COPPER_RATES.gp, quantity: 1 })),
       ...valuables.map((valuable) => ({ priceGp: valuable.copper / COIN_COPPER_RATES.gp, quantity: 1 }))
     ];
+    // Each destination's exact share of the same total: the loot actor gets everything except rule-bearing permanents.
+    const { loot: lootPermanents, folder: folderPermanents } = splitPermanents(permanents);
+    const lootGp = parcelValueGp({ items: [
+      ...items.map((item) => ({ priceGp: item.priceGp, quantity: item.quantity })),
+      ...lootPermanents.map((entry) => ({ priceGp: entry.copper / COIN_COPPER_RATES.gp, quantity: 1 })),
+      ...valuables.map((valuable) => ({ priceGp: valuable.copper / COIN_COPPER_RATES.gp, quantity: 1 }))
+    ], currencyGp: currency ? remainderCopper / COIN_COPPER_RATES.gp : 0 });
+    const folderGp = parcelValueGp({ items: folderPermanents.map((entry) => ({ priceGp: entry.copper / COIN_COPPER_RATES.gp, quantity: 1 })), currencyGp: 0 });
     this.#parcel = { items, currency, coinsMissingCopper, permanents, valuables, valuableReason, unfilled, dropped,
-      row, partySize: row.partySize, rarity: this.#input.rarity,
+      row, partySize: row.partySize, rarity: this.#input.rarity, ruleFolder,
+      destinationGp: { loot: lootGp, folder: folderGp },
       valueGp: parcelValueGp({ items: valueItems, currencyGp: currency ? remainderCopper / COIN_COPPER_RATES.gp : 0 }) };
     this._throwIfCancelled();
   }
@@ -726,12 +740,13 @@ export class ItemForgeApp extends SpfApp {
    * Candidate pool for the permanent slots: published equipment and generic wands per item level the
    * slots allow. Bounded per level, validated before any AI call, and offered only as opaque ids.
    */
-  async #permanentPool(slots, keywords) {
+  async #permanentPool(slots, keywords, ruleFolder = false) {
     const levels = [...new Set(slots.flatMap((slot) => slot.allowedLevels))].sort((a, b) => a - b);
     const candidates = [];
     for (const level of levels) {
       this._throwIfCancelled();
-      candidates.push(...await getPermanentEquipmentCandidates(level, keywords, { maxRarity: this.#input.rarity }));
+      // Rule-bearing equipment is offered only when the world-folder option is on; wands and runed bases never carry rules.
+      candidates.push(...await getPermanentEquipmentCandidates(level, keywords, { maxRarity: this.#input.rarity, allowRules: ruleFolder }));
       candidates.push(...await getSpecialWandCandidates(level, keywords, { maxRarity: this.#input.rarity }));
       candidates.push(...await getParcelWandCandidates(level, keywords, { maxRarity: this.#input.rarity }));
     }
@@ -758,7 +773,7 @@ export class ItemForgeApp extends SpfApp {
         const result = await this.#buildPermanentSafely(candidate, slot);
         if (result.source) {
           entries.push({ slot, filled: true, kind: candidate.kind, source: result.source, name: result.name, level: result.level, copper: result.copper,
-            computed: result.computed ?? null, baseName: candidate.baseName ?? null });
+            computed: result.computed ?? null, baseName: candidate.baseName ?? null, destination: destinationFor(result.source) });
           continue;
         }
         console.warn(`${MODULE_ID} | dropped permanent parcel item`, result);
@@ -833,7 +848,7 @@ export class ItemForgeApp extends SpfApp {
       if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
       return { source, name: source.name, level: computed.level, copper: computed.copper, computed };
     }
-    const problem = permanentSourceProblem(source, slot.allowedLevels, this.#input.rarity);
+    const problem = permanentSourceProblem(source, slot.allowedLevels, this.#input.rarity, { allowRules: this.#input.ruleFolder === true });
     if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
     return { source, name: source.name, level: source.system.level.value, copper: priceCopper(source.system.price.value) };
   }
@@ -885,6 +900,7 @@ export class ItemForgeApp extends SpfApp {
       extraPcs: p.row.extraPcs, currency: p.currency ? coinLabel(p.currency.coins) : null,
       coinsMissing: p.coinsMissingCopper ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.CoinsMissing", { gp: formatGp(p.coinsMissingCopper) }) : null,
       permanents: p.permanents.map((entry) => ({
+        destination: entry.filled ? game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.RuleFolder.${entry.destination === DESTINATION.FOLDER ? "Folder" : "LootActor"}`) : null,
         levels: this.#levelsLabel(entry.slot.allowedLevels),
         filled: entry.filled,
         kind: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.PermanentKind.${entry.kind ?? "equipment"}`),
@@ -898,6 +914,13 @@ export class ItemForgeApp extends SpfApp {
       valuables: p.valuables.map((valuable) => ({ name: valuable.candidate.name, price: `${formatGp(valuable.copper)} gp` })),
       valuableSubtotal: formatGp(p.valuables.reduce((sum, valuable) => sum + valuable.copper, 0)),
       valuableNote: this.#input.valuables && !p.valuables.length ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.ValuableNone", { reason: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.ValuableReason.${p.valuableReason}`) }) : null,
+      // The world-folder section appears only when a rule-bearing item was built; the loot actor line is always exact.
+      ruleFolder: p.permanents.some((entry) => entry.filled && entry.destination === DESTINATION.FOLDER) ? {
+        items: p.permanents.filter((entry) => entry.filled && entry.destination === DESTINATION.FOLDER).map((entry) => ({ name: entry.name, price: `${formatGp(entry.copper)} gp` })),
+        lootGp: `${p.destinationGp.loot.toLocaleString(undefined, { maximumFractionDigits: 2 })} gp`,
+        folderGp: `${p.destinationGp.folder.toLocaleString(undefined, { maximumFractionDigits: 2 })} gp`,
+        totalGp: `${p.valueGp.toLocaleString(undefined, { maximumFractionDigits: 2 })} gp`
+      } : null,
       valueGp: p.valueGp, totalGp: p.row.totalGp };
   }
 
@@ -933,28 +956,53 @@ export class ItemForgeApp extends SpfApp {
     }
   }
 
+  /** Remove the world items, then the folder, of a parcel create that did not commit. Returns the survivor sentences. */
+  async #rollbackRuleFolder(folder, worldItems) {
+    const survivors = [];
+    for (const item of [...worldItems].reverse()) {
+      try { await item.delete(); } catch (cleanupErr) {
+        console.warn(`${MODULE_ID} | failed to roll back parcel world item "${item.name}"`, cleanupErr);
+        survivors.push(game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.SurvivorItem", { name: item.name }));
+      }
+    }
+    if (folder) {
+      try { await folder.delete(); } catch (cleanupErr) {
+        console.warn(`${MODULE_ID} | failed to roll back parcel folder "${folder.name}"`, cleanupErr);
+        survivors.push(game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.SurvivorFolder", { name: folder.name }));
+      }
+    }
+    return survivors;
+  }
+
   async #createLootDraft() {
     this.#busy = true;
     this.#error = null;
     this._beginProgress([["apply", game.i18n.localize("SIMPLYPF2E.Progress.Apply"), 1800]], { cancellable: true });
     let outcome = "success";
+    let committed = false;
+    let folder = null;
+    let worldItems = [];
     try {
       assertExperimentalToolAccess();
       await this._setStep("apply");
       await this.render();
       const p = this.#parcel;
-      // Revalidate every built permanent source before anything is written (the preview may be old).
+      // Revalidate every built permanent source before anything is written (the preview may be old). A rule-bearing
+      // source passes only while the world-folder option that admitted it is still on.
       for (const entry of p?.permanents ?? []) {
         if (!entry.filled) continue;
         const problem = entry.computed
           ? runedSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity, entry.computed)
-          : permanentSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity);
+          : permanentSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity, { allowRules: p.ruleFolder === true });
         if (problem) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.Revalidate"));
       }
       const built = p?.permanents.filter((entry) => entry.filled) ?? [];
+      const { loot: lootBuilt, folder: folderBuilt } = splitPermanents(built);
+      const parcelName = this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName");
       const descriptionLines = p ? [
         game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.Header", { level: p.row.level, size: p.partySize }),
         game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentSummary", { built: built.length, total: p.permanents.length }),
+        ...(folderBuilt.length ? [game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.DescriptionLine", { count: folderBuilt.length, name: parcelName })] : []),
         ...p.permanents.filter((entry) => !entry.filled).map((entry) => game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentUnfilled", {
           levels: this.#levelsLabel(entry.slot.allowedLevels), reason: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.Reason.${entry.reason}`)
         })),
@@ -963,13 +1011,32 @@ export class ItemForgeApp extends SpfApp {
       ] : [game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.Description")];
       const items = p ? [
         ...p.items.map((i) => i.source),
-        ...built.map((entry) => entry.source),
+        ...lootBuilt.map((entry) => entry.source),
         ...p.valuables.map((valuable) => valuable.source),
         ...(p.currency ? p.currency.sources : [])
       ] : this.#consumables.items.map((i) => i.source);
-      const presentationWarning = await this.#createLootActor({ items, name: this.#input.containerName || game.i18n.localize("SIMPLYPF2E.ItemForge.Loot.DefaultName"), level: p ? p.row.level : this.#consumables.level, descriptionLines, lootSheetType: this.#input.sheetType });
+      // Rule-bearing items go to a world folder named after the parcel, written before the loot actor. Verified against
+      // the sources sent: same count, names and Rule Elements, each inside the folder.
+      const folderSources = folderBuilt.map((entry) => entry.source);
+      if (folderSources.length) {
+        this._lockCreation();
+        folder = await Folder.create({ name: parcelName, type: "Item" });
+        worldItems = await Item.create(folderSources.map((source) => ({ ...source, folder: folder.id })));
+        if (folderItemProblem(worldItems, folderSources, folder.id)) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.Verify"));
+      }
+      const presentationWarning = await this.#createLootActor({ items, name: parcelName, level: p ? p.row.level : this.#consumables.level, descriptionLines, lootSheetType: this.#input.sheetType });
+      committed = true;
+      if (folder) ui.notifications.info(game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.Created", { name: esc(folder.name), count: worldItems.length }));
       if (presentationWarning) outcome = "warning";
-    } catch (err) { outcome = err?.cancelled ? "cancelled" : "error"; this.#error = err?.cancelled ? null : err.message; }
+    } catch (err) {
+      outcome = err?.cancelled ? "cancelled" : "error";
+      this.#error = err?.cancelled ? null : err.message;
+      // Nothing after the loot actor's commit can roll back; before it, the world items and folder are removed too.
+      if (!committed && (folder || worldItems.length)) {
+        const survivors = await this.#rollbackRuleFolder(folder, worldItems);
+        if (survivors.length) this.#error = [this.#error, ...survivors].filter(Boolean).join(" ");
+      }
+    }
     finally { this.#busy = false; this._finishRun(outcome); await this.render(); }
   }
 
@@ -1122,6 +1189,7 @@ export class ItemForgeApp extends SpfApp {
     this.element?.querySelector('[name="destination"]')?.addEventListener("change", () => { this.#readForm(); this.render(); });
     // The valuables box only changes what the next Generate asks for, so it keeps focus and does not re-render.
     this.element?.querySelector('[name="valuables"]')?.addEventListener("change", () => this.#readForm());
+    this.element?.querySelector('[name="ruleFolder"]')?.addEventListener("change", () => this.#readForm());
   }
 
   static async #onForgeAnother() {

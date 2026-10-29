@@ -78,6 +78,12 @@ assert.match(level1[0].id, /^c-/, "offered as an opaque issued id, not a name or
 const level3 = await getPermanentEquipmentCandidates(3, ["cloak"], { maxRarity: "common" });
 assert.deepEqual(level3.map((candidate) => candidate.name), ["Bracers of Missile Deflection"],
   "the cloak matches the brief but carries Rule Elements, so it is never offered; the bracers remain");
+// With the Forge's world-folder option the rule-bearing cloak is eligible; every other filter still applies.
+const level3Rules = await getPermanentEquipmentCandidates(3, ["cloak"], { maxRarity: "common", allowRules: true });
+assert.deepEqual(level3Rules.map((candidate) => candidate.name), ["Aerial Cloak", "Bracers of Missile Deflection"],
+  "allowRules admits the rule-bearing cloak and leaves the rest of the pool as it was");
+assert.deepEqual((await getPermanentEquipmentCandidates(3, ["cloak"], { maxRarity: "common", allowRules: false })).map((candidate) => candidate.name),
+  ["Bracers of Missile Deflection"], "allowRules false is the default exclusion");
 
 const level19 = await getPermanentEquipmentCandidates(19, [], { maxRarity: "common" });
 assert.deepEqual(level19.map((candidate) => candidate.name), ["Cube of Recall"]);
