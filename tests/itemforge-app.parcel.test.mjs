@@ -148,8 +148,13 @@ const context = vm.createContext({
     if (itemBehavior === "fail") throw new Error("item create refused");
     return s.map((x, i) => {
       const name = itemBehavior === "rename" ? x.name + " (renamed)" : x.name;
-      return { id: "i" + i, name, folder: x.folder ?? null, system: plain(x.system), sheet: { render: async () => {} },
-        delete: async () => { itemDeletes.push(name); } };
+      // The persisted copy: a stored modifier or source identity can differ from what was sent (CR HIGH #2).
+      const system = plain(x.system);
+      if (itemBehavior === "alter") system.rules[0].value = 99;
+      const _stats = plain(x._stats ?? {});
+      if (itemBehavior === "identity") _stats.compendiumSource = "Compendium.other.Item.x";
+      return { id: "i" + i, name, folder: x.folder ?? null, system, _stats, sheet: { render: async () => {} },
+        delete: async () => { if (itemBehavior === "deleteFail") throw new Error("item delete refused"); itemDeletes.push(name); } };
     });
   } },
   Folder: { create: async (data) => { folderCreates.push(data); return { id: "f1", name: data.name, delete: async () => {
@@ -764,4 +769,44 @@ gate = false; await A.createItem.call(a); ctx = await a._prepareContext();
 assert.equal(ctx.error, "GATE-CLOSED", "a closed gate refuses the create");
 assert.equal(folderCreates.length, 0, "a closed gate writes no folder");
 gate = true;
+resetFolderRun();
+
+// CR HIGH #1 and #2 (fix/re-folder-gate): a same-count altered rule or a mismatched identity is refused and rolled back;
+// a survivor of the rollback discards the draft, so a second Create writes nothing.
+resetFolderRun(); itemBehavior = "alter";
+a = await folderRun(folderOn); await A.createItem.call(a); ctx = await a._prepareContext();
+assert.ok(String(ctx.error).includes("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.Verify"), "a same-count altered rule is refused at Create");
+assert.equal(createCalls.filter((call) => call.actor).length, 0, "no loot actor is written for an altered world item");
+same(itemDeletes, ["Aerial Cloak"], "the altered world item is rolled back");
+same(folderDeletes, [PARCEL_NAME], "the folder is rolled back");
+itemBehavior = "ok";
+
+resetFolderRun(); itemBehavior = "identity";
+a = await folderRun(folderOn); await A.createItem.call(a); ctx = await a._prepareContext();
+assert.ok(String(ctx.error).includes("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.Verify"), "a mismatched source identity is refused at Create");
+assert.equal(createCalls.filter((call) => call.actor).length, 0, "no loot actor is written for a mismatched identity");
+same(itemDeletes, ["Aerial Cloak"], "the mismatched world item is rolled back");
+itemBehavior = "ok";
+
+// A failed world-item delete leaves a survivor: the draft is discarded, and a second Create writes nothing.
+resetFolderRun(); itemBehavior = "deleteFail"; actorBehavior = "dropItem";
+a = await folderRun(folderOn); await A.createItem.call(a); ctx = await a._prepareContext();
+assert.ok(String(ctx.error).includes("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.SurvivorItem"), "the surviving world item is named");
+assert.equal(ctx.hasPreview, false, "a surviving world item discards the draft");
+const writesBeforeRetry = createCalls.length; const foldersBeforeRetry = folderCreates.length;
+await A.createItem.call(a); ctx = await a._prepareContext();
+assert.equal(createCalls.length, writesBeforeRetry, "a second Create after a surviving world item writes nothing");
+assert.equal(folderCreates.length, foldersBeforeRetry, "a second Create after a surviving world item creates no folder");
+itemBehavior = "ok"; actorBehavior = "ok";
+
+// A failed folder delete leaves a survivor folder: the draft is discarded, and a second Create writes nothing.
+resetFolderRun(); folderBehavior = "stuck"; actorBehavior = "dropItem";
+a = await folderRun(folderOn); await A.createItem.call(a); ctx = await a._prepareContext();
+assert.ok(String(ctx.error).includes("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.SurvivorFolder"), "the surviving folder is named");
+assert.equal(ctx.hasPreview, false, "a surviving folder discards the draft");
+const writesBeforeFolderRetry = createCalls.length; const foldersBeforeFolderRetry = folderCreates.length;
+await A.createItem.call(a); ctx = await a._prepareContext();
+assert.equal(createCalls.length, writesBeforeFolderRetry, "a second Create after a surviving folder writes nothing");
+assert.equal(folderCreates.length, foldersBeforeFolderRetry, "a second Create after a surviving folder creates no second folder");
+folderBehavior = "ok"; actorBehavior = "ok";
 resetFolderRun();

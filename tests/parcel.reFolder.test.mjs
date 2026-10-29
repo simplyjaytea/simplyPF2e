@@ -34,8 +34,9 @@ assert.deepEqual(splitPermanents([{ filled: false }]), { loot: [], folder: [] },
 assert.deepEqual(splitPermanents(undefined), { loot: [], folder: [] }, "a missing list splits to nothing");
 
 /* ---- Create-time verification of the world items ---- */
-const folderSources = [plain(CLOAK)];
-const worldItem = (overrides = {}) => ({ id: "w1", name: CLOAK.name, folder: { id: "f1" }, system: { rules: plain(CLOAK.system.rules) }, ...overrides });
+const ISSUED = "Compendium.pf2e.equipment-srd.Item.cloak001";
+const folderSources = [{ ...plain(CLOAK), _stats: { compendiumSource: ISSUED } }];
+const worldItem = (overrides = {}) => ({ id: "w1", name: CLOAK.name, folder: { id: "f1" }, _stats: { compendiumSource: ISSUED }, system: { rules: plain(CLOAK.system.rules) }, ...overrides });
 assert.equal(folderItemProblem([worldItem()], folderSources, "f1"), null, "an unchanged clone in the folder passes");
 assert.equal(folderItemProblem([], folderSources, "f1"), "count", "a missing item fails the count");
 assert.equal(folderItemProblem([worldItem(), worldItem()], folderSources, "f1"), "count", "an extra item fails the count");
@@ -44,6 +45,22 @@ assert.equal(folderItemProblem([worldItem({ name: "Other" })], folderSources, "f
 assert.equal(folderItemProblem([worldItem({ system: { rules: [] } })], folderSources, "f1"), "rules", "an item whose Rule Elements were stripped fails");
 assert.equal(folderItemProblem([worldItem({ folder: { id: "elsewhere" } })], folderSources, "f1"), "folder", "an item outside the new folder fails");
 assert.equal(folderItemProblem([worldItem({ folder: "f1" })], folderSources, "f1"), null, "a folder given as a bare id also passes");
+
+/* ---- persisted identity and full rule equality (CR HIGH #2): the same count is not enough ---- */
+assert.equal(CLOAK.system.rules[0].value, 1, "the first Rule Element of the cloak is a +1 modifier");
+const withRule = (index, change) => { const rules = plain(CLOAK.system.rules); Object.assign(rules[index], change); return rules; };
+assert.equal(folderItemProblem([worldItem({ system: { rules: withRule(0, { value: 99 }) } })], folderSources, "f1"), "rules",
+  "a same-count clone whose modifier changed from 1 to 99 is refused");
+assert.equal(folderItemProblem([worldItem({ system: { rules: withRule(1, { selector: "perception" }) } })], folderSources, "f1"), "rules",
+  "a same-count clone whose second rule changed selector is refused");
+assert.equal(folderItemProblem([worldItem({ _stats: { compendiumSource: "Compendium.other.Item.x" } })], folderSources, "f1"), "source",
+  "a mismatched source identity is refused");
+assert.equal(folderItemProblem([worldItem({ _stats: undefined })], folderSources, "f1"), "source",
+  "a persisted item with no source identity is refused");
+assert.equal(folderItemProblem([worldItem({ _source: { system: { rules: withRule(0, { value: 99 }) } } })], folderSources, "f1"), "rules",
+  "the stored _source is the document compared, not the display copy");
+assert.equal(folderItemProblem([worldItem({ system: { rules: plain(CLOAK.system.rules).map((r) => Object.fromEntries(Object.entries(r).reverse())) } })], folderSources, "f1"), null,
+  "the same rules with keys stored in another order are equal");
 
 /* ---- the eligibility gate: off is the v2 exclusion, on admits rules and nothing else ---- */
 assert.equal(permanentDocumentProblem(CLOAK, 3, "common"), "rules", "option off: the rule-bearing document is refused, as before");
