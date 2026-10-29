@@ -459,6 +459,7 @@
           </div>
           {{#if this.blurb}}<em>{{this.blurb}}</em>{{/if}}
           <div class="spf-member-stats">{{this.statline}}</div>
+          {{#if this.skippedItems}}<p class="spf-skipped">{{this.skippedItems.text}}</p>{{/if}}
         </li>
       {{/each}}
     </ul>

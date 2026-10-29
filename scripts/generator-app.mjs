@@ -834,6 +834,9 @@ export class GeneratorApp extends SpfApp {
           index,
           count: member.count,
           skipped: member.count === 0,
+          // The member's own unmatched equipment and loot, in the same one-line form the
+          // single-creature and character previews use; the encounter preview listed none.
+          skippedItems: GeneratorApp.#skippedContext(member.resolved),
           tag: "SIMPLYPF2E.Generator.Creature",
           role: `SIMPLYPF2E.Role.${member.role.charAt(0).toUpperCase()}${member.role.slice(1)}`,
           name: member.concept.name,
