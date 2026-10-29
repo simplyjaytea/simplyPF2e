@@ -172,8 +172,9 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
     default: false
   });
 
-  // Off by default. Roadmap tools that lack live acceptance stay unavailable
-  // until a GM enables them for this world; experimental-tools.mjs enforces it.
+  // On by default (GM decision, 2026-10-30, overriding PLAYBOOK §9's native-row
+  // rule; not native-accepted). A GM can turn it off; experimental-tools.mjs
+  // enforces the setting at every entry point and before every write.
   game.settings.register(MODULE_ID, SETTINGS.experimentalTools, {
     name: "SIMPLYPF2E.Settings.ExperimentalTools.Name",
     hint: "SIMPLYPF2E.Settings.ExperimentalTools.Hint",
@@ -181,7 +182,7 @@ export function registerSettings(SourcesConfigApp, ProviderSetupApp) {
     config: true,
     restricted: true,
     type: Boolean,
-    default: false
+    default: true
   });
 }
 

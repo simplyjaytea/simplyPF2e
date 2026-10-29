@@ -22,7 +22,7 @@ const { EXPERIMENTAL_REFUSAL, assertExperimentalToolAccess, experimentalToolRefu
   await import("../scripts/experimental-tools.mjs");
 const SETTING = "simplypf2e.experimentalTools";
 
-// Off by default: an unset setting, which has a registered default of false, refuses.
+// Fail closed: an unset setting refuses. (The registered default is true, so an unset read is not the normal path.)
 assert.equal(experimentalToolsEnabled(), false);
 assert.deepEqual(experimentalToolRefusal(), { code: "disabled", localizeKey: "SIMPLYPF2E.Experimental.Disabled" });
 

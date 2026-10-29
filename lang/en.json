@@ -35,7 +35,7 @@
       },
       "ExperimentalTools": {
         "Name": "Enable experimental tools",
-        "Hint": "Off by default. Turns on roadmap tools that have not all passed live Foundry acceptance yet, currently the /forge chat command. Only the GM can use them, and they may create actors or fail differently from the stable generator. Leave this off for production games."
+        "Hint": "On by default. Turns on roadmap tools that have not all passed live Foundry acceptance yet, currently the /forge chat command, the Creature Tools flows, the hazard generator, level shifting, and the loot actor and Treasure parcel options. Only the GM can use them, and they may create actors or fail differently from the stable generator. Turn this off for production games."
       }
     },
     "ProviderSetup": {
