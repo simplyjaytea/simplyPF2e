@@ -6,7 +6,7 @@ import {
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { multiclassAbilityBlocker, multiclassCatalogNames, multiclassFeatInfo, multiclassPickBlocker } from "./pc-multiclass.mjs";
-import { assembleCasterArchetypeEntry, casterArchetypePlans, isCasterPackage } from "./pc-caster-archetype.mjs";
+import { CASTER_ARCHETYPES, assembleCasterArchetypeEntry, casterArchetypePlans, isCasterPackage } from "./pc-caster-archetype.mjs";
 import { isAdvancedSchoolSpellFeat, isArcaneSchoolSource, schoolAdvancedSpellLink, schoolInitialSpellLink } from "./school-spells.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
@@ -1561,7 +1561,8 @@ async function buildCasterArchetypeItems(concept, resolved) {
   };
   if (!plans.length) {
     if (concept.archetypeSpellcasting || (resolved.archetypeSpells ?? []).length) {
-      fail("spellcasting archetype", "its feats are no longer held");
+      const pkg = concept.archetypeSpellcasting?.pkg;
+      fail(CASTER_ARCHETYPES[pkg]?.label ?? game.i18n.localize("SIMPLYPF2E.Errors.PCArchetypeLabel"), "its feats are no longer held");
     }
     return [];
   }

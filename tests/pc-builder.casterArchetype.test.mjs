@@ -136,7 +136,11 @@ const spells = () => embedded.filter((item) => item.type === "spell");
     return attempt.last;
   };
 
+  // ONLY=<name> runs a single scenario (fail-before evidence); unset runs all.
+  const only = (name) => !process.env.ONLY || process.env.ONLY === name;
+
   // A planned spell removed between preview and Create: its pick no longer resolves, or its document is gone.
+  if (only("removed")) {
   const removedPick = base();
   removedPick.archetypeSpells[3] = { spell: { name: "Gone", rank: 0 }, entry: null };
   assert.match(await attempt(removedPick), /could not be loaded/);
@@ -144,32 +148,46 @@ const spells = () => embedded.filter((item) => item.type === "spell");
   const fireballDoc = docs.get(fireballKey);
   docs.delete(fireballKey);
   try { assert.match(await attempt(base()), /fireball.* could not be loaded/); } finally { docs.set(fireballKey, fireballDoc); }
+  }
 
+  if (only("short")) {
   // A short list: the preview's count is not met.
   const shortList = base();
   shortList.archetypeSpells = shortList.archetypeSpells.slice(0, 9);
   assert.match(await attempt(shortList), /rank 3 has 1 of 2 planned spells/);
 
+  }
+
   // A changed tradition: a planned spell is no longer arcane.
+  if (only("tradition")) {
   spellJson.fear.system.traits.traditions = ["divine"];
   assert.match(await attempt(base()), /not an arcane spell/);
   restoreSpells();
+  }
 
   // A changed rank: a planned spell now sits at another rank.
+  if (only("rank")) {
   spellJson["mirror-image"].system.level.value = 3;
   assert.match(await attempt(base()), /its own rank does not match rank 2/);
   restoreSpells();
+  }
 
+  if (only("rarity")) {
   // A changed rarity.
   spellJson.light.system.traits.rarity = "uncommon";
   assert.match(await attempt(base()), /only common spells/);
   restoreSpells();
 
+  }
+
   // All sources rejected: nothing valid remains, and the entry is not pushed on its own.
+  if (only("all-rejected")) {
   for (const json of Object.values(spellJson)) json.system.traits.traditions = ["occult"];
   assert.match(await attempt(base()), /not an arcane spell/);
   restoreSpells();
+  }
 
+  if (only("other")) {
   // Nothing resolved at all, and no list at all.
   const unresolved = base();
   unresolved.archetypeSpells = [{ spell: { name: "Nothing", rank: 0 }, entry: null }];
@@ -190,10 +208,16 @@ const spells = () => embedded.filter((item) => item.type === "spell");
   const noFeats = base();
   noFeats.feats = [];
   assert.match(await attempt(noFeats), /no longer held/);
+  noFeats.archetypeSpells = base().archetypeSpells;
+  assert.match(await attempt(noFeats, { ...common }), /no longer held/, "a spell list with no plan at all is refused");
+  assert.match(await attempt(noFeats, { ...common, archetypeSpellcasting: { pkg: "wizard" } }), /Wizard Archetype Spells/, "the plan label, not fixed English, names the archetype");
+  assert.match(await attempt(noFeats, { ...common, archetypeSpellcasting: { pkg: "unknown" } }), /SIMPLYPF2E\.Errors\.PCArchetypeLabel/, "an unknown package uses the localized fallback label");
+
+  }
 
   // A valid spellbook still creates, and the creation list holds every planned item.
   restoreSpells();
-  const valid = await createCharacterActor({ ...common, archetypeSpellcasting: { pkg: "wizard" } }, base());
+  const valid = await createCharacterActor({ ...common, level: 8, archetypeSpellcasting: { pkg: "wizard" } }, base());
   assert.equal(spells().length, 10);
   const expectedNames = valid.expectedItems.filter((item) => item.type === "spell" || item.type === "spellcastingEntry").map((item) => item.name).sort();
   assert.deepEqual(expectedNames, ["Detect Magic", "Electric Arc", "Fear", "Fireball", "Grim Tendrils", "Invisibility", "Light", "Lightning Bolt",

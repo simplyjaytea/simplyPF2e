@@ -670,6 +670,7 @@
     "Errors": {
       "GMOnly": "Only a GM can use SimplyPF2e generation and provider setup.",
       "NoPrompt": "Describe the creature first.",
+      "PCArchetypeLabel": "Spellcasting archetype",
       "PCArchetypeSpellbook": "The {archetype} spellbook no longer matches the preview ({reason}). Nothing was created. Generate the character again.",
       "NoBaseUrl": "No API base URL is configured in the module settings.",
       "NoModel": "No model identifier is configured. Set one in Module Settings → SimplyPF2e before generating.",
