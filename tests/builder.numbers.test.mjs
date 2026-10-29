@@ -64,6 +64,11 @@ const concept = (raw) => normalizeConcept({ name: "Test Creature", ...raw }, { l
   assert.deepEqual(speedsOf([{ type: "swim", value: 60 }]), [{ type: "swim", value: 60 }], "swim 60 is kept");
   assert.deepEqual(speedsOf([{ type: "land", value: 22 }]), [{ type: "land", value: 20 }],
     "land 22 snaps to the nearest listed 20 ft, not dropped");
+  // QA F4: the tie direction was untested ("<" -> "<=" survived). An exact midpoint takes the lower step.
+  assert.deepEqual(speedsOf([{ type: "land", value: 22.5 }]), [{ type: "land", value: 20 }],
+    "land 22.5 is exactly between 20 and 25 and takes the lower 20");
+  assert.deepEqual(speedsOf([{ type: "fly", value: 62.5 }]), [{ type: "fly", value: 60 }],
+    "fly 62.5 is exactly between 60 and 65 and takes the lower 60");
   assert.deepEqual(speedsOf([{ type: "land", value: 27 }, { type: "burrow", value: 35 }]),
     [{ type: "land", value: 25 }, { type: "burrow", value: 35 }],
     "27 ft land snaps to 25; a 35 ft burrow is inside the 60 ft burrow list and is kept");
@@ -94,6 +99,8 @@ const concept = (raw) => normalizeConcept({ name: "Test Creature", ...raw }, { l
   ] });
   assert.deepEqual(c.senses.map((s) => [s.type, s.range]), [["darkvision", 60], ["scent", 45], ["tremorsense", 60]],
     "listed ranges are kept and an off-list range snaps to the nearest 5 ft step (62 becomes 60)");
+  assert.deepEqual(concept({ senses: [{ type: "darkvision", range: 52.5 }] }).senses.map((s) => s.range), [50],
+    "a sense range exactly between 50 and 55 takes the lower 50 (the same tie rule as speeds)");
   const nonsense = concept({ senses: [{ type: "scent", range: -30 }, { type: "tremorsense", range: "far" }] });
   assert.deepEqual(nonsense.senses.map((s) => [s.type, s.range]), [["scent", null], ["tremorsense", null]],
     "a nonsense sense range (negative, non-numeric) becomes null; the sense itself stays");

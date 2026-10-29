@@ -21,6 +21,19 @@ assert.equal(hasRuleElements({ system: { rules: null } }), false, "missing rules
 assert.equal(destinationFor(CLOAK), DESTINATION.FOLDER, "a rule-bearing item goes to the world folder");
 assert.equal(destinationFor(HEARING), DESTINATION.LOOT, "a rule-free item stays on the loot actor");
 
+/* ---- the threshold is one Rule Element, not more: exactly one still goes to the folder ---- */
+{
+  // Same real Aerial Cloak document with a single Rule Element (QA F4: "> 0" -> "> 1" survived).
+  const singleRule = { ...plain(CLOAK), system: { ...plain(CLOAK.system), rules: [plain(CLOAK.system.rules[0])] } };
+  assert.equal(singleRule.system.rules.length, 1, "the fixture carries exactly one Rule Element");
+  assert.equal(hasRuleElements(singleRule), true, "one Rule Element is rule-bearing");
+  assert.equal(destinationFor(singleRule), DESTINATION.FOLDER, "a single-rule item goes to the world folder, not the loot actor");
+  assert.deepEqual(splitPermanents([{ filled: true, name: "Single-Rule Cloak", source: singleRule }]).folder.map((entry) => entry.name),
+    ["Single-Rule Cloak"], "the split routes a single-rule item to the folder");
+  assert.deepEqual(splitPermanents([{ filled: true, name: "Single-Rule Cloak", source: singleRule }]).loot, [],
+    "a single-rule item never reaches the loot actor, where Create would fail");
+}
+
 /* ---- the split of built entries ---- */
 const entries = [
   { filled: true, name: "Aerial Cloak", source: plain(CLOAK) },
