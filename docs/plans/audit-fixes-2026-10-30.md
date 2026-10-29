@@ -34,7 +34,7 @@ Owner: Code Monkey (CM1). Branch `fix/safety`, base `integrate/2026-10-30@69af4c
 
 ## 4. Test hardening (item 5)
 
-Commits: `51851e6` (copy-paste replacement), `2cb6897` (PC levels, primal, settings), `978cc2e` (golden tables, Forge formulas, dynamic keys), and the parcel-runed primal case (see the PARCEL commit below).
+Commits: `51851e6` (copy-paste replacement), `2cb6897` (PC levels, primal, settings), `978cc2e` (golden tables, Forge formulas, dynamic keys), and the parcel-runed primal case in `daa830f`.
 
 **Copy-paste tests replaced by imports of the real code:**
 - `runes.capRunes`: `capRuneTiers` and `runeGpFor` are now the pure cores of `capRunes`/`runeGp`. Exported from `scripts/runes.mjs`.
