@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import {
-  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates, pickParcelValuable,
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates,
   getCandidateDocument
 } from "../scripts/compendium.mjs";
 import { PERMANENT_REASON } from "../scripts/treasure-permanent.mjs";
@@ -118,23 +118,23 @@ assert.deepEqual(pool.candidates.map((candidate) => [candidate.name, candidate.c
   ["Silk ceremonial armor", 1000], ["Agate", 50]
 ], "the brief ranks silk first; each valuable has its exact copper value");
 
-const exact = await pickParcelValuable(pool.candidates, 1000, "common");
-assert.equal(exact.source.name, "Silk ceremonial armor", "a valuable exactly equal to the currency is allowed");
-assert.equal(exact.copper, 1000);
-assert.equal(exact.source.system.quantity, 1, "a valuable is always one item");
+const exact = await pickParcelValuables(pool.candidates, 1000, "common", { limit: 1 });
+assert.equal(exact.picked[0].source.name, "Silk ceremonial armor", "a valuable exactly equal to the currency is allowed");
+assert.equal(exact.picked[0].copper, 1000);
+assert.equal(exact.picked[0].source.system.quantity, 1, "a valuable is always one item");
 
-const tooExpensive = await pickParcelValuable(pool.candidates, 40, "common");
-assert.equal(tooExpensive.reason, "too-expensive", "nothing fits a 40 cp currency");
-assert.equal(tooExpensive.source, undefined);
+const tooExpensive = await pickParcelValuables(pool.candidates, 40, "common");
+assert.equal(tooExpensive.picked.length, 0, "nothing fits a 40 cp currency");
+assert.ok(tooExpensive.skipped.every((skip) => skip.reason === "too-expensive"), "every candidate is skipped as too expensive");
 
-const none = await pickParcelValuable([], 4000, "common");
-assert.equal(none.reason, "none-offered", "an empty ranking is reported as none offered, not as an error");
+const none = await pickParcelValuables([], 4000, "common");
+assert.deepEqual([none.picked.length, none.skipped.length], [0, 0], "an empty ranking picks nothing and is not an error");
 
 // If the first fitting valuable cannot be loaded, the search goes on to the next one, deterministically.
 const originalGetDocument = packs.get("pf2e.equipment-srd").getDocument;
 packs.get("pf2e.equipment-srd").getDocument = async (_id) => (_id === fixture("silk-ceremonial-armor")._id ? null : originalGetDocument(_id));
-const fallback = await pickParcelValuable(pool.candidates, 4000, "common");
-assert.equal(fallback.source.name, "Agate", "an unloadable valuable falls through to the next fitting one");
+const fallback = await pickParcelValuables(pool.candidates, 4000, "common", { limit: 1 });
+assert.equal(fallback.picked[0].source.name, "Agate", "an unloadable valuable falls through to the next fitting one");
 packs.get("pf2e.equipment-srd").getDocument = originalGetDocument;
 
 // The valuable pack is missing: the search says so, so the preview can say why.
@@ -182,13 +182,13 @@ assert.deepEqual(await getPermanentEquipmentCandidates(1, [], { maxRarity: "comm
 equipmentFailing.clear();
 
 equipmentFailing.set(fixture("silk-ceremonial-armor")._id, new Error("pack damaged"));
-const rejectedValuable = await pickParcelValuable(pool.candidates, 1000, "common");
-assert.equal(rejectedValuable.source.name, "Agate", "a valuable whose read rejects is passed over for the next one that fits");
+const rejectedValuable = await pickParcelValuables(pool.candidates, 1000, "common", { limit: 1 });
+assert.equal(rejectedValuable.picked[0].source.name, "Agate", "a valuable whose read rejects is passed over for the next one that fits");
 equipmentFailing.clear();
 
 // A user abort during a read is not a candidate problem: it propagates.
 equipmentFailing.set(fixture("silk-ceremonial-armor")._id, Object.assign(new Error("aborted"), { name: "AbortError" }));
-await assert.rejects(() => pickParcelValuable(pool.candidates, 1000, "common"), /aborted/, "an abort propagates");
+await assert.rejects(() => pickParcelValuables(pool.candidates, 1000, "common"), /aborted/, "an abort propagates");
 equipmentFailing.clear();
 
 // The reason codes used by the assignment match the stable constants.

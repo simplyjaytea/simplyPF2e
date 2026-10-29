@@ -11,7 +11,7 @@ import { slugify } from "./text.mjs";
 import { createAsyncCache } from "./async-cache.mjs";
 import {
   permanentEquipmentProblem, permanentDocumentProblem, valuableProblem,
-  priceCopper, wandRankForLevel, rankByBrief, chooseValuable, specialWandProblem, rarityAllowed
+  priceCopper, wandRankForLevel, rankByBrief, specialWandProblem, rarityAllowed
 } from "./treasure-permanent.mjs";
 import {
   pinnedTier, runedBaseProblem, runeTierProblem, runedValuation, runedCandidateId, runedDisplayName, SECONDARY_FIELD
@@ -1156,27 +1156,6 @@ export async function getValuableCandidates(keywords = [], { maxRarity = "common
     indexed.push({ packId: VALUABLE_PACK_ID, _id: entry._id, name: entry.name, traits: [], copper, id: `${VALUABLE_PACK_ID}/${entry._id}` });
   }
   return { available: true, candidates: rankByBrief(indexed, keywords) };
-}
-
-/**
- * The first valuable in ranked order that fits `budgetCopper` and still passes the full-document check.
- * Documents are loaded one at a time, at most VALUABLE_LOAD_ATTEMPTS, so the search is bounded.
- * Returns { candidate, source, copper } or { reason }.
- */
-export async function pickParcelValuable(ranked, budgetCopper, maxRarity = "common") {
-  let remaining = Array.isArray(ranked) ? ranked.map((entry) => ({ ...entry })) : [];
-  for (let attempt = 0; attempt < VALUABLE_LOAD_ATTEMPTS; attempt++) {
-    const { entry, reason } = chooseValuable(remaining, budgetCopper);
-    if (!entry) return { reason: reason === "none-offered" ? "none-offered" : "too-expensive" };
-    const data = await readItemData(entry.packId, entry._id);
-    const copper = data ? priceCopper(data.system?.price?.value) : null;
-    if (data && !valuableProblem(data, maxRarity) && copper > 0 && copper <= budgetCopper) {
-      data.system.quantity = 1;
-      return { candidate: entry, source: data, copper };
-    }
-    remaining = remaining.slice(remaining.indexOf(entry) + 1);
-  }
-  return { reason: "unavailable" };
 }
 
 /** Most valuables one parcel may hold (parcel v3). */
