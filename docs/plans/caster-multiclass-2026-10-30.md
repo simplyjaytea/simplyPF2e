@@ -112,6 +112,61 @@ Only **Wizard** is buildable without new capabilities:
 - Expert/Master Wizard Spellcasting, other casters, and spell editing in the Character editor.
 - Not native-accepted; no Foundry here.
 
-## 5. Build notes (filled in as built)
+## 5. What was built
 
-See the sections below added with the implementation.
+Behind `multiclassArchetypes` or `freeArchetype`, and the generator's spellcasting option (`allowSpellcasting`).
+
+| Piece | Where | Behavior |
+| --- | --- | --- |
+| Table and entry builder | `scripts/pc-caster-archetype.mjs` (pure) | `CASTER_ARCHETYPES.wizard` (arcane, `int`, `prepared`, 4 spellbook cantrips, 2 cantrip slots, 2 spells per rank), `BASIC_SPELLCASTING_RANK_LEVELS` (1: 4, 2: 6, 3: 8), `casterArchetypePlans(featNames, level)`, `assembleCasterArchetypeEntry(...)` |
+| Catalog | `scripts/pc-multiclass.mjs` | `wizard` package (Wizard Dedication, Intelligence +2; Basic Wizard Spellcasting). `MULTICLASS_UNAVAILABLE` gains Expert and Master Wizard Spellcasting and the nine other caster dedications, each with its reason |
+| Candidates | `scripts/pc-builder.mjs` `multiclassFeatCandidates` | caster packages are offered only when `concept.casterArchetypes` is set; own-class, ability, lock and level rules are the existing ones |
+| Resolve | `resolvePCConcept` | `concept.archetypeSpellcasting.spells` resolve to `resolved.archetypeSpells` against the spell packs, as class spells do |
+| Create | `buildCasterArchetypeItems` | plan recomputed from the feats actually built; one `spellcastingEntry` plus its spells; no entry without at least one resolved spell; off-plan spells dropped with a warning |
+| Selection | `scripts/ai.mjs` `selectArchetypeSpells`; `generator-app.mjs` `#planArchetypeSpellcasting`, `#refineArchetypeSpells` | plan from the held feats (module-owned picks per rank); candidates are `getSpellCandidates(tradition, maxRank, [], picks, { maxRarity: "common" })`; one id-only call (no rank, no number from the model); per-rank cap and repeats enforced in the call and again in the builder |
+| Completion | `scripts/completion.mjs` | `archetype-spell` records: every planned pick is required, an empty or failed selection blocks Create, as for class plans |
+| Preview | `templates/generator.hbs`, `generator-app.mjs` | a "Wizard Archetype Spells (arcane)" section listing the spellbook with found marks, plus one localized note on what is not modeled |
+| Editor | `scripts/pc-edit.mjs`, `generator-app.mjs` | adding, replacing or removing a caster archetype feat is refused (`PC_EDIT_DEFERRED`); the control offers those feats only in the slot that holds them; identity edits are refused once the plan exists; completion errors if plan and feats disagree |
+
+## 6. Verification
+
+Tests (all new, against the real 8.5.0 fixtures in `tests/fixtures/pc-caster`): `pc-caster-archetype.test.mjs` (table equals the feat and journal text; plans by level; entry builder fails closed), `pc-builder.casterArchetype.test.mjs` (the entry on a Fighter, dedication-only and level-5 variants, dedication-less Basic, off-plan spells, coexistence with a class entry), `pc-builder.casterCandidates.test.mjs` (resolution by setting, level, Intelligence +2, own class, Free Archetype slot), `ai.archetypeSpells.test.mjs`, `generator-app.casterArchetype.test.mjs` (production pipeline through preview, empty-plan blocking, editor), and new cases in `completion.test.mjs` and `pc-edit.test.mjs`.
+
+Revert checks: 24 mutations, each applied to the file, the relevant test run, the file restored. All 24 killed:
+
+| # | Mutation | Killed by |
+| --- | --- | --- |
+| M1 | spellbook cantrips 4 to 5 | pc-caster-archetype |
+| M2 | Basic rank 3 level 8 to 7 | pc-caster-archetype |
+| M3 | plan built without the dedication | pc-caster-archetype |
+| M4 | tradition check removed | pc-caster-archetype |
+| M5 | common-only check removed | pc-caster-archetype |
+| M6 | own-rank check removed (heightening allowed) | pc-caster-archetype |
+| M7 | per-rank cap removed | pc-caster-archetype |
+| M8 | every spell prepared, not the first slots | pc-caster-archetype |
+| M9 | key attribute Intelligence to Wisdom | pc-caster-archetype |
+| M10 | catalog ability minimum 2 to 1 | pc-caster-archetype |
+| M11 | caster feats offered without the GM option | pc-builder.casterCandidates |
+| M12 | entry not embedded | pc-builder.casterArchetype |
+| M13 | plan taken from a fixed feat list, not the built feats | pc-builder.casterArchetype |
+| M14 | completion ignores the archetype plan | completion |
+| M15 | editor allows caster feat swaps | pc-edit |
+| M16 | identity edits allowed with an archetype plan | pc-edit |
+| M17 | completion plan/feat consistency check removed | pc-edit |
+| M18 | generator never allows caster feats | generator-app.casterArchetype |
+| M19 | generator skips the spellbook selection | generator-app.casterArchetype |
+| M20 | archetype planned even with spellcasting off | generator-app.casterArchetype |
+| M21 | editor offers caster feats | generator-app.casterArchetype |
+| M22 | candidates not limited to common | generator-app.casterArchetype |
+| M23 | selection per-rank cap removed | ai.archetypeSpells |
+| M24 | selection repeats allowed | ai.archetypeSpells |
+
+## 7. Gaps
+
+- Not native-accepted; rows N50 to N53 are OPEN. No Foundry, no provider call.
+- The table is a transcription of published prose; the tests and the drift tool pin it to the 8.5.0 text, and a future text change fails them.
+- The school choice and the replacement skill when Arcana is already trained are not modeled.
+- Expert and Master Wizard Spellcasting, and every other caster dedication, are unavailable (section 4).
+- The PC editor cannot edit these feats or the spellbook.
+- The spellbook is chosen without thematic keyword narrowing (no spell-focus call): one id-only call over a per-rank bounded list. Quality of the thematic fit is unobserved.
+- One extra provider call per run that holds the dedication.

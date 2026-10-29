@@ -30,8 +30,8 @@
         "Hint": "Free Archetype adds one archetype feat slot at each even class-feat level from level 2. Only proven catalog dedications are offered, and each needs its ability modifiers."
       },
       "MulticlassArchetypes": {
-        "Name": "Ordinary multiclass archetypes (noncaster)",
-        "Hint": "Offers the noncaster archetype catalog (dedications and their feats) in class feat slots, enforcing dedication locks. Caster dedications and packages outside the catalog stay unavailable."
+        "Name": "Ordinary multiclass archetypes",
+        "Hint": "Offers the archetype catalog (dedications and their feats) in class feat slots, enforcing dedication locks: the noncaster packages, plus Wizard Dedication and Basic Wizard Spellcasting when the generator allows spellcasting. Other caster dedications and packages outside the catalog stay unavailable."
       },
       "ExperimentalTools": {
         "Name": "Enable experimental tools",
