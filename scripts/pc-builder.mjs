@@ -1195,6 +1195,8 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
 
   // Spellcasting archetype (W3): the plan is recomputed from the feats actually built, never read from the
   // concept, so a removed dedication can never leave a stray entry.
+  // buildCasterArchetypeItems throws unless the whole planned spellbook is present, so the creation list, and with it
+  // the post-create verification list derived from it below, always holds the complete entry and every planned spell.
   items.push(...await buildCasterArchetypeItems(concept, resolved));
 
   // pf2e-8.5.0 character/document.ts 369–373 resets focus.max to 0;
@@ -1545,29 +1547,51 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
 /**
  * The spellcasting entry and spellbook for each spellcasting archetype the built PC holds (W3). The entry is plain
  * document data like a class entry (pf2e creates none from a dedication); slots come from pc-caster-archetype.mjs.
- * Spells that fail the plan are dropped with a warning; no entry is built without at least one resolved spell.
- * @returns {Promise<object[]>} the entry followed by its spells, or an empty list
+ * The preview required the complete spellbook, so Create requires it again: the sources are reloaded and
+ * revalidated against the plan (tradition, own rank, common, count per rank), and any missing, changed or excess
+ * pick throws before the actor is created, so nothing is written. An archetype spell list without a held plan
+ * (or a held plan without a list) throws for the same reason.
+ * @returns {Promise<object[]>} the entry followed by its spells, or an empty list when no plan is held
  */
 async function buildCasterArchetypeItems(concept, resolved) {
   const heldFeats = (resolved.feats ?? []).map((pick) => (pick?.entry ? pick.name : null));
-  const items = [];
-  for (const plan of casterArchetypePlans(heldFeats, concept.level)) {
-    const picked = (resolved.archetypeSpells ?? []).filter(({ entry }) => entry);
-    if (!picked.length) {
-      console.warn(`simplypf2e | ${plan.archetype.label}: no resolved spells, so no spellcasting entry was built`);
-      continue;
+  const plans = casterArchetypePlans(heldFeats, concept.level);
+  const fail = (archetype, reason) => {
+    throw new Error(game.i18n.format("SIMPLYPF2E.Errors.PCArchetypeSpellbook", { archetype, reason }));
+  };
+  if (!plans.length) {
+    if (concept.archetypeSpellcasting || (resolved.archetypeSpells ?? []).length) {
+      fail("spellcasting archetype", "its feats are no longer held");
     }
+    return [];
+  }
+  const items = [];
+  for (const plan of plans) {
+    const label = plan.archetype.label;
+    const planned = Object.entries(plan.picks);
+    const picked = resolved.archetypeSpells ?? [];
     const spells = [];
     for (const { spell, entry } of picked) {
-      const doc = await getDocument(entry);
-      if (!doc) { console.warn(`simplypf2e | dropped archetype spell "${spell?.name ?? entry?.name ?? "?"}": could not load grounded spell`); continue; }
+      const name = spell?.name ?? entry?.name ?? "?";
+      const doc = entry ? await getDocument(entry) : null;
+      if (!doc) fail(label, `"${name}" could not be loaded`);
       const identity = doc.uuid ?? entry?.uuid ?? (entry?.packId && entry?._id ? `${entry.packId}:${entry._id}` : null);
       spells.push({ rank: spell?.rank, identity, source: toItemData(doc) });
     }
     const built = assembleCasterArchetypeEntry({
       plan, entryId: foundry.utils.randomID(), spells, newId: () => foundry.utils.randomID()
     });
-    for (const { name, reason } of built.rejected) console.warn(`simplypf2e | dropped archetype spell "${name}": ${reason}`);
+    if (built.rejected.length) {
+      const [{ name, reason }] = built.rejected;
+      fail(label, `"${name}": ${reason}`);
+    }
+    for (const [rank, count] of planned) {
+      const have = built.spells.filter((item) => {
+        const cantrip = item.system?.traits?.value?.includes("cantrip");
+        return (cantrip ? 0 : item.system?.level?.value) === Number(rank);
+      }).length;
+      if (have !== count) fail(label, `rank ${rank} has ${have} of ${count} planned spells`);
+    }
     items.push(built.entry, ...built.spells);
   }
   return items;

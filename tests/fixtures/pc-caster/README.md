@@ -7,3 +7,4 @@ Feats (`packs/pf2e/feats/archetype/wizard/`): `wizard-dedication.json` (level 2,
 `archetypes-spellcasting-page.json`: the "Spellcasting Archetypes" page (`DOc3Pf8wmVxanTIv`) of `packs/pf2e/journals/archetypes.json`, extracted with its journal id and name; the page object is unchanged. It carries the slot progression the module's table transcribes.
 
 Spells (`packs/pf2e/spells/spells/`): cantrips `detect-magic`, `electric-arc`, `light`, `telekinetic-projectile`; rank 1 `fear`, `grim-tendrils`; rank 2 `mirror-image`; rank 3 `fireball`. All common and arcane.
+Also (fix/caster-gate): rank 2 `invisibility`, `web`; rank 3 `lightning-bolt`, same provenance (blob SHAs matched).
