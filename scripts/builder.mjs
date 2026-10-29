@@ -1,6 +1,6 @@
 import * as T from "./tables.mjs";
 import { getPacksFor, findEntry, getDocument, toItemData, priceToGp, isIssuedCandidate } from "./compendium.mjs";
-import { slugify, capitalized, esc, toHtml } from "./text.mjs";
+import { slugify, capitalized, esc, inertText, toHtml } from "./text.mjs";
 import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs";
 import { persistedExpectedItems } from "./post-create.mjs";
 import { coinEntry } from "./loot-actor.mjs";
@@ -1288,7 +1288,8 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
       continue;
     }
     if (!ability.narrative) continue;
-    const escaped = esc(ability.description);
+    // Narrative actions are AI prose: inert, while the module's own mechanics stay outside this text.
+    const escaped = inertText(ability.description);
     items.push({
       name: `Narrative: ${ability.name}`,
       type: "action",
@@ -1400,7 +1401,7 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
 
   const notesParts = [];
   if (concept.readAloud) {
-    notesParts.push(`<blockquote class="spf-read-aloud"><em>${esc(concept.readAloud)}</em></blockquote>`);
+    notesParts.push(`<blockquote class="spf-read-aloud"><em>${inertText(concept.readAloud)}</em></blockquote>`);
   }
   if (concept.description) {
     notesParts.push(toHtml(concept.description));
@@ -1409,7 +1410,7 @@ export async function createActor(concept, resolved, { img = null, scaffold = nu
     const skill = recallKnowledgeSkill(concept.traits);
     const dc = T.identificationDC(concept.level, concept.rarity);
     notesParts.push(
-      `<h3>Recall Knowledge</h3><p><strong>${capitalized(skill)}</strong> @Check[type:${skill}|dc:${dc}]: ${esc(concept.recallKnowledge)}</p>`
+      `<h3>Recall Knowledge</h3><p><strong>${capitalized(skill)}</strong> @Check[type:${skill}|dc:${dc}]: ${inertText(concept.recallKnowledge)}</p>`
     );
   }
   const description = notesParts.join("\n");

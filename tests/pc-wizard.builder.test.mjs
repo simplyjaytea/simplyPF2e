@@ -7,6 +7,7 @@
 // Run: node tests/pc-wizard.builder.test.mjs
 import assert from "node:assert/strict";
 import { load, makeWorld, installWorld } from "./fixtures/pc-wizard/world.mjs";
+import { enricherTokens } from "../scripts/reskin-policy.mjs";
 
 const events = [];
 let created = null;
@@ -456,6 +457,22 @@ const withAdvancedFeat = () => ({ ...resolved(), feats: [{ type: "class", level:
   assert.equal(focusEntries().length, 1, "one focus entry holds them");
   assert.equal(actorData.system.resources.focus.value, 2);
   worlds.use(world);
+}
+
+// PC biography prose is enricher-inert: the AI's backstory, appearance and allies keep their readable text, and
+// no enricher from them reaches the sheet.
+{
+  worlds.use(world);
+  reset();
+  const prose = { ...concept(), backstory: "Raised by @UUID[Compendium.pf2e.feats-srd.Item.Abc]{Abc} and [[/r 1d20]].",
+    appearance: "Scars from @Damage[2d6[fire]].", allies: "The @Localize[PF2E.Check.Fortitude] guild" };
+  await createCharacterActor(prose, resolved(), { selectChoices: chooser([]) });
+  const bio = actorData.system.details.biography;
+  for (const field of ["backstory", "appearance", "allies"]) {
+    assert.equal(enricherTokens(bio[field]).length, 0, `the ${field} carries no live enricher`);
+    assert.doesNotMatch(bio[field], /@|\[\[/, `the ${field} keeps no @ or [[ from the AI`);
+  }
+  assert.ok(bio.backstory.includes("Raised by &#64;UUID&#91;Compendium.pf2e.feats-srd.Item.Abc]{Abc}"), "the backstory text stays readable");
 }
 
 console.warn = warn;

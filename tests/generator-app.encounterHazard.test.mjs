@@ -6,6 +6,7 @@
 // real modules; the provider, the NPC builder and Foundry documents are isolated at the
 // import edges.
 // Run: node tests/generator-app.encounterHazard.test.mjs
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
@@ -69,7 +70,8 @@ const CONFIG = {
 };
 const game = {
   system: { id: "pf2e" }, user: { id: "gm", isGM: true },
-  i18n: { localize: (key) => key, format: (key) => key },
+  // The stat-line labels read as English, as Foundry shows them; other keys stay keys.
+  i18n: { localize: (key) => ({ "SIMPLYPF2E.Preview.StatAC": "AC", "SIMPLYPF2E.Preview.StatHP": "HP", "SIMPLYPF2E.Preview.StatPerception": "Per", "SIMPLYPF2E.Preview.StatDC": "DC" })[key] ?? key, format: (key) => key },
   settings: { get: () => false }, packs: null, actors: { get: () => null }
 };
 class Application {
@@ -121,6 +123,7 @@ const npcCreate = async (concept) => {
   return { actor: { id: `npc-${counts.npcCreates}`, name: concept.name, type: "npc", update: async () => {}, delete: async () => {} }, expectedItems: [] };
 };
 const mocks = {
+  needsExtraPurchasePass,
   SpfApp: RealSpfApp, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "free" }, AI_TASK: { HAZARD_CONCEPT: "hazardConcept" },
   taskMaxTokens: (task) => (task === "hazardConcept" ? 2000 : 100),
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null, authorizeApiKeyForCurrentBaseUrl: async () => {},

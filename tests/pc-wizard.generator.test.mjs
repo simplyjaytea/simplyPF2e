@@ -6,6 +6,7 @@
 // other than the compendium stand-ins are mocked at the import edge, as in
 // generator-app.review.test.mjs.
 // Run: node tests/pc-wizard.generator.test.mjs
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
@@ -99,6 +100,7 @@ const context = vm.createContext({
   ui: { notifications: { info() {}, warn: (text) => notices.push(text) } }
 });
 const mocks = {
+  needsExtraPurchasePass,
   ...identityHelpers, getBackgroundLoreOptions, getDocument, getClassPathCandidates, validatePCIdentityRequirements, supportedClassCandidates,
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   AI_TASK: {}, taskMaxTokens: () => 100, assertComplete, completionManifest, completionSummary,

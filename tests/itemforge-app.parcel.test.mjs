@@ -122,7 +122,13 @@ const mocks = {
 let actorBehavior = "ok"; const createCalls = []; const deletes = []; const notices = [];
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} }, structuredClone,
-  game: { i18n: { localize: (k) => k, format: (k, d) => k + ":" + JSON.stringify(d ?? {}) }, actors: { get: () => null } },
+  game: { i18n: {
+    localize: (k) => ({ "SIMPLYPF2E.Generator.Survivor.Label.LootActor": "loot actor" })[k] ?? k,
+    // The survivor sentence reads as English, as the GM sees it; other keys keep the key-and-data form.
+    format: (k, d) => (k === "SIMPLYPF2E.Generator.Survivor.Actor"
+      ? `${d.label} "${d.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`
+      : k + ":" + JSON.stringify(d ?? {}))
+  }, actors: { get: () => null } },
   ui: { notifications: { info() {}, warn(message) { notices.push(message); } } },
   Item: { create: async (s) => { createCalls.push({ item: s }); return s.map((x, i) => ({ id: "i" + i, name: x.name, sheet: { render: async () => {} } })); } },
   Actor: { create: async (data) => {

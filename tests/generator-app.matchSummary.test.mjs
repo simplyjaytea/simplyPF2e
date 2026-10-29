@@ -2,6 +2,7 @@
 // Test-only source instrumentation exposes four private seams so fixtures can
 // seed the draft without provider calls or Foundry writes; method bodies remain
 // unchanged. All other private members and production imports remain in place.
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";

@@ -3,46 +3,15 @@
 // modifier. The old code capped at count only, silently truncating the AI's
 // extra language picks for high-Int characters.
 // Run: node tests/pc-builder.languages.test.mjs
-//
-// resolveLanguages isn't exported and reads CONFIG/game globals, so the pure
-// slice is copied verbatim below (source of truth — keep in sync). If the real
-// logic diverges, update BOTH places.
 
 import assert from "node:assert/strict";
 
-// slugify copied from builder.mjs (source of truth).
-const slugify = (value) =>
-  String(value ?? "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-
-// Minimal globals the copied slice reads.
+// Minimal globals the real resolveLanguages reads at call time.
 const KNOWN = { dwarven: "Dwarven", elven: "Elven", goblin: "Goblin", draconic: "Draconic", common: "Common" };
 globalThis.CONFIG = { PF2E: { languages: KNOWN } };
 globalThis.game = { i18n: { localize: (label) => label } };
 
-// --- Copied verbatim from scripts/pc-builder.mjs resolveLanguages() ---
-function resolveLanguages(names, ancestryDoc, bonus = 0) {
-  const known = CONFIG?.PF2E?.languages ?? {};
-  const bySlug = new Set(Object.keys(known));
-  const byLabel = new Map(
-    Object.entries(known).map(([slug, label]) => [String(game.i18n.localize(label)).toLowerCase(), slug])
-  );
-  const additional = ancestryDoc?.system?.additionalLanguages ?? {};
-  const max = Math.max(0, Math.round(Number(additional.count) || 0)) + Math.max(0, Math.round(Number(bonus) || 0));
-  const allowed = Array.isArray(additional.value) && additional.value.length ? new Set(additional.value) : null;
-  const automatic = new Set(ancestryDoc?.system?.languages?.value ?? []);
-
-  const resolved = [];
-  for (const raw of names) {
-    if (resolved.length >= max) break;
-    const text = String(raw).trim();
-    if (!text) continue;
-    const slug = bySlug.has(slugify(text)) ? slugify(text) : byLabel.get(text.toLowerCase()) ?? null;
-    if (!slug || automatic.has(slug) || resolved.includes(slug)) continue;
-    if (allowed && !allowed.has(slug)) continue;
-    resolved.push(slug);
-  }
-  return resolved;
-}
+const { resolveLanguages } = await import("../scripts/pc-builder.mjs");
 
 // Ancestry with 1 bonus-language slot and Common as an automatic language.
 const ancestry = { system: { additionalLanguages: { count: 1 }, languages: { value: ["common"] } } };

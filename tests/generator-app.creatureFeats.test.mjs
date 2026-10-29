@@ -1,5 +1,6 @@
 // Production NPC integration, with provider/catalog/native writes isolated at
 // import edges. The actual caller controls requirement binding and recovery.
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
@@ -27,6 +28,7 @@ let catalog, selection, failure, query, receivedSignal, offered, filtered, cance
 let calls = 0, skips = 0, requestConcept, packagePlan;
 const usage = { total: 30 };
 const mocks = {
+  needsExtraPurchasePass,
   SpfApp: class {
     _recordTokens(label, value) { if (value) tokens.push({ label, usage: value }); }
     _progressCallback() { return () => {}; }

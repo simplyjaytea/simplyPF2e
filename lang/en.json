@@ -228,7 +228,22 @@
       "ConfigureSources": "Configure compendium sources",
       "ModeLabel": "Generation mode",
       "NoModelShort": "No model",
-      "EmptyHint": "Describe a concept, then choose Generate & Create to make it in Foundry. Preview Plan lets you review first; Random preview starts from a surprise brief."
+      "EmptyHint": "Describe a concept, then choose Generate & Create to make it in Foundry. Preview Plan lets you review first; Random preview starts from a surprise brief.",
+      "EncounterBudgetTooSmall": "The {budget} XP encounter budget is too small: the lowest supported creature costs {bossXP} XP. Increase the threat or party size.",
+      "Survivor": {
+        "Actor": "{label} \"{name}\" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.",
+        "Folder": "encounter folder \"{name}\" still exists",
+        "Discarded": "The plan was discarded to prevent a duplicate.",
+        "Label": {
+          "UnverifiedActor": "unverified actor",
+          "UnverifiedCharacter": "unverified character",
+          "UnverifiedHazard": "unverified hazard",
+          "EncounterActor": "encounter actor",
+          "IncompleteActor": "incomplete actor",
+          "IncompleteCharacter": "incomplete character",
+          "LootActor": "loot actor"
+        }
+      }
     },
     "Presets": {
       "None": "— No preset —",
@@ -469,7 +484,11 @@
       "EquipmentCustom": "No compendium match found — this will be created as a custom gear item at the AI's estimated price",
       "LootCustom": "No compendium match found — this will be created as a custom treasure item at the AI's estimated value",
       "Found": "Matched a real compendium item",
-      "MatchSummary": "{matched}/{total} compendium matches"
+      "MatchSummary": "{matched}/{total} compendium matches",
+      "StatAC": "AC",
+      "StatHP": "HP",
+      "StatPerception": "Per",
+      "StatDC": "DC"
     },
     "ItemForge": {
       "Title": "SimplyPF2e — Item Forge",

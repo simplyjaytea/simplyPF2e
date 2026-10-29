@@ -1,5 +1,6 @@
 // Execute the unmodified production app with mocked imports/platform services.
 // No provider calls, Foundry documents, or test-only production hooks.
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import * as identityHelpers from "../scripts/pc-identity.mjs";
 import { getBackgroundLoreOptions } from "../scripts/pc-background-lore.mjs";
@@ -47,7 +48,18 @@ class App {
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
   game: {
-    i18n: { localize: (key) => key, format: (key) => key },
+    // The survivor sentence reads as English, as the GM sees it.
+    i18n: {
+      localize: (key) => ({
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedActor": "unverified actor",
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedCharacter": "unverified character",
+        "SIMPLYPF2E.Generator.Survivor.Label.IncompleteActor": "incomplete actor",
+        "SIMPLYPF2E.Generator.Survivor.Label.IncompleteCharacter": "incomplete character"
+      })[key] ?? key,
+      format: (key, data) => (key === "SIMPLYPF2E.Generator.Survivor.Actor"
+        ? `${data.label} "${data.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`
+        : key)
+    },
     actors: { get: (id) => id === actor?.id ? actor : null },
     settings: { get: () => false }
   },
@@ -58,6 +70,7 @@ const resolved = () => ({ ancestryDoc: { name: "Dwarf" }, classDoc: { name: "Fig
   backgroundDoc: { name: "Warrior" }, featSlots: [], feats: [], spells: [],
   equipment: pcEquipment().map((item) => ({ ...item, entry: {} })), loot: previewLoot });
 const mocks = {
+  needsExtraPurchasePass,
   ...identityHelpers, getBackgroundLoreOptions, getDocument: async () => null, validatePCIdentityRequirements: async () => {},
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   AI_TASK: {}, taskMaxTokens: () => 100,

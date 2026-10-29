@@ -1,0 +1,182 @@
+{
+  "_capturedFrom": "fix/safety, item-builder.mjs unchanged",
+  "damageDice": {
+    "0": "1d4",
+    "1": "1d6",
+    "2": "1d8",
+    "3": "1d8",
+    "4": "2d6",
+    "5": "2d6",
+    "6": "2d6",
+    "7": "2d8",
+    "8": "2d8",
+    "9": "2d8",
+    "10": "2d10",
+    "11": "2d10",
+    "12": "3d8",
+    "13": "3d8",
+    "14": "3d8",
+    "15": "3d8",
+    "16": "3d8",
+    "17": "3d8",
+    "18": "3d8",
+    "19": "4d8",
+    "20": "4d8",
+    "21": "4d8",
+    "22": "4d8",
+    "23": "4d8",
+    "24": "4d8"
+  },
+  "saveDc": {
+    "0": {
+      "common": 13,
+      "uncommon": 15,
+      "rare": 18,
+      "unique": 23
+    },
+    "1": {
+      "common": 14,
+      "uncommon": 16,
+      "rare": 19,
+      "unique": 24
+    },
+    "2": {
+      "common": 15,
+      "uncommon": 17,
+      "rare": 20,
+      "unique": 25
+    },
+    "3": {
+      "common": 17,
+      "uncommon": 19,
+      "rare": 22,
+      "unique": 27
+    },
+    "4": {
+      "common": 18,
+      "uncommon": 20,
+      "rare": 23,
+      "unique": 28
+    },
+    "5": {
+      "common": 19,
+      "uncommon": 21,
+      "rare": 24,
+      "unique": 29
+    },
+    "6": {
+      "common": 21,
+      "uncommon": 23,
+      "rare": 26,
+      "unique": 31
+    },
+    "7": {
+      "common": 22,
+      "uncommon": 24,
+      "rare": 27,
+      "unique": 32
+    },
+    "8": {
+      "common": 23,
+      "uncommon": 25,
+      "rare": 28,
+      "unique": 33
+    },
+    "9": {
+      "common": 25,
+      "uncommon": 27,
+      "rare": 30,
+      "unique": 35
+    },
+    "10": {
+      "common": 26,
+      "uncommon": 28,
+      "rare": 31,
+      "unique": 36
+    },
+    "11": {
+      "common": 27,
+      "uncommon": 29,
+      "rare": 32,
+      "unique": 37
+    },
+    "12": {
+      "common": 29,
+      "uncommon": 31,
+      "rare": 34,
+      "unique": 39
+    },
+    "13": {
+      "common": 30,
+      "uncommon": 32,
+      "rare": 35,
+      "unique": 40
+    },
+    "14": {
+      "common": 31,
+      "uncommon": 33,
+      "rare": 36,
+      "unique": 41
+    },
+    "15": {
+      "common": 33,
+      "uncommon": 35,
+      "rare": 38,
+      "unique": 43
+    },
+    "16": {
+      "common": 34,
+      "uncommon": 36,
+      "rare": 39,
+      "unique": 44
+    },
+    "17": {
+      "common": 35,
+      "uncommon": 37,
+      "rare": 40,
+      "unique": 45
+    },
+    "18": {
+      "common": 37,
+      "uncommon": 39,
+      "rare": 42,
+      "unique": 47
+    },
+    "19": {
+      "common": 38,
+      "uncommon": 40,
+      "rare": 43,
+      "unique": 48
+    },
+    "20": {
+      "common": 39,
+      "uncommon": 41,
+      "rare": 44,
+      "unique": 49
+    },
+    "21": {
+      "common": 41,
+      "uncommon": 43,
+      "rare": 46,
+      "unique": 51
+    },
+    "22": {
+      "common": 42,
+      "uncommon": 44,
+      "rare": 47,
+      "unique": 52
+    },
+    "23": {
+      "common": 43,
+      "uncommon": 45,
+      "rare": 48,
+      "unique": 53
+    },
+    "24": {
+      "common": 45,
+      "uncommon": 47,
+      "rare": 50,
+      "unique": 55
+    }
+  }
+}

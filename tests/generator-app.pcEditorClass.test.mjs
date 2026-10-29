@@ -6,6 +6,7 @@
 // The private plan fields and the editor builder are reached by the same `#` -> `_test_`
 // rewrite the encounter hazard harness uses; no production hook is added.
 // Run: node tests/generator-app.pcEditorClass.test.mjs
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
@@ -81,6 +82,7 @@ const context = vm.createContext({
   ui: { notifications: { info() {}, warn() {} } }
 });
 const mocks = {
+  needsExtraPurchasePass,
   ...identityHelpers, ...pcEditor, getBackgroundLoreOptions, getDocument, getClassPathCandidates, validatePCIdentityRequirements, supportedClassCandidates,
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   AI_TASK: {}, taskMaxTokens: () => 100, assertComplete, completionManifest, completionSummary,

@@ -156,13 +156,18 @@ export function verifyCreatedActor(actor, manifest, expectedItems) {
  * plus a message the caller appends to its error) so the draft is discarded and a retry cannot
  * duplicate the document. The module id is inlined because this file has no MODULE_ID constant.
  */
-export async function rollbackCreatedActor(actor, label) {
+export async function rollbackCreatedActor(actor, label, { survivor = englishSurvivor } = {}) {
   if (!actor) return null;
   try {
     await actor.delete();
     return null;
   } catch (cleanupErr) {
     console.warn(`simplypf2e | failed to roll back ${label} "${actor.name}"`, cleanupErr);
-    return `${label} "${actor.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
+    return survivor(label, actor.name);
   }
+}
+
+/** The English survivor sentence, used when a caller does not supply a localized one (tests, logs). */
+function englishSurvivor(label, name) {
+  return `${label} "${name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`;
 }

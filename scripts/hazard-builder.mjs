@@ -10,7 +10,7 @@
  * number policy that ai.mjs also imports.
  */
 import { enricherTokens } from "./reskin-policy.mjs";
-import { esc, toHtml } from "./text.mjs";
+import { esc, inertText, toHtml } from "./text.mjs";
 
 export const HAZARD_DISABLE_SKILLS = Object.freeze([
   "thievery", "athletics", "acrobatics", "arcana", "crafting", "deception", "diplomacy",
@@ -369,12 +369,12 @@ function disableHtml(concept, level, T) {
 
 function reactionHtml(reaction, level, T) {
   const save = reaction.save
-    ? `<p>@Check[${reaction.save.type}|dc:${T.hazardSaveDC(level, reaction.save.scale)}] ${esc(reaction.save.effect)}</p>`
+    ? `<p>@Check[${reaction.save.type}|dc:${T.hazardSaveDC(level, reaction.save.scale)}] ${inertText(reaction.save.effect)}</p>`
     : "";
-  return `<p><strong>Trigger</strong> ${esc(reaction.trigger)}</p><p>${esc(reaction.effect)}</p>${save}`;
+  return `<p><strong>Trigger</strong> ${inertText(reaction.trigger)}</p><p>${inertText(reaction.effect)}</p>${save}`;
 }
 
-const routineHtml = (routine) => `<p>(${routine.actions} actions) ${esc(routine.text)}</p>`;
+const routineHtml = (routine) => `<p>(${routine.actions} actions) ${inertText(routine.text)}</p>`;
 
 function strikeItem(strike, kind, level, T) {
   const damage = T.hazardDamage(level, kind);

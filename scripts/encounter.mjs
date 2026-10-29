@@ -95,7 +95,11 @@ export function composeEncounter(threat, partySize, partyLevel, { hazard = "none
   while (bossLevel > minimumLevel && creatureXP(bossLevel, partyLevel) > budget) bossLevel--;
   const bossXP = creatureXP(bossLevel, partyLevel);
   if (bossXP > budget) {
-    throw new Error(`The ${budget} XP encounter budget is too small: the lowest supported creature costs ${bossXP} XP. Increase the threat or party size.`);
+    // Localized where the GM sees it (generator-app's composeEncounterForGM); the English text stays for logs and tests.
+    const err = new Error(`The ${budget} XP encounter budget is too small: the lowest supported creature costs ${bossXP} XP. Increase the threat or party size.`);
+    err.messageKey = "SIMPLYPF2E.Generator.EncounterBudgetTooSmall";
+    err.messageData = { budget, bossXP };
+    throw err;
   }
   members.push({ role: "boss", level: bossLevel, count: 1, xpEach: bossXP });
   spent += bossXP;

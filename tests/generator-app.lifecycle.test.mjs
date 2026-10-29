@@ -1,5 +1,6 @@
 // Production GeneratorApp lifecycle integration with the real SpfApp/progress
 // implementation. Foundry documents and AI calls are isolated at import edges.
+import { needsExtraPurchasePass } from "../scripts/purchase-pass.mjs";
 import assert from "node:assert/strict";
 import * as identityHelpers from "../scripts/pc-identity.mjs";
 import { getBackgroundLoreOptions } from "../scripts/pc-background-lore.mjs";
@@ -33,7 +34,20 @@ const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} },
   foundry: { applications: { api: { ApplicationV2: Application, HandlebarsApplicationMixin: (base) => base } } },
   game: {
-    i18n: { localize: (key) => key, format: (key) => key },
+    // The survivor sentence reads as English, as the GM sees it; other keys stay keys.
+    i18n: {
+      localize: (key) => ({
+        "SIMPLYPF2E.Generator.Survivor.Label.IncompleteActor": "incomplete actor",
+        "SIMPLYPF2E.Generator.Survivor.Label.IncompleteCharacter": "incomplete character",
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedActor": "unverified actor",
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedCharacter": "unverified character",
+        "SIMPLYPF2E.Generator.Survivor.Label.UnverifiedHazard": "unverified hazard",
+        "SIMPLYPF2E.Generator.Survivor.Label.EncounterActor": "encounter actor"
+      })[key] ?? key,
+      format: (key, data) => (key === "SIMPLYPF2E.Generator.Survivor.Actor"
+        ? `${data.label} "${data.name}" still exists. The draft was discarded to prevent a duplicate; remove it manually before trying again.`
+        : key)
+    },
     settings: { get: () => false }, packs: null,
     actors: { get: () => null }
   },
@@ -100,6 +114,7 @@ const create = async () => {
   return { actor: actor(), expectedItems: [] };
 };
 const mocks = {
+  needsExtraPurchasePass,
   ...identityHelpers, getBackgroundLoreOptions, getDocument: async () => pathDiscovery ? { toObject: () => ({}) } : null,
   getClassPathCandidates: async () => pathDiscovery ?? [], validatePCIdentityRequirements: async () => {},
   getCreatureFeatCandidates: async () => [{ id: "charge", name: "Sudden Charge", level: 1, ref: { packId: "pf2e.feats-srd", _id: "charge" } }],

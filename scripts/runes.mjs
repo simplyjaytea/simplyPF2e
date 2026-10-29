@@ -255,12 +255,19 @@ export async function getFundamentalRuneTiers(kind, maxLevel) {
  */
 export async function capRunes(runes, kind, level) {
   if (!RUNED_ITEM_KINDS.has(kind) || !hasRunes(runes)) return { ...runes };
-  const { potency, secondary } = await fundamentalRunes(kind);
+  return capRuneTiers(runes, await fundamentalRunes(kind), level, SECONDARY_RUNE_FIELD[kind]);
+}
+
+/**
+ * Pure core of capRunes: clamp each requested tier to the best catalog tier at or below
+ * it whose rune level is within `level`, 0 when none is legal.
+ * @param {{potency: {tier: number, level: number, gp: number}[], secondary: object[]}} tiers
+ */
+export function capRuneTiers(runes, { potency, secondary }, level, field) {
   const best = (tiers, requested) => {
     const legal = tiers.filter((r) => r.level <= level && r.tier <= requested);
     return legal.length ? Math.max(...legal.map((r) => r.tier)) : 0;
   };
-  const field = SECONDARY_RUNE_FIELD[kind];
   return {
     ...runes,
     potency: best(potency, runes.potency),
@@ -279,9 +286,13 @@ export async function capRunes(runes, kind, level) {
  */
 export async function runeGp(runes, kind) {
   if (!RUNED_ITEM_KINDS.has(kind) || !hasRunes(runes)) return 0;
-  const { potency, secondary } = await fundamentalRunes(kind);
+  return runeGpFor(runes, await fundamentalRunes(kind), SECONDARY_RUNE_FIELD[kind]);
+}
+
+/** Pure core of runeGp: the gp of the catalog tiers the runes name. */
+export function runeGpFor(runes, { potency, secondary }, field) {
   const gpFor = (tiers, tier) => tiers.find((r) => r.tier === tier)?.gp ?? 0;
-  return gpFor(potency, runes.potency) + gpFor(secondary, runes[SECONDARY_RUNE_FIELD[kind]]);
+  return gpFor(potency, runes.potency) + gpFor(secondary, runes[field]);
 }
 
 /* -------------------- item forge candidate lists -------------------- */

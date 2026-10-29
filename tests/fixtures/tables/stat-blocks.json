@@ -1,0 +1,169 @@
+{
+  "_capturedFrom": "fix/safety, builder.mjs computeStats unchanged",
+  "stats": {
+    "brute": {
+      "concept": {
+        "level": 5,
+        "abilityScales": {
+          "str": "high",
+          "dex": "moderate",
+          "con": "high",
+          "int": "low",
+          "wis": "moderate",
+          "cha": "low"
+        },
+        "acScale": "high",
+        "hpScale": "high",
+        "perceptionScale": "high",
+        "saveScales": {
+          "fortitude": "high",
+          "reflex": "moderate",
+          "will": "low"
+        },
+        "skills": [
+          {
+            "name": "Athletics",
+            "scale": "high"
+          }
+        ],
+        "strikes": [
+          {
+            "name": "Fist",
+            "attackScale": "high",
+            "damageScale": "moderate"
+          }
+        ],
+        "spellcasting": null,
+        "traits": [
+          "humanoid"
+        ]
+      },
+      "stats": {
+        "abilities": {
+          "str": 5,
+          "dex": 4,
+          "con": 5,
+          "int": 2,
+          "wis": 4,
+          "cha": 2
+        },
+        "ac": 22,
+        "hp": 94,
+        "perception": 15,
+        "saves": {
+          "fortitude": 15,
+          "reflex": 12,
+          "will": 9
+        },
+        "skills": [
+          {
+            "name": "Athletics",
+            "scale": "high",
+            "mod": 13
+          }
+        ],
+        "strikes": [
+          {
+            "name": "Fist",
+            "attackScale": "high",
+            "damageScale": "moderate",
+            "bonus": 15,
+            "damage": "2d6+6",
+            "average": 13
+          }
+        ],
+        "spellDC": null,
+        "spellAttack": null,
+        "resistanceValue": 4,
+        "classDC": {
+          "extreme": 26,
+          "high": 22,
+          "moderate": 19
+        }
+      }
+    },
+    "caster": {
+      "concept": {
+        "level": 9,
+        "abilityScales": {
+          "str": "low",
+          "dex": "moderate",
+          "con": "low",
+          "int": "high",
+          "wis": "moderate",
+          "cha": "high"
+        },
+        "acScale": "moderate",
+        "hpScale": "moderate",
+        "perceptionScale": "moderate",
+        "saveScales": {
+          "fortitude": "moderate",
+          "reflex": "moderate",
+          "will": "high"
+        },
+        "skills": [
+          {
+            "name": "Arcana",
+            "scale": "high"
+          }
+        ],
+        "strikes": [
+          {
+            "name": "Staff",
+            "attackScale": "high",
+            "damageScale": "low"
+          }
+        ],
+        "spellcasting": {
+          "dcScale": "high"
+        },
+        "traits": [
+          "humanoid"
+        ]
+      },
+      "stats": {
+        "abilities": {
+          "str": 3,
+          "dex": 4,
+          "con": 3,
+          "int": 6,
+          "wis": 4,
+          "cha": 6
+        },
+        "ac": 27,
+        "hp": 155,
+        "perception": 18,
+        "saves": {
+          "fortitude": 18,
+          "reflex": 18,
+          "will": 21
+        },
+        "skills": [
+          {
+            "name": "Arcana",
+            "scale": "high",
+            "mod": 20
+          }
+        ],
+        "strikes": [
+          {
+            "name": "Staff",
+            "attackScale": "high",
+            "damageScale": "low",
+            "bonus": 21,
+            "damage": "2d6+9",
+            "average": 16
+          }
+        ],
+        "spellDC": 28,
+        "spellAttack": 20,
+        "resistanceValue": 6,
+        "classDC": {
+          "extreme": 32,
+          "high": 28,
+          "moderate": 25
+        }
+      }
+    }
+  }
+}
