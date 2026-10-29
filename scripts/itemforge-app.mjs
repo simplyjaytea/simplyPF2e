@@ -16,7 +16,8 @@ import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
 import {
   getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, priceToGp, toItemData,
-  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuable
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuable,
+  getRunedCandidates
 } from "./compendium.mjs";
 import {
   spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName, cantripDeckMaxRarity
@@ -34,6 +35,8 @@ import {
 import { LOOT_NAME_MAX, LOOT_MANIFEST, COIN_UUIDS, coinItemSource, buildLootActorSource } from "./loot-actor.mjs";
 import { persistedExpectedItems, verifyCreatedActor, rollbackCreatedActor } from "./post-create.mjs";
 import { esc } from "./text.mjs";
+import { applyRunes } from "./runes.mjs";
+import { runedBaseProblem, runeTierProblem, runedValuation, runedSourceFrom, runedSourceProblem, pinnedTier } from "./parcel-runed.mjs";
 
 /** Item Forge kinds that build real spells into scrolls or wands (spell-consumables.mjs). */
 const CONSUMABLE_KINDS = new Set(["scroll", "wand", "cantripDeck"]);
@@ -715,6 +718,8 @@ export class ItemForgeApp extends SpfApp {
       candidates.push(...await getSpecialWandCandidates(level, keywords, { maxRarity: this.#input.rarity }));
       candidates.push(...await getParcelWandCandidates(level, keywords, { maxRarity: this.#input.rarity }));
     }
+    // Runed candidates are bounded across all levels in one pass, so the base documents are read once.
+    candidates.push(...await getRunedCandidates(levels, keywords, { maxRarity: this.#input.rarity }));
     return { candidates, offered: new Map(candidates.map((candidate) => [candidate.id, candidate])) };
   }
 
@@ -735,7 +740,8 @@ export class ItemForgeApp extends SpfApp {
       if (candidate) {
         const result = await this.#buildPermanentSafely(candidate, slot);
         if (result.source) {
-          entries.push({ slot, filled: true, kind: candidate.kind, source: result.source, name: result.name, level: result.level, copper: result.copper });
+          entries.push({ slot, filled: true, kind: candidate.kind, source: result.source, name: result.name, level: result.level, copper: result.copper,
+            computed: result.computed ?? null, baseName: candidate.baseName ?? null });
           continue;
         }
         console.warn(`${MODULE_ID} | dropped permanent parcel item`, result);
@@ -758,10 +764,38 @@ export class ItemForgeApp extends SpfApp {
       if (!built.source) return { reason: PERMANENT_REASON.BUILD, detail: built.reason };
       return this.#permanentResult(built.source, slot);
     }
+    if (candidate.kind === "runed") return this.#buildRuned(candidate, slot);
     const doc = await getCandidateDocument(candidate);
     if (!doc) return { reason: PERMANENT_REASON.UNAVAILABLE };
     const source = toItemData(doc);
     return this.#permanentResult(source, slot);
+  }
+
+  /**
+   * A fundamental-runed item: the base is read again, each pinned tier is verified against its real document,
+   * and the value and level are recomputed from the verified tiers. Anything that disagrees is refused.
+   */
+  async #buildRuned(candidate, slot) {
+    const doc = await getCandidateDocument(candidate.base);
+    if (!doc) return { reason: PERMANENT_REASON.UNAVAILABLE };
+    const base = toItemData(doc);
+    const kind = candidate.runeKind;
+    const problem = runedBaseProblem(base, kind);
+    if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
+    const { potency, secondary } = candidate.computed;
+    const field = kind === "weapon" ? "striking" : "resilient";
+    const tiers = [pinnedTier(kind, "potency", potency), secondary ? pinnedTier(kind, field, secondary) : null].filter(Boolean);
+    for (const tier of tiers) {
+      const tierDoc = await fromUuid(tier.uuid);
+      const data = tierDoc ? toItemData(tierDoc) : null;
+      if (!data || runeTierProblem(data, tier)) return { reason: PERMANENT_REASON.UNAVAILABLE, detail: "rune tier" };
+    }
+    const computed = runedValuation({ kind, baseLevel: base.system.level.value, baseRarity: base.system.traits.rarity, potency, secondary });
+    if (!computed || computed.level !== candidate.level || computed.copper !== candidate.computed.copper) {
+      return { reason: PERMANENT_REASON.BUILD, detail: "valuation" };
+    }
+    const source = runedSourceFrom(base, { kind, potency, secondary }, applyRunes);
+    return this.#permanentResult(source, slot, candidate.computed);
   }
 
   /** A read or conversion failure on one chosen item is that slot's problem: it is unfilled, not the parcel's. */
@@ -775,7 +809,12 @@ export class ItemForgeApp extends SpfApp {
     }
   }
 
-  #permanentResult(source, slot) {
+  #permanentResult(source, slot, computed = null) {
+    if (computed) {
+      const problem = runedSourceProblem(source, slot.allowedLevels, this.#input.rarity, computed);
+      if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
+      return { source, name: source.name, level: computed.level, copper: computed.copper, computed };
+    }
     const problem = permanentSourceProblem(source, slot.allowedLevels, this.#input.rarity);
     if (problem) return { reason: PERMANENT_REASON.BUILD, detail: problem };
     return { source, name: source.name, level: source.system.level.value, copper: priceCopper(source.system.price.value) };
@@ -827,6 +866,7 @@ export class ItemForgeApp extends SpfApp {
         levels: this.#levelsLabel(entry.slot.allowedLevels),
         filled: entry.filled,
         kind: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.PermanentKind.${entry.kind ?? "equipment"}`),
+        detail: entry.filled && entry.baseName ? game.i18n.format("SIMPLYPF2E.ItemForge.Parcel.PermanentBase", { base: entry.baseName }) : null,
         name: entry.filled ? entry.name : null,
         itemLevel: entry.filled ? entry.level : null,
         price: entry.filled ? `${formatGp(entry.copper)} gp` : null,
@@ -881,7 +921,9 @@ export class ItemForgeApp extends SpfApp {
       // Revalidate every built permanent source before anything is written (the preview may be old).
       for (const entry of p?.permanents ?? []) {
         if (!entry.filled) continue;
-        const problem = permanentSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity);
+        const problem = entry.computed
+          ? runedSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity, entry.computed)
+          : permanentSourceProblem(entry.source, entry.slot.allowedLevels, p.rarity);
         if (problem) throw new Error(game.i18n.localize("SIMPLYPF2E.ItemForge.Parcel.Revalidate"));
       }
       const built = p?.permanents.filter((entry) => entry.filled) ?? [];

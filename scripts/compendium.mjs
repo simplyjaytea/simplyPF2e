@@ -11,8 +11,11 @@ import { slugify } from "./text.mjs";
 import { createAsyncCache } from "./async-cache.mjs";
 import {
   permanentEquipmentProblem, permanentDocumentProblem, valuableProblem,
-  priceCopper, wandRankForLevel, rankByBrief, chooseValuable, specialWandProblem
+  priceCopper, wandRankForLevel, rankByBrief, chooseValuable, specialWandProblem, rarityAllowed
 } from "./treasure-permanent.mjs";
+import {
+  pinnedTier, runedBaseProblem, runeTierProblem, runedValuation, runedCandidateId, runedDisplayName, SECONDARY_FIELD
+} from "./parcel-runed.mjs";
 
 export const CATEGORIES = [
   "abilities", "spells", "feats", "equipment", "ancestries", "backgrounds", "classes", "classFeatures", "heritages", "bestiaryActors"
@@ -1040,6 +1043,84 @@ export async function getSpecialWandCandidates(level, keywords = [], { maxRarity
     offered.push(candidateRecord(item, { name: item.name, type: "equipment", level, traits: item.traits, rarity: data.system.traits.rarity, kind: "special-wand" }));
   }
   return offered;
+}
+
+/** Ordinary base documents read per parcel for runed items, and runed candidates offered per level. */
+export const RUNED_BASE_LOADS = 12;
+export const RUNED_LIMIT_PER_LEVEL = 8;
+
+/** Parse a pinned `Compendium.<pack>.Item.<id>` UUID into the `{ packId, _id }` form getDocument takes. */
+function parsePinnedUuid(uuid) {
+  const match = /^Compendium\.([^.]+\.[^.]+)\.Item\.([A-Za-z0-9]+)$/.exec(uuid);
+  return match ? { packId: match[1], _id: match[2] } : null;
+}
+
+/**
+ * Fundamental-runed candidates (parcel v3) for the given item levels. Ordinary base weapons and armor are
+ * read from the configured equipment packs, ranked by the brief and loaded in a bounded number. Each base
+ * that passes runedBaseProblem is combined with each tier pair (potency 1 to 3, with an optional secondary
+ * 1 to 3) whose pinned tiers are verified against their real documents. A combination is offered at its
+ * computed pf2e level and only when that level is one the caller asked for. The value and level are
+ * computed from the pinned tiers; nothing is read from a stored price.
+ */
+export async function getRunedCandidates(levels, keywords = [], { maxRarity = "common", limitPerLevel = RUNED_LIMIT_PER_LEVEL } = {}) {
+  const wanted = new Set(levels);
+  if (!wanted.size) return [];
+  const verified = new Map();
+  const tierVerified = async (kind, field, tier) => {
+    const key = `${kind}/${field}/${tier}`;
+    if (!verified.has(key)) {
+      const pinned = pinnedTier(kind, field, tier);
+      const ref = pinned ? parsePinnedUuid(pinned.uuid) : null;
+      const data = ref ? await readItemData(ref.packId, ref._id) : null;
+      const ok = Boolean(pinned && data && !runeTierProblem(data, pinned));
+      if (!ok) console.warn(`simplypf2e | fundamental ${kind} ${field} tier ${tier} could not be verified against its document`);
+      verified.set(key, ok);
+    }
+    return verified.get(key);
+  };
+  const bases = [];
+  for (const kind of ["weapon", "armor"]) {
+    for (const packId of getPacksFor("equipment")) {
+      for (const entry of await getEquipmentIndex(packId)) {
+        if (entry.type !== kind || entry.system?.specific) continue;
+        bases.push({ kind, packId, _id: entry._id, name: entry.name, id: `${kind}/${packId}/${entry._id}` });
+      }
+    }
+  }
+  const offered = new Map([...wanted].map((level) => [level, []]));
+  let loads = 0;
+  for (const base of rankByBrief(bases, keywords)) {
+    if (loads >= RUNED_BASE_LOADS) break;
+    loads += 1;
+    const data = await readItemData(base.packId, base._id);
+    if (!data || runedBaseProblem(data, base.kind) || !rarityAllowed(data.system.traits.rarity, maxRarity)) continue;
+    const baseRecord = candidateRecord({ packId: base.packId, _id: base._id }, { name: data.name, type: base.kind, level: data.system.level.value, kind: "runed-base" });
+    const field = SECONDARY_FIELD[base.kind];
+    for (let potency = 1; potency <= 3; potency++) {
+      if (!(await tierVerified(base.kind, "potency", potency))) continue;
+      for (let secondary = 0; secondary <= 3; secondary++) {
+        if (secondary && !(await tierVerified(base.kind, field, secondary))) continue;
+        const computed = runedValuation({ kind: base.kind, baseLevel: data.system.level.value, baseRarity: data.system.traits.rarity, potency, secondary });
+        if (!computed || !offered.has(computed.level) || !rarityAllowed(computed.rarity, maxRarity)) continue;
+        const list = offered.get(computed.level);
+        if (list.length >= limitPerLevel) continue;
+        list.push({
+          id: runedCandidateId(baseRecord.id, potency, secondary),
+          name: runedDisplayName(base.kind, data.name, potency, secondary),
+          level: computed.level,
+          rarity: computed.rarity,
+          kind: "runed",
+          traits: [],
+          runeKind: base.kind,
+          base: baseRecord,
+          baseName: data.name,
+          computed: { baseLevel: data.system.level.value, baseRarity: data.system.traits.rarity, potency, secondary, copper: computed.copper, level: computed.level, rarity: computed.rarity }
+        });
+      }
+    }
+  }
+  return [...offered.values()].flat();
 }
 
 /**

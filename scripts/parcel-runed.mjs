@@ -16,6 +16,7 @@
  *   not shoddy, not magical, no Rule Elements.
  */
 import { priceCopper, rarityAllowed } from "./treasure-permanent.mjs";
+import { capitalized } from "./text.mjs";
 
 /** pf2e-8.5.0 rarity order, physical/helpers.ts computeLevelRarityPrice `rarityOrder`. */
 const RARITY_ORDER = Object.freeze({ common: 0, uncommon: 1, rare: 2, unique: 3 });
@@ -140,6 +141,15 @@ export function runeTierProblem(data, tier) {
   if (system.traits?.rarity !== tier.rarity) return "rarity";
   if (system.usage?.value !== tier.usage) return "usage";
   return null;
+}
+
+/** The display name of a runed item, in the same form runes.mjs runedName gives the built clone. */
+const SECONDARY_ADJECTIVE = Object.freeze({
+  weapon: Object.freeze({ 1: "Striking", 2: "Greater Striking", 3: "Major Striking" }),
+  armor: Object.freeze({ 1: "Resilient", 2: "Greater Resilient", 3: "Major Resilient" })
+});
+export function runedDisplayName(kind, baseName, potency, secondary) {
+  return [`+${potency}`, secondary ? SECONDARY_ADJECTIVE[kind][secondary] : null, capitalized(baseName)].filter(Boolean).join(" ");
 }
 
 /** The candidate id for one base and one tier combination: opaque, and unique per base. */

@@ -14,6 +14,8 @@ const tables = await import(R + "scripts/treasure-tables.mjs");
 const parcel = await import(R + "scripts/treasure-parcel.mjs");
 const loot = await import(R + "scripts/loot-actor.mjs");
 const permanent = await import(R + "scripts/treasure-permanent.mjs");
+const runed = await import(R + "scripts/parcel-runed.mjs");
+const runes = await import(R + "scripts/runes.mjs");
 const post = await import(R + "scripts/post-create.mjs");
 const text = await import(R + "scripts/text.mjs");
 const source = readFileSync(new URL(R + "scripts/itemforge-app.mjs"), "utf8");
@@ -29,6 +31,8 @@ const HEARING = parcelFixture("magical-hearing-aid");
 const SILK = parcelFixture("silk-ceremonial-armor");
 const AGATE = parcelFixture("agate");
 const MERCY = parcelFixture("wand-of-mercy-1st-rank");
+const v3Fixture = (n) => JSON.parse(readFileSync(new URL(R + "tests/fixtures/parcel-v3/" + n + ".json"), "utf8"));
+const RUNED_BASE = v3Fixture("longsword");
 const COIN_NAMES = { pp: "Platinum Pieces", gp: "Gold Pieces", sp: "Silver Pieces", cp: "Copper Pieces" };
 const coinDoc = (denomination) => ({ _id: loot.COIN_UUIDS[denomination].split(".").at(-1), name: COIN_NAMES[denomination], type: "treasure", img: "x.webp",
   system: { category: "coin", price: { value: { [denomination]: 1 } }, quantity: 1, rules: [] } });
@@ -44,6 +48,7 @@ const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "com
 let lastHearingSource = null; let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
 async function getCandidateDocument(c) {
   if (c?.id === "c-heal") return { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) };
+  if (c?.id === "c-runedbase") return { name: RUNED_BASE.name, uuid: "Compendium.pf2e.equipment-srd.Item." + RUNED_BASE._id, toObject: () => plain(RUNED_BASE) };
   if (c?.id === "c-mercy") return { name: MERCY.name, uuid: "Compendium.pf2e.equipment-srd.Item." + MERCY._id, toObject: () => plain(MERCY) };
   if (c?.id === "c-hearing" && candidateReadError) throw candidateReadError;
   if (c?.id === "c-hearing") {
@@ -59,6 +64,9 @@ const permanentPools = new Map(); const permanentCalls = []; let permanentPicks 
 const valuablePool = { available: true, candidates: [] };
 async function getPermanentEquipmentCandidates(level) { return permanentPools.get(level)?.equipment ?? []; }
 async function getSpecialWandCandidates(level) { return permanentPools.get(level)?.special ?? []; }
+// The runed pool is offered in one call across the levels; a test sets it directly.
+let runedPool = [];
+async function getRunedCandidates() { return runedPool; }
 async function getParcelWandCandidates(level) { return permanentPools.get(level)?.wands ?? []; }
 async function getValuableCandidates() { return valuablePool; }
 async function pickParcelValuable(ranked, budgetCopper) {
@@ -91,7 +99,7 @@ class MockSpfApp {
   _lockCreation() { this._throwIfCancelled(); } _finishRun(o) { this.outcome = o; }
 }
 const mocks = {
-  ...consumables, ...tables, ...parcel, ...permanent, ...loot, ...post, ...text,
+  ...consumables, ...tables, ...parcel, ...permanent, ...runed, ...loot, ...post, ...text, applyRunes: runes.applyRunes,
   experimentalToolsEnabled: () => gate,
   assertExperimentalToolAccess: () => { if (!gate) throw Object.assign(new Error("GATE-CLOSED"), { code: "disabled" }); },
   MODULE_ID: "simplypf2e", SpfApp: MockSpfApp,
@@ -100,6 +108,7 @@ const mocks = {
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   getScrollSpellCandidates, getCandidateDocument, selectSpellConsumables, selectParcelSpells, toItemData, priceToGp,
   getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuable, selectParcelPermanents,
+  getRunedCandidates,
   briefKeywords: () => []
 };
 let actorBehavior = "ok"; const createCalls = []; const deletes = []; const notices = [];
@@ -506,3 +515,52 @@ assert.ok(mercyItem, "the wand is written to the loot actor");
 assert.equal(mercyItem.type, "equipment"); assert.equal(mercyItem.system.level.value, 4); assert.deepEqual(mercyItem.system.rules, []);
 assert.equal(mercyItem.system.price.value.gp, 75, "the published price is carried unchanged");
 permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
+
+// The pinned tier documents the runed build verifies (the same pinned uuids as scripts/parcel-runed.mjs).
+docs.set(runed.RUNE_TIERS.weapon.potency[1].uuid, { uuid: runed.RUNE_TIERS.weapon.potency[1].uuid, toObject: () => plain(v3Fixture("weapon-potency-1")) });
+docs.set(runed.RUNE_TIERS.weapon.striking[1].uuid, { uuid: runed.RUNE_TIERS.weapon.striking[1].uuid, toObject: () => plain(v3Fixture("striking")) });
+// Fundamental-runed items (parcel v3): a level-4 slot takes a +1 striking longsword built from verified tiers.
+const RUNED_CANDIDATE = { id: "rn-c-runedbase-p1s1", name: "+1 Striking Longsword", level: 4, rarity: "common", kind: "runed", traits: [],
+  runeKind: "weapon", base: { id: "c-runedbase", name: "Longsword" }, baseName: "Longsword",
+  computed: { baseLevel: 0, baseRarity: "common", potency: 1, secondary: 1, copper: 10000, level: 4, rarity: "common" } };
+const runedFlow = async (candidate) => {
+  runedPool = [candidate]; permanentPools.clear(); permanentPicks = [{ slotId: "perm-3", candidateId: candidate.id }]; parcelPicks = [];
+  const cc = ctl({ level: { value: "4" } }); const aa = app(cc);
+  await A.selectKind.call(aa, null, { dataset: { kind: "parcel" } }); await A.generate.call(aa);
+  return { cc, aa, ctx: await aa._prepareContext() };
+};
+{
+  const { cc, aa, ctx: rctx } = await runedFlow(RUNED_CANDIDATE);
+  assert.equal(rctx.preview.permanents[2].filled, true, "the runed item fills its level-4 slot");
+  assert.equal(rctx.preview.permanents[2].name, "+1 Striking Longsword");
+  assert.equal(rctx.preview.permanents[2].itemLevel, 4, "the item level is the computed pf2e level");
+  assert.equal(rctx.preview.permanents[2].price, "100 gp", "the value is the two rune prices, with no base added");
+  assert.ok(rctx.preview.permanents[2].kind.includes("PermanentKind.runed"), "the row says it is runed");
+  assert.ok(rctx.preview.permanents[2].detail.includes("PermanentBase") && rctx.preview.permanents[2].detail.includes("Longsword"), "the base is shown");
+  const writes = createCalls.length;
+  await A.createItem.call(aa);
+  const built = createCalls.at(-1).actor.items.find((item) => item.name === "+1 Striking Longsword");
+  assert.ok(built, "the runed item is written to the loot actor");
+  assert.equal(built.type, "weapon"); assert.equal(built.system.runes.potency, 1); assert.equal(built.system.runes.striking, 1);
+  assert.deepEqual(built.system.rules, []); assert.ok(built.system.traits.value.includes("magical"));
+  assert.equal(createCalls.length, writes + 1, "one write for the actor");
+}
+
+// A stored value that disagrees with the recomputed valuation is refused at build; the slot says so and nothing is invented.
+{
+  const wrong = { ...RUNED_CANDIDATE, computed: { ...RUNED_CANDIDATE.computed, copper: 9999 } };
+  const { ctx: wctx } = await runedFlow(wrong);
+  assert.equal(wctx.preview.permanents[2].filled, false, "a disagreeing value is not built");
+  assert.equal(wctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.build", "the reason is a build failure");
+}
+
+// A rune document that cannot be read leaves the slot unavailable, with its reason.
+{
+  const striking = runed.RUNE_TIERS.weapon.striking[1].uuid;
+  const saved = docs.get(striking); docs.delete(striking);
+  const { ctx: uctx } = await runedFlow(RUNED_CANDIDATE);
+  docs.set(striking, saved);
+  assert.equal(uctx.preview.permanents[2].filled, false);
+  assert.equal(uctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.unavailable", "a missing rune document is unavailable, not guessed");
+}
+runedPool = []; permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();

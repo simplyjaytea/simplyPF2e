@@ -614,6 +614,7 @@
           "unavailable": "the chosen one could not be loaded safely"
         },
         "PermanentKindHeader": "Kind",
+        "PermanentBase": "base {base}",
         "PermanentKind": {
           "equipment": "Published equipment",
           "wand": "Generic wand",
