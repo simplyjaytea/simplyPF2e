@@ -994,9 +994,10 @@ const VALUABLE_LOAD_ATTEMPTS = 12;
 /**
  * Published equipment that may fill a permanent slot at `level`. Index filters first (type, exact level,
  * rarity, classification, usage, price), then full documents are loaded in ranked order and must carry
- * no Rule Elements. Only documents that pass are offered; each is issued as an opaque candidate.
+ * no Rule Elements unless `allowRules` (the Forge's world-folder option) is set. Only documents that pass
+ * are offered; each is issued as an opaque candidate.
  */
-export async function getPermanentEquipmentCandidates(level, keywords = [], { maxRarity = "common", limit = PERMANENT_EQUIPMENT_LIMIT } = {}) {
+export async function getPermanentEquipmentCandidates(level, keywords = [], { maxRarity = "common", limit = PERMANENT_EQUIPMENT_LIMIT, allowRules = false } = {}) {
   const indexed = [];
   const seen = new Set();
   for (const packId of getPacksFor("equipment")) {
@@ -1014,7 +1015,7 @@ export async function getPermanentEquipmentCandidates(level, keywords = [], { ma
     if (offered.length >= limit || loads >= limit * PERMANENT_LOAD_FACTOR) break;
     loads += 1;
     const data = await readItemData(item.packId, item._id);
-    if (!data || permanentDocumentProblem(data, level, maxRarity)) continue;
+    if (!data || permanentDocumentProblem(data, level, maxRarity, { allowRules })) continue;
     offered.push(candidateRecord(item, { name: item.name, type: "equipment", level, traits: item.traits, rarity: data.system.traits.rarity, kind: "equipment" }));
   }
   return offered;

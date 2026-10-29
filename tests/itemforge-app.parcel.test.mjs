@@ -15,6 +15,7 @@ const parcel = await import(R + "scripts/treasure-parcel.mjs");
 const loot = await import(R + "scripts/loot-actor.mjs");
 const permanent = await import(R + "scripts/treasure-permanent.mjs");
 const runed = await import(R + "scripts/parcel-runed.mjs");
+const folderModule = await import(R + "scripts/parcel-folder.mjs");
 const runes = await import(R + "scripts/runes.mjs");
 const post = await import(R + "scripts/post-create.mjs");
 const text = await import(R + "scripts/text.mjs");
@@ -45,11 +46,17 @@ let coinAvailable = true; let emptyBuildError = false;
 async function fromUuid(uuid) { if (emptyBuildError && uuid === SCROLL_1) throw new Error(""); if (Object.values(loot.COIN_UUIDS).includes(uuid) && !coinAvailable) return null; return docs.get(uuid) ?? null; }
 const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "common" };
 // Failure modes for the read and provider paths: an error object is thrown on the next call.
-let lastHearingSource = null; let lastRunedSource = null; let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
+const CLOAK = parcelFixture("aerial-cloak");
+let lastCloakSource = null; let lastHearingSource = null; let lastRunedSource = null; let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
 async function getCandidateDocument(c) {
   if (c?.id === "c-heal") return { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) };
   if (c?.id === "c-runedbase") return { name: RUNED_BASE.name, uuid: "Compendium.pf2e.equipment-srd.Item." + RUNED_BASE._id, toObject: () => plain(RUNED_BASE) };
   if (c?.id === "c-mercy") return { name: MERCY.name, uuid: "Compendium.pf2e.equipment-srd.Item." + MERCY._id, toObject: () => plain(MERCY) };
+  if (c?.id === "c-cloak") {
+    // Rule-bearing (Rule Elements in the real document): the built source is this object, so a test can change it after Generate.
+    lastCloakSource = plain(CLOAK);
+    return { name: CLOAK.name, uuid: "Compendium.pf2e.equipment-srd.Item." + CLOAK._id, toObject: () => lastCloakSource };
+  }
   if (c?.id === "c-hearing" && candidateReadError) throw candidateReadError;
   if (c?.id === "c-hearing") {
     // The built source is this object, so a test can change it between Generate and Create.
@@ -62,7 +69,12 @@ async function getCandidateDocument(c) {
 // Permanent slot pools by item level, the AI's picks, and the valuable pool, all controlled per test.
 const permanentPools = new Map(); const permanentCalls = []; let permanentPicks = []; let permanentMode = "ok";
 const valuablePool = { available: true, candidates: [] };
-async function getPermanentEquipmentCandidates(level) { return permanentPools.get(level)?.equipment ?? []; }
+// A rule-bearing candidate is offered only when the world-folder option asks for it, as the real pool does.
+const permanentCandidateCalls = [];
+async function getPermanentEquipmentCandidates(level, _keywords, options = {}) {
+  permanentCandidateCalls.push({ level, allowRules: options.allowRules === true });
+  return (permanentPools.get(level)?.equipment ?? []).filter((candidate) => !candidate.rules || options.allowRules === true);
+}
 async function getSpecialWandCandidates(level) { return permanentPools.get(level)?.special ?? []; }
 // The runed pool is offered in one call across the levels; a test sets it directly.
 let runedPool = [];
@@ -105,7 +117,7 @@ class MockSpfApp {
   _lockCreation() { this._throwIfCancelled(); } _finishRun(o) { this.outcome = o; }
 }
 const mocks = {
-  ...consumables, ...tables, ...parcel, ...permanent, ...runed, ...loot, ...post, ...text, applyRunes: runes.applyRunes,
+  ...consumables, ...tables, ...parcel, ...permanent, ...runed, ...loot, ...post, ...text, ...folderModule, applyRunes: runes.applyRunes,
   // Keeps the built runed source, so a test can change the stored draft after Generate (the real stale-draft case).
   runedSourceFrom: (...args) => { lastRunedSource = runed.runedSourceFrom(...args); return lastRunedSource; },
   experimentalToolsEnabled: () => gate,
@@ -120,6 +132,7 @@ const mocks = {
   briefKeywords: () => []
 };
 let actorBehavior = "ok"; const createCalls = []; const deletes = []; const notices = [];
+let itemBehavior = "ok"; let folderBehavior = "ok"; const itemDeletes = []; const folderCreates = []; const folderDeletes = [];
 const context = vm.createContext({
   console: { log() {}, warn() {}, error() {} }, structuredClone,
   game: { i18n: {
@@ -130,7 +143,17 @@ const context = vm.createContext({
       : k + ":" + JSON.stringify(d ?? {}))
   }, actors: { get: () => null } },
   ui: { notifications: { info() {}, warn(message) { notices.push(message); } } },
-  Item: { create: async (s) => { createCalls.push({ item: s }); return s.map((x, i) => ({ id: "i" + i, name: x.name, sheet: { render: async () => {} } })); } },
+  Item: { create: async (s) => {
+    createCalls.push({ item: s });
+    if (itemBehavior === "fail") throw new Error("item create refused");
+    return s.map((x, i) => {
+      const name = itemBehavior === "rename" ? x.name + " (renamed)" : x.name;
+      return { id: "i" + i, name, folder: x.folder ?? null, system: plain(x.system), sheet: { render: async () => {} },
+        delete: async () => { itemDeletes.push(name); } };
+    });
+  } },
+  Folder: { create: async (data) => { folderCreates.push(data); return { id: "f1", name: data.name, delete: async () => {
+    folderDeletes.push(data.name); if (folderBehavior === "stuck") throw new Error("nope"); } }; } },
   Actor: { create: async (data) => {
     createCalls.push({ actor: data });
     const items = actorBehavior.startsWith("dropItem") ? data.items.slice(1) : data.items;
@@ -628,3 +651,117 @@ runedPool = []; permanentPools.clear(); permanentPicks = []; parcelPicks = initi
   assert.equal(openCtx.input.valuables, true, "with the gate open the valuables box is kept");
   permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
 }
+
+// Values built inside the VM context have another realm's prototypes, so compare their serialized form.
+const same = (actual, expected, message) => assert.equal(JSON.stringify(actual), JSON.stringify(expected), message);
+// Rule Elements destination (feat/re-folder): with "Items with rules go to a world folder" on, a rule-bearing permanent item
+// is created as an unchanged world item in a folder named after the parcel, and never on the loot actor.
+const CLOAK_CANDIDATE = { id: "c-cloak", name: "Aerial Cloak", level: 3, kind: "equipment", traits: ["air", "invested", "magical"], rarity: "common", rules: true };
+const PARCEL_NAME = "SIMPLYPF2E.ItemForge.Loot.DefaultName";
+const resetFolderRun = () => {
+  gate = true; actorBehavior = "ok"; itemBehavior = "ok"; folderBehavior = "ok"; parcelPicks = initialPicks; permanentMode = "ok";
+  permanentPools.clear(); permanentPools.set(3, { equipment: [CLOAK_CANDIDATE], wands: [] }); permanentPicks = [{ slotId: "perm-1", candidateId: "c-cloak" }];
+  permanentCandidateCalls.length = 0; createCalls.length = 0; itemDeletes.length = 0; folderCreates.length = 0; folderDeletes.length = 0;
+};
+const folderRun = async (controls = {}) => {
+  const run = app(ctl({ level: { value: "2" }, ...controls }));
+  await A.selectKind.call(run, null, { dataset: { kind: "parcel" } }); await A.generate.call(run);
+  return run;
+};
+const folderOn = { ruleFolder: { checked: true } };
+
+// Option off (default): the pool asks for no rule-bearing items, and the cloak is never built.
+resetFolderRun();
+a = await folderRun();
+ctx = await a._prepareContext();
+assert.ok(permanentCandidateCalls.length && permanentCandidateCalls.every((call) => call.allowRules === false), "option off: the pool never admits rule-bearing items");
+assert.equal(ctx.preview.permanents[0].filled, false, "option off: the rule-bearing cloak is not built");
+assert.equal(ctx.preview.permanents[0].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.no-candidates", "option off: the pool holds no rule-bearing item, so the slot has no candidates");
+assert.equal(ctx.preview.ruleFolder, null, "option off: no world-folder section");
+assert.equal(ctx.input.ruleFolder, false, "option off: the box is off by default");
+await A.createItem.call(a);
+assert.equal(folderCreates.length, 0, "option off: no folder is created");
+assert.equal(createCalls.filter((call) => call.item).length, 0, "option off: no world item is created");
+
+// Option on, cloak picked: folder plus items created, the loot actor holds no rule-bearing item, totals exact across both.
+resetFolderRun();
+a = await folderRun(folderOn);
+ctx = await a._prepareContext();
+assert.equal(ctx.input.ruleFolder, true, "the box is read as on");
+assert.ok(permanentCandidateCalls.some((call) => call.allowRules === true), "option on: the pool admits rule-bearing items");
+assert.equal(ctx.preview.permanents[0].filled, true, "option on: the cloak fills its slot");
+assert.equal(ctx.preview.permanents[0].destination, "SIMPLYPF2E.ItemForge.Parcel.RuleFolder.Folder", "the row names its destination");
+same(ctx.preview.ruleFolder.items.map((item) => item.name), ["Aerial Cloak"], "the folder section lists the world items");
+assert.equal(ctx.preview.ruleFolder.folderGp, "60 gp", "the folder subtotal is the cloak's real price");
+const lootGp = Number(ctx.preview.ruleFolder.lootGp.replace(/[^0-9.]/g, ""));
+assert.ok(Math.abs(lootGp + 60 - ctx.preview.valueGp) < 1e-9, "loot actor plus world folder equals the built total, exactly");
+await A.createItem.call(a); ctx = await a._prepareContext();
+assert.equal(ctx.error, null, "option on: the create succeeds");
+same(folderCreates, [{ name: PARCEL_NAME, type: "Item" }], "a world folder named after the parcel, typed Item, is created once");
+const worldWrite = createCalls.find((call) => call.item);
+assert.equal(worldWrite.item.length, 1, "one world item is written");
+assert.equal(worldWrite.item[0].name, "Aerial Cloak");
+assert.equal(worldWrite.item[0].folder, "f1", "the world item is inside the folder");
+assert.equal(worldWrite.item[0].system.rules.length, CLOAK.system.rules.length, "the world item keeps every Rule Element");
+assert.ok(worldWrite.item[0]._stats?.compendiumSource, "the clone keeps its compendium source");
+const actorWrite = createCalls.at(-1).actor;
+assert.ok(!actorWrite.items.some((item) => item.name === "Aerial Cloak"), "the loot actor never holds the rule-bearing item");
+same(folderDeletes, [], "a successful create rolls nothing back");
+assert.ok(createCalls.indexOf(worldWrite) < createCalls.indexOf(createCalls.find((call) => call.actor)), "the folder items are written before the loot actor");
+
+// Rollback: the world item create fails, so no loot actor is written and the folder is removed.
+resetFolderRun(); itemBehavior = "fail";
+a = await folderRun(folderOn); await A.createItem.call(a); ctx = await a._prepareContext();
+assert.ok(ctx.error.includes("item create refused"), "the failure is reported");
+assert.equal(createCalls.filter((call) => call.actor).length, 0, "no loot actor is written when a world item create fails");
+same(folderDeletes, [PARCEL_NAME], "the folder is removed");
+assert.equal(ctx.hasPreview, true, "a failed create keeps the draft for a retry");
+
+// Rollback: the loot actor fails verification after the world items exist, so the items and folder are removed too.
+resetFolderRun(); actorBehavior = "dropItem";
+a = await folderRun(folderOn); await A.createItem.call(a); ctx = await a._prepareContext();
+assert.ok(ctx.error.includes("Post-create verification failed"), "the actor failure is reported");
+same(itemDeletes, ["Aerial Cloak"], "the world item is removed after the actor rollback");
+same(folderDeletes, [PARCEL_NAME], "the folder is removed last");
+actorBehavior = "ok";
+
+// A world item or folder that cannot be removed is reported as a survivor, never silently left behind.
+resetFolderRun(); actorBehavior = "dropItem"; folderBehavior = "stuck";
+a = await folderRun(folderOn); await A.createItem.call(a); ctx = await a._prepareContext();
+assert.ok(ctx.error.includes("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.SurvivorFolder"), "a folder that survives the rollback is named in the error");
+actorBehavior = "ok"; folderBehavior = "ok";
+
+// Revalidation: a rule-bearing source that stops passing its checks after Generate is refused before anything is written.
+resetFolderRun();
+a = await folderRun(folderOn);
+lastCloakSource.system.level.value = 9;
+await A.createItem.call(a); ctx = await a._prepareContext();
+assert.equal(ctx.error, "SIMPLYPF2E.ItemForge.Parcel.Revalidate", "a changed rule-bearing source is refused");
+assert.equal(folderCreates.length, 0, "nothing is written after a failed revalidation");
+assert.equal(createCalls.length, 0, "no item and no actor after a failed revalidation");
+
+// Verification: a world item that comes back different from what was sent blocks the create and is rolled back.
+resetFolderRun(); itemBehavior = "rename";
+a = await folderRun(folderOn); await A.createItem.call(a); ctx = await a._prepareContext();
+assert.ok(ctx.error.includes("SIMPLYPF2E.ItemForge.Parcel.RuleFolder.Verify"), "a mismatched world item is reported");
+assert.equal(createCalls.filter((call) => call.actor).length, 0, "no loot actor is written after a mismatched world item");
+same(itemDeletes, ["Aerial Cloak (renamed)"], "the mismatched world item is removed");
+same(folderDeletes, [PARCEL_NAME], "the folder is removed");
+itemBehavior = "ok";
+
+// Merchant sheet: the folder sits next to the Merchant actor in the same create.
+resetFolderRun();
+a = await folderRun({ ...folderOn, lootSheetType: { value: "Merchant" } });
+await A.createItem.call(a); ctx = await a._prepareContext();
+assert.equal(ctx.error, null);
+assert.equal(createCalls.at(-1).actor.system.lootSheetType, "Merchant", "the Merchant sheet is kept");
+assert.equal(folderCreates.length, 1, "the folder is created next to the Merchant actor");
+
+// The gate stays authoritative: with experimental tools closed the option is ignored and nothing is written.
+resetFolderRun();
+a = await folderRun(folderOn);
+gate = false; await A.createItem.call(a); ctx = await a._prepareContext();
+assert.equal(ctx.error, "GATE-CLOSED", "a closed gate refuses the create");
+assert.equal(folderCreates.length, 0, "a closed gate writes no folder");
+gate = true;
+resetFolderRun();
