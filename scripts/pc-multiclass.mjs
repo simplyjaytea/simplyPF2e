@@ -1,4 +1,5 @@
-// Ordinary multiclass (C08): the noncaster archetype catalog and the dedication
+// Ordinary multiclass (C08): the archetype catalog (noncaster packages, plus the Wizard
+// spellcasting package whose entry is built by pc-caster-archetype.mjs) and the dedication
 // lock. Names are PF2e 8.5.0 source data; every name must match a compendium
 // feat exactly, and anything not listed is unavailable.
 //
@@ -22,7 +23,7 @@ const ABILITY_LABELS = Object.freeze({
  * PF2e 8.5.0 dedication prerequisites (packs/pf2e/feats/archetype/<pkg>/*-dedication.json,
  * `system.prerequisites.value`): fighter and monk "Strength +2"/"Dexterity +2",
  * barbarian "Strength +2"/"Constitution +2", investigator "Intelligence +2",
- * ranger "Dexterity +2".
+ * ranger "Dexterity +2", wizard "Intelligence +2" (feats/archetype/wizard/wizard-dedication.json).
  * @type {ReadonlyArray<{slug: string, dedication: string, abilities: {key: string, min: number}[], feats: {name: string, requires: readonly string[]}[]}>}
  */
 export const MULTICLASS_PACKAGES = Object.freeze([
@@ -69,6 +70,17 @@ export const MULTICLASS_PACKAGES = Object.freeze([
     dedication: "Ranger Dedication",
     abilities: Object.freeze([Object.freeze({ key: "dex", min: 2 })]),
     feats: Object.freeze([])
+  }),
+  // Spellcasting package (W3). Only the dedication and the Basic feat: Expert and Master need
+  // "master/legendary in Arcana" (listed below). The casting entry itself comes from
+  // CASTER_ARCHETYPES in pc-caster-archetype.mjs.
+  Object.freeze({
+    slug: "wizard",
+    dedication: "Wizard Dedication",
+    abilities: Object.freeze([Object.freeze({ key: "int", min: 2 })]),
+    feats: Object.freeze([
+      Object.freeze({ name: "Basic Wizard Spellcasting", requires: Object.freeze([]) })
+    ])
   })
 ]);
 
@@ -96,7 +108,18 @@ export const MULTICLASS_UNAVAILABLE = Object.freeze([
   Object.freeze({ name: "Diverse Weapon Expert", reason: "expert-weapon prerequisite is not provable by the staged evaluator" }),
   Object.freeze({ name: "Master Spotter (Investigator)", reason: "expert Perception prerequisite is not provable by the staged evaluator" }),
   Object.freeze({ name: "Barbarian Resiliency", reason: "class-HP prerequisite is not provable by the staged evaluator" }),
-  Object.freeze({ name: "Juggernaut's Fortitude", reason: "expert-save prerequisite is not provable by the staged evaluator" })
+  Object.freeze({ name: "Juggernaut's Fortitude", reason: "expert-save prerequisite is not provable by the staged evaluator" }),
+  Object.freeze({ name: "Expert Wizard Spellcasting", reason: "master-in-Arcana prerequisite is not provable by the staged evaluator" }),
+  Object.freeze({ name: "Master Wizard Spellcasting", reason: "legendary-in-Arcana prerequisite is not provable by the staged evaluator" }),
+  Object.freeze({ name: "Cleric Dedication", reason: "grants a deity ChoiceSet the module cannot answer; spellcasting dedication not modeled" }),
+  Object.freeze({ name: "Druid Dedication", reason: "ChoiceSet (druidic order) the module cannot answer; spellcasting dedication not modeled" }),
+  Object.freeze({ name: "Bard Dedication", reason: "ChoiceSet (muse) the module cannot answer; spellcasting dedication not modeled" }),
+  Object.freeze({ name: "Sorcerer Dedication", reason: "ChoiceSet (bloodline) decides the tradition; spellcasting dedication not modeled" }),
+  Object.freeze({ name: "Witch Dedication", reason: "ChoiceSet (patron) decides the tradition and spells live on a familiar; not modeled" }),
+  Object.freeze({ name: "Oracle Dedication", reason: "ChoiceSet (mystery) and a curse the module cannot answer; spellcasting dedication not modeled" }),
+  Object.freeze({ name: "Psychic Dedication", reason: "ChoiceSet (conscious mind) and an either-or ability prerequisite; not modeled" }),
+  Object.freeze({ name: "Magus Dedication", reason: "either-or ability prerequisite (Strength or Dexterity +2) the ability model cannot express; not modeled" }),
+  Object.freeze({ name: "Summoner Dedication", reason: "grants an eidolon actor; spellcasting dedication not modeled" })
 ]);
 
 const BY_SLUG = new Map();

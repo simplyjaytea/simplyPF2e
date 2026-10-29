@@ -59,4 +59,27 @@ assert.deepEqual(summary, {
   customNarrative: 1,
   unresolved: 1
 }, "completion presentation must report every manifest status without exposing mutable documents");
+// Spellcasting archetype plan (W3): every planned pick is required, exactly like a class spell plan.
+{
+  const archetypeEntry = { packId: "pf2e.spells", _id: "s" };
+  const character = (archetypeSpells, plannedPicks = { 0: 4, 1: 2 }) => completionManifest({ mode: "character",
+    concept: { archetypeSpellcasting: { pkg: "wizard", plannedPicks, spells: [] } },
+    resolved: { ancestryDoc: { name: "Human" }, backgroundDoc: { name: "Warrior" }, classDoc: { name: "Fighter" },
+      spells: [], focusSpells: [], archetypeSpells, feats: [], equipment: [], loot: [] } });
+  const spell = (rank) => ({ spell: { name: "Spell", rank }, entry: archetypeEntry });
+  const full = character([spell(0), spell(0), spell(0), spell(0), spell(1), spell(1)]);
+  assert.equal(full.complete, true);
+  assert.ok(full.records.some((r) => r.category === "spellcasting-entry" && r.name === "Archetype Spellcasting Entry" && r.status === "module-built"));
+  const short = character([spell(0), spell(0), spell(0), spell(1), spell(1)]);
+  assert.equal(short.complete, false, "a missing cantrip blocks creation");
+  assert.deepEqual(short.unresolved.map((r) => [r.category, r.name]), [["archetype-spell", "Rank 0 pick 4"]]);
+  assert.equal(character([]).complete, false, "an empty plan with picks owed is incomplete");
+  assert.equal(character([{ spell: { name: "Gone", rank: 0 }, entry: null }, spell(0), spell(0), spell(0), spell(1), spell(1)]).complete, false,
+    "an unresolved pick is a blocking record");
+  const noPlan = completionManifest({ mode: "character", concept: {}, resolved: { ancestryDoc: { name: "Human" }, backgroundDoc: { name: "Warrior" },
+    classDoc: { name: "Fighter" }, spells: [], focusSpells: [], archetypeSpells: [spell(0)], feats: [], equipment: [], loot: [] } });
+  assert.ok(!noPlan.records.some((r) => /archetype/.test(r.category)), "no archetype plan, no archetype records");
+  assert.equal(completionManifest({ mode: "monster", concept: { archetypeSpellcasting: { plannedPicks: { 0: 1 } } }, resolved: { abilities: [], spells: [], focusSpells: [], feats: [], equipment: [], loot: [], archetypeSpells: [] } }).complete, true,
+    "creatures never carry an archetype plan");
+}
 console.log("completion.test.mjs: manifest statuses and complete-only boundary passed");

@@ -1,0 +1,174 @@
+# Caster multiclass dedications — research spike and record (2026-10-30)
+
+Workstream W3, branch `feat/caster-multiclass`, base `integrate/2026-10-30@baeb0a3`. Step 1 (this spike) was written before any code.
+
+Sources: every pf2e quote below is from a local copy of the `pf2e-8.5.0` tree. Each cited file's git blob SHA was compared with `gh api repos/foundryvtt/pf2e/contents/<path>?ref=pf2e-8.5.0` and matched (wizard-dedication.json `e39fef93`, basic-wizard-spellcasting.json `fbac2f4e`, journals/archetypes.json `48f72322`, spellcasting-entry/document.ts `ab821f73`, spellcasting-entry/data.ts `b68403e4`). Nothing here is recalled.
+
+## 1. Why caster dedications are refused today
+
+There is no refusal branch. The catalog is an allow-list and everything not in it is unavailable (`scripts/pc-multiclass.mjs`, header and `MULTICLASS_PACKAGES`):
+
+```
+// Ordinary multiclass (C08): the noncaster archetype catalog and the dedication
+// lock. Names are PF2e 8.5.0 source data; every name must match a compendium
+// feat exactly, and anything not listed is unavailable.
+```
+
+Only Fighter, Investigator, Barbarian, Monk and Ranger packages are listed. `multiclassFeatCandidates()` (`pc-builder.mjs`) keeps only exact catalog names, so a caster dedication is never offered, and `resolveFeatPicks`/`pc-edit.mjs` reject any archetype-slot pick outside the catalog. PLAYBOOK §1 puts it out of scope by decision, and §10 item 12 says it is "blocked until a supported casting/grant path is identified and accepted". This spike is that identification.
+
+## 2. What pf2e 8.5.0 caster dedications carry
+
+All ten dedications tagged `spellcasting-multiclass-archetype` (`traits.otherTags`) and their Rule Elements, from `packs/pf2e/feats/archetype/**/*-dedication.json`:
+
+| Dedication | `system.rules` | Notes |
+| --- | --- | --- |
+| Wizard | `ActiveEffectLike upgrade system.skills.arcana.rank 1` | nothing else |
+| Magus | `ActiveEffectLike arcana rank 1`, `ActiveEffectLike attacks.simple.rank` | prerequisites "Strength or Dexterity +2" and "Intelligence +2" |
+| Cleric | `GrantItem Compendium.pf2e.classfeatures.Item.Deity (Cleric)`, `ActiveEffectLike religion` | deity choice lives in the granted feature |
+| Druid | `ActiveEffectLike nature`, `ChoiceSet druidicOrder`, `GrantItem {item\|flags.system.rulesSelections.druidicOrder}` | |
+| Bard | `ChoiceSet dedicationMuse`, `RollOption`, `ActiveEffectLike performance`, `ActiveEffectLike occultism` | |
+| Sorcerer | `ChoiceSet bloodline`, `GrantItem {bloodline}` | tradition comes from the bloodline |
+| Witch | `ChoiceSet patron`, `GrantItem {patron}`, `GrantItem Familiar (Witch)` | tradition from the patron; spells live on a familiar |
+| Oracle | `ActiveEffectLike religion`, `ChoiceSet mystery`, `GrantItem {mystery}`, `GrantItem Oracular Curse` | |
+| Psychic | `ActiveEffectLike occultism`, `ChoiceSet consciousMind`, `GrantItem {mind}` | key attribute is whichever the PC qualified with |
+| Summoner | `GrantItem` (eidolon) | eidolon actor |
+
+**No dedication has a Rule Element that creates a spellcasting entry.** The Wizard Dedication (`packs/pf2e/feats/archetype/wizard/wizard-dedication.json`, level 2, `prerequisites.value: [{"value":"Intelligence +2"}]`) carries exactly:
+
+```json
+"rules": [ { "key": "ActiveEffectLike", "mode": "upgrade", "path": "system.skills.arcana.rank", "value": 1 } ]
+```
+
+and its description gives the casting rules as prose only:
+
+> You cast spells like a wizard, gaining a spellbook with four common arcane cantrips of your choice. You gain the Cast a Spell activity. You can prepare two cantrips each day from your spellbook. You're trained in the spell attack modifier and spell DC statistics. Your key spellcasting attribute for wizard archetype spells is Intelligence, and they are arcane wizard spells. You become trained in Arcana; if you were already trained in Arcana, you instead become trained in a skill of your choice. Select a school; you don't gain any abilities from your choice of school, but qualify for feats as a member.
+
+Basic, Expert and Master Wizard Spellcasting (`basic-wizard-spellcasting.json` level 4, `expert-…` level 12, `master-…` level 18) all have `"rules": []`. Basic Wizard Spellcasting reads: "You gain the Basic Spellcasting Feat benefits. Each time you gain a spell slot of a new rank from the wizard archetype, add two common spells of that rank to your spellbook." Expert and Master add the prerequisites "master in Arcana" and "legendary in Arcana".
+
+The slot progression is in `packs/pf2e/journals/archetypes.json`, page "Spellcasting Archetypes" (`DOc3Pf8wmVxanTIv`), which the feats link to:
+
+> Basic Spellcasting Feat: Usually available at 4th level, these feats grant a 1st-rank spell slot. At 6th level, they grant you a 2nd-rank spell slot, and if you have a spell repertoire, you can select one spell from your repertoire as a signature spell. At 8th level, they grant you a 3rd-rank spell slot. … Expert … 4th-rank slot (12th), 5th (14th), 6th (16th). … Master … 7th-rank slot (18th), 8th (20th).
+
+**Conclusion for question 2:** pf2e does not create the entry from any Rule Element, and it does not expect a grant. Rule Elements give the skill training (and, for the choice-bearing dedications, choices and granted features). The spellcasting entry is something the player adds by hand.
+
+## 3. How pf2e prepares an archetype spellcasting entry
+
+An entry is an ordinary `spellcastingEntry` item. The sheet's "add spellcasting entry" dialog is the only creator the system has (`src/module/actor/sheet/spellcasting-dialog.ts` 183 ff.): it builds `{ type: "spellcastingEntry", system: { ability: { value }, spelldc: { value: 0, dc: 0 }, tradition: { value }, prepared: { value } } }` from what the player picked and calls `actor.createEmbeddedDocuments("Item", [updateData])`. The schema (`spellcasting-entry/data.ts`):
+
+```ts
+interface SpellcastingEntrySystemSource extends ItemSystemSource {
+    ability: { value: AttributeString | "" };
+    spelldc: { value: number; dc: number };
+    tradition: { value: MagicTradition | "" };
+    prepared: SpellCollectionTypeSource;      // { value, flexible?, validItems? }
+    showSlotlessLevels: { value: boolean };
+    proficiency: { slug: string; value: ZeroToFour };
+    slots: SpellcastingEntrySlots;            // slot0..slot10: { prepared[], value, max }
+    autoHeightenLevel: { value: OneToTen | null };
+```
+
+Preparation (`spellcasting-entry/document.ts`):
+
+- `prepareStatistic()`: for a character, `baseStat = actor.getStatistic(this.system.proficiency.slug || "base-spellcasting")`, then `this.system.proficiency.value = Math.max(this.rank, baseStat.rank ?? 0)`. The entry rank is a **floor**. The key attribute is the entry's own `ability.value` (`baseStat.attribute ?? this.system.ability.value`, and `base-spellcasting` has no attribute).
+- `creature/document.ts` 416–420 (`spellcasting.rank ||= 1`): "If you can cast spells using spellcasting prof, you logically need to be at least trained" — a character with any real entry is at least trained, which is what the dedication grants.
+- `prepareBaseData()` pads each prepared slot group to `group.max` and, for a flexible entry, empties every group but `slot0`.
+- There is no `isFlexible` or archetype flag that computes slots. Slots are plain data (`slots.slotN.max`); the system never derives them from a class or a feat. `prepared.flexible` is a user-set boolean.
+
+So for a class caster the module already hand-assembles exactly this: `pc-builder.mjs` `createCharacterActor()` pushes `{ type: "spellcastingEntry", system: { tradition, prepared: { value, flexible: false }, ability, proficiency: { value: 1 }, slots, spelldc, showSlotlessLevels } }`, and the slot counts and mode/tradition/attribute come from the module's own `REMASTER_SPELLCASTERS` table in `pc-tables.mjs`, because "class data itself contains only spell proficiency". pf2e supplies the table only as published prose, for classes (`journals/classes.json`) and archetypes (`journals/archetypes.json`) alike.
+
+## 4. Decision
+
+**BUILD, narrowly.** Applying the decision rule literally:
+
+- Is the entry created by a Rule Element the module can clone? **No.** Nothing exists to clone, and nothing needs authoring: the entry is not a Rule Element in pf2e either.
+- Can the module build the entry the same way it builds class spellcasting today? **Yes.** The class path writes plain `spellcastingEntry` document data from a small module-owned profile table cited to the published prose. An archetype entry is the same document type with the same fields, and its inputs (tradition, key attribute, prepared/spontaneous, cantrip count, slot-per-level) are each stated in the 8.5.0 feat text and journal quoted above.
+- Is any hand-authored data needed that pf2e does not supply? **No Rule Element and no rule.** The one new table (tradition, attribute, mode, cantrip counts, slot levels) is the same kind of cited transcription as `REMASTER_SPELLCASTERS` and `pcSpellSlots`. It is pinned by tests that read the real 8.5.0 feat JSON and journal text, and by the drift tool, so a change in the published text fails the gate.
+
+This is a judgment call on "hand-authored data" and is flagged for the Lead: if the rule is read as "no module-owned table at all", this stops here at "dedication feat only, no entry". I read the existing class precedent as settling it.
+
+### Which archetypes (smallest complete subset)
+
+Only **Wizard** is buildable without new capabilities:
+
+- Wizard Dedication has no `ChoiceSet`, no `GrantItem`, no eidolon or familiar. Its one Rule Element (Arcana rank) is cloned when the feat is embedded, as for every catalog dedication.
+- Every other caster dedication carries a `ChoiceSet` (Druid, Bard, Sorcerer, Witch, Oracle, Psychic) or a granted feature with its own choice (Cleric's deity), or a non-spell companion (Summoner's eidolon, Witch's familiar), or an either-or prerequisite (Magus `Strength or Dexterity +2`, Psychic `Intelligence +2 or Charisma +2`) that the AND-only `abilities` model cannot express. The existing catalog already excludes Rogue Dedication for the same reason ("choice-bearing dedication"), and no catalog dedication today answers a `ChoiceSet` at all. Sorcerer, Witch and Summoner additionally take their tradition from the choice, and Psychic its key attribute from the prerequisite the PC met. Adding any of these is a separate feature (answer a ChoiceSet, resolve tradition from it), not a table row.
+
+### Package feats
+
+- **Basic Wizard Spellcasting** (level 4, prerequisite "Wizard Dedication"): built. It gives rank 1 at level ≥ 4, rank 2 at level ≥ 6, rank 3 at level ≥ 8 (one slot each), and two common spellbook spells per rank gained.
+- **Expert Wizard Spellcasting** (prerequisite "master in Arcana") and **Master Wizard Spellcasting** ("legendary in Arcana"): unavailable, exactly like the existing "expert … prerequisite is not provable by the staged evaluator" rows. They would also change the entry's proficiency rank.
+- The other Wizard archetype feats (e.g. Arcane School Spell, Hand of the Apprentice) are not in scope.
+
+### What the PC gets
+
+- Wizard Dedication (and Basic Wizard Spellcasting when picked), cloned unchanged; pf2e's own Rule Element trains Arcana.
+- One plain `spellcastingEntry`: arcane, key attribute Intelligence, `prepared` (not flexible), `proficiency.value: 1`, slot0 max 2 (two cantrips prepared per day), and with the Basic feat slot1/2/3 max 1 by level. Spells in the entry: four common arcane cantrips (the "spellbook with four cantrips"), and two common arcane spells per rank gained through the Basic feat. Prepared slots are filled from the spellbook, first N per rank.
+- Spells are chosen the way class spells are: the vetted tradition candidate list (`getSpellCandidates`), one AI selection call that returns candidate ids, module-side validation against the plan, fail-closed on anything off-plan. No number comes from the AI.
+
+### Known gaps (documented, not hidden)
+
+- "Select a school" has no mechanical effect or sheet field in pf2e (no Rule Element); it is not recorded.
+- "If you were already trained in Arcana you instead become trained in a skill of your choice" is not modeled; the same gap already exists for the noncaster dedications' skill sentences.
+- Expert/Master Wizard Spellcasting, other casters, and spell editing in the Character editor.
+- Not native-accepted; no Foundry here.
+
+## 5. What was built
+
+Behind `multiclassArchetypes` or `freeArchetype`, and the generator's spellcasting option (`allowSpellcasting`).
+
+| Piece | Where | Behavior |
+| --- | --- | --- |
+| Table and entry builder | `scripts/pc-caster-archetype.mjs` (pure) | `CASTER_ARCHETYPES.wizard` (arcane, `int`, `prepared`, 4 spellbook cantrips, 2 cantrip slots, 2 spells per rank), `BASIC_SPELLCASTING_RANK_LEVELS` (1: 4, 2: 6, 3: 8), `casterArchetypePlans(featNames, level)`, `assembleCasterArchetypeEntry(...)` |
+| Catalog | `scripts/pc-multiclass.mjs` | `wizard` package (Wizard Dedication, Intelligence +2; Basic Wizard Spellcasting). `MULTICLASS_UNAVAILABLE` gains Expert and Master Wizard Spellcasting and the nine other caster dedications, each with its reason |
+| Candidates | `scripts/pc-builder.mjs` `multiclassFeatCandidates` | caster packages are offered only when `concept.casterArchetypes` is set; own-class, ability, lock and level rules are the existing ones |
+| Resolve | `resolvePCConcept` | `concept.archetypeSpellcasting.spells` resolve to `resolved.archetypeSpells` against the spell packs, as class spells do |
+| Create | `buildCasterArchetypeItems` | plan recomputed from the feats actually built; one `spellcastingEntry` plus its spells; no entry without at least one resolved spell; off-plan spells dropped with a warning |
+| Selection | `scripts/ai.mjs` `selectArchetypeSpells`; `generator-app.mjs` `#planArchetypeSpellcasting`, `#refineArchetypeSpells` | plan from the held feats (module-owned picks per rank); candidates are `getSpellCandidates(tradition, maxRank, [], picks, { maxRarity: "common" })`; one id-only call (no rank, no number from the model); per-rank cap and repeats enforced in the call and again in the builder |
+| Completion | `scripts/completion.mjs` | `archetype-spell` records: every planned pick is required, an empty or failed selection blocks Create, as for class plans |
+| Preview | `templates/generator.hbs`, `generator-app.mjs` | a "Wizard Archetype Spells (arcane)" section listing the spellbook with found marks, plus one localized note on what is not modeled |
+| Editor | `scripts/pc-edit.mjs`, `generator-app.mjs` | adding, replacing or removing a caster archetype feat is refused (`PC_EDIT_DEFERRED`); the control offers those feats only in the slot that holds them; identity edits are refused once the plan exists; completion errors if plan and feats disagree |
+
+## 6. Verification
+
+Tests (all new, against the real 8.5.0 fixtures in `tests/fixtures/pc-caster`): `pc-caster-archetype.test.mjs` (table equals the feat and journal text; plans by level; entry builder fails closed), `pc-builder.casterArchetype.test.mjs` (the entry on a Fighter, dedication-only and level-5 variants, dedication-less Basic, off-plan spells, coexistence with a class entry), `pc-builder.casterCandidates.test.mjs` (resolution by setting, level, Intelligence +2, own class, Free Archetype slot), `ai.archetypeSpells.test.mjs`, `generator-app.casterArchetype.test.mjs` (production pipeline through preview, empty-plan blocking, editor), and new cases in `completion.test.mjs` and `pc-edit.test.mjs`.
+
+Revert checks: 24 mutations, each applied to the file, the relevant test run, the file restored. All 24 killed:
+
+| # | Mutation | Killed by |
+| --- | --- | --- |
+| M1 | spellbook cantrips 4 to 5 | pc-caster-archetype |
+| M2 | Basic rank 3 level 8 to 7 | pc-caster-archetype |
+| M3 | plan built without the dedication | pc-caster-archetype |
+| M4 | tradition check removed | pc-caster-archetype |
+| M5 | common-only check removed | pc-caster-archetype |
+| M6 | own-rank check removed (heightening allowed) | pc-caster-archetype |
+| M7 | per-rank cap removed | pc-caster-archetype |
+| M8 | every spell prepared, not the first slots | pc-caster-archetype |
+| M9 | key attribute Intelligence to Wisdom | pc-caster-archetype |
+| M10 | catalog ability minimum 2 to 1 | pc-caster-archetype |
+| M11 | caster feats offered without the GM option | pc-builder.casterCandidates |
+| M12 | entry not embedded | pc-builder.casterArchetype |
+| M13 | plan taken from a fixed feat list, not the built feats | pc-builder.casterArchetype |
+| M14 | completion ignores the archetype plan | completion |
+| M15 | editor allows caster feat swaps | pc-edit |
+| M16 | identity edits allowed with an archetype plan | pc-edit |
+| M17 | completion plan/feat consistency check removed | pc-edit |
+| M18 | generator never allows caster feats | generator-app.casterArchetype |
+| M19 | generator skips the spellbook selection | generator-app.casterArchetype |
+| M20 | archetype planned even with spellcasting off | generator-app.casterArchetype |
+| M21 | editor offers caster feats | generator-app.casterArchetype |
+| M22 | candidates not limited to common | generator-app.casterArchetype |
+| M23 | selection per-rank cap removed | ai.archetypeSpells |
+| M24 | selection repeats allowed | ai.archetypeSpells |
+
+Gate and drift (final tree): `node tools/check.mjs </dev/null` exit 0, 166 regression files, 659 localization keys, 0 unused keys; `git diff --check baeb0a3..HEAD` clean. `node tools/check-pf2e-drift.mjs` once with a token from `gh auth token` (not printed): 175 checked, 0 failures, 3 warnings (the legacy ability-glossary alias, the name-form `Skillful Lessons` uuid, the Arcane School master fixture's rules difference), all pre-existing. It checks the Wizard package names and the new fixtures against upstream. No new UUID is pinned.
+
+## 7. Gaps
+
+- Not native-accepted; rows N50 to N53 are OPEN. No Foundry, no provider call.
+- The table is a transcription of published prose; the tests and the drift tool pin it to the 8.5.0 text, and a future text change fails them.
+- The school choice and the replacement skill when Arcana is already trained are not modeled.
+- Expert and Master Wizard Spellcasting, and every other caster dedication, are unavailable (section 4).
+- The PC editor cannot edit these feats or the spellbook.
+- The spellbook is chosen without thematic keyword narrowing (no spell-focus call): one id-only call over a per-rank bounded list. Quality of the thematic fit is unobserved.
+- One extra provider call per run that holds the dedication.

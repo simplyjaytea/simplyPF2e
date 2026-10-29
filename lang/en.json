@@ -30,8 +30,8 @@
         "Hint": "Free Archetype adds one archetype feat slot at each even class-feat level from level 2. Only proven catalog dedications are offered, and each needs its ability modifiers."
       },
       "MulticlassArchetypes": {
-        "Name": "Ordinary multiclass archetypes (noncaster)",
-        "Hint": "Offers the noncaster archetype catalog (dedications and their feats) in class feat slots, enforcing dedication locks. Caster dedications and packages outside the catalog stay unavailable."
+        "Name": "Ordinary multiclass archetypes",
+        "Hint": "Offers the archetype catalog (dedications and their feats) in class feat slots, enforcing dedication locks: the noncaster packages, plus Wizard Dedication and Basic Wizard Spellcasting when the generator allows spellcasting. Other caster dedications and packages outside the catalog stay unavailable."
       },
       "ExperimentalTools": {
         "Name": "Enable experimental tools",
@@ -447,6 +447,7 @@
       "SchoolSpellAdvanced": "Advanced school spell: {spell}",
       "SchoolSpellAtCreate": "School spell: chosen with the school at Create",
       "SchoolSpellUnknown": "not found in the school description",
+      "PCArchetypeSpells": "Spellcasting archetype: the spellbook holds the listed spells; the first of each rank is prepared, and slots come from the archetype's feats. The school choice and the replacement skill for an already-trained Arcana are not modeled; set them in Foundry.",
       "PCBaseSpellPlan": "Base spell plan only: prepared classes prepare each listed pick; spontaneous classes learn it at the listed rank. Review empty slots, signature spells, and restricted subclass or feat bonuses (such as curriculum or divine font) in Foundry.",
       "PCVariableSpellPlan": "Base spell plan only. Verify the tradition against your bloodline or patron; if none was selected, configure spellcasting in Foundry. Review empty slots, signature spells, subclass-granted spells, and feat bonuses after creation.",
       "PCApproximateSpellPlan": "This class has no verified casting profile yet. Spellcasting uses a generic spontaneous approximation; review casting mode, tradition, slots, and spells in Foundry before play.",

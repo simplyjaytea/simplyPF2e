@@ -6,6 +6,7 @@ import {
 } from "./builder.mjs";
 import { slugify, capitalized, toHtml } from "./text.mjs";
 import { multiclassAbilityBlocker, multiclassCatalogNames, multiclassFeatInfo, multiclassPickBlocker } from "./pc-multiclass.mjs";
+import { assembleCasterArchetypeEntry, casterArchetypePlans, isCasterPackage } from "./pc-caster-archetype.mjs";
 import { isAdvancedSchoolSpellFeat, isArcaneSchoolSource, schoolAdvancedSpellLink, schoolInitialSpellLink } from "./school-spells.mjs";
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
@@ -450,7 +451,7 @@ export async function resolvePCConcept(concept, { exactContent = false, maxRarit
     let candidates;
     if (slot.archetype) {
       // Free Archetype offers only the proven catalog; generic archetype feats stay excluded.
-      candidates = await multiclassFeatCandidates(slot.level, classDoc.name, abilities, maxRarity);
+      candidates = await multiclassFeatCandidates(slot.level, classDoc.name, abilities, maxRarity, concept.casterArchetypes === true);
     } else {
       const traits = slot.type === "ancestry" ? [ancestryTrait]
         : slot.type === "class" ? [classTrait] : [];
@@ -458,7 +459,7 @@ export async function resolvePCConcept(concept, { exactContent = false, maxRarit
       // Ordinary multiclass (C08): class slots also offer the noncaster catalog.
       // The dedication lock is enforced at pick time.
       if (multiclass && slot.type === "class") {
-        candidates = mergeFeatCandidates(candidates, await multiclassFeatCandidates(slot.level, classDoc.name, abilities, maxRarity));
+        candidates = mergeFeatCandidates(candidates, await multiclassFeatCandidates(slot.level, classDoc.name, abilities, maxRarity, concept.casterArchetypes === true));
       }
     }
     if (candidates.length) featSlots.push({ ...slot, abilities, candidates });
@@ -480,6 +481,14 @@ export async function resolvePCConcept(concept, { exactContent = false, maxRarit
     }
   }
 
+  // Spellcasting-archetype spells (W3): resolved against the same spell packs as class spells.
+  const archetypeSpells = [];
+  for (const spell of concept.archetypeSpellcasting?.spells ?? []) {
+    const entry = isIssuedCandidate(spell.candidate, getPacksFor("spells"))
+      ? spell.candidate : (exactContent ? null : await findEntry(getPacksFor("spells"), spell.name, (e) => e.type === "spell"));
+    archetypeSpells.push({ spell, entry });
+  }
+
   const focusSpells = await resolveFocusSpells(concept.focusSpells ?? [], { exactContent });
 
   const skipped = { equipment: [], loot: [] };
@@ -489,7 +498,7 @@ export async function resolvePCConcept(concept, { exactContent = false, maxRarit
   // pcStartingWealthGp()) is what actually fills it with coins.
   const loot = await resolveLoot(concept, { exactContent, skipped: skipped.loot });
 
-  return { ancestryDoc, heritageDoc, backgroundDoc, backgroundLore, classDoc, featSlots, spells, focusSpells, equipment, loot, skipped };
+  return { ancestryDoc, heritageDoc, backgroundDoc, backgroundLore, classDoc, featSlots, spells, archetypeSpells, focusSpells, equipment, loot, skipped };
 }
 
 /**
@@ -1184,6 +1193,10 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     items.push(...spellSources.values());
   }
 
+  // Spellcasting archetype (W3): the plan is recomputed from the feats actually built, never read from the
+  // concept, so a removed dedication can never leave a stray entry.
+  items.push(...await buildCasterArchetypeItems(concept, resolved));
+
   // pf2e-8.5.0 character/document.ts 369–373 resets focus.max to 0;
   // spell/document.ts 650–657: "Increase focus point max if this is a non-cantrip focus spell",
   // then `this.actor.system.resources.focus.max += 1` for each character focus spell.
@@ -1530,12 +1543,44 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
 }
 
 /**
+ * The spellcasting entry and spellbook for each spellcasting archetype the built PC holds (W3). The entry is plain
+ * document data like a class entry (pf2e creates none from a dedication); slots come from pc-caster-archetype.mjs.
+ * Spells that fail the plan are dropped with a warning; no entry is built without at least one resolved spell.
+ * @returns {Promise<object[]>} the entry followed by its spells, or an empty list
+ */
+async function buildCasterArchetypeItems(concept, resolved) {
+  const heldFeats = (resolved.feats ?? []).map((pick) => (pick?.entry ? pick.name : null));
+  const items = [];
+  for (const plan of casterArchetypePlans(heldFeats, concept.level)) {
+    const picked = (resolved.archetypeSpells ?? []).filter(({ entry }) => entry);
+    if (!picked.length) {
+      console.warn(`simplypf2e | ${plan.archetype.label}: no resolved spells, so no spellcasting entry was built`);
+      continue;
+    }
+    const spells = [];
+    for (const { spell, entry } of picked) {
+      const doc = await getDocument(entry);
+      if (!doc) { console.warn(`simplypf2e | dropped archetype spell "${spell?.name ?? entry?.name ?? "?"}": could not load grounded spell`); continue; }
+      const identity = doc.uuid ?? entry?.uuid ?? (entry?.packId && entry?._id ? `${entry.packId}:${entry._id}` : null);
+      spells.push({ rank: spell?.rank, identity, source: toItemData(doc) });
+    }
+    const built = assembleCasterArchetypeEntry({
+      plan, entryId: foundry.utils.randomID(), spells, newId: () => foundry.utils.randomID()
+    });
+    for (const { name, reason } of built.rejected) console.warn(`simplypf2e | dropped archetype spell "${name}": ${reason}`);
+    items.push(built.entry, ...built.spells);
+  }
+  return items;
+}
+
+/**
  * Noncaster catalog feats at `level` (C08). The compendium sampler is capped
  * for ordinary pools, so this asks for an uncapped list and keeps only exact
  * catalog names. Own-class dedications are never offered, and a dedication
- * whose ability prerequisites `abilities` do not meet is left out.
+ * whose ability prerequisites `abilities` do not meet is left out. Spellcasting
+ * packages are offered only when `casters` is set (the GM allowed spellcasting).
  */
-async function multiclassFeatCandidates(level, className, abilities, maxRarity = null) {
+async function multiclassFeatCandidates(level, className, abilities, maxRarity = null, casters = false) {
   const catalog = new Set(multiclassCatalogNames().map(slugify));
   const own = slugify(String(className ?? ""));
   const found = await getFeatCandidates({
@@ -1545,6 +1590,7 @@ async function multiclassFeatCandidates(level, className, abilities, maxRarity =
     const info = multiclassFeatInfo(candidate.name);
     if (!info || !catalog.has(slugify(candidate.name))) return false;
     if (info.role === "dedication" && info.pkg === own) return false;
+    if (isCasterPackage(info.pkg) && !casters) return false;
     return !multiclassAbilityBlocker(candidate.name, abilities);
   });
 }

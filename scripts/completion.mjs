@@ -40,6 +40,30 @@ function spellLines(concept, resolved, character) {
   return records;
 }
 
+/** A spellcasting archetype's plan (concept.archetypeSpellcasting, set only when its dedication is held) owns a fixed
+ * number of spells per rank, exactly like a class plan: a missing pick blocks creation. */
+function archetypeSpellLines(concept, resolved) {
+  const plan = concept?.archetypeSpellcasting;
+  if (!plan) return [];
+  const spells = Array.isArray(resolved?.archetypeSpells) ? resolved.archetypeSpells : [];
+  const records = resolvedLines("archetype-spell", spells);
+  const selectedByRank = new Map();
+  for (const spell of spells) {
+    const rank = Number(spell?.spell?.rank);
+    if (Number.isInteger(rank) && rank >= 0) selectedByRank.set(rank, (selectedByRank.get(rank) ?? 0) + 1);
+  }
+  for (const [rawRank, rawCount] of Object.entries(plan.plannedPicks ?? {})) {
+    const rank = Number(rawRank);
+    const count = Number(rawCount);
+    if (!Number.isInteger(rank) || !Number.isInteger(count) || rank < 0 || count < 1) continue;
+    for (let slot = (selectedByRank.get(rank) ?? 0) + 1; slot <= count; slot++) {
+      records.push(line("archetype-spell", `Rank ${rank} pick ${slot}`, "unresolved"));
+    }
+  }
+  if (spells.some((spell) => spell?.entry)) records.push(line("spellcasting-entry", "Archetype Spellcasting Entry", "module-built"));
+  return records;
+}
+
 /** Spellcasting entries are module-built infrastructure, but a completed
  * plan must account for them just as it accounts for every exact spell. */
 function castingEntryLines(concept, resolved) {
@@ -67,6 +91,7 @@ export function completionManifest({ mode, concept, resolved }) {
     records.push(...resolvedLines("ability", resolved?.abilities, { allowNarrative: true }));
   }
   records.push(...spellLines(concept, resolved, character));
+  if (character) records.push(...archetypeSpellLines(concept, resolved));
   records.push(...resolvedLines("focus-spell", resolved?.focusSpells));
   records.push(...castingEntryLines(concept, resolved));
   records.push(...resolvedLines("feat", resolved?.feats));

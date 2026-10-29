@@ -44,6 +44,7 @@ import { resolvePCConcept, heritageMatchesAncestry } from "./pc-builder.mjs";
 import { resolveEquipment, equipmentValueGp } from "./builder.mjs";
 import { getBackgroundLoreOptions, resolveBackgroundLore } from "./pc-background-lore.mjs";
 import { multiclassAbilityBlocker, multiclassBlockers } from "./pc-multiclass.mjs";
+import { casterArchetypeFeat, casterArchetypePlans } from "./pc-caster-archetype.mjs";
 import { assertPCIdentity, classPathBridges, pcIdentityKey } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { completionManifest } from "./completion.mjs";
@@ -149,7 +150,7 @@ function offered(list, key, field) {
 
 function assertNoSpellState(next, field) {
   const { concept, resolved } = next;
-  const present = Boolean(concept.spellcasting)
+  const present = Boolean(concept.spellcasting) || Boolean(concept.archetypeSpellcasting)
     || (concept.focusSpells ?? []).length > 0
     || (resolved.spells ?? []).length > 0
     || (resolved.focusSpells ?? []).length > 0;
@@ -413,6 +414,12 @@ function applyFeatEdit(next, edit, changed) {
   const candidate = offered(slot.candidates, edit.key, "feat");
   const current = resolved.feats[index];
   if (current?.entry && refKey(current.entry) === refKey(candidate.ref)) return;
+  // A spellcasting archetype feat owns an entry and a spellbook (W3). Spell editing is deferred, so neither
+  // adding nor removing one can keep the plan consistent; regenerate instead.
+  const casterFeat = [candidate.name, current?.entry ? current.name : null].find((name) => casterArchetypeFeat(name));
+  if (casterFeat) {
+    fail(PC_EDIT_CODES.DEFERRED, "feat", `"${casterFeat}" is a spellcasting archetype feat; its spells cannot be edited, so it cannot be added or replaced`);
+  }
   const nameKey = slugify(candidate.name);
   if (resolved.feats.some((pick, other) => other !== index && pick?.entry && slugify(pick.name) === nameKey)) {
     fail(PC_EDIT_CODES.DUPLICATE, "feat", `"${candidate.name}" is already picked`);
@@ -582,6 +589,13 @@ export function validatePCEditCompletion(plan) {
     if (seen.has(nameKey)) errors.push(`feat "${pick.name}" is picked twice`);
     seen.add(nameKey);
   });
+  // The archetype spell plan must match the spellcasting archetype feats actually held.
+  const [heldPlan] = casterArchetypePlans(resolved.feats.map((pick) => (pick?.entry ? pick.name : null)), concept.level);
+  const planned = concept.archetypeSpellcasting ?? null;
+  if ((heldPlan?.archetype.pkg ?? null) !== (planned?.pkg ?? null)
+    || (heldPlan && JSON.stringify(heldPlan.picks) !== JSON.stringify(planned.plannedPicks))) {
+    errors.push("the spellcasting archetype feats and the archetype spell plan disagree");
+  }
   const manifest = completionManifest({ mode: "character", concept, resolved });
   return {
     complete: pending.length === 0 && errors.length === 0 && manifest.complete,
