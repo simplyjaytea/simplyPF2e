@@ -291,4 +291,48 @@ async function expectCode(promise, code) {
   assert.deepEqual((await clear(basePlan())).changed, []);
 }
 
+// Spellcasting archetype (W3): the dedication owns an entry and a spellbook, and spell editing is deferred, so the
+// editor refuses to add, replace or remove a caster archetype feat, refuses identity edits once the plan exists,
+// and completion flags a plan that disagrees with the feats.
+{
+  const wizardDedication = candidate("wizded", "Wizard Dedication");
+  const archetypePlan = (level = 2) => {
+    const plan = basePlan();
+    plan.concept.level = level;
+    plan.concept.archetypeSpellcasting = { pkg: "wizard", tradition: "arcane", plannedPicks: { 0: 4 }, maxRank: 0, spells: [] };
+    plan.resolved.archetypeSpells = [];
+    plan.resolved.featSlots = [featSlot([attack, block, wizardDedication])];
+    plan.resolved.feats = [{ type: "class", level: 1, archetype: false, name: "Wizard Dedication", entry: ref("wizded") }];
+    return plan;
+  };
+  // Replacing the dedication, and adding one, are both refused.
+  await expectCode(applyPCEdit(archetypePlan(), { field: "feat", slot: 0, key: "test.pack:block" }, { services, catalogs }), PC_EDIT_CODES.DEFERRED);
+  await expectCode(applyPCEdit(basePlan(), { field: "feat", slot: 0, key: "test.pack:wizded" }, { services, catalogs }), PC_EDIT_CODES.INVALID);
+  const offered = basePlan();
+  offered.resolved.featSlots = [featSlot([attack, block, wizardDedication])];
+  await expectCode(applyPCEdit(offered, { field: "feat", slot: 0, key: "test.pack:wizded" }, { services, catalogs }), PC_EDIT_CODES.DEFERRED);
+  // An unrelated feat edit on a plan without an archetype still works.
+  assert.deepEqual((await applyPCEdit(basePlan(), { field: "feat", slot: 0, key: "test.pack:block" }, { services, catalogs })).changed, ["feat:0"]);
+  // Identity edits are spell-affecting once the plan exists.
+  await expectCode(applyPCEdit(archetypePlan(), { field: "class", key: "test.pack:rogue" }, { services, catalogs }), PC_EDIT_CODES.DEFERRED);
+  const flexibleKey = archetypePlan();
+  flexibleKey.resolved.classDoc = doc("class", "Fighter", { keyAbility: { value: ["str", "dex"] } });
+  await expectCode(applyPCEdit(flexibleKey, { field: "keyAbility", value: "dex" }, { services, catalogs }), PC_EDIT_CODES.DEFERRED);
+  // Equipment edits stay available.
+  assert.deepEqual((await applyPCEdit(archetypePlan(), { field: "equipment", index: 0, key: "test.pack:shield" }, { services, catalogs })).changed, ["equipment:0"]);
+  // Completion: a plan that matches the held feats passes the consistency check; a mismatch is an error.
+  const matching = validatePCEditCompletion(archetypePlan());
+  assert.ok(!matching.errors.some((line) => /archetype/.test(line)), "plan and feats agree");
+  const noFeat = archetypePlan();
+  noFeat.resolved.feats = [{ type: "class", level: 1, archetype: false, name: "Power Attack", entry: ref("attack") }];
+  assert.ok(validatePCEditCompletion(noFeat).errors.some((line) => /spellcasting archetype feats and the archetype spell plan disagree/.test(line)),
+    "a plan without its dedication is an error");
+  const noPlan = archetypePlan();
+  noPlan.concept.archetypeSpellcasting = null;
+  assert.ok(validatePCEditCompletion(noPlan).errors.some((line) => /disagree/.test(line)), "a dedication without its plan is an error");
+  const wrongPicks = archetypePlan();
+  wrongPicks.concept.archetypeSpellcasting.plannedPicks = { 0: 2 };
+  assert.ok(validatePCEditCompletion(wrongPicks).errors.some((line) => /disagree/.test(line)), "stale picks are an error");
+}
+
 console.log("pc-edit tests passed");

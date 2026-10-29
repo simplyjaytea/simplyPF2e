@@ -3,7 +3,7 @@ import {
   authorizeApiKeyForCurrentBaseUrl
 } from "./settings.mjs";
 import {
-  generateConcept, generateLoot, selectSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
+  generateConcept, generateLoot, selectSpells, selectArchetypeSpells, chooseSpellFocus, selectEquipment, selectLoot, designEncounter,
   generatePCConcept, generatePCLoot, selectAncestryBackgroundClass, selectFeats, selectCreatureFeats, selectCreatureAbilities, selectCharacterChoices,
   generateHazardConcept
 } from "./ai.mjs";
@@ -22,6 +22,7 @@ import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp, validatePCIdentityRequirements
 } from "./pc-builder.mjs";
 import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
+import { CASTER_ARCHETYPES, casterArchetypeFeat, casterArchetypePlans } from "./pc-caster-archetype.mjs";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
@@ -583,8 +584,10 @@ export class GeneratorApp extends SpfApp {
         .map((key) => ({ value: key, label: game.i18n.localize(`SIMPLYPF2E.Identity.Ability.${key}`) })));
       const lore = getBackgroundLoreOptions(plan.resolved.backgroundDoc);
       if (lore.length || pending.has("backgroundLore")) add("backgroundLore", label("backgroundLore"), lore);
+      // A spellcasting archetype feat is not editable (its spellbook is not): offered only where it is the current pick.
       plan.resolved.featSlots.forEach((slot, index) => add(
-        `feat.${index}`, game.i18n.format("SIMPLYPF2E.PCEdit.FeatSlot", { type: slot.type, level: slot.level }), (slot.candidates ?? []).map(option)
+        `feat.${index}`, game.i18n.format("SIMPLYPF2E.PCEdit.FeatSlot", { type: slot.type, level: slot.level }),
+        (slot.candidates ?? []).filter((candidate) => !casterArchetypeFeat(candidate.name) || pcIdentityKey(candidate) === selections[`feat.${index}`]).map(option)
       ));
       const equipment = catalogs.equipment.map(option);
       plan.concept.equipment.forEach((line, index) => add(
@@ -596,7 +599,8 @@ export class GeneratorApp extends SpfApp {
       ...validation.errors,
       ...validation.unresolved.map((item) => game.i18n.format("SIMPLYPF2E.PCEdit.UnresolvedItem", { category: item.category, name: item.name }))
     ];
-    const spellsDeferred = Boolean(plan.concept.spellcasting) || (plan.concept.focusSpells ?? []).length > 0
+    const spellsDeferred = Boolean(plan.concept.spellcasting) || Boolean(plan.concept.archetypeSpellcasting)
+      || (plan.concept.focusSpells ?? []).length > 0
       || (plan.resolved.spells ?? []).length > 0 || (plan.resolved.focusSpells ?? []).length > 0;
     return {
       controls,
@@ -662,6 +666,13 @@ export class GeneratorApp extends SpfApp {
     const pcClass = { name: resolved.classDoc?.name ?? concept.class, found: Boolean(resolved.classDoc) };
     const feats = GeneratorApp.#mapNamed(resolved.feats);
     const spells = GeneratorApp.#mapSpells(resolved.spells);
+    const archetype = concept.archetypeSpellcasting
+      ? {
+        label: CASTER_ARCHETYPES[concept.archetypeSpellcasting.pkg]?.label ?? concept.archetypeSpellcasting.pkg,
+        tradition: concept.archetypeSpellcasting.tradition,
+        spells: GeneratorApp.#mapSpells(resolved.archetypeSpells)
+      }
+      : null;
     const signatureRanks = concept.spellcasting?.signatureRanks ?? [];
     const plannedSignatures = new Set(spells.filter((spell) => spell.found && spell.signature
       && signatureRanks.includes(spell.rank)).map((spell) => spell.rank));
@@ -683,9 +694,10 @@ export class GeneratorApp extends SpfApp {
       schoolSpells: GeneratorApp.#schoolSpellContext(this.#pcSchoolSpells?.resolved === resolved ? this.#pcSchoolSpells.value : null),
       feats,
       spells,
+      archetype,
       equipment,
       loot,
-      matchSummary: this.#matchSummary([ancestry], heritage ? [heritage] : [], [background], [pcClass], feats, spells, equipment, loot)
+      matchSummary: this.#matchSummary([ancestry], heritage ? [heritage] : [], [background], [pcClass], feats, [...spells, ...(archetype?.spells ?? [])], equipment, loot)
     };
   }
 
@@ -1740,6 +1752,8 @@ export class GeneratorApp extends SpfApp {
       concept.keyAbility = abc.keyAbility;
       assertPCIdentity(concept, requiredIdentity);
 
+      // Spellcasting archetypes are offered as feat candidates only when the GM allowed spellcasting.
+      concept.casterArchetypes = Boolean(this.#input.allowSpellcasting);
       // Resolve ABC + grants + feat-slot candidates now (index lookups are
       // cheap/cached) so the reused equipment/spell refine helpers below have
       // real ancestry/class trait slugs for thematic context.
@@ -1780,6 +1794,7 @@ export class GeneratorApp extends SpfApp {
       } else {
         resolved.feats = [];
       }
+      this.#planArchetypeSpellcasting(concept, resolved);
 
       // Same defensive filter as the NPC pipeline: allowSpellcasting is only
       // enforced in the AI prompt, so a non-compliant model output can still
@@ -1792,9 +1807,10 @@ export class GeneratorApp extends SpfApp {
       // traits/strikes/equipment/loot/level/name/rarity).
       // Gate on the SAME condition the step list above was built from, same
       // as the NPC pipeline: only call _setStep("spells") when that key exists.
-      if (this.#input.allowSpellcasting && concept.spellcasting) await this._setStep("spells");
+      if (this.#input.allowSpellcasting && (concept.spellcasting || concept.archetypeSpellcasting)) await this._setStep("spells");
       else this._skipStep("spells");
       await this.#refineSpells(concept, signal, { focus: classModelsFocusSpells(resolved.classDoc) });
+      await this.#refineArchetypeSpells(concept, signal);
 
       await this._setStep("equipment");
       await this.#refineEquipment(concept, signal);
@@ -1885,6 +1901,48 @@ export class GeneratorApp extends SpfApp {
       this.#resetPCEdit();
       this.#pcIdentityInput = this.#identityInputSnapshot();
     console.log(`${MODULE_ID} | token usage`, this._tokenUsage);
+  }
+
+  /**
+   * Spellcasting archetype plan (W3): derived from the feats just picked, so it exists only while the dedication is
+   * held. The module owns the picks per rank; the spells are chosen by #refineArchetypeSpells.
+   */
+  #planArchetypeSpellcasting(concept, resolved) {
+    const [plan] = this.#input.allowSpellcasting
+      ? casterArchetypePlans((resolved.feats ?? []).map((pick) => (pick?.entry ? pick.name : null)), concept.level)
+      : [];
+    concept.archetypeSpellcasting = plan
+      ? { pkg: plan.archetype.pkg, tradition: plan.archetype.tradition, plannedPicks: plan.picks, maxRank: plan.maxRank, spells: [] }
+      : null;
+  }
+
+  /**
+   * Grounded spellbook for the archetype plan: the vetted common spells of its tradition, one selection call, and
+   * the module's own validation. A failure leaves the plan empty, so completionManifest() blocks Create.
+   */
+  async #refineArchetypeSpells(concept, signal) {
+    const plan = concept?.archetypeSpellcasting;
+    if (!plan) return;
+    try {
+      const candidates = await getSpellCandidates(plan.tradition, plan.maxRank, [], plan.plannedPicks, { maxRarity: "common" });
+      if (!candidates.length) {
+        console.warn(`${MODULE_ID} | no archetype spell candidates found, leaving the archetype spellbook empty`);
+        return;
+      }
+      const { spells, usage } = await selectArchetypeSpells({
+        concept, candidates, plannedPicks: plan.plannedPicks, tradition: plan.tradition,
+        label: CASTER_ARCHETYPES[plan.pkg].label,
+        onProgress: this._progressCallback(game.i18n.localize("SIMPLYPF2E.Progress.Spells")), signal
+      });
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), usage);
+      plan.spells = spells;
+    } catch (err) {
+      if (err?.cancelled) throw err;
+      this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Spells"), err?.usage);
+      console.warn(`${MODULE_ID} | archetype spell selection failed, leaving the archetype spellbook empty`, err);
+      this.#warnToleratedStage("spells");
+      plan.spells = [];
+    }
   }
 
   /**

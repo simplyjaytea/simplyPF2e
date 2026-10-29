@@ -94,7 +94,9 @@ const context = vm.createContext({
   },
   ui: { notifications: { info() {}, warn() {} } }
 });
+const casterArchetype = await import("../scripts/pc-caster-archetype.mjs");
 const mocks = {
+  ...casterArchetype, selectArchetypeSpells: async () => ({ spells: [], usage: {} }),
   needsExtraPurchasePass,
   ...identityHelpers, getBackgroundLoreOptions, getDocument, getClassPathCandidates, validatePCIdentityRequirements, supportedClassCandidates,
   classModelsFocusSpells,

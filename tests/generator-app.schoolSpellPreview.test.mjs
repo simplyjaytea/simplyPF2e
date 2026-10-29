@@ -98,7 +98,9 @@ const resolved = () => ({
   ancestryDoc: { name: "Dwarf" }, classDoc: wizardDoc, backgroundDoc: { name: "Warrior" },
   featSlots: [], feats: [], spells: [], focusSpells: [], equipment: [], loot: []
 });
+const casterArchetype = await import("../scripts/pc-caster-archetype.mjs");
 const mocks = {
+  ...casterArchetype, selectArchetypeSpells: async () => ({ spells: [], usage: {} }),
   needsExtraPurchasePass,
   ...identityHelpers, getBackgroundLoreOptions, getDocument, getClassPathCandidates, validatePCIdentityRequirements,
   supportedClassCandidates, classModelsFocusSpells, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,

@@ -706,6 +706,66 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
 }
 
 /**
+ * Spellbook picks for a spellcasting archetype (W3). The module owns the plan (picks per rank); the model only
+ * returns candidate ids. A pick's rank is its own listed rank, so the model writes no rank and no number, and
+ * excess, repeated or unknown ids are dropped here (the entry builder checks them again).
+ * @param {object} args
+ * @param {object} args.concept normalized PC concept (for context)
+ * @param {{id: string, name: string, rank: number, ref?: object}[]} args.candidates exact common spells of the tradition
+ * @param {Record<number, number>} args.plannedPicks picks per rank (0 = cantrips)
+ * @param {string} args.tradition
+ * @param {string} args.label archetype name for the prompt
+ */
+export async function selectArchetypeSpells({ concept, candidates, plannedPicks, tradition, label, onProgress, signal }) {
+  if (!plannedPicks || typeof plannedPicks !== "object" || Array.isArray(plannedPicks)
+    || !Object.entries(plannedPicks).every(([rank, count]) => /^(?:[0-9]|10)$/.test(rank) && Number.isInteger(count) && count >= 0 && count <= 5)) {
+    throw new TypeError("Invalid archetype spell plan");
+  }
+  const byRank = new Map();
+  for (const c of candidates) {
+    if (!byRank.has(c.rank)) byRank.set(c.rank, []);
+    byRank.get(c.rank).push(`${c.id} | ${c.name}`);
+  }
+  const list = [...byRank.entries()]
+    .map(([rank, names]) => `${PC_SPELL_RANKS[rank]}: ${names.join("; ")}`)
+    .join("\n");
+  const plan = Object.fromEntries(Object.entries(plannedPicks).filter(([, count]) => count > 0).map(([rank, count]) => [PC_SPELL_RANKS[rank], count]));
+
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are choosing the ${label} spellbook of a Pathfinder 2e player character who took a spellcasting archetype. Choose ONLY from the provided list, copying each id EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
+{ "spells": [ { "id": string } ] }
+Fill this module-supplied plan (rank enum: number of DISTINCT spells to choose): ${JSON.stringify(plan)}. A spell belongs to the rank under which it is listed; write no rank and no number. Never repeat a spell. Leave a rank short rather than invent a name. Favor spells that express the character's theme.`;
+
+  const user = [
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
+    `Character: ${concept.name} (level ${concept.level}, ${concept.class})`,
+    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    concept.description ? `Description: ${concept.description}` : null,
+    `Traits: ${(concept.traits ?? []).join(", ")}`,
+    `Tradition: ${tradition}.`,
+    "",
+    "Available spells:",
+    list
+  ].filter((line) => line !== null).join("\n");
+
+  const { data: parsed, usage } = await requestJSON({ task: AI_TASK.PC_SPELL_SELECTION, system, user, onProgress, signal });
+  const used = new Map();
+  const seen = new Set();
+  const spells = [];
+  for (const pick of Array.isArray(parsed.spells) ? parsed.spells : []) {
+    const candidate = candidateForPick(candidates, pick);
+    const key = candidate?.id ?? candidate?.name;
+    if (!candidate || !Number.isInteger(candidate.rank) || seen.has(key) || (used.get(candidate.rank) ?? 0) >= (plannedPicks[candidate.rank] ?? 0)) {
+      console.warn("simplypf2e | dropping invalid or excess archetype spell pick", pick);
+      continue;
+    }
+    seen.add(key);
+    used.set(candidate.rank, (used.get(candidate.rank) ?? 0) + 1);
+    spells.push({ name: candidate.name, ...(candidate.ref ? { candidate: candidate.ref } : {}), rank: candidate.rank });
+  }
+  return { spells, usage };
+}
+
+/**
  * Grounded equipment pass: given real, level-capped equipment items from the
  * compendium, have the model pick the creature's carried gear. Names it
  * returns retain the exact offered source reference for final resolution.
