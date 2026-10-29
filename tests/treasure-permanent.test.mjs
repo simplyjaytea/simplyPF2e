@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  PERMANENT_REASON, WAND_RANK_MAX, planPermanentSlots, permanentEquipmentProblem, permanentDocumentProblem,
+  specialWandProblem, PERMANENT_REASON, WAND_RANK_MAX, planPermanentSlots, permanentEquipmentProblem, permanentDocumentProblem,
   permanentSourceProblem, valuableProblem, priceCopper, wandLevelForRank, wandRankForLevel, assignPermanentPicks,
   chooseValuable, rankByBrief
 } from "../scripts/treasure-permanent.mjs";
@@ -227,5 +227,21 @@ assert.equal(permanentSourceProblem({ ...wand, system: { ...wand.system, traits:
 assert.equal(permanentSourceProblem(wand, [5], "common"), "level");
 assert.equal(permanentSourceProblem({ ...wand, system: { ...wand.system, price: { value: {} } } }, [3], "common"), "price");
 assert.equal(permanentSourceProblem(null, [1], "common"), "malformed");
+
+// Published special wands (parcel v3): the wand trait is admitted only by the special-wand branch, at the
+// document's own level, and the generic rank formula does not apply. Real 8.5.0 documents.
+const v3 = (name) => JSON.parse(readFileSync(new URL(`./fixtures/parcel-v3/${name}.json`, import.meta.url), "utf8"));
+const mercy = fixture("wand-of-mercy-1st-rank");
+assert.equal(specialWandProblem(mercy, 4, "common"), null, "Wand of Mercy (1st-rank) is a special wand at its own level 4");
+assert.equal(specialWandProblem(mercy, 3, "common"), "level", "it is never a level-3 wand: its level is 4 and no rank formula applies");
+assert.equal(permanentSourceProblem(mercy, [4], "common"), null, "a built special wand passes the source predicate at level 4");
+assert.equal(permanentSourceProblem(mercy, [3], "common"), "level", "and is refused at any other allowed level");
+assert.equal(specialWandProblem(v3("wand-of-continuation-1st-rank-spell"), 5, "common"), null, "a level-5 published wand is eligible at level 5");
+assert.equal(specialWandProblem(v3("wand-of-widening-1st-rank-spell"), 4, "common"), "rules", "a wand with three Rule Elements is refused");
+assert.equal(specialWandProblem(v3("cyrusian-wand-1st-rank-spell"), 4, "rare"), "classification", "a mythic special wand is outside the safety set");
+assert.equal(specialWandProblem(fixture("magical-hearing-aid"), 1, "common"), "classification", "a non-wand item is not a special wand");
+assert.equal(permanentEquipmentProblem(mercy, 4, "common"), "classification", "the wand trait stays excluded for generic equipment");
+assert.equal(permanentDocumentProblem(mercy, 4, "common"), "classification", "and for generic document checks");
+assert.equal(specialWandProblem(mercy, 4, "bogus"), "rarity", "an unknown cap refuses a special wand");
 
 console.log("treasure-permanent.test.mjs: slots for rows 1-20, real-document safety filters, valuables, exact assignment and boundaries passed");

@@ -9,6 +9,7 @@ import {
   getCandidateDocument
 } from "../scripts/compendium.mjs";
 import { PERMANENT_REASON } from "../scripts/treasure-permanent.mjs";
+import { getSpecialWandCandidates } from "../scripts/compendium.mjs";
 
 const DIR = new URL("./fixtures/parcel/", import.meta.url);
 const fixture = (name) => JSON.parse(readFileSync(new URL(`${name}.json`, DIR), "utf8"));
@@ -45,7 +46,9 @@ function makePack(packId, raws, { loads, failing = new Map() } = {}) {
   };
 }
 
-const equipmentRaws = EQUIPMENT_FIXTURES.map(fixture);
+const v3Fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/parcel-v3/${name}.json`, import.meta.url), "utf8"));
+const V3_WANDS = ["wand-of-continuation-1st-rank-spell", "wand-of-widening-1st-rank-spell", "cyrusian-wand-1st-rank-spell"].map(v3Fixture);
+const equipmentRaws = [...EQUIPMENT_FIXTURES.map(fixture), ...V3_WANDS];
 const valuableRaws = [fixture("agate"), fixture("silk-ceremonial-armor")];
 const spellRaws = [
   { _id: "fireball0000000", name: "Fireball", type: "spell", system: { level: { value: 3 }, traits: { value: ["evocation", "fire"], rarity: "common" }, ritual: null } },
@@ -139,6 +142,15 @@ packs.delete("pf2e.equipment-srd");
 const missing = await getValuableCandidates([], { maxRarity: "common" });
 assert.deepEqual([missing.available, missing.candidates.length], [false, 0]);
 packs.set("pf2e.equipment-srd", makePack("pf2e.equipment-srd", [...equipmentRaws, ...valuableRaws], { failing: equipmentFailing }));
+
+// Published special wands (parcel v3): the wand trait is offered only here, at the document's own level.
+const specialAt4 = await getSpecialWandCandidates(4, [], { maxRarity: "rare" });
+assert.deepEqual(specialAt4.map((candidate) => [candidate.name, candidate.kind, candidate.level]), [["Wand of Mercy (1st-rank)", "special-wand", 4]],
+  "level 4 offers the Wand of Mercy only: Widening has Rule Elements, Cyrusian is mythic");
+assert.deepEqual(await getSpecialWandCandidates(3, [], { maxRarity: "rare" }), [], "no special wand is offered at level 3");
+assert.deepEqual((await getSpecialWandCandidates(5, [], { maxRarity: "common" })).map((candidate) => candidate.name), ["Wand of Continuation (1st-Rank Spell)"]);
+assert.ok(!(await getPermanentEquipmentCandidates(4, [], { maxRarity: "rare" })).some((candidate) => candidate.name === "Wand of Mercy (1st-rank)"),
+  "the generic equipment pool still refuses the wand trait");
 
 // A rejected read of one candidate is that candidate's problem: the pool drops it and the search goes on.
 equipmentFailing.set(fixture("magical-hearing-aid")._id, new Error("pack damaged"));

@@ -11,7 +11,7 @@ import { slugify } from "./text.mjs";
 import { createAsyncCache } from "./async-cache.mjs";
 import {
   permanentEquipmentProblem, permanentDocumentProblem, valuableProblem,
-  priceCopper, wandRankForLevel, rankByBrief, chooseValuable
+  priceCopper, wandRankForLevel, rankByBrief, chooseValuable, specialWandProblem
 } from "./treasure-permanent.mjs";
 
 export const CATEGORIES = [
@@ -976,6 +976,8 @@ export const PERMANENT_EQUIPMENT_LIMIT = 12;
 const PERMANENT_LOAD_FACTOR = 3;
 /** Generic wands offered per wand level, kept separate from equipment so truncation cannot erase a kind. */
 export const PARCEL_WAND_LIMIT = 6;
+/** Published special wands (the `wand` trait) offered per level, reserved apart from generic wands. */
+export const SPECIAL_WAND_LIMIT = 6;
 /** The one pack valuables come from (the PF2e SRD equipment pack that holds the published gems and art objects). */
 export const VALUABLE_PACK_ID = "pf2e.equipment-srd";
 /** Valuable documents loaded before the search gives up; a bound on compendium reads. */
@@ -1006,6 +1008,36 @@ export async function getPermanentEquipmentCandidates(level, keywords = [], { ma
     const data = await readItemData(item.packId, item._id);
     if (!data || permanentDocumentProblem(data, level, maxRarity)) continue;
     offered.push(candidateRecord(item, { name: item.name, type: "equipment", level, traits: item.traits, rarity: data.system.traits.rarity, kind: "equipment" }));
+  }
+  return offered;
+}
+
+/**
+ * Published special wands at `level` (parcel v3): equipment with the `wand` trait, from the configured
+ * equipment packs. Index filters first, then each full document must pass specialWandProblem (no Rule
+ * Elements, safe traits, the exact level). The generic 2r+1 rule does not apply to these.
+ */
+export async function getSpecialWandCandidates(level, keywords = [], { maxRarity = "common", limit = SPECIAL_WAND_LIMIT } = {}) {
+  const indexed = [];
+  const seen = new Set();
+  for (const packId of getPacksFor("equipment")) {
+    for (const entry of await getEquipmentIndex(packId)) {
+      if (!(entry.system?.traits?.value ?? []).includes("wand")) continue;
+      if (permanentEquipmentProblem(entry, level, maxRarity, { allowWand: true })) continue;
+      const key = `${packId}\u0000${entry._id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      indexed.push({ packId, _id: entry._id, name: entry.name, traits: entry.system?.traits?.value ?? [] });
+    }
+  }
+  const offered = [];
+  let loads = 0;
+  for (const item of rankByBrief(indexed.map((entry) => ({ ...entry, id: `${entry.packId}/${entry._id}` })), keywords)) {
+    if (offered.length >= limit || loads >= limit * PERMANENT_LOAD_FACTOR) break;
+    loads += 1;
+    const data = await readItemData(item.packId, item._id);
+    if (!data || specialWandProblem(data, level, maxRarity)) continue;
+    offered.push(candidateRecord(item, { name: item.name, type: "equipment", level, traits: item.traits, rarity: data.system.traits.rarity, kind: "special-wand" }));
   }
   return offered;
 }

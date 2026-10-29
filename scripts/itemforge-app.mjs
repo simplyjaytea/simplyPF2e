@@ -16,7 +16,7 @@ import { SourcesConfigApp } from "./sources-app.mjs";
 import { SpfApp } from "./app-base.mjs";
 import {
   getScrollSpellCandidates, getCantripCandidates, getCandidateDocument, priceToGp, toItemData,
-  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates, pickParcelValuable
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuable
 } from "./compendium.mjs";
 import {
   spellConsumableTemplateUuid, spellConsumableRankProblem, buildSpellConsumable, spellConsumableName, cantripDeckMaxRarity
@@ -712,6 +712,7 @@ export class ItemForgeApp extends SpfApp {
     for (const level of levels) {
       this._throwIfCancelled();
       candidates.push(...await getPermanentEquipmentCandidates(level, keywords, { maxRarity: this.#input.rarity }));
+      candidates.push(...await getSpecialWandCandidates(level, keywords, { maxRarity: this.#input.rarity }));
       candidates.push(...await getParcelWandCandidates(level, keywords, { maxRarity: this.#input.rarity }));
     }
     return { candidates, offered: new Map(candidates.map((candidate) => [candidate.id, candidate])) };
@@ -734,7 +735,7 @@ export class ItemForgeApp extends SpfApp {
       if (candidate) {
         const result = await this.#buildPermanentSafely(candidate, slot);
         if (result.source) {
-          entries.push({ slot, filled: true, source: result.source, name: result.name, level: result.level, copper: result.copper });
+          entries.push({ slot, filled: true, kind: candidate.kind, source: result.source, name: result.name, level: result.level, copper: result.copper });
           continue;
         }
         console.warn(`${MODULE_ID} | dropped permanent parcel item`, result);
@@ -825,6 +826,7 @@ export class ItemForgeApp extends SpfApp {
       permanents: p.permanents.map((entry) => ({
         levels: this.#levelsLabel(entry.slot.allowedLevels),
         filled: entry.filled,
+        kind: game.i18n.localize(`SIMPLYPF2E.ItemForge.Parcel.PermanentKind.${entry.kind ?? "equipment"}`),
         name: entry.filled ? entry.name : null,
         itemLevel: entry.filled ? entry.level : null,
         price: entry.filled ? `${formatGp(entry.copper)} gp` : null,

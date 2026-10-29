@@ -28,6 +28,7 @@ const WAND_1 = parcelFixture("magic-wand-1st-rank-spell");
 const HEARING = parcelFixture("magical-hearing-aid");
 const SILK = parcelFixture("silk-ceremonial-armor");
 const AGATE = parcelFixture("agate");
+const MERCY = parcelFixture("wand-of-mercy-1st-rank");
 const COIN_NAMES = { pp: "Platinum Pieces", gp: "Gold Pieces", sp: "Silver Pieces", cp: "Copper Pieces" };
 const coinDoc = (denomination) => ({ _id: loot.COIN_UUIDS[denomination].split(".").at(-1), name: COIN_NAMES[denomination], type: "treasure", img: "x.webp",
   system: { category: "coin", price: { value: { [denomination]: 1 } }, quantity: 1, rules: [] } });
@@ -43,6 +44,7 @@ const HEALC = { id: "c-heal", name: HEAL.name, rank: 1, traits: [], rarity: "com
 let lastHearingSource = null; let candidateReadError = null; let valuableReadError = null; let parcelMode = "ok";
 async function getCandidateDocument(c) {
   if (c?.id === "c-heal") return { name: HEAL.name, uuid: "Compendium.pf2e.spells-srd.Item." + HEAL._id, toObject: () => plain(HEAL) };
+  if (c?.id === "c-mercy") return { name: MERCY.name, uuid: "Compendium.pf2e.equipment-srd.Item." + MERCY._id, toObject: () => plain(MERCY) };
   if (c?.id === "c-hearing" && candidateReadError) throw candidateReadError;
   if (c?.id === "c-hearing") {
     // The built source is this object, so a test can change it between Generate and Create.
@@ -56,6 +58,7 @@ async function getCandidateDocument(c) {
 const permanentPools = new Map(); const permanentCalls = []; let permanentPicks = []; let permanentMode = "ok";
 const valuablePool = { available: true, candidates: [] };
 async function getPermanentEquipmentCandidates(level) { return permanentPools.get(level)?.equipment ?? []; }
+async function getSpecialWandCandidates(level) { return permanentPools.get(level)?.special ?? []; }
 async function getParcelWandCandidates(level) { return permanentPools.get(level)?.wands ?? []; }
 async function getValuableCandidates() { return valuablePool; }
 async function pickParcelValuable(ranked, budgetCopper) {
@@ -96,7 +99,7 @@ const mocks = {
   taskMaxTokens: () => 100, RUNED_ITEM_KINDS: new Set(["weapon", "armor"]), MIN_ITEM_LEVEL: 1, MAX_ITEM_LEVEL: 24,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null,
   getScrollSpellCandidates, getCandidateDocument, selectSpellConsumables, selectParcelSpells, toItemData, priceToGp,
-  getPermanentEquipmentCandidates, getParcelWandCandidates, getValuableCandidates, pickParcelValuable, selectParcelPermanents,
+  getPermanentEquipmentCandidates, getParcelWandCandidates, getSpecialWandCandidates, getValuableCandidates, pickParcelValuable, selectParcelPermanents,
   briefKeywords: () => []
 };
 let actorBehavior = "ok"; const createCalls = []; const deletes = []; const notices = [];
@@ -484,3 +487,22 @@ const writesBefore = createCalls.length;
 await A.createItem.call(a);
 assert.equal(createCalls.length, writesBefore + 1, "an unchanged source is created");
 permanentPools.clear(); permanentPicks = [];
+
+// Published special wands (parcel v3): a level-4 slot takes the Wand of Mercy unchanged, at its own level 4.
+const MERCY_CANDIDATE = { id: "c-mercy", name: "Wand of Mercy (1st-rank)", level: 4, kind: "special-wand", traits: ["magical", "wand"], rarity: "common" };
+permanentPools.clear(); permanentPools.set(4, { equipment: [], wands: [], special: [MERCY_CANDIDATE] });
+permanentPicks = [{ slotId: "perm-3", candidateId: "c-mercy" }]; parcelPicks = [];
+c = ctl({ level: { value: "4" } }); a = app(c);
+await A.selectKind.call(a, null, { dataset: { kind: "parcel" } }); await A.generate.call(a);
+ctx = await a._prepareContext();
+assert.equal(ctx.preview.permanents[2].filled, true, "the special wand fills its level-4 slot");
+assert.equal(ctx.preview.permanents[2].name, "Wand of Mercy (1st-rank)");
+assert.equal(ctx.preview.permanents[2].itemLevel, 4, "the published wand keeps its own level");
+assert.equal(ctx.preview.permanents[2].kind, "SIMPLYPF2E.ItemForge.Parcel.PermanentKind.special-wand", "the row says it is a published wand");
+await A.createItem.call(a);
+created = createCalls.at(-1).actor;
+const mercyItem = created.items.find((item) => item.name === "Wand of Mercy (1st-rank)");
+assert.ok(mercyItem, "the wand is written to the loot actor");
+assert.equal(mercyItem.type, "equipment"); assert.equal(mercyItem.system.level.value, 4); assert.deepEqual(mercyItem.system.rules, []);
+assert.equal(mercyItem.system.price.value.gp, 75, "the published price is carried unchanged");
+permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
