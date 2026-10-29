@@ -1,0 +1,877 @@
+{
+  "_comment": "Cases for the golden regression of normalizeRunedItemConcept. 'expected' is captured from main@74acb07 (see docs/plans/forge-runes-2026-10-29.md).",
+  "cases": [
+    {
+      "name": "valid two runes at potency +2",
+      "kind": "armor",
+      "rarity": "common",
+      "maxLevel": 20,
+      "bases": [
+        {
+          "id": "full-plate",
+          "name": "Full Plate",
+          "fields": {
+            "level": 2,
+            "category": "heavy"
+          }
+        },
+        {
+          "id": "leather",
+          "name": "Leather Armor",
+          "fields": {
+            "level": 0,
+            "category": "light"
+          }
+        }
+      ],
+      "runes": [
+        {
+          "id": "acid",
+          "name": "Acid-Resistant",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-armor"
+          }
+        },
+        {
+          "id": "fire",
+          "name": "Fire",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-armor"
+          }
+        },
+        {
+          "id": "invisibility",
+          "name": "Invisibility",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-light-armor"
+          }
+        },
+        {
+          "id": "heavy-only",
+          "name": "Heavy Only",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-heavy-armor"
+          }
+        },
+        {
+          "id": "flaming",
+          "name": "Flaming",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-armor"
+          }
+        },
+        {
+          "id": "flaming-greater",
+          "name": "Flaming (Greater)",
+          "fields": {
+            "level": 15,
+            "usage": "etched-onto-armor"
+          }
+        }
+      ],
+      "potency": [
+        {
+          "id": "potency-1",
+          "name": "Armor Potency (+1)",
+          "fields": {
+            "tier": 1
+          }
+        },
+        {
+          "id": "potency-2",
+          "name": "Armor Potency (+2)",
+          "fields": {
+            "tier": 2
+          }
+        },
+        {
+          "id": "potency-3",
+          "name": "Armor Potency (+3)",
+          "fields": {
+            "tier": 3
+          }
+        }
+      ],
+      "secondary": [
+        {
+          "id": "resilient-1",
+          "name": "Resilient",
+          "fields": {
+            "tier": 1
+          }
+        }
+      ],
+      "input": {
+        "baseItemId": "full-plate",
+        "potencyRuneId": "potency-2",
+        "secondaryRuneId": "none",
+        "propertyRuneIds": [
+          "fire",
+          "acid"
+        ],
+        "description": "a plate"
+      },
+      "expected": {
+        "kind": "armor",
+        "maxLevel": 20,
+        "baseItemName": "Full Plate",
+        "baseItemCandidate": {
+          "name": "Full Plate",
+          "level": 2,
+          "category": "heavy",
+          "id": "c-dGVzdC5ydW5lcwBmdWxsLXBsYXRl",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "full-plate"
+          }
+        },
+        "potencyRuneCandidate": {
+          "name": "Armor Potency (+2)",
+          "tier": 2,
+          "id": "c-dGVzdC5ydW5lcwBwb3RlbmN5LTI",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "potency-2"
+          }
+        },
+        "secondaryRuneCandidate": null,
+        "potency": 2,
+        "secondaryTier": 0,
+        "propertyRunes": [
+          "Fire",
+          "Acid-Resistant"
+        ],
+        "propertyRuneCandidates": [
+          {
+            "name": "Fire",
+            "level": 8,
+            "usage": "etched-onto-armor",
+            "id": "c-dGVzdC5ydW5lcwBmaXJl",
+            "ref": {
+              "packId": "test.runes",
+              "_id": "fire"
+            }
+          },
+          {
+            "name": "Acid-Resistant",
+            "level": 8,
+            "usage": "etched-onto-armor",
+            "id": "c-dGVzdC5ydW5lcwBhY2lk",
+            "ref": {
+              "packId": "test.runes",
+              "_id": "acid"
+            }
+          }
+        ],
+        "rarity": "common",
+        "description": "a plate"
+      }
+    },
+    {
+      "name": "overflow: two picks at potency +1",
+      "kind": "armor",
+      "rarity": "common",
+      "maxLevel": 20,
+      "bases": [
+        {
+          "id": "full-plate",
+          "name": "Full Plate",
+          "fields": {
+            "level": 2,
+            "category": "heavy"
+          }
+        }
+      ],
+      "runes": [
+        {
+          "id": "acid",
+          "name": "Acid-Resistant",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-armor"
+          }
+        },
+        {
+          "id": "fire",
+          "name": "Fire",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-armor"
+          }
+        }
+      ],
+      "potency": [
+        {
+          "id": "potency-1",
+          "name": "Armor Potency (+1)",
+          "fields": {
+            "tier": 1
+          }
+        },
+        {
+          "id": "potency-2",
+          "name": "Armor Potency (+2)",
+          "fields": {
+            "tier": 2
+          }
+        },
+        {
+          "id": "potency-3",
+          "name": "Armor Potency (+3)",
+          "fields": {
+            "tier": 3
+          }
+        }
+      ],
+      "secondary": [
+        {
+          "id": "resilient-1",
+          "name": "Resilient",
+          "fields": {
+            "tier": 1
+          }
+        }
+      ],
+      "input": {
+        "baseItemId": "full-plate",
+        "potencyRuneId": "potency-1",
+        "secondaryRuneId": "none",
+        "propertyRuneIds": [
+          "fire",
+          "acid"
+        ]
+      },
+      "expected": {
+        "kind": "armor",
+        "maxLevel": 20,
+        "baseItemName": "Full Plate",
+        "baseItemCandidate": {
+          "name": "Full Plate",
+          "level": 2,
+          "category": "heavy",
+          "id": "c-dGVzdC5ydW5lcwBmdWxsLXBsYXRl",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "full-plate"
+          }
+        },
+        "potencyRuneCandidate": {
+          "name": "Armor Potency (+1)",
+          "tier": 1,
+          "id": "c-dGVzdC5ydW5lcwBwb3RlbmN5LTE",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "potency-1"
+          }
+        },
+        "secondaryRuneCandidate": null,
+        "potency": 1,
+        "secondaryTier": 0,
+        "propertyRunes": [
+          "Fire"
+        ],
+        "propertyRuneCandidates": [
+          {
+            "name": "Fire",
+            "level": 8,
+            "usage": "etched-onto-armor",
+            "id": "c-dGVzdC5ydW5lcwBmaXJl",
+            "ref": {
+              "packId": "test.runes",
+              "_id": "fire"
+            }
+          }
+        ],
+        "rarity": "common",
+        "description": ""
+      }
+    },
+    {
+      "name": "light base with a light-only rune and a general rune",
+      "kind": "armor",
+      "rarity": "uncommon",
+      "maxLevel": 20,
+      "bases": [
+        {
+          "id": "leather",
+          "name": "Leather Armor",
+          "fields": {
+            "level": 0,
+            "category": "light"
+          }
+        }
+      ],
+      "runes": [
+        {
+          "id": "acid",
+          "name": "Acid-Resistant",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-armor"
+          }
+        },
+        {
+          "id": "invisibility",
+          "name": "Invisibility",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-light-armor"
+          }
+        }
+      ],
+      "potency": [
+        {
+          "id": "potency-3",
+          "name": "Armor Potency (+3)",
+          "fields": {
+            "tier": 3
+          }
+        }
+      ],
+      "secondary": [
+        {
+          "id": "resilient-1",
+          "name": "Resilient",
+          "fields": {
+            "tier": 1
+          }
+        }
+      ],
+      "input": {
+        "baseItemId": "leather",
+        "potencyRuneId": "potency-3",
+        "secondaryRuneId": "resilient-1",
+        "propertyRuneIds": [
+          "invisibility",
+          "acid"
+        ]
+      },
+      "expected": {
+        "kind": "armor",
+        "maxLevel": 20,
+        "baseItemName": "Leather Armor",
+        "baseItemCandidate": {
+          "name": "Leather Armor",
+          "level": 0,
+          "category": "light",
+          "id": "c-dGVzdC5ydW5lcwBsZWF0aGVy",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "leather"
+          }
+        },
+        "potencyRuneCandidate": {
+          "name": "Armor Potency (+3)",
+          "tier": 3,
+          "id": "c-dGVzdC5ydW5lcwBwb3RlbmN5LTM",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "potency-3"
+          }
+        },
+        "secondaryRuneCandidate": {
+          "name": "Resilient",
+          "tier": 1,
+          "id": "c-dGVzdC5ydW5lcwByZXNpbGllbnQtMQ",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "resilient-1"
+          }
+        },
+        "potency": 3,
+        "secondaryTier": 1,
+        "propertyRunes": [
+          "Invisibility",
+          "Acid-Resistant"
+        ],
+        "propertyRuneCandidates": [
+          {
+            "name": "Invisibility",
+            "level": 8,
+            "usage": "etched-onto-light-armor",
+            "id": "c-dGVzdC5ydW5lcwBpbnZpc2liaWxpdHk",
+            "ref": {
+              "packId": "test.runes",
+              "_id": "invisibility"
+            }
+          },
+          {
+            "name": "Acid-Resistant",
+            "level": 8,
+            "usage": "etched-onto-armor",
+            "id": "c-dGVzdC5ydW5lcwBhY2lk",
+            "ref": {
+              "packId": "test.runes",
+              "_id": "acid"
+            }
+          }
+        ],
+        "rarity": "uncommon",
+        "description": ""
+      }
+    },
+    {
+      "name": "family: Flaming and Flaming (Greater)",
+      "kind": "armor",
+      "rarity": "common",
+      "maxLevel": 20,
+      "bases": [
+        {
+          "id": "full-plate",
+          "name": "Full Plate",
+          "fields": {
+            "level": 2,
+            "category": "heavy"
+          }
+        }
+      ],
+      "runes": [
+        {
+          "id": "flaming",
+          "name": "Flaming",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-armor"
+          }
+        },
+        {
+          "id": "flaming-greater",
+          "name": "Flaming (Greater)",
+          "fields": {
+            "level": 15,
+            "usage": "etched-onto-armor"
+          }
+        }
+      ],
+      "potency": [
+        {
+          "id": "potency-1",
+          "name": "Armor Potency (+1)",
+          "fields": {
+            "tier": 1
+          }
+        },
+        {
+          "id": "potency-2",
+          "name": "Armor Potency (+2)",
+          "fields": {
+            "tier": 2
+          }
+        }
+      ],
+      "secondary": [],
+      "input": {
+        "baseItemId": "full-plate",
+        "potencyRuneId": "potency-2",
+        "secondaryRuneId": "none",
+        "propertyRuneIds": [
+          "flaming",
+          "flaming-greater"
+        ]
+      },
+      "expected": {
+        "kind": "armor",
+        "maxLevel": 20,
+        "baseItemName": "Full Plate",
+        "baseItemCandidate": {
+          "name": "Full Plate",
+          "level": 2,
+          "category": "heavy",
+          "id": "c-dGVzdC5ydW5lcwBmdWxsLXBsYXRl",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "full-plate"
+          }
+        },
+        "potencyRuneCandidate": {
+          "name": "Armor Potency (+2)",
+          "tier": 2,
+          "id": "c-dGVzdC5ydW5lcwBwb3RlbmN5LTI",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "potency-2"
+          }
+        },
+        "secondaryRuneCandidate": null,
+        "potency": 2,
+        "secondaryTier": 0,
+        "propertyRunes": [
+          "Flaming (Greater)"
+        ],
+        "propertyRuneCandidates": [
+          {
+            "name": "Flaming (Greater)",
+            "level": 15,
+            "usage": "etched-onto-armor",
+            "id": "c-dGVzdC5ydW5lcwBmbGFtaW5nLWdyZWF0ZXI",
+            "ref": {
+              "packId": "test.runes",
+              "_id": "flaming-greater"
+            }
+          }
+        ],
+        "rarity": "common",
+        "description": ""
+      }
+    },
+    {
+      "name": "duplicate pick",
+      "kind": "armor",
+      "rarity": "common",
+      "maxLevel": 20,
+      "bases": [
+        {
+          "id": "full-plate",
+          "name": "Full Plate",
+          "fields": {
+            "level": 2,
+            "category": "heavy"
+          }
+        }
+      ],
+      "runes": [
+        {
+          "id": "acid",
+          "name": "Acid-Resistant",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-armor"
+          }
+        }
+      ],
+      "potency": [
+        {
+          "id": "potency-2",
+          "name": "Armor Potency (+2)",
+          "fields": {
+            "tier": 2
+          }
+        }
+      ],
+      "secondary": [],
+      "input": {
+        "baseItemId": "full-plate",
+        "potencyRuneId": "potency-2",
+        "secondaryRuneId": "none",
+        "propertyRuneIds": [
+          "acid",
+          "acid"
+        ]
+      },
+      "expected": {
+        "kind": "armor",
+        "maxLevel": 20,
+        "baseItemName": "Full Plate",
+        "baseItemCandidate": {
+          "name": "Full Plate",
+          "level": 2,
+          "category": "heavy",
+          "id": "c-dGVzdC5ydW5lcwBmdWxsLXBsYXRl",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "full-plate"
+          }
+        },
+        "potencyRuneCandidate": {
+          "name": "Armor Potency (+2)",
+          "tier": 2,
+          "id": "c-dGVzdC5ydW5lcwBwb3RlbmN5LTI",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "potency-2"
+          }
+        },
+        "secondaryRuneCandidate": null,
+        "potency": 2,
+        "secondaryTier": 0,
+        "propertyRunes": [
+          "Acid-Resistant"
+        ],
+        "propertyRuneCandidates": [
+          {
+            "name": "Acid-Resistant",
+            "level": 8,
+            "usage": "etched-onto-armor",
+            "id": "c-dGVzdC5ydW5lcwBhY2lk",
+            "ref": {
+              "packId": "test.runes",
+              "_id": "acid"
+            }
+          }
+        ],
+        "rarity": "common",
+        "description": ""
+      }
+    },
+    {
+      "name": "category: heavy-only rune on a light base",
+      "kind": "armor",
+      "rarity": "common",
+      "maxLevel": 20,
+      "bases": [
+        {
+          "id": "leather",
+          "name": "Leather Armor",
+          "fields": {
+            "level": 0,
+            "category": "light"
+          }
+        }
+      ],
+      "runes": [
+        {
+          "id": "acid",
+          "name": "Acid-Resistant",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-armor"
+          }
+        },
+        {
+          "id": "heavy-only",
+          "name": "Heavy Only",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-heavy-armor"
+          }
+        }
+      ],
+      "potency": [
+        {
+          "id": "potency-2",
+          "name": "Armor Potency (+2)",
+          "fields": {
+            "tier": 2
+          }
+        }
+      ],
+      "secondary": [],
+      "input": {
+        "baseItemId": "leather",
+        "potencyRuneId": "potency-2",
+        "secondaryRuneId": "none",
+        "propertyRuneIds": [
+          "heavy-only",
+          "acid"
+        ]
+      },
+      "expected": {
+        "kind": "armor",
+        "maxLevel": 20,
+        "baseItemName": "Leather Armor",
+        "baseItemCandidate": {
+          "name": "Leather Armor",
+          "level": 0,
+          "category": "light",
+          "id": "c-dGVzdC5ydW5lcwBsZWF0aGVy",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "leather"
+          }
+        },
+        "potencyRuneCandidate": {
+          "name": "Armor Potency (+2)",
+          "tier": 2,
+          "id": "c-dGVzdC5ydW5lcwBwb3RlbmN5LTI",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "potency-2"
+          }
+        },
+        "secondaryRuneCandidate": null,
+        "potency": 2,
+        "secondaryTier": 0,
+        "propertyRunes": [
+          "Acid-Resistant"
+        ],
+        "propertyRuneCandidates": [
+          {
+            "name": "Acid-Resistant",
+            "level": 8,
+            "usage": "etched-onto-armor",
+            "id": "c-dGVzdC5ydW5lcwBhY2lk",
+            "ref": {
+              "packId": "test.runes",
+              "_id": "acid"
+            }
+          }
+        ],
+        "rarity": "common",
+        "description": ""
+      }
+    },
+    {
+      "name": "weapon: one flaming rune at potency +1",
+      "kind": "weapon",
+      "rarity": "common",
+      "maxLevel": 20,
+      "bases": [
+        {
+          "id": "longsword",
+          "name": "Longsword",
+          "fields": {
+            "level": 0,
+            "category": "martial"
+          }
+        }
+      ],
+      "runes": [
+        {
+          "id": "weapon-flaming",
+          "name": "Flaming",
+          "fields": {
+            "level": 8,
+            "usage": "etched-onto-a-weapon"
+          }
+        }
+      ],
+      "potency": [
+        {
+          "id": "weapon-potency-1",
+          "name": "Weapon Potency (+1)",
+          "fields": {
+            "tier": 1
+          }
+        }
+      ],
+      "secondary": [],
+      "input": {
+        "baseItemId": "longsword",
+        "potencyRuneId": "weapon-potency-1",
+        "secondaryRuneId": "none",
+        "propertyRuneIds": [
+          "weapon-flaming"
+        ]
+      },
+      "expected": {
+        "kind": "weapon",
+        "maxLevel": 20,
+        "baseItemName": "Longsword",
+        "baseItemCandidate": {
+          "name": "Longsword",
+          "level": 0,
+          "category": "martial",
+          "id": "c-dGVzdC5ydW5lcwBsb25nc3dvcmQ",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "longsword"
+          }
+        },
+        "potencyRuneCandidate": {
+          "name": "Weapon Potency (+1)",
+          "tier": 1,
+          "id": "c-dGVzdC5ydW5lcwB3ZWFwb24tcG90ZW5jeS0x",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "weapon-potency-1"
+          }
+        },
+        "secondaryRuneCandidate": null,
+        "potency": 1,
+        "secondaryTier": 0,
+        "propertyRunes": [
+          "Flaming"
+        ],
+        "propertyRuneCandidates": [
+          {
+            "name": "Flaming",
+            "level": 8,
+            "usage": "etched-onto-a-weapon",
+            "id": "c-dGVzdC5ydW5lcwB3ZWFwb24tZmxhbWluZw",
+            "ref": {
+              "packId": "test.runes",
+              "_id": "weapon-flaming"
+            }
+          }
+        ],
+        "rarity": "common",
+        "description": ""
+      }
+    },
+    {
+      "name": "no property runes",
+      "kind": "armor",
+      "rarity": "common",
+      "maxLevel": 20,
+      "bases": [
+        {
+          "id": "full-plate",
+          "name": "Full Plate",
+          "fields": {
+            "level": 2,
+            "category": "heavy"
+          }
+        }
+      ],
+      "runes": [],
+      "potency": [
+        {
+          "id": "potency-1",
+          "name": "Armor Potency (+1)",
+          "fields": {
+            "tier": 1
+          }
+        }
+      ],
+      "secondary": [
+        {
+          "id": "resilient-1",
+          "name": "Resilient",
+          "fields": {
+            "tier": 1
+          }
+        }
+      ],
+      "input": {
+        "baseItemId": "full-plate",
+        "potencyRuneId": "potency-1",
+        "secondaryRuneId": "resilient-1",
+        "propertyRuneIds": []
+      },
+      "expected": {
+        "kind": "armor",
+        "maxLevel": 20,
+        "baseItemName": "Full Plate",
+        "baseItemCandidate": {
+          "name": "Full Plate",
+          "level": 2,
+          "category": "heavy",
+          "id": "c-dGVzdC5ydW5lcwBmdWxsLXBsYXRl",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "full-plate"
+          }
+        },
+        "potencyRuneCandidate": {
+          "name": "Armor Potency (+1)",
+          "tier": 1,
+          "id": "c-dGVzdC5ydW5lcwBwb3RlbmN5LTE",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "potency-1"
+          }
+        },
+        "secondaryRuneCandidate": {
+          "name": "Resilient",
+          "tier": 1,
+          "id": "c-dGVzdC5ydW5lcwByZXNpbGllbnQtMQ",
+          "ref": {
+            "packId": "test.runes",
+            "_id": "resilient-1"
+          }
+        },
+        "potency": 1,
+        "secondaryTier": 1,
+        "propertyRunes": [],
+        "propertyRuneCandidates": [],
+        "rarity": "common",
+        "description": ""
+      }
+    }
+  ]
+}
