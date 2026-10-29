@@ -583,4 +583,15 @@ const runedFlow = async (candidate) => {
   assert.equal(tctx.preview.permanents[2].filled, false, "a tampered rune document is not built");
   assert.equal(tctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.unavailable", "its slot says the tier could not be verified");
 }
+// Create refuses a runed item whose stored value changed after Generate, and writes nothing.
+{
+  const fresh = { ...RUNED_CANDIDATE, computed: { ...RUNED_CANDIDATE.computed } };
+  const { cc: ccr, aa: aar, ctx: pctx } = await runedFlow(fresh);
+  assert.equal(pctx.preview.permanents[2].filled, true, "the runed item is built first");
+  fresh.computed.copper = 9999;
+  const writesBeforeRunedCreate = createCalls.length;
+  await A.createItem.call(aar); const rctx = await aar._prepareContext();
+  assert.equal(createCalls.length, writesBeforeRunedCreate, "nothing is written");
+  assert.equal(rctx.error, "SIMPLYPF2E.ItemForge.Parcel.Revalidate", "Create refuses the stale runed value");
+}
 runedPool = []; permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
