@@ -163,6 +163,8 @@ Revert checks: 24 mutations, each applied to the file, the relevant test run, th
 
 Gate and drift (final tree): `node tools/check.mjs </dev/null` exit 0, 166 regression files, 659 localization keys, 0 unused keys; `git diff --check baeb0a3..HEAD` clean. `node tools/check-pf2e-drift.mjs` once with a token from `gh auth token` (not printed): 175 checked, 0 failures, 3 warnings (the legacy ability-glossary alias, the name-form `Skillful Lessons` uuid, the Arcane School master fixture's rules difference), all pre-existing. It checks the Wizard package names and the new fixtures against upstream. No new UUID is pinned.
 
+Create-time revalidation (Code Reviewer MEDIUM #3, `fix/caster-gate`): `buildCasterArchetypeItems` reloads every planned spell and re-runs the plan checks (tradition, own rank, common, no duplicate, count per rank). A removed, unloadable, changed or excess pick, or a plan without its feats, throws `SIMPLYPF2E.Errors.PCArchetypeSpellbook` before `Actor.create`, so nothing is written. The post-create verification list is built from the same items, so it holds the whole planned spellbook. Mutations (dropped doc, rejected spells non-fatal, per-rank count, held-feats check) are each killed by `pc-builder.casterArchetype.test.mjs`.
+
 ## 7. Gaps
 
 - Not native-accepted; rows N50 to N53 are OPEN. No Foundry, no provider call.
