@@ -115,8 +115,9 @@ const concept = (raw) => normalizeConcept({ name: "Test Creature", ...raw }, { l
   assert.equal(c.strikes[2].type, "ranged", "the thrown-20 trait still makes the strike ranged");
   assert.equal(c.strikes[2].range, 20, "the thrown trait's own number is the increment, whatever the AI wrote");
   const ranged = (range) => concept({ strikes: [{ name: "bow", type: "ranged", range }] }).strikes[0].range;
-  assert.equal(ranged(150), 150, "the strike list maximum 150 ft is kept");
-  assert.equal(ranged(200), 150, "a ranged increment over 150 ft snaps to 150");
+  assert.equal(ranged(150), 150, "a listed 150 ft increment is kept");
+  assert.equal(ranged(200), 200, "the strike list maximum 200 ft is kept");
+  assert.equal(ranged(250), 200, "a ranged increment over 200 ft snaps to 200");
   assert.equal(ranged(-10), null, "a nonsense increment (negative) is dropped to the sheet default");
 }
 
