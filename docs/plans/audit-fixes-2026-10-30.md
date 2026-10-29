@@ -4,9 +4,20 @@ Owner: Code Monkey (CM1). Branch `fix/safety`, base `integrate/2026-10-30@69af4c
 
 ## 1. Enricher-inert AI prose (items 1 and 2)
 
-**Policy.** Foundry enrichers (`@UUID`, `@Check`, `@Damage`, `@Localize`, `@Template`, `@Embed`, inline `[[/r ...]]`) run on stored HTML by source text. AI prose is text, so it must not carry them. `inertText(text)` in `scripts/text.mjs` HTML-escapes the text, then writes `@` as `&#64;` and `[` as `&#91;`. The visible text is unchanged; the enricher no longer matches the source.
+**Policy.** Foundry enrichers (`@UUID`, `@Check`, `@Damage`, `@Localize`, `@Template`, `@Embed`, inline `[[/r ...]]`, `&Reference[...]`) are found in stored HTML by source text, and Foundry enriches text nodes. AI prose is text, so it must not carry them. `inertText(text)` in `scripts/text.mjs` HTML-escapes the text, then puts a U+2060 WORD JOINER after every `@` and before every `[`. The visible text is unchanged (the joiner is zero width), and no enricher pattern matches: each one needs `@` or `[` directly followed by a name or a bracket.
 
-**Why character references.** Escaping HTML alone does not stop enrichers (PLAYBOOK invariant 5). Removing the characters would lose the text. A character reference keeps the visible text and fails the enricher match.
+**Why not character references (CR REJECT #1, 2026-10-30).** The first version wrote `@` as `&#64;` and `[` as `&#91;`. That fails at the parsing boundary: an HTML parser decodes those references back to `@` and `[` in the text nodes, and Foundry runs its enrichers on those nodes. The stored-HTML check the first version used could not see this. The joiner survives parsing, because it is a character and not a reference.
+
+**Enricher patterns checked at the parsing boundary** (`tests/text.parsingBoundary.test.mjs`):
+- pf2e 8.5.0, `src/scripts/hooks/init.ts` at tag `pf2e-8.5.0` (github.com/foundryvtt/pf2e), lines 70, 77 and 82:
+  - `/@(Check|Localize|Template)\[([^\]]+)\](?:{([^}]+)})?/g`
+  - `/@(Damage)\[((?:[^[\]]|\[[^[\]]*\])*)\](?:{([^}]+)})?/g`
+  - `/\[\[\/(act)\s+(?<slug>[-a-z]+)(?:\s+(?<options>[^\]]+))?\]\](?:\{(?<label>[^}]+)\})?/g`
+- Foundry v14 built-in enrichers (`@UUID`, `@Embed`, inline rolls, `&Reference`): **not in any public repository.** The Foundry core is closed source, and `foundryvtt/foundryvtt` holds only docs and release notes. The test uses conservative matchers of the documented syntax (`@UUID[...]{label}` from the v10 migration guide). Passing those is evidence, not proof, that Foundry's own patterns match nothing in AI prose. The joiner rule does not depend on the exact pattern, because every built-in form needs `@` or `[` directly followed by a name or bracket.
+
+**Visible text.** The joiner shows nothing, and it is not `\s`, so no pattern that uses `\s` splits on it.
+
+**Not verified:** a live Foundry session.
 
 **Applied to** cosmetic fields only:
 - NPC (`scripts/builder.mjs`): `description`/`blurb`, `readAloud`, `recallKnowledge`, `notes`, and narrative action text. The module's own `@Check[type:…|dc:…]` for recall stays live.
@@ -15,7 +26,7 @@ Owner: Code Monkey (CM1). Branch `fix/safety`, base `integrate/2026-10-30@69af4c
 - Hazards (`scripts/hazard-builder.mjs`): reaction trigger/effect, save effect, routine text. The module's `@Check[${reaction.save.type}|dc:…]` stays live.
 - Encounter text: `scripts/encounter.mjs` writes no prose. Encounter members go through `normalizeConcept` and `createActor` (`generator-app.mjs`), so they get the NPC policy.
 
-**Tests:** `tests/text.inertProse.test.mjs` (eight token families; visible text kept; `toHtml` paragraphs), `tests/npc.inertProse.test.mjs`, `tests/item-builder.inertProse.test.mjs` (magic item and a runed build with a hostile property-rune name), and the PC biography block in `tests/pc-wizard.builder.test.mjs` (`enricherTokens` must find no token).
+**Tests:** `tests/text.parsingBoundary.test.mjs` (seven AI prose samples parsed as text nodes, every pattern above; module `@Check` and `@Damage` still match; the old entity encoding is caught), `tests/text.inertProse.test.mjs` (eight token families; visible text kept; `toHtml` paragraphs), `tests/npc.inertProse.test.mjs`, `tests/item-builder.inertProse.test.mjs` (magic item and a runed build with a hostile property-rune name), and the PC biography block in `tests/pc-wizard.builder.test.mjs` (`enricherTokens` must find no token).
 
 **Not verified:** a live Foundry session. The test oracle is `enricherTokens` from `scripts/reskin-policy.mjs`, which follows Foundry's enricher regex on source text. It is not Foundry's own parser.
 
@@ -208,3 +219,43 @@ Recorded in the final report. Each revert check was run against a copy and resto
 - **Strike increments** are a module convention, like the speed lists.
 - **requestJSON retry**: `ai.mjs` calls `args.onProgress({ phase: "retrying" })` without a guard, so a caller that passes no `onProgress` gets a `TypeError` on the retry instead of the retry. Production always passes one. It is noted here, not changed in this part.
 - Coin lines from the AI are dropped rather than kept as a hint. The Lead allowed either; dropping is the simpler contract.
+
+## 7. Release gate rejection, fixes W0b (CR REJECT #1–#3)
+
+Code Reviewer rejected `baeb0a3`. This section records the three fixes. CR #4 (loot-scroll rarity) is W0 F3, and CR #5 (speeds) belongs to Code Monkey 3.
+
+**#1 (HIGH) Entity-encoded `@`/`[` decoded at the parsing boundary.** `inertText` now uses a U+2060 WORD JOINER (see §1). Fail before, pass after:
+
+| Check | Before (`baeb0a3` code, these tests) | After |
+|---|---|---|
+| `text.parsingBoundary` | fail: `@UUID[…]` in AI prose survives parsing | pass |
+| `text.inertProse` | fail: the new visible-text and token assertions | pass |
+| `npc.inertProse`, `item-builder.inertProse`, `pc-wizard.builder` | fail: the new expectations require the joiner | pass |
+| mutant B1a: restore character references | killed by `text.parsingBoundary`, `text.inertProse` | |
+| mutant B1b: joiner only after `@` | killed by `text.parsingBoundary` (`[[/r …]]` survives) | |
+
+**#2 (MEDIUM) Empty AI loot draft forced the treasure budget to zero.** The budget is now gated on the GM's Include treasure setting (`this.#input.includeLoot`), not on the AI draft, at three call sites in `generator-app.mjs`: the NPC pipeline, the encounter member split, and the loot reroll. An empty draft still gets the module coin fill. `treasureBudget()` is unchanged. Tests: `generator-app.lifecycle` (NPC and encounter member with empty loot; Include treasure off gives zero), `generator-app.lootReroll` (empty first draft; empty reroll draft; the reroll makes no budget call with Include treasure off). Fail before, pass after:
+
+| Check | Before | After |
+|---|---|---|
+| `generator-app.lifecycle` | fail: "an NPC with empty AI loot still gets its treasure budget (saw 0)" | pass |
+| mutant B2a (NPC gated on draft) | | killed by `generator-app.lifecycle`, `generator-app.lootReroll` |
+| mutant B2b (encounter member gated on draft) | | killed by `generator-app.lifecycle` |
+| mutant B2c (reroll gated on draft) | | killed by `generator-app.lootReroll` |
+
+Judgement call: the "minimal courier with no loot" prompt in `generator-app.lootReroll` used to pin a zero budget. It now gets the coin fill. A GM who wants no loot should turn Include treasure off.
+
+**#3 (MEDIUM) Padding capped at 100,000 gp.** `applyTreasureBudget` now splits the remainder as the Treasure parcel splits currency (`splitCurrencyGp` in `treasure-parcel.mjs`): whole pp at 100 gp and up, then gp, sp and cp. Each coin stack holds at most 100,000 coins; a bigger remainder needs more stacks. Every coinage the padding needs is resolved before the list changes, so a missing coinage document leaves the list as it was. The value is exact in copper.
+
+`lootValueGp` also changed: a line with quantity 0 counted as one coin's worth (`Number(q) || 1`), so an empty stack was valued at its unit price. A line with no quantity still counts once. Found while writing the wallet fixture in `builder.releaseFixes`.
+
+Tests: `builder.releaseFixes` (the 799 gp band case pads 20 pp and 1 gp; 168,000 gp is met exactly as 16,800 pp; 125,001 gp is met exactly; a remainder needing a coinage document that is not there changes nothing). Fail before, pass after:
+
+| Check | Before | After |
+|---|---|---|
+| `builder.releaseFixes` | fail: the 799 gp band case pads gold, not parcel coins | pass |
+| mutant B3a: stack cap 100000 → 1000 | | killed by `builder.releaseFixes` |
+| mutant B3b: padding paid all in gold | | killed by `builder.releaseFixes` |
+| mutant B3c: empty stack counted as one coin | | killed by `builder.releaseFixes` |
+
+Gate: see the final report. Not verified in Foundry. The coinage documents' unit values are read from the compendium at run time, not checked against pf2e print.
