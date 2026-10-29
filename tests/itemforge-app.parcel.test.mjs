@@ -563,4 +563,14 @@ const runedFlow = async (candidate) => {
   assert.equal(uctx.preview.permanents[2].filled, false);
   assert.equal(uctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.unavailable", "a missing rune document is unavailable, not guessed");
 }
+// A rune document whose value no longer matches the pinned tier is refused at build, not used.
+{
+  const striking = runed.RUNE_TIERS.weapon.striking[1].uuid;
+  const saved = docs.get(striking);
+  docs.set(striking, { uuid: striking, toObject: () => { const tampered = plain(v3Fixture("striking")); tampered.system.price.value = { gp: 66 }; return tampered; } });
+  const { ctx: tctx } = await runedFlow(RUNED_CANDIDATE);
+  docs.set(striking, saved);
+  assert.equal(tctx.preview.permanents[2].filled, false, "a tampered rune document is not built");
+  assert.equal(tctx.preview.permanents[2].reason, "SIMPLYPF2E.ItemForge.Parcel.Reason.unavailable", "its slot says the tier could not be verified");
+}
 runedPool = []; permanentPools.clear(); permanentPicks = []; parcelPicks = initialPicks; c = ctl();
