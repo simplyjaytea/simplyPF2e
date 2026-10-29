@@ -137,7 +137,7 @@ Classes:
 |---|---|---|---|
 | creature `speeds[].value` | creature | (b) | Fixed list per movement type; off-list dropped; land 25 default (`builder.mjs` `SPEED_VALUES`) |
 | creature `senses[].range` | creature | (b) | `30`, `60`, `120` or null (`builder.mjs` `SENSE_RANGES`) |
-| creature `strikes[].range` (ranged) | creature | (b) | Fixed increments `10`–`150` (`STRIKE_RANGES`); the `thrown-N` trait's own number is kept, since PF2e derives it |
+| creature `strikes[].range` (ranged) | creature | (b) | Fixed increments `10`–`200` (`STRIKE_RANGES`); the `thrown-N` trait's own number is kept, since PF2e derives it |
 | creature `strikes[].attackScale`, `damageScale` | creature | (b) | Scale words only (`scale4`) |
 | creature `spellcasting.spells[].rank` | creature | (b) | Clamped to `0..maxSpellRank` from level (`builder.mjs` ~310); lifted to the real spell's base rank (~796) |
 | creature `spellcasting.dcScale`, `skills[].scale`, `abilityScales` | creature | (b) | Scale words only |
@@ -187,7 +187,7 @@ Speed lists, from the published pf2e 8.5.0 NPC maxima in steps of 5 (sourced 202
 | climb | 5–60, steps of 5 |
 | burrow | 5–60, steps of 5 |
 
-Senses range: 5–1,000 ft in steps of 5, or null (imprecise or no range). Ranged strike increments: `10, 20, 30, 40, 60, 80, 100, 120, 150`, or null (the sheet keeps its default of 30). An off-list value snaps to the nearest listed value; only a nonsense value (not a number, or 0 and below) is dropped. The land default of 25 ft stays when no speed survives.
+Senses range: 5–1,000 ft in steps of 5, or null (imprecise or no range). Ranged strike increments: `10, 20, 30, 40, 60, 80, 100, 120, 150, 200`, or null (the sheet keeps its default of 30). An off-list value snaps to the nearest listed value; only a nonsense value (not a number, or 0 and below) is dropped. The land default of 25 ft stays when no speed survives.
 
 ## B5. Hazard kind (PLAYBOOK §10)
 
