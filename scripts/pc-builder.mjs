@@ -11,7 +11,7 @@ import { isAdvancedSchoolSpellFeat, isArcaneSchoolSource, schoolAdvancedSpellLin
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
-import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
+import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTraining, dedicationSkillReplacements, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
 import { getClassPathCandidates, preflightClassPaths, stageClassPaths } from "./class-paths.mjs";
 import { assertPCIdentity } from "./pc-identity.mjs";
@@ -1018,7 +1018,11 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     throw new Error("simplypf2e | resolved key ability does not match the required identity");
   }
 
-  const { ranks: initialRanks, replacements } = initialSkillTraining(resolved.classDoc.system, resolved.backgroundDoc.system);
+  const initialTraining = initialSkillTraining(resolved.classDoc.system, resolved.backgroundDoc.system);
+  const initialRanks = initialTraining.ranks;
+  // Class/background duplicates are provable now; a dedication's own duplicate is added below, once
+  // its feat is loaded, because the dedication is the item that names the skill.
+  let replacements = initialTraining.replacements;
   const backgroundLore = [];
   const concreteBackgroundLore = resolveBackgroundLore(resolved.backgroundDoc, concept.requiredIdentity?.backgroundLore);
 
@@ -1090,6 +1094,13 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
       continue;
     }
     const data = toItemData(doc);
+    // A dedication that trains a skill the PC already has grants a replacement skill of the PC's choice
+    // (Player Core, initial proficiencies). The rank itself comes from the feat's cloned ActiveEffectLike
+    // (`upgrade` = max, so stacking is harmless); only the extra choice is modeled, through the ordinary
+    // training budget and priority order.
+    if (multiclassFeatInfo(data.name)?.role === "dedication") {
+      replacements += dedicationSkillReplacements([data.system], initialRanks);
+    }
     // The dedication's ChoiceSet is answered with the previewed choice (the same `selection` pf2e writes), so no prompt opens.
     if (archetypeChoice && casterArchetypeFeat(data.name)?.archetype === archetypeChoice.archetype
       && casterArchetypeFeat(data.name)?.role === "dedication") {

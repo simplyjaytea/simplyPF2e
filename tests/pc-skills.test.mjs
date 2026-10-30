@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { CORE_SKILLS, normalizeSkillPriorities, skillPriorityOrder, skillIncreaseSchedule, initialSkillTraining,
-  allocateCharacterSkills, characterSkillSnapshot } from "../scripts/pc-skills.mjs";
+  dedicationSkillTraining, dedicationSkillReplacements, allocateCharacterSkills, characterSkillSnapshot } from "../scripts/pc-skills.mjs";
 import { normalizePCConcept } from "../scripts/pc-builder.mjs";
 
 const zero = () => Object.fromEntries(CORE_SKILLS.map((slug) => [slug, 0]));
@@ -106,4 +107,23 @@ assert.equal(snapshot.blocked.length, CORE_SKILLS.length);
 snapshotActor.system.autoChanges = { "{item|flags.pf2e.rulesSelections.path}": [{ mode: "add", value: 1 }] };
 assert.equal(characterSkillSnapshot(snapshotActor).blocked.length, CORE_SKILLS.length);
 assert.deepEqual(allocateCharacterSkills(input({ nativeRanks: {} })).warnings, ["native-data"]);
+
+// Dedication skill training (feat/dedication-skills): the real feats state it as an `upgrade` to rank 1, which pf2e
+// applies as max(current, 1) — an overlap is harmless, so the published replacement is a separate choice.
+const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/pc-caster/${name}.json`, import.meta.url), "utf8"));
+assert.deepEqual(dedicationSkillTraining(fixture("bard-dedication").system), ["occultism", "performance"]);
+assert.deepEqual(dedicationSkillTraining(fixture("wizard-dedication").system), ["arcana"]);
+// Only a literal skill path with an upgrade to 1 is decidable: a ChoiceSet-built path, another mode or another rank is not.
+const rule = (overrides) => ({ key: "ActiveEffectLike", mode: "upgrade", path: "system.skills.society.rank", value: 1, ...overrides });
+assert.deepEqual(dedicationSkillTraining({ rules: [rule()] }), ["society"]);
+assert.deepEqual(dedicationSkillTraining({ rules: [rule({ path: "system.skills.{item|flags.system.rulesSelections.skill}.rank" })] }), [],
+  "a ChoiceSet-built path is not guessed");
+assert.deepEqual(dedicationSkillTraining({ rules: [rule({ mode: "add" }), rule({ value: 2 }), rule({ path: "system.proficiencies.attacks.simple.rank" })] }), []);
+assert.deepEqual(dedicationSkillTraining({ rules: [rule({ key: "RollOption" })] }), []);
+assert.deepEqual(dedicationSkillTraining(null), []);
+assert.equal(dedicationSkillReplacements([fixture("bard-dedication").system], { occultism: 1 }), 1);
+assert.equal(dedicationSkillReplacements([fixture("bard-dedication").system], { occultism: 1, performance: 1 }), 2,
+  "each overlapping skill grants its own replacement");
+assert.equal(dedicationSkillReplacements([fixture("wizard-dedication").system], { athletics: 1 }), 0);
+assert.equal(dedicationSkillReplacements([], { arcana: 1 }), 0);
 console.log("pc-skills.test.mjs: preferences, budgets, chronological progression, and reconciliation passed");

@@ -41,6 +41,50 @@ export function initialSkillTraining(classSystem, backgroundSystem) {
   };
 }
 
+/**
+ * Core skills a dedication feat's own rules train. pf2e models the training as an
+ * ActiveEffectLike that upgrades `system.skills.<skill>.rank` to 1 (e.g. Bard
+ * Dedication trains Performance and Occultism; Wizard Dedication trains Arcana),
+ * and `upgrade` is `Math.max(current, value)` (pf2e
+ * `src/module/rules/rule-element/ae-like.ts`, `getNewValue`), so a skill the PC
+ * already has trained is simply left at its rank. The published text grants a
+ * replacement skill for exactly that overlap, and pf2e does nothing about it: the
+ * module has to choose the extra training itself.
+ *
+ * Only a literal path is decidable here. A path built from a ChoiceSet answer
+ * (`system.skills.{item|flags.system.rulesSelections.skill}.rank`, Fighter and
+ * Monk Dedication) depends on an answer the module does not write, so it yields no
+ * skill (fail closed) rather than a guess.
+ * @param {object} featSystem a feat item's system data (cloned or live)
+ * @returns {string[]} trained core-skill slugs, sorted
+ */
+export function dedicationSkillTraining(featSystem) {
+  const trained = new Set();
+  for (const rule of Array.isArray(featSystem?.rules) ? featSystem.rules : []) {
+    if (rule?.key !== "ActiveEffectLike" || rule.mode !== "upgrade" || rule.value !== 1) continue;
+    const match = /^system\.skills\.([a-z]+)\.rank$/.exec(String(rule.path ?? ""));
+    if (match && Object.hasOwn(SKILL_ATTRIBUTES, match[1])) trained.add(match[1]);
+  }
+  return [...trained].sort();
+}
+
+/**
+ * Replacement picks a dedication grants: one per skill it trains that the PC
+ * already has trained (Player Core, Skills / Initial Proficiencies: "for each of
+ * these skills in which you were already trained, you instead become trained in a
+ * skill of your choice"). The choice itself is made by the ordinary training
+ * budget and priority order, never here.
+ * @param {object[]} featSystems the held dedication feats' system data
+ * @param {Record<string, number>} trainedRanks the ranks known before the dedication
+ * @returns {number}
+ */
+export function dedicationSkillReplacements(featSystems, trainedRanks) {
+  const already = new Set(Object.entries(trainedRanks ?? {})
+    .filter(([, rank]) => Number.isInteger(rank) && rank > 0).map(([slug]) => slug));
+  return (featSystems ?? []).reduce((count, system) =>
+    count + dedicationSkillTraining(system).filter((slug) => already.has(slug)).length, 0);
+}
+
 const validRank = (rank) => Number.isInteger(rank) && rank >= 0 && rank <= 4;
 
 /**
