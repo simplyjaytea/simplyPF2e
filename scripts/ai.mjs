@@ -1,3 +1,4 @@
+import { limitForgeBaseCandidates } from "./compendium.mjs";
 import { CANTRIP_DECK_RANK } from "./spell-consumables.mjs";
 import { hazardTraitCandidates } from "./hazard-candidates.mjs";
 import {
@@ -1518,7 +1519,7 @@ export async function generateRunedItemConcept({
   prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyCandidates, secondaryCandidates, onProgress, signal
 }) {
   const secondaryLabel = kind === "weapon" ? "striking" : "resilient";
-  const encoded = encodeForgeCandidateGroups({ baseCandidates, potencyCandidates, secondaryCandidates, runeCandidates });
+  const encoded = encodeForgeCandidateGroups({ baseCandidates: limitForgeBaseCandidates(baseCandidates, prompt), potencyCandidates, secondaryCandidates, runeCandidates });
   const baseList = encoded.base.entries.map((c) => {
     const category = kind === "armor" && c.category ? `${c.category} armor, ` : "";
     return `${c.alias} | ${c.name}${c.level > 0 || category ? ` (${category}L${c.level})` : ""}`;

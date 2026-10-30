@@ -376,6 +376,21 @@ function relevanceScore(candidate, keywords) {
   return score;
 }
 
+/** Rank Forge bases by brief; preserve every full candidate name mentioned in it. */
+export function limitForgeBaseCandidates(candidates, brief, limit = 40) {
+  const text = normalize(brief);
+  const words = normalizedKeywords(text.split(" "));
+  const list = Array.isArray(candidates) ? candidates : [];
+  const exact = (candidate) => {
+    const name = normalize(candidate.name);
+    return name && (` ${text} `).includes(` ${name} `);
+  };
+  const sorted = list.slice().sort((a, b) => Number(exact(b)) - Number(exact(a))
+    || relevanceScore(b, words) - relevanceScore(a, words) || a.name.localeCompare(b.name));
+  const exactCount = sorted.filter(exact).length;
+  return sorted.slice(0, Math.max(limit, exactCount));
+}
+
 function roundRobin(buckets, limit) {
   const capped = Math.max(Math.floor(Number(limit) || 0), 0);
   if (!capped) return [];
