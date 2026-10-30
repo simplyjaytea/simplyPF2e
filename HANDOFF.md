@@ -2,7 +2,15 @@
 
 Read [PLAYBOOK.md](PLAYBOOK.md) first. This file holds only what the last session left in flight. Overwrite it at every session end.
 
-## Session 2026-10-30 (OpenBot): dedication replacement skills, Bard signature pick, Druid spec, token cut
+## Release candidate 2026-10-30
+
+The next push ships one combined v0.3.5.88 batch: Round 2 selector summaries and candidate limits, Forge base shortlists, Investigator extra training, character prose validation, alias collision protection, level-bounded NPC loot scrolls, visible tolerated-stage warnings, PF2e 8.5.0 minimum, and corrected live-test instructions and ledger expectations.
+
+Lead reviewed the code. Moss independently approved Round 2 at bc57160, mini features at d3559f6, and runtime repairs at cb14437. Follow-up 89caa21 corrects the unsupported editor instruction and kills the Forge relevance mutation. Ledger correction e32d9bd was cherry-picked separately. Final combined gate and publication must be checked before calling this shipped.
+
+No Foundry or provider calls were made. Native rows remain OPEN. The user tests with docs/plans/first-live-test-2026-10-30.md. Druid remains held pending N55. Known deferred issues include solo-party encounter budget policy and selector-level consumable rank validation, whose Forge boundary already drops invalid picks.
+
+## Earlier session 2026-10-30 (OpenBot): dedication replacement skills, Bard signature pick, Druid spec, token cut
 
 - **Released after:** v0.3.5.87, AI prompt-size cut phase 2a ([record](docs/plans/token-budget-2026-10-30.md)). Phase 2b (pick-changing levers) waits for the user. Measure live: compare the provider's reported tokens and the picks on the first real PC and NPC.
 

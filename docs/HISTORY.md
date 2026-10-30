@@ -710,3 +710,8 @@ Chronological, oldest first. The **Pattern:** lines are the actually-reusable le
 - The user tends to merge PRs themselves right after requesting a review/audit, sometimes before the audit finishes — say so explicitly if a requested review is still in flight rather than assuming it's understood; a merge landing mid-audit needs its fixes shipped as a new follow-up PR.
 - CI/workflow (`.yml`) changes specifically need a live test merge to trust — `node --check`/YAML-syntax-validity has never caught a trigger-chain bug in this repo's history (2 for 2 so far).
 - An independent second agent auditing a freshly-built diff (not just the builder's own self-report) has found real bugs on at least 3 separate occasions (item forge Phase 2's condition macro, item forge Phase 3's rune-key + fundamental-leak bugs). Worth doing for anything schema-dependent or security/balance-sensitive, even after the primary build already looks clean.
+
+
+## 2026-10-30: combined release candidate after offline QA
+
+Integrated Round 2 token cuts, Investigator extra training and Forge shortlist. Fixed ordinary-prose identity refusals, case-insensitive candidate alias collisions, NPC loot scroll rank ceilings at retrieval and resolution, and missing progress warnings. Raised the declared PF2e minimum to the tested 8.5.0. Corrected the installation checklist and N19/N22 expectations; no native acceptance row was passed. Moss approved each code batch independently. Full retries remain unchanged because shortened retries discarded the catalog needed to repair selections. Provider billing and live selection quality remain unverified.
