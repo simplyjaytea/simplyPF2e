@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { encodeFeatCandidateSlots, resolveEncodedFeatPicks } from "../scripts/ai-candidate-format.mjs";
+import { encodeCandidateList, encodeFeatCandidateSlots, resolveEncodedFeatPicks } from "../scripts/ai-candidate-format.mjs";
 
 const encoded = encodeFeatCandidateSlots([
   { type: "general", level: 3, candidates: [{ name: "Fleet" }, { name: "Toughness" }] },
@@ -77,3 +77,24 @@ for (const invalid of [undefined, null, {}, "F0", [0], ["Same Name"], ["source-o
 assert.throws(() => resolveCreatureFeatAliases(creature, ["F0", "F1"], 1),
   (error) => error.diagnostics.reason === "too-many-picks");
 console.log("ai-candidate-format.test.mjs: creature aliases are exact and atomic");
+
+const aliased = encodeCandidateList([
+  { id: "c-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", name: "Sword" },
+  { id: "c-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", name: "Bow" },
+  { id: "c-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", name: "Sword duplicate" }
+], "E");
+assert.deepEqual(aliased.entries.map(({ alias, id, name }) => [alias, id, name]), [
+  ["E0", "c-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "Sword"],
+  ["E1", "c-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", "Bow"]
+], "aliases are deterministic, prefix-scoped and de-duplicated by issued id");
+assert.equal(aliased.resolve("e0").candidate.name, "Sword", "alias lookup is case-insensitive");
+assert.equal(aliased.resolve("E1").candidate.name, "Bow");
+assert.equal(aliased.resolve("c-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB").candidate.name, "Bow",
+  "the exact issued id stays accepted for compatibility");
+assert.equal(aliased.resolve("F0"), null, "a foreign list's alias resolves to nothing");
+assert.equal(aliased.resolve("E9"), null, "an unknown alias resolves to nothing");
+
+const shadowed = encodeCandidateList([{ id: "X1", name: "First" }, { id: "other", name: "Second" }], "X");
+assert.equal(shadowed.resolve("X1").candidate.name, "First", "an exact id is never shadowed by another candidate's alias");
+assert.equal(shadowed.resolve("X1X").candidate.name, "Second", "a colliding alias is extended deterministically");
+console.log("ai-candidate-format.test.mjs: shared candidate aliases are deterministic and fail closed");

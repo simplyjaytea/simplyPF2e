@@ -1,4 +1,57 @@
 /**
+ * Request-local short aliases for one candidate list. The long issued IDs
+ * (`c-` + base64 pack/document identity) are never serialized into a prompt;
+ * the alias→candidate map stays here and resolves the reply back to the same
+ * issued object. `prefix` must be unique among lists in the same prompt so an
+ * alias from another list cannot resolve.
+ *
+ * Aliases are `prefix` + base36 index (S0..SZ, S10..), shortened to two or
+ * three characters. Exact issued IDs remain accepted on the way back for
+ * compatibility with callers (and tests) that already reply with them; an
+ * unknown value resolves to null, never to the first/name candidate.
+ */
+export function encodeCandidateList(candidates, prefix = "C") {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const reservedIds = new Map();
+  for (const candidate of list) {
+    const id = String(candidate?.id ?? "").trim();
+    if (id && !reservedIds.has(id)) reservedIds.set(id, candidate);
+  }
+  const entries = [];
+  const byAlias = new Map();
+  const byId = new Map();
+  for (const candidate of list) {
+    const id = String(candidate?.id ?? "").trim();
+    if (!id || byId.has(id)) continue;
+    let alias = `${prefix}${entries.length.toString(36).toUpperCase()}`;
+    // A short test/legacy ID may equal a generated alias. Never let an exact
+    // ID reply be shadowed by a different candidate's alias.
+    while (reservedIds.has(alias) && reservedIds.get(alias) !== candidate) alias += "X";
+    const entry = {
+      alias,
+      id,
+      name: String(candidate?.name ?? ""),
+      candidate
+    };
+    entries.push(entry);
+    byAlias.set(alias.toUpperCase(), entry);
+    byId.set(id, entry);
+  }
+  return {
+    entries,
+    /**
+     * Resolve one model-authored value: alias first (case-insensitive), then
+     * the exact issued ID for compatibility. Foreign aliases return null.
+     */
+    resolve(value) {
+      const key = String(value ?? "").trim();
+      if (!key) return null;
+      return byAlias.get(key.toUpperCase()) ?? byId.get(key) ?? null;
+    }
+  };
+}
+
+/**
  * Encode overlapping feat lists once. High-level PCs have many slots whose
  * legal candidates largely repeat; short IDs prevent resending every name for
  * every slot and let invalid cross-slot picks fail closed locally.
