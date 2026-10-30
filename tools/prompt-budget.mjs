@@ -441,11 +441,9 @@ function abcReply(user, picks) {
   const backgrounds = sectionEntries(user, "Available backgrounds");
   const classes = sectionEntries(user, "Available classes");
   const ancestry = named(ancestries, picks.ancestry) ?? ancestries[0];
-  const compatible = heritages.filter((item) => {
-    const owner = packs.get("pf2e.heritages")?.ancestryOfHeritage?.[item.id];
-    return !owner || owner.toLowerCase() === ancestry?.name.toLowerCase();
-  });
-  const heritage = named(compatible, picks.heritage) ?? compatible[0] ?? null;
+  // The selector already withholds heritages of unoffered ancestries, so every
+  // heritage still in this list is compatible with some offered ancestry.
+  const heritage = named(heritages, picks.heritage) ?? heritages[0] ?? null;
   const background = named(backgrounds, picks.background) ?? backgrounds[0];
   const pcClass = named(classes, picks.class) ?? classes[0];
   return JSON.stringify({

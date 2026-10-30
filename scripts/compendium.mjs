@@ -744,7 +744,16 @@ async function getFullCandidates(category, type, maxRarity, { distinctSources = 
       const identity = distinctSources ? `${entry.packId}\u0000${entry._id}` : entry.normalized;
       if (seen.has(identity)) continue;
       seen.add(identity);
-      candidates.push(candidateRecord(entry, { name: entry.name, traits: entry.system?.traits?.value ?? [] }));
+      candidates.push(candidateRecord(entry, {
+        name: entry.name,
+        traits: entry.system?.traits?.value ?? [],
+        // Heritages carry the ancestry they belong to; ancestry-agnostic
+        // (versatile) heritages have none. The ABC selector uses this to
+        // withhold heritages of ancestries that are not on offer.
+        ...(type === "heritage" && entry.system?.ancestry?.name
+          ? { ancestry: entry.system.ancestry.name }
+          : {})
+      }));
     }
   }
   candidates.sort((a, b) => a.name.localeCompare(b.name));

@@ -62,8 +62,11 @@ try {
   assert.doesNotMatch(system, /"rank": ?(string|number)/, "the response schema asks for no rank");
   assert.match(user, /Tradition: arcane\./);
   assert.match(user, /Original GM request: A bookish swordsman/);
-  for (const candidate of candidates) assert.ok(user.includes(`${candidate.id} | ${candidate.name}`), `${candidate.name} is offered by opaque id`);
-  assert.match(user, /cantrip: c1 \| Detect Magic; c2 \| Electric Arc; c3 \| Light/);
+  for (const candidate of candidates) {
+    assert.ok(!user.includes(`${candidate.id} |`), `${candidate.name} long id never enters the prompt`);
+    assert.ok(user.includes(`| ${candidate.name}`), `${candidate.name} is offered by a short alias`);
+  }
+  assert.match(user, /cantrip: S0 \| Detect Magic; S1 \| Electric Arc; S2 \| Light/);
 
   // An invalid plan is refused before any request.
   const before = requests.length;
