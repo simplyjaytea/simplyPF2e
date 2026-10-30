@@ -209,3 +209,9 @@ export function buildSpellConsumable({ kind, rank, templateData, spellData } = {
   item.system.spell = spell;
   return item;
 }
+
+/** Loot guide: a scroll rank may be at most ceil((creature level + 2) / 2). */
+export function lootScrollMaxRank(level) {
+  const value = Number(level);
+  return Math.min(10, Math.max(1, Math.ceil(((Number.isFinite(value) ? value : 0) + 2) / 2)));
+}
