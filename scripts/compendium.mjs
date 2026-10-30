@@ -54,7 +54,7 @@ export const LEGACY_PACK_IDS = Object.freeze(new Set([
 export const EQUIPMENT_TYPES = new Set([
   "weapon", "armor", "equipment", "consumable", "ammo", "treasure", "backpack", "shield", "kit"
 ]);
-const ABILITY_CANDIDATE_LIMIT = 96;
+const ABILITY_CANDIDATE_LIMIT = 48;
 
 /**
  * Convert a PF2e price-value denomination object ({pp, gp, sp, cp}, any
@@ -343,8 +343,9 @@ export async function getCandidateDocument(candidate, packIds = null) {
 export const SPELL_CANDIDATE_LIMIT = 96;
 const SPELL_CANDIDATES_PER_RANK = 12;
 export const SPELL_CANDIDATE_FLOOR = 40;
-export const EQUIPMENT_CANDIDATE_LIMIT = 120;
-export const LOOT_CANDIDATE_LIMIT = 120;
+export const EQUIPMENT_CANDIDATE_LIMIT = 60;
+export const LOOT_CANDIDATE_LIMIT = 60;
+export const LOOT_SCROLL_CANDIDATE_LIMIT = 24;
 export const EQUIPMENT_CANDIDATE_FLOOR = 48;
 export const FEAT_CANDIDATE_LIMIT = 16;
 const FEAT_CANDIDATES_PER_LEVEL = 8;
@@ -402,7 +403,7 @@ function withPriority(buckets, priority, limit) {
 }
 
 /** Pure bounded selector used by getSpellCandidates() and its regression test. */
-export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CANDIDATE_LIMIT, plannedPicks = null) {
+export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CANDIDATE_LIMIT, plannedPicks = null, preserveExact = false) {
   const list = Array.isArray(candidates) ? candidates : [];
   const kw = normalizedKeywords(keywords);
   const exactNames = new Set(kw);
@@ -443,7 +444,7 @@ export function limitSpellCandidates(candidates, keywords = [], limit = SPELL_CA
   const target = kw.length
     ? Math.min(limit, Math.max(SPELL_CANDIDATE_FLOOR, matchedCount, new Set([...commonOptions, ...reserved]).size))
     : limit;
-  return withPriority(buckets, priority, target)
+  return withPriority(buckets, priority, preserveExact ? Math.max(target, exact.length) : target)
     .sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
 }
 
@@ -495,7 +496,7 @@ export function limitEquipmentCandidates(candidates, keywords = [], limit = EQUI
   const target = kw.length
     ? Math.min(limit, Math.max(EQUIPMENT_CANDIDATE_FLOOR, matchedCount))
     : limit;
-  return withPriority(buckets, exact, target)
+  return withPriority(buckets, exact, Math.max(target, exact.length))
     .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 }
 
@@ -582,7 +583,7 @@ function rarityAtMost(rarity, max) {
  * the published base rank for local validation. maxRarity drops rarer spells
  * before the bounded cut, so the cap is never spent on spells a plan cannot use.
  */
-export async function getScrollSpellCandidates(maxRank = 10, keywords = [], { maxRarity = null } = {}) {
+export async function getScrollSpellCandidates(maxRank = 10, keywords = [], { maxRarity = null, limit = SPELL_CANDIDATE_LIMIT } = {}) {
   const candidates = [];
   const seen = new Set();
   for (const packId of getPacksFor("spells")) {
@@ -601,7 +602,8 @@ export async function getScrollSpellCandidates(maxRank = 10, keywords = [], { ma
     }
   }
   candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
-  return limitSpellCandidates(candidates, keywords, SPELL_CANDIDATE_LIMIT);
+  // Exact first-draft scroll names always survive the cut, even above the cap.
+  return limitSpellCandidates(candidates, keywords, limit, null, true);
 }
 
 /**
@@ -783,7 +785,8 @@ export async function getAbilityCandidates(keywords = []) {
   const words = normalizedKeywords(keywords);
   const ranked = candidates.slice().sort((a, b) => relevanceScore(b, words) - relevanceScore(a, words)
     || a.name.localeCompare(b.name));
-  return ranked.slice(0, ABILITY_CANDIDATE_LIMIT);
+  const exact = ranked.filter((candidate) => words.includes(normalize(candidate.name)));
+  return [...new Set([...exact, ...ranked])].slice(0, Math.max(ABILITY_CANDIDATE_LIMIT, exact.length));
 }
 
 /**

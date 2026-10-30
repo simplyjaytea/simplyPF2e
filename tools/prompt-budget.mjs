@@ -718,7 +718,7 @@ async function runPcFlow(computer, scenario) {
   const scrollKeywords = lootKeywords.filter((name) => name.startsWith("scroll of ")).map((name) => name.slice(10));
   const [lootCandidates, scrollCandidates] = await Promise.all([
     compendium.getLootCandidates(concept.level, lootKeywords, { maxRarity: commonRarity }),
-    scrollKeywords.length ? compendium.getScrollSpellCandidates(10, scrollKeywords, { maxRarity: commonRarity }) : []
+    scrollKeywords.length ? compendium.getScrollSpellCandidates(10, scrollKeywords, { maxRarity: commonRarity, limit: compendium.LOOT_SCROLL_CANDIDATE_LIMIT }) : []
   ]);
   if (lootCandidates.length || scrollCandidates.length) {
     await runCall(flow, "loot", AI_TASK.LOOT_SELECTION, () => ai.selectLoot({
@@ -812,7 +812,7 @@ async function runNpcFlow(computer, { label, level, prompt, gmPrompt }) {
     const scrollKeywords = lootNames.filter((name) => name.startsWith("scroll of ")).map((name) => name.slice(10));
     const [candidates, scrollCandidates] = await Promise.all([
       compendium.getLootCandidates(concept.level, keywords, { maxRarity: commonRarity }),
-      scrollKeywords.length ? compendium.getScrollSpellCandidates(10, scrollKeywords, { maxRarity: commonRarity }) : []
+      scrollKeywords.length ? compendium.getScrollSpellCandidates(10, scrollKeywords, { maxRarity: commonRarity, limit: compendium.LOOT_SCROLL_CANDIDATE_LIMIT }) : []
     ]);
     if (candidates.length || scrollCandidates.length) {
       await runCall(flow, "loot", AI_TASK.LOOT_SELECTION, () => ai.selectLoot({
@@ -881,7 +881,7 @@ async function measureExtraPass(computer, concept) {
   const scrollKeywords = lootNames.filter((name) => name.startsWith("scroll of ")).map((name) => name.slice(10));
   const [candidates, scrollCandidates] = await Promise.all([
     compendium.getLootCandidates(extraConcept.level, keywords, { maxRarity: commonRarity }),
-    scrollKeywords.length ? compendium.getScrollSpellCandidates(10, scrollKeywords, { maxRarity: commonRarity }) : []
+    scrollKeywords.length ? compendium.getScrollSpellCandidates(10, scrollKeywords, { maxRarity: commonRarity, limit: compendium.LOOT_SCROLL_CANDIDATE_LIMIT }) : []
   ]);
   await runCall(flow, "loot (extra)", AI_TASK.LOOT_SELECTION, () => ai.selectLoot({
     concept: extraConcept, candidates, scrollCandidates
@@ -1036,9 +1036,9 @@ async function measureRetry(computer) {
     heritageCandidates: catalogs.heritages,
     backgroundCandidates: catalogs.backgrounds,
     classCandidates: catalogs.classes
-  }), ({ user, attempt }) => attempt === 1
+  }), ({ user, attempt, entry }) => attempt === 1
     ? "{}"
-    : abcReply(user, { ancestry: "Human", background: "Acolyte", class: "Fighter", keyAbility: "str" }));
+    : abcReply(entry.attempts[0].user, { ancestry: "Human", background: "Acolyte", class: "Fighter", keyAbility: "str" }));
   const entry = flow.calls[0];
   const [first, second] = entry.attempts;
   return {

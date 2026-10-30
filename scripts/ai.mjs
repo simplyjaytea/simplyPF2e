@@ -220,6 +220,20 @@ function throwIfGenerationCancelled(signal) {
   throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.Cancelled"), { cancelled: true });
 }
 
+/** Compact selector context; the GM request is transmitted separately and unmodified. */
+export function selectorSummary(concept, limit = 360) {
+  const clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+  const identity = [clean(concept.name), concept.level != null ? `level ${concept.level}` : "", clean(concept.ancestry), clean(concept.class)].filter(Boolean).join(", ");
+  const parts = [identity, clean(concept.blurb), clean(concept.description || concept.backstory)].filter(Boolean);
+  const text = parts.reduce((result, part) => result ? `${result}${/[.!?]$/.test(result) ? " " : ". "}${part}` : part, "");
+  if (text.length <= limit) return text;
+  const prefix = text.slice(0, limit + 1);
+  const sentence = Math.max(prefix.lastIndexOf(". "), prefix.lastIndexOf("! "), prefix.lastIndexOf("? "));
+  if (sentence >= Math.floor(limit / 2)) return prefix.slice(0, sentence + 1);
+  const word = prefix.lastIndexOf(" ");
+  return word > 0 ? prefix.slice(0, word) : "";
+}
+
 /**
  * Request a completion and parse it as JSON, retrying once on the transient
  * failure modes (empty content, truncated/unparseable JSON) before giving up.
@@ -515,8 +529,7 @@ Give 3-6 lowercase keywords describing the KINDS of spells that fit this creatur
   const user = [
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level})`,
-    concept.blurb ? `Blurb: ${concept.blurb}` : null,
-    concept.description ? `Description: ${concept.description}` : null,
+    `Concept: ${selectorSummary(concept)}`,
     `Traits: ${concept.traits.join(", ")}`,
     `Tradition: ${tradition}`
   ].filter((line) => line !== null).join("\n");
@@ -658,8 +671,7 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
   const user = [
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `${pcPlan ? "Character" : "Creature"}: ${concept.name} (level ${concept.level})`,
-    concept.blurb ? `Blurb: ${concept.blurb}` : null,
-    concept.description ? `Description: ${concept.description}` : null,
+    `Concept: ${selectorSummary(concept)}`,
     `Traits: ${concept.traits.join(", ")}`,
     `Tradition: ${concept.spellcasting.tradition}. Maximum spell rank: ${maxRank}.`,
     concept.spellcasting.spells.length
@@ -769,8 +781,7 @@ Fill this module-supplied plan (rank enum: number of DISTINCT spells to choose):
   const user = [
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Character: ${concept.name} (level ${concept.level}, ${concept.class})`,
-    concept.blurb ? `Blurb: ${concept.blurb}` : null,
-    concept.description ? `Description: ${concept.description}` : null,
+    `Concept: ${selectorSummary(concept)}`,
     `Traits: ${(concept.traits ?? []).join(", ")}`,
     `Tradition: ${tradition}.`,
     "",
@@ -827,8 +838,7 @@ When the Original GM request permits carried equipment, pick the logical items t
   const user = [
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level})`,
-    concept.blurb ? `Blurb: ${concept.blurb}` : null,
-    concept.description ? `Description: ${concept.description}` : null,
+    `Concept: ${selectorSummary(concept)}`,
     `Traits: ${concept.traits.join(", ")}`,
     concept.strikes.length
       ? `Strikes: ${concept.strikes.map((s) => `${s.name} (${s.type})`).join(", ")}`
@@ -891,7 +901,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
   const user = [
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level}, ${concept.rarity} rarity)`,
-    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    `Concept: ${selectorSummary(concept)}`,
     `Traits: ${concept.traits.join(", ")}`,
     `First-draft loot (recreate this haul from the list): ${concept.loot.map((l) => `${l.name} x${l.quantity}`).join(", ")}`,
     concept.equipment?.length ? `Already carried equipment: ${concept.equipment.map((item) => item.name).join(", ")}` : null,
@@ -1187,8 +1197,7 @@ export async function selectAncestryBackgroundClass({
 
   const user = [
     `Character: ${concept.name} (level ${concept.level})`,
-    concept.blurb ? `Blurb: ${concept.blurb}` : null,
-    concept.backstory ? `Backstory: ${concept.backstory}` : null,
+    `Concept: ${selectorSummary(concept)}`,
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     Object.keys(identity).length ? `Required choices: ${JSON.stringify(requiredIdentityHint(identity))}. Keep these exactly; a required null heritage means no heritage.` : null,
     `First-draft ideas (use as inspiration, but the final picks MUST come from the lists below): ancestry "${concept.ancestry}", heritage "${concept.heritage ?? "none"}", background "${concept.background}", class "${concept.class}", key ability "${concept.keyAbility}"`,
@@ -1266,8 +1275,9 @@ export async function selectFeats({ concept, slots, onProgress, signal }) {
 Include exactly one entry per slot number (1 to ${slots.length}). Never use an ID outside that slot's allowed list.`;
 
   const user = [
+    concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Character: ${concept.name} (level ${concept.level}, ${concept.class})`,
-    concept.blurb ? `Blurb: ${concept.blurb}` : null,
+    `Concept: ${selectorSummary(concept)}`,
     concept.feats?.length ? `First-draft feat wishlist (inspiration only, final picks MUST come from each slot's own list): ${concept.feats.join(", ")}` : null,
     "",
     "Feat catalog (ID | exact name):",
@@ -1302,8 +1312,7 @@ Choose feats that fit the creature's role and tactics. Do not choose a feat more
   const user = [
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level})`,
-    concept.blurb ? `Blurb: ${concept.blurb}` : null,
-    concept.description ? `Description: ${concept.description}` : null,
+    `Concept: ${selectorSummary(concept)}`,
     `First-draft feat ideas (inspiration only): ${concept.feats.map((feat) => typeof feat === "string" ? feat : feat.name).join(", ")}`,
     "",
     "Feat catalog (ID | exact name):",
@@ -1344,8 +1353,7 @@ Choose the actions that fit the creature's role and tactics. Omit a proposed abi
   const user = [
     concept.gmPrompt ? `Original GM request: ${concept.gmPrompt}` : null,
     `Creature: ${concept.name} (level ${concept.level})`,
-    concept.blurb ? `Blurb: ${concept.blurb}` : null,
-    concept.description ? `Description: ${concept.description}` : null,
+    `Concept: ${selectorSummary(concept)}`,
     `Draft ability ideas: ${concept.specialAbilities.map((ability) => ability.glossary ?? ability.name).join(", ")}`,
     "",
     "Bestiary action catalog (ID | exact name):",
