@@ -2,7 +2,9 @@
 
 Read [PLAYBOOK.md](PLAYBOOK.md) first. This file holds only what the last session left in flight. Overwrite it at every session end.
 
-## Session 2026-10-30 (OpenBot): dedication replacement skills, Bard signature pick, Druid spec
+## Session 2026-10-30 (OpenBot): dedication replacement skills, Bard signature pick, Druid spec, token cut
+
+- **Released after:** v0.3.5.87, AI prompt-size cut phase 2a ([record](docs/plans/token-budget-2026-10-30.md)). Phase 2b (pick-changing levers) waits for the user. Measure live: compare the provider's reported tokens and the picks on the first real PC and NPC.
 
 - **Released:** v0.3.5.86 from `main` (merges of `feat/dedication-skills` at `f06eaca` and `docs/caster-archetype-third` at `1b7f583`). Contents: PLAYBOOK §8.
 - **Reviews:** Lead PASS; QA APPROVE with four LOW/MEDIUM-LOW notes, all closed at `f06eaca`.

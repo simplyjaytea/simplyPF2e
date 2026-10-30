@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-30 — AI token cut, phase 2a (v0.3.5.87)
+
+- The user asked to cut token use (the 333k figure was cumulative over about ten live QA runs). Code Monkey Plus built an offline harness that drives the real prompt builders on pinned 8.5.0 catalogs; the ancestry/background/class call was 60% of a level-1 PC, mostly 48-character `c-`+base64 ids.
+- Phase 2a: request-local aliases in every selector, heritages of unoffered ancestries withheld, two duplicated system sentences removed. PCs −50–55%, NPC −32%, encounter −30% (prompt-size model).
+- Lead review found the heritage filter was a no-op live (`system.ancestry` not in the index fields; the mock returned whole documents). QA APPROVE; its loot-prefix/level-tag risk and four untested paths fixed at `0a8afcd`.
+- Phase 2b levers that can change picks are listed in the record and wait for the user's choice.
+
 ## 2026-10-30 — Dedication replacement skills and Bard signature pick (v0.3.5.86)
 
 - The user asked to keep going after v0.3.5.85. Two lanes: Code Monkey Plus took the two Bard leftovers on `feat/dedication-skills`; Product Designer compared Druid, Cleric, Sorcerer, Witch and Oracle for the third caster archetype on `docs/caster-archetype-third`.
