@@ -11,7 +11,7 @@ import { isAdvancedSchoolSpellFeat, isArcaneSchoolSource, schoolAdvancedSpellLin
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
-import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTraining, dedicationSkillReplacements, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
+import { CORE_SKILLS, SKILL_ATTRIBUTES, DEDICATION_EXTRA_TRAINING, normalizeSkillPriorities, initialSkillTraining, dedicationSkillReplacements, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
 import { getClassPathCandidates, preflightClassPaths, stageClassPaths } from "./class-paths.mjs";
 import { assertPCIdentity } from "./pc-identity.mjs";
@@ -1100,6 +1100,7 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     // training budget and priority order.
     if (multiclassFeatInfo(data.name)?.role === "dedication") {
       replacements += dedicationSkillReplacements([data.system], initialRanks);
+      replacements += DEDICATION_EXTRA_TRAINING[slugify(data.name)] ?? 0;
     }
     // The dedication's ChoiceSet is answered with the previewed choice (the same `selection` pf2e writes), so no prompt opens.
     if (archetypeChoice && casterArchetypeFeat(data.name)?.archetype === archetypeChoice.archetype

@@ -216,3 +216,8 @@ export function characterSkillSnapshot(actor, backgroundLoreIds = []) {
   const grantSkills = CORE_SKILLS.filter((slug) => autoChanges[`system.skills.${slug}.rank`]?.length);
   return { nativeRanks, lore, blocked, grantSkills, intelligence: actor.system.abilities.int.base };
 }
+
+/** PF2e 8.5.0, packs/pf2e/feats/archetype/investigator/investigator-dedication.json:
+ * "You become trained in Society and another skill of your choice."
+ * The feat's rule only trains Society; the additional unrestricted choice is text-only. */
+export const DEDICATION_EXTRA_TRAINING = Object.freeze({ "investigator-dedication": 1 });
