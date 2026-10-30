@@ -13,7 +13,7 @@ Setup: Foundry v14 with pf2e **8.5.0** (the declared minimum since v0.3.5.88). U
 ## 1. Bard muse (10 min) — N55, N56. Druid waits on this result.
 
 1. In world settings, turn on **Ordinary multiclass archetypes**.
-2. Actors sidebar → **SimplyPF2e** → **Character**. Level 6, a non-Bard class with Charisma (Sorcerer flavor is fine), spellcasting on. In the prompt ask for a character with the Bard Dedication and Basic Bard Spellcasting.
+2. Actors sidebar → **SimplyPF2e** → **Character**. Level 6, spellcasting on. Open **Required choices** and set **Class** to Fighter; choose a concept that can qualify for Bard Dedication (Charisma +2). In the prompt ask for the Bard Dedication and Basic Bard Spellcasting. Verify those feats in the preview and select them in the editor if needed.
 3. **Preview Plan**. Expect: a muse (Maestro by default) and a muse control in the editor; a signature-spell control listing the archetype's ranked spells. Change the muse and the signature spell.
 4. **Create**. Pass if: **no** "pick a muse" dialog opens; the Bard Dedication on the sheet shows the muse you picked; a separate "Bard Archetype Spells" entry exists with 2 cantrips and ranks 1–2; exactly one spell is marked signature, and it is the one you picked.
 5. If Occultism or Performance was already trained, one extra trained skill should appear instead.
@@ -38,7 +38,7 @@ Setup: Foundry v14 with pf2e **8.5.0** (the declared minimum since v0.3.5.88). U
 
 ## 5. Wizard and Forge (10 min) — N50–N53, R15–R18
 
-1. **Character**: level 8 Wizard. Pass if: school, thesis and spellbook look right, and **Improved Familiar Attunement** is present when the thesis grants it (it depends on a link form never seen live).
+1. **Character**: level 8; open **Required choices** and set **Class** to Wizard. Pass if: school, thesis and spellbook look right, and **Improved Familiar Attunement** is present when the thesis grants it (it depends on a link form never seen live).
 2. Item Forge: one runed weapon at level 8. Pass if: runes and price look right on the sheet.
 
 ## Stop and report
