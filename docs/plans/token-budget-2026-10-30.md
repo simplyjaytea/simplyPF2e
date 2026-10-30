@@ -358,6 +358,8 @@ exact issued candidate; an unknown alias and a foreign-list alias fail closed; t
 keeps ancestry-agnostic heritages and drops an unoffered ancestry's; required identity still
 resolves through the alias map. `tests/ai-candidate-format.test.mjs` adds deterministic-alias,
 dedupe, case-insensitive, exact-ID-fallback, foreign/unknown and alias/id-collision cases.
+`tests/compendium.heritageAncestry.test.mjs` pins the new heritage ancestry metadata and the
+unowned (versatile) case.
 
 Fail-before: the same new test on `aed67a2` (copied into a temporary worktree) exits 1 at
 `AssertionError: ABC probe prompt must not embed a long issued id`. On this branch it passes.
