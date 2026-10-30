@@ -5,7 +5,7 @@ The origin records are the chunk files: [C01 §8](evidence/chunks-2026-10-17/c01
 
 Installed version as currently recorded: last recorded installation is v0.3.5.72; v0.3.5.73 and v0.3.5.74 installations are unverified.
 
-Status: **OPEN** means no acceptable evidence. **BLOCKED** means a prerequisite or verified feature path is missing. **PASS** requires versioned native evidence; none is recorded.
+Status: **OPEN** means no acceptable evidence. **BLOCKED** means a prerequisite or verified feature path is missing. **PASS** requires versioned native evidence; none is recorded. **RETIRED** means the row no longer tests a claim the module makes.
 
 In each Row cell, the parenthetical gives new or reuse, then counted provider generations / proposed per-run reported-token ceiling. Neither is authorized.
 
@@ -36,7 +36,7 @@ In each Row cell, the parenthetical gives new or reuse, then counted provider ge
 | R21 | Keyboard and states (non-assistive-technology parts): keyboard reach, focus return, labelled errors and progress, reduced motion; run within the R02–R06 windows (UI; 0 / 0) | OPEN | — | c01 §8; c12 §5.1 note: unchanged; Runbook: [qa-batch-a-2026-10-25](plans/qa-batch-a-2026-10-25.md) |
 | R22 | Real screen-reader session with an operator; product, version, browser and OS recorded; announcements recorded (operator; 0 / 0) | BLOCKED | Operator not yet established | c01 §8; c12 §5.1 note: real screen-reader session required; not performed |
 | R23 | Installed-target matrix (Foundry 14.365 / PF2e 8.5.0): covered by R01 and rows R02–R21 run on the installed pair (—) | OPEN | R01 | c01 §8; c12 §5.1 note: unchanged |
-| R24 | Declared minimum smoke (PF2e 8.4.1): separate Foundry data directory with PF2e 8.4.1 and SimplyPF2e .73; module loads; gate; generator opens; zero-spend preflight subset; optional single NPC (separate instance; 0, +1 optional / 15,000). Target is now v0.3.5.74 (latest release); c01 was written against .73. | BLOCKED | Operator-provisioned instance | c01 §8; c12 §5.1 note: isolated PF2e 8.4.1 instance required; not performed |
+| R24 | Declared minimum smoke (PF2e 8.4.1): separate Foundry data directory with PF2e 8.4.1; module loads; generator opens; zero-spend preflight subset. | RETIRED | — | Never performed. v0.3.5.88 raised the declared pf2e minimum to 8.5.0, the tested version, so no untested minimum is claimed. Reopen only if an older minimum is declared again. |
 | R25 | Cache acceptance split: native evidence limited to the observable switching in R08 and R09; native coalescing is not claimed (—) | OPEN | — | c01 §8; c12 §5.1 note: unchanged |
 
 ## N rows (feature-slice live checks, C02–C11)
