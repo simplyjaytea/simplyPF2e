@@ -2,6 +2,13 @@
 
 Full session-by-session narrative, process notes, and the bug log. Not loaded by default context the way CLAUDE.md is — read this when you need to know *why* something is the way it is, whether a past session already investigated something, or what a specific PR actually changed. Newest first.
 
+## 2026-10-30 — Dedication replacement skills and Bard signature pick (v0.3.5.86)
+
+- The user asked to keep going after v0.3.5.85. Two lanes: Code Monkey Plus took the two Bard leftovers on `feat/dedication-skills`; Product Designer compared Druid, Cleric, Sorcerer, Witch and Oracle for the third caster archetype on `docs/caster-archetype-third`.
+- Replacement skills: pf2e's dedication rules are `ActiveEffectLike` upgrades (`Math.max`), so an overlap silently does nothing; the module now adds one replacement per overlap to the existing class/background budget. Signature pick: stored as `concept.archetypeSpellcasting.signature`, revalidated at Create.
+- QA APPROVE with four LOW/MEDIUM-LOW notes (role guard, preview pick and no-refresh untested; same-named spells offered but unbuildable; record understated the affected dedications). The Lead closed all four at `f06eaca` with a real 8.5.0 ancestry-feat fixture; QA's survivors O4, O14 and O16 now fail.
+- Spec finding: every candidate's dedication carries a GrantItem. Druid is the closest (one order choice, fixed primal/Wisdom, no companion) but needs a UUID choice and a native grant spike; held until N55 passes in Foundry.
+
 ## 2026-10-29 — Fifth release: Bard spellcasting archetype (v0.3.5.85)
 
 - After the small-gaps and N44 rounds, Product Designer specced the next non-Wizard caster archetype and picked Bard (one muse ChoiceSet, no grant or companion, fixed occult/Charisma). Code Monkey Plus built it on `feat/bard-archetype` and the Lead integrated it into `integrate/2026-10-30-bard`.
