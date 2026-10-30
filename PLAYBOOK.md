@@ -249,10 +249,12 @@ Live QA runs on the user's Foundry (Foundry 14.365 / PF2e 8.5.0, world `test`) a
 - **Decided 2026-10-26:** Wizard v1 = prepared arcane caster + closed school + closed thesis + Arcane Bond; curriculum extras, school focus spells and familiar actors stay manual. Hazard scale words are extreme/high/low; HP and hardness ranges resolve to the floor of the midpoint; the Low DC range resolves to its upper value; the Dispel Magic counteract rank is derived as `ceil(level/2)` clamped 1..10 (module convention). Scroll/wand templates are pinned by UUID; wand rank 10 is refused; cantrips, focus spells and rituals are refused.
 - **Decided 2026-10-27/28:** see the signed-off decisions in §3 (treasure parcel, cantrip decks, Wizard school spell) and the two plans' §6.
 - **Decided 2026-10-27 (user-approved; [plan](docs/plans/encounter-hazard-integration-2026-10-27.md)):** Encounter hazard v1, behind `experimentalTools`. The AI requests `none`, `simple` or `complex` and never writes a level or XP. The module takes the feasible level nearest party level within ±4 (ties upward) whose XP fits the budget left after the boss. If none fits, the hazard is dropped with a warning and the boss is not stepped down. At most one hazard; minions take the rest of the budget.
-- **Open decisions the user owns:** a QA spending envelope for Batch A ([runbook](docs/plans/qa-batch-a-2026-10-25.md), which must be re-based on v0.3.5.77); screen-reader operator and isolated 8.4.1 environment, or explicit deferral.
+- **Open decisions the user owns:** a QA spending envelope for Batch A ([runbook](docs/plans/qa-batch-a-2026-10-25.md), which must be re-based on v0.3.5.77); screen-reader operator, or explicit deferral (the 8.4.1 smoke R24 is retired: the declared minimum is 8.5.0 since v0.3.5.88).
 - Historical narrative and the full bug log: [docs/HISTORY.md](docs/HISTORY.md). Research records for this sprint: [Wizard](docs/plans/wizard-research-2026-10-26.md), [hazards](docs/plans/hazard-research-2026-10-26.md), [spell consumables](docs/plans/consumables-research-2026-10-26.md).
 
 ## 9. Backlog — what to do next
+
+**First live test:** [first-live-test-2026-10-30](docs/plans/first-live-test-2026-10-30.md) — one hour, riskiest rows first (N55 Bard muse, N15 hazard, N19–N28 parcel looting, Wizard).
 
 Ordered. Pick the top item whose prerequisites are met; move finished items to §8 / HISTORY.
 
@@ -282,7 +284,7 @@ Done in the 2026-10-26 sprint ([plan](docs/plans/sprint-2026-10-26.md)): dead-co
 
 ### Needs a decision or an external resource
 
-11. Screen-reader session (R22) and isolated PF2e 8.4.1 smoke (R24): obtain operator/environment or record an explicit deferral in the ledger and README.
+11. Screen-reader session (R22): obtain an operator or record an explicit deferral in the ledger and README. (R24, the 8.4.1 smoke, is retired: v0.3.5.88 declares pf2e 8.5.0 as the minimum.)
 12. Caster multiclass beyond Wizard and Bard (and every Expert/Master Spellcasting feat) and PC spell editing: Wizard and Bard are built (2026-10-30). The rest needs ChoiceSet answers (deity, order, bloodline, patron, mystery, conscious mind), an either-or ability prerequisite (Magus, Psychic) or a companion (eidolon, familiar), plus a rank prerequisite the staged evaluator cannot prove for Expert and Master; each is a separate feature. Spell editing stays deferred. **Druid** is the specced next one ([spec](docs/plans/caster-archetype-third-2026-10-30.md)): it needs a UUID-valued order choice and the dedication's native order GrantItem, so build it only after N55 (Bard preselected ChoiceSet, no prompt) passes natively and a grant spike passes.
 13. Enabling any experimental or multiclass gate by default: a separate reviewed change after its N rows pass. **Recorded override (2026-10-30):** the user explicitly asked for `experimentalTools` to be on by default before N01–N28, N40–N42, N46–N47 passed. The `settings.mjs` default is `true`; the GM can turn it off. This does not apply to `multiclassArchetypes`, which stays off.
 

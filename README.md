@@ -18,7 +18,7 @@ Paste this manifest URL into **Foundry → Add-on Modules → Install Module**:
 https://github.com/simplyjaytea/simplyPF2e/releases/latest/download/module.json
 ```
 
-The link always resolves to the newest release, so Foundry offers updates automatically. The manifest declares Foundry **v14** and a **pf2e** system minimum of **8.4.1**. Live QA has run on Foundry 14.365 with pf2e **8.5.0**; the 8.4.1 minimum has not been exercised in a live instance. Other version pairs need the same acceptance checks before being claimed as supported.
+The link always resolves to the newest release, so Foundry offers updates automatically. The manifest declares Foundry **v14** and a **pf2e** system minimum of **8.5.0**, the version the module is built and tested against (live QA ran on Foundry 14.365 with pf2e 8.5.0). Older pf2e versions are not supported; other version pairs need the same acceptance checks before being claimed as supported.
 
 ## Setup
 
