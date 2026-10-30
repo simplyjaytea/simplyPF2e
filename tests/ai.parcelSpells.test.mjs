@@ -130,10 +130,10 @@ try {
     "the user message lists every issued slot with its scroll rank");
   const candidateLines = userLines.filter((line) => / \| base rank \d+/.test(line));
   assert.deepEqual(candidateLines, [
-    "c-fire | Fireball | base rank 3 | traits: fire, evocation",
-    "c-heal | Heal | base rank 1 | traits: healing",
-    "c-shield | Shield | base rank 1 | traits: force",
-    "c-sleep | Sleep | base rank 1 | traits: mental"
+    "S0 | Fireball | base rank 3 | traits: fire, evocation",
+    "S1 | Heal | base rank 1 | traits: healing",
+    "S2 | Shield | base rank 1 | traits: force",
+    "S3 | Sleep | base rank 1 | traits: mental"
   ], "the user message lists every issued candidate with name, base rank and traits");
   assert.ok(userMessage.content.includes("Party level: 5"), "the user message states the party level");
   assert.ok(!userMessage.content.includes("slot-3"), "the user message names no unissued slot");

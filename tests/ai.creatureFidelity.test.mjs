@@ -30,7 +30,7 @@ const assertEquipmentContract = () => {
     "equipment selection must make an explicit no-equipment request an empty selection");
   assert.match(system, /select only issued candidate IDs[\s\S]*?put the issued ID in the "id" field/i,
     "equipment selection must lead with the issued ID schema");
-  assert.match(system, /existing compatible fundamental-rune decoration when relevant/i,
+  assert.match(system, /ONE allowed deviation: a weapon or armor from the list may keep a fundamental-rune prefix/i,
     "equipment selection must limit name text to the compatible rune exception");
   assert.match(system, /When the Original GM request permits carried equipment, pick the logical items/i,
     "positive equipment guidance must be conditional on the original request");

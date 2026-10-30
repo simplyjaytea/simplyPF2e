@@ -61,7 +61,7 @@ try {
   const userMessage = requests.at(-1).messages.find((message) => message.role === "user").content;
   assert.ok(userMessage.includes("Party level: 5"));
   assert.ok(userMessage.includes("perm-2 | item level 5 or 6"), "the prompt names each slot's allowed levels");
-  assert.ok(userMessage.includes("w-c-fire | Wand of Fireball (Rank 2) | item level 5 | wand, rank 2"),
+  assert.ok(userMessage.includes("P1 | Wand of Fireball (Rank 2) | item level 5 | wand, rank 2"),
     "a wand is offered by id, with its level and rank as metadata");
   assert.ok(!userMessage.includes("Fireball\u0000"), "no raw document id leaks into the prompt");
 

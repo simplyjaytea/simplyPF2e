@@ -184,7 +184,10 @@ async function getIndex(packId) {
       fields: [
         "name", "type", "system.slug", "system.level.value",
         "system.traits.value", "system.traits.traditions", "system.ritual",
-        "system.category", "system.stackGroup", "system.spell", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
+        "system.category", "system.stackGroup", "system.spell", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value",
+        // Heritages: the owning ancestry (null for versatile heritages), so the ABC prompt can withhold heritages of
+        // ancestries that are not offered.
+        "system.ancestry"
       ]
     });
     return index.map((entry) => ({ ...entry, packId, normalized: normalize(entry.name) }));
@@ -744,7 +747,16 @@ async function getFullCandidates(category, type, maxRarity, { distinctSources = 
       const identity = distinctSources ? `${entry.packId}\u0000${entry._id}` : entry.normalized;
       if (seen.has(identity)) continue;
       seen.add(identity);
-      candidates.push(candidateRecord(entry, { name: entry.name, traits: entry.system?.traits?.value ?? [] }));
+      candidates.push(candidateRecord(entry, {
+        name: entry.name,
+        traits: entry.system?.traits?.value ?? [],
+        // Heritages carry the ancestry they belong to; ancestry-agnostic
+        // (versatile) heritages have none. The ABC selector uses this to
+        // withhold heritages of ancestries that are not on offer.
+        ...(type === "heritage" && entry.system?.ancestry?.name
+          ? { ancestry: entry.system.ancestry.name }
+          : {})
+      }));
     }
   }
   candidates.sort((a, b) => a.name.localeCompare(b.name));

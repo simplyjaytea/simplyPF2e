@@ -67,7 +67,7 @@ try {
     { name: "Lay on Hands", candidate: { packId: "pf2e.spells", _id: "healing" } },
     { name: "Fire Ray", candidate: { packId: "pf2e.spells", _id: "fire" } }
   ], "focus spell selections retain only exact offered candidate references");
-  assert.match(requests.at(-1).messages.map((message) => message.content).join("\n"), /Available focus spells: focus-fire \| Fire Ray/,
+  assert.match(requests.at(-1).messages.map((message) => message.content).join("\n"), /Available focus spells: F0 \| Fire Ray/,
     "the model must receive opaque focus IDs rather than unrestricted focus names");
 
   replies.push({ spells: modelPicks });

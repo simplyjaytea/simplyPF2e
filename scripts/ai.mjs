@@ -8,6 +8,7 @@ import { hasRunes, parseRunes, propertyRuneRestrictionNote } from "./runes.mjs";
 import { AI_TASK, completionOptionsFor } from "./ai-task-profiles.mjs";
 import { estimateTokens, normalizeUsage } from "./tokens.mjs";
 import {
+  encodeCandidateList,
   encodeFeatCandidateSlots, resolveEncodedFeatPicks,
   encodeCreatureFeatCandidates, resolveCreatureFeatAliases,
   encodeForgeCandidateGroups, resolveForgeCandidateAliases
@@ -451,8 +452,7 @@ Design guidance:
 - "keyAbility" MUST be a legal key ability for the class you chose (e.g. Fighter is str or dex, Wizard is int, Cleric is wis).
 - Only include "spellcasting" for classes that actually cast spells (Wizard, Cleric, Druid, Sorcerer, Bard, Witch, Oracle, Magus, Summoner, ...) and only when spellcasting is allowed.
 - "focusSpells": Champion (e.g. Lay on Hands), Cleric (a domain spell, e.g. Fire Ray), Druid (an order spell, e.g. Tempest Surge), Sorcerer (a bloodline spell), Monk (a ki spell), and Bard/Oracle/Witch/Psychic commonly have them — name 1-3 that plausibly fit this build; leave [] if the class/concept doesn't have any.
-- Give the character real personality texture, not just combat stats: mannerisms, likes/dislikes, and at least one named ally, enemy, or organization tying them into a wider world — a blank or generic answer for these is a worse answer than a specific, concept-fitting one.
-- feats/spells/equipment are first drafts only — write plausible real names; a later grounding step selects the actual final picks from the real compendium.`;
+- Give the character real personality texture, not just combat stats: mannerisms, likes/dislikes, and at least one named ally, enemy, or organization tying them into a wider world — a blank or generic answer for these is a worse answer than a specific, concept-fitting one.`;
 }
 
 /**
@@ -563,6 +563,25 @@ function candidateForPick(candidates, pick) {
   return byName.get(name) ?? null;
 }
 
+/**
+ * Resolve a pick through this request's alias map first. The name fallback in
+ * candidateForPick is preserved for legacy replies and for the one allowed
+ * rune-prefix name variation; an alias from another list is unknown here and
+ * therefore resolves to nothing.
+ */
+function candidateFromEncoding(encoding, candidates, pick) {
+  const entry = encoding?.resolve(pick?.id);
+  if (entry) return entry.candidate;
+  return candidateForPick(candidates, pick);
+}
+
+/** Same contract for a reply that supplies only one ID/alias string. */
+function candidateFromAlias(encoding, candidates, value, name) {
+  const entry = encoding?.resolve(value);
+  if (entry) return entry.candidate;
+  return candidateForPick(candidates, { id: value, name });
+}
+
 /** Decode an equipment/loot pick while preserving the one model-authored
  * name variation the catalog contract allows: a fundamental-rune prefix on
  * an exact offered base item. */
@@ -574,6 +593,13 @@ function physicalCandidateForPick(candidates, pick) {
   if (!hasRunes(runes)) return null;
   const candidate = candidateForPick(candidates, { name: runes.base });
   return candidate ? { candidate, name: selectedName } : null;
+}
+
+/** Alias-aware equipment/loot pick; runed base-name replies still resolve. */
+function encodedPhysicalCandidateForPick(encoding, candidates, pick) {
+  const entry = encoding?.resolve(pick?.id);
+  if (entry) return { candidate: entry.candidate, name: entry.name };
+  return physicalCandidateForPick(candidates, pick);
 }
 
 /**
@@ -600,19 +626,22 @@ export async function selectSpells({ concept, candidates, focusCandidates = [], 
       && Number.isInteger(rank) && rank > 0 && rank <= maxRank && plannedPicks[rank] > 0))) {
     throw new TypeError("Invalid character spell slot plan");
   }
+  const spellEncoding = encodeCandidateList(candidates, "S");
+  const focusEncoding = encodeCandidateList(focusCandidates, "F");
   const byRank = new Map();
-  for (const c of candidates) {
+  for (const entry of spellEncoding.entries) {
+    const c = entry.candidate;
     if (!byRank.has(c.rank)) byRank.set(c.rank, []);
-    const label = `${c.id} | ${c.name}`;
+    const label = `${entry.alias} | ${entry.name}`;
     byRank.get(c.rank).push(pcPlan && preparationMode === "spontaneous" && maxRank === 10
       ? `${label} [${c.rarity ?? "unknown rarity"}]` : label);
   }
   const list = [...byRank.entries()]
     .map(([rank, names]) => `${pcPlan ? PC_SPELL_RANKS[rank] : rank === 0 ? "Cantrips" : `Rank ${rank}`}: ${names.join("; ")}`)
     .join("\n");
-  const focusList = focusCandidates.map((candidate) => `${candidate.id} | ${candidate.name} (Rank ${candidate.rank})`).join("; ");
+  const focusList = focusEncoding.entries.map((entry) => `${entry.alias} | ${entry.name} (Rank ${entry.candidate.rank})`).join("; ");
 
-  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting spells for a Pathfinder 2e ${pcPlan ? "player character" : "creature"}. Choose ONLY from the provided list, copying each name EXACTLY as written (the list is already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting spells for a Pathfinder 2e ${pcPlan ? "player character" : "creature"}. Choose ONLY from the provided list, copying each ID EXACTLY as written (the name after it is for context, already ${REMASTER_NOTE}). Respond with a single JSON object and nothing else:
 { "spells": [ { "id": string, "rank": ${pcPlan ? 'string, "signature": "regular" | "signature"' : "number"} } ], "focusSpellIds": string[] }
 ${pcPlan
     ? `"rank" must be one of these enum slugs, never a number: ${PC_SPELL_RANKS.slice(0, maxRank + 1).join(", ")}. Use cantrip only for cantrips; ranked spells use their listed rank or a higher allowed rank to heighten.`
@@ -648,7 +677,7 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
   const focusSpells = [];
   const focusSeen = new Set();
   for (const id of Array.isArray(parsed.focusSpellIds) ? parsed.focusSpellIds : []) {
-    const candidate = candidateForPick(focusCandidates, { id });
+    const candidate = candidateFromAlias(focusEncoding, focusCandidates, id);
     const key = candidate?.id ?? candidate?.name;
     if (!candidate || focusSeen.has(key) || focusSpells.length >= 3) continue;
     focusSeen.add(key);
@@ -660,7 +689,7 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
     const spells = [];
     const signatures = new Map();
     for (const pick of parsed.spells) {
-      const candidate = candidateForPick(candidates, pick);
+      const candidate = candidateFromEncoding(spellEncoding, candidates, pick);
       const baseRank = candidate?.rank;
       const rank = PC_SPELL_RANKS.indexOf(pick?.rank);
       const key = JSON.stringify([candidate?.id ?? candidate?.name, rank]);
@@ -692,7 +721,7 @@ ${focusCandidates.length ? "Choose up to three focusSpellIds only from the provi
   // A ranked spell must never come back as rank 0 (createActor would file it
   // as a cantrip) — clamp the minimum to the candidate's own listed rank.
   const spells = (Array.isArray(parsed.spells) ? parsed.spells : [])
-    .map((s) => ({ pick: s, candidate: candidateForPick(candidates, s) }))
+    .map((s) => ({ pick: s, candidate: candidateFromEncoding(spellEncoding, candidates, s) }))
     .filter(({ candidate }) => Boolean(candidate))
     .map(({ pick, candidate }) => ({
       name: candidate.name,
@@ -721,10 +750,12 @@ export async function selectArchetypeSpells({ concept, candidates, plannedPicks,
     || !Object.entries(plannedPicks).every(([rank, count]) => /^(?:[0-9]|10)$/.test(rank) && Number.isInteger(count) && count >= 0 && count <= 5)) {
     throw new TypeError("Invalid archetype spell plan");
   }
+  const spellEncoding = encodeCandidateList(candidates, "S");
   const byRank = new Map();
-  for (const c of candidates) {
+  for (const entry of spellEncoding.entries) {
+    const c = entry.candidate;
     if (!byRank.has(c.rank)) byRank.set(c.rank, []);
-    byRank.get(c.rank).push(`${c.id} | ${c.name}`);
+    byRank.get(c.rank).push(`${entry.alias} | ${entry.name}`);
   }
   const list = [...byRank.entries()]
     .map(([rank, names]) => `${PC_SPELL_RANKS[rank]}: ${names.join("; ")}`)
@@ -752,7 +783,7 @@ Fill this module-supplied plan (rank enum: number of DISTINCT spells to choose):
   const seen = new Set();
   const spells = [];
   for (const pick of Array.isArray(parsed.spells) ? parsed.spells : []) {
-    const candidate = candidateForPick(candidates, pick);
+    const candidate = candidateFromEncoding(spellEncoding, candidates, pick);
     const key = candidate?.id ?? candidate?.name;
     if (!candidate || !Number.isInteger(candidate.rank) || seen.has(key) || (used.get(candidate.rank) ?? 0) >= (plannedPicks[candidate.rank] ?? 0)) {
       console.warn("simplypf2e | dropping invalid or excess archetype spell pick", pick);
@@ -777,16 +808,18 @@ Fill this module-supplied plan (rank enum: number of DISTINCT spells to choose):
  * @returns {Promise<{equipment: {name: string, quantity: number}[], usage: object}>}
  */
 export async function selectEquipment({ concept, candidates, onProgress, signal }) {
+  const equipmentEncoding = encodeCandidateList(candidates, "E");
   const byType = new Map();
-  for (const c of candidates) {
+  for (const entry of equipmentEncoding.entries) {
+    const c = entry.candidate;
     if (!byType.has(c.type)) byType.set(c.type, []);
-    byType.get(c.type).push(`${c.id} | ${c.name}${c.level > 0 ? ` (L${c.level})` : ""}`);
+    byType.get(c.type).push(`${entry.alias} | ${entry.name}${c.level > 0 ? ` (L${c.level})` : ""}`);
   }
   const list = [...byType.entries()]
     .map(([type, names]) => `${type}: ${names.join("; ")}`)
     .join("\n");
 
-  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting carried equipment for a Pathfinder 2e creature. The Original GM request below is authoritative. If it explicitly prohibits equipment, gear, or carried items, return exactly {"equipment":[]} even when the first draft or available candidates suggest items; ignore all positive selection guidance in that case. Otherwise, select only issued candidate IDs from the provided list. Each catalog entry is "id | displayed name"; put the issued ID in the "id" field, not a guessed name or pack/document reference. The only name text allowed is an existing compatible fundamental-rune decoration when relevant to the original request; keep the offered base name exact and do not invent any other variation. Respond with a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting carried equipment for a Pathfinder 2e creature. The Original GM request below is authoritative. If it explicitly prohibits equipment, gear, or carried items, return exactly {"equipment":[]} even when the first draft or available candidates suggest items; ignore all positive selection guidance in that case. Otherwise, select only issued candidate IDs from the provided list. Each catalog entry is "ID | displayed name"; put the issued ID in the "id" field, not a guessed name or pack/document reference. Respond with a single JSON object and nothing else:
 { "equipment": [ { "id": string, "quantity": number } ] }
 ${RUNE_PREFIX_NOTE}
 When the Original GM request permits carried equipment, pick the logical items the creature would carry: the weapons it wields (match its strikes), sensible consumables (healing potions, elixirs, bombs, talismans, poisons it applies), and everyday adventuring gear it would plausibly use (rope, torches, rations, tools). Include armor only when the creature would plausibly wear it (skip beasts, oozes, mindless and naturally-armored creatures), and pick armor that roughly fits its role and level. Pick each DISTINCT item at most once — a smaller focused set is fine; never repeat an item or add filler to reach a count. NO coins or currency. "quantity" is usually 1; use 2-5 only for ammunition and stackable consumables.`;
@@ -812,7 +845,7 @@ When the Original GM request permits carried equipment, pick the logical items t
     task: AI_TASK.EQUIPMENT_SELECTION, system, user, onProgress, signal
   });
   const equipment = (Array.isArray(parsed.equipment) ? parsed.equipment : [])
-    .map((pick) => ({ pick, selection: physicalCandidateForPick(candidates, pick) }))
+    .map((pick) => ({ pick, selection: encodedPhysicalCandidateForPick(equipmentEncoding, candidates, pick) }))
     .filter(({ selection }) => Boolean(selection))
     .map(({ pick, selection: { candidate, name } }) => ({
       name,
@@ -837,10 +870,14 @@ When the Original GM request permits carried equipment, pick the logical items t
  * @returns {Promise<{loot: {name: string, quantity: number}[], usage: object}>}
  */
 export async function selectLoot({ concept, candidates, scrollCandidates = [], onProgress, signal }) {
+  // "I", not "L": loot lines carry level tags like "(L2)", which must never read as an alias.
+  const lootEncoding = encodeCandidateList(candidates, "I");
+  const scrollEncoding = encodeCandidateList(scrollCandidates, "S");
   const byType = new Map();
-  for (const c of candidates) {
+  for (const entry of lootEncoding.entries) {
+    const c = entry.candidate;
     if (!byType.has(c.type)) byType.set(c.type, []);
-    byType.get(c.type).push(`${c.id} | ${c.name}${c.level > 0 ? ` (L${c.level})` : ""}`);
+    byType.get(c.type).push(`${entry.alias} | ${entry.name}${c.level > 0 ? ` (L${c.level})` : ""}`);
   }
   const list = [...byType.entries()]
     .map(([type, names]) => `${type}: ${names.join("; ")}`)
@@ -860,7 +897,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
     concept.equipment?.length ? `Already carried equipment: ${concept.equipment.map((item) => item.name).join(", ")}` : null,
     "",
     "Available items:", list,
-    scrollCandidates.length ? `Available scroll spells (ID | name | base rank): ${scrollCandidates.map((s) => `${s.id} | ${s.name} | ${s.rank}`).join("; ")}` : null
+    scrollCandidates.length ? `Available scroll spells (ID | name | base rank): ${scrollEncoding.entries.map((entry) => `${entry.alias} | ${entry.name} | ${entry.candidate.rank}`).join("; ")}` : null
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
@@ -868,7 +905,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
   });
   const picks = Array.isArray(parsed.loot) ? parsed.loot : [];
   const loot = picks
-    .map((pick) => ({ pick, selection: physicalCandidateForPick(candidates, pick) }))
+    .map((pick) => ({ pick, selection: encodedPhysicalCandidateForPick(lootEncoding, candidates, pick) }))
     .filter(({ selection }) => Boolean(selection))
     .map(({ pick, selection: { candidate, name } }) => ({
       name,
@@ -877,7 +914,7 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
       quantity: Math.max(Math.round(Number(pick.quantity) || 1), 1)
     }));
   for (const pick of picks) {
-    const spell = candidateForPick(scrollCandidates, { id: pick?.scrollSpellId });
+    const spell = candidateFromAlias(scrollEncoding, scrollCandidates, pick?.scrollSpellId);
     if (!spell) continue;
     const rank = Math.min(Math.max(Math.round(Number(pick.rank) || spell.rank), spell.rank), 10);
     loot.push({
@@ -913,9 +950,11 @@ export async function selectSpellConsumables(brief, { level, kind, candidates = 
   // Nothing to choose from: no provider request, and no picks.
   if (!offered.length) return { picks: [], usage: null };
 
-  const list = offered.map((candidate) => {
+  const spellEncoding = encodeCandidateList(offered, "S");
+  const list = spellEncoding.entries.map((entry) => {
+    const candidate = entry.candidate;
     const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
-    return kind === "cantripDeck" ? `${candidate.id} | ${candidate.name} | traits: ${(candidate.traits ?? []).join(", ")}` : `${candidate.id} | ${candidate.name} | base rank ${candidate.rank}${traits}`;
+    return kind === "cantripDeck" ? `${entry.alias} | ${entry.name} | traits: ${(candidate.traits ?? []).join(", ")}` : `${entry.alias} | ${entry.name} | base rank ${candidate.rank}${traits}`;
   }).join("\n");
 
   const system = kind === "cantripDeck" ? `Choose ONLY spell IDs from the provided list for cantrip decks. Respond with a single JSON object:
@@ -941,7 +980,8 @@ Return at most ${maximum} picks. "rank" is a whole number from the base rank of 
   const picks = [];
   for (const pick of Array.isArray(parsed.picks) ? parsed.picks : []) {
     if (picks.length >= maximum) break;
-    const candidate = byId.get(String(pick?.spellId ?? ""));
+    const rawSpellId = String(pick?.spellId ?? "");
+    const candidate = spellEncoding.resolve(rawSpellId)?.candidate ?? byId.get(rawSpellId);
     if (!candidate) {
       console.warn("simplypf2e | dropped spell consumable pick with an unknown spell id", pick?.spellId);
       continue;
@@ -988,9 +1028,11 @@ export async function selectParcelSpells(brief, { partyLevel, slots, candidates 
   if (!offered.length || !issued.length) return { picks: [], dropped: [], usage: null };
 
   const slotList = issued.map((slot) => `${slot.id} | scroll rank ${slot.rank}`).join("\n");
-  const list = offered.map((candidate) => {
+  const spellEncoding = encodeCandidateList(offered, "S");
+  const list = spellEncoding.entries.map((entry) => {
+    const candidate = entry.candidate;
     const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
-    return `${candidate.id} | ${candidate.name} | base rank ${candidate.rank}${traits}`;
+    return `${entry.alias} | ${entry.name} | base rank ${candidate.rank}${traits}`;
   }).join("\n");
 
   const system = `You are choosing spells for a Pathfinder 2e treasure parcel. Each issued slot holds one scroll of one spell from the list. Choose ONLY slot IDs and spell IDs from the provided lists. Respond with a single JSON object and nothing else:
@@ -1023,10 +1065,11 @@ Each slot appears at most once. A spell's base rank must be at or below its slot
       dropped.push({ reason: PARCEL_DROP.UNKNOWN_SLOT, slotId: slotId.slice(0, PARCEL_DROP_ID_MAX) });
       continue;
     }
-    const candidate = byId.get(String(pick?.spellId ?? ""));
+    const rawSpellId = String(pick?.spellId ?? "");
+    const candidate = spellEncoding.resolve(rawSpellId)?.candidate ?? byId.get(rawSpellId);
     if (!candidate) {
       console.warn("simplypf2e | dropped parcel spell pick with an unknown spell id", pick?.spellId);
-      dropped.push({ reason: PARCEL_DROP.UNKNOWN_SPELL, spellId: String(pick?.spellId ?? "").slice(0, PARCEL_DROP_ID_MAX) });
+      dropped.push({ reason: PARCEL_DROP.UNKNOWN_SPELL, spellId: rawSpellId.slice(0, PARCEL_DROP_ID_MAX) });
       continue;
     }
     picks.push({ slotId, spellId: candidate.id, name: candidate.name, candidate });
@@ -1055,10 +1098,12 @@ export async function selectParcelPermanents(brief, { partyLevel, slots, candida
   if (!offered.length || !issued.length) return { picks: [], dropped: [], usage: null };
 
   const slotList = issued.map((slot) => `${slot.id} | item level ${slot.allowedLevels.join(" or ")}`).join("\n");
-  const list = offered.map((candidate) => {
+  const permanentEncoding = encodeCandidateList(offered, "P");
+  const list = permanentEncoding.entries.map((entry) => {
+    const candidate = entry.candidate;
     const kind = candidate.kind === "wand" ? `wand, rank ${candidate.rank}` : candidate.kind === "special-wand" ? "published wand" : "equipment";
     const traits = candidate.traits?.length ? ` | traits: ${candidate.traits.join(", ")}` : "";
-    return `${candidate.id} | ${candidate.name} | item level ${candidate.level} | ${kind}${traits}`;
+    return `${entry.alias} | ${entry.name} | item level ${candidate.level} | ${kind}${traits}`;
   }).join("\n");
 
   const system = `You are choosing permanent magic items for a Pathfinder 2e treasure parcel. Each issued slot holds one item whose item level is one of the slot's allowed levels. Choose ONLY slot IDs and candidate IDs from the provided lists. Respond with a single JSON object and nothing else:
@@ -1090,7 +1135,8 @@ Each slot appears at most once. A candidate's item level must be one of its slot
       dropped.push({ reason: "unknown-slot", slotId: slotId.slice(0, PARCEL_DROP_ID_MAX) });
       continue;
     }
-    picks.push({ slotId, candidateId: String(pick?.candidate ?? "") });
+    const rawCandidate = String(pick?.candidate ?? "");
+    picks.push({ slotId, candidateId: permanentEncoding.resolve(rawCandidate)?.id ?? rawCandidate });
   }
   return { picks, dropped, usage };
 }
@@ -1124,6 +1170,17 @@ export async function selectAncestryBackgroundClass({
   backgroundCandidates = constrained("background", backgroundCandidates);
   classCandidates = constrained("class", classCandidates);
   heritageCandidates = constrained("heritage", heritageCandidates);
+  // A heritage whose ancestry is not on offer can never be valid. Keep
+  // ancestry-agnostic (versatile) heritages and every offered ancestry's own.
+  const offeredAncestryNames = new Set(ancestryCandidates.map((candidate) => String(candidate?.name ?? "").trim().toLowerCase()));
+  heritageCandidates = heritageCandidates.filter((candidate) => {
+    const owner = String(candidate?.ancestry ?? "").trim().toLowerCase();
+    return !owner || offeredAncestryNames.has(owner);
+  });
+  const ancestryEncoding = encodeCandidateList(ancestryCandidates, "A");
+  const heritageEncoding = encodeCandidateList(heritageCandidates, "H");
+  const backgroundEncoding = encodeCandidateList(backgroundCandidates, "B");
+  const classEncoding = encodeCandidateList(classCandidates, "C");
   const system = `You are choosing a Pathfinder 2e character's ancestry, heritage, background and class. Choose ONLY IDs from the provided lists. Respond with a single JSON object and nothing else:
 { "ancestryId": string, "heritageId": string|null, "backgroundId": string, "classId": string, "keyAbility": "str"|"dex"|"con"|"int"|"wis"|"cha" }
 "heritage" must belong to the chosen ancestry, or null if none fits well. "keyAbility" must be a legal key ability for the chosen class.`;
@@ -1136,19 +1193,21 @@ export async function selectAncestryBackgroundClass({
     Object.keys(identity).length ? `Required choices: ${JSON.stringify(requiredIdentityHint(identity))}. Keep these exactly; a required null heritage means no heritage.` : null,
     `First-draft ideas (use as inspiration, but the final picks MUST come from the lists below): ancestry "${concept.ancestry}", heritage "${concept.heritage ?? "none"}", background "${concept.background}", class "${concept.class}", key ability "${concept.keyAbility}"`,
     "",
-    `Available ancestries (ID | name): ${ancestryCandidates.map((a) => `${a.id} | ${a.name}`).join("; ")}`,
-    heritageCandidates.length ? `Available heritages (ID | name): ${heritageCandidates.map((h) => `${h.id} | ${h.name}`).join("; ")}` : null,
-    `Available backgrounds (ID | name): ${backgroundCandidates.map((b) => `${b.id} | ${b.name}`).join("; ")}`,
-    `Available classes (ID | name): ${classCandidates.map((c) => `${c.id} | ${c.name}`).join("; ")}`
+    `Available ancestries (ID | name): ${ancestryEncoding.entries.map((entry) => `${entry.alias} | ${entry.name}`).join("; ")}`,
+    heritageEncoding.entries.length ? `Available heritages (ID | name): ${heritageEncoding.entries.map((entry) => `${entry.alias} | ${entry.name}`).join("; ")}` : null,
+    `Available backgrounds (ID | name): ${backgroundEncoding.entries.map((entry) => `${entry.alias} | ${entry.name}`).join("; ")}`,
+    `Available classes (ID | name): ${classEncoding.entries.map((entry) => `${entry.alias} | ${entry.name}`).join("; ")}`
   ].filter((line) => line !== null).join("\n");
 
   const { data: parsed, usage } = await requestJSON({
     task: AI_TASK.ABC_SELECTION, system, user, onProgress, signal
   });
-  const ancestry = candidateForPick(ancestryCandidates, { id: parsed.ancestryId, name: parsed.ancestry });
-  const heritage = candidateForPick(heritageCandidates, { id: parsed.heritageId, name: parsed.heritage });
-  const background = candidateForPick(backgroundCandidates, { id: parsed.backgroundId, name: parsed.background });
-  const pcClass = candidateForPick(classCandidates, { id: parsed.classId, name: parsed.class });
+  const ancestry = candidateFromAlias(ancestryEncoding, ancestryCandidates, parsed.ancestryId, parsed.ancestry);
+  const heritage = parsed.heritageId === null
+    ? null
+    : candidateFromAlias(heritageEncoding, heritageCandidates, parsed.heritageId, parsed.heritage);
+  const background = candidateFromAlias(backgroundEncoding, backgroundCandidates, parsed.backgroundId, parsed.background);
+  const pcClass = candidateFromAlias(classEncoding, classCandidates, parsed.classId, parsed.class);
   const unresolved = [
     ["ancestry", ancestry], ["background", background], ["class", pcClass]
   ].filter(([, candidate]) => !candidate).map(([field]) => field);
@@ -1277,7 +1336,8 @@ Choose feats that fit the creature's role and tactics. Do not choose a feat more
 export async function selectCreatureAbilities({ concept, candidates, onProgress, signal }) {
   const maximum = Math.min(Math.max(concept?.specialAbilities?.length ?? 0, 0), 6);
   if (!maximum || !candidates.length) return { abilities: [], usage: null };
-  const catalog = candidates.map((candidate) => `${candidate.id} | ${candidate.name}`).join("\n");
+  const abilityEncoding = encodeCandidateList(candidates, "A");
+  const catalog = abilityEncoding.entries.map((entry) => `${entry.alias} | ${entry.name}`).join("\n");
   const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting up to ${maximum} published Pathfinder 2e bestiary actions for a creature. Choose ONLY IDs from the catalog. Return a single JSON object and nothing else:
 { "abilityIds": string[] }
 Choose the actions that fit the creature's role and tactics. Omit a proposed ability when no published action fits; it will remain labeled narrative-only, with no custom mechanics.`;
@@ -1296,7 +1356,7 @@ Choose the actions that fit the creature's role and tactics. Omit a proposed abi
   });
   const seen = new Set();
   const abilities = (Array.isArray(parsed.abilityIds) ? parsed.abilityIds : [])
-    .map((id) => candidateForPick(candidates, { id }))
+    .map((id) => candidateFromAlias(abilityEncoding, candidates, id))
     .filter((candidate) => {
       if (!candidate || seen.has(candidate.id)) return false;
       seen.add(candidate.id);

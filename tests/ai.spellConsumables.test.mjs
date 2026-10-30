@@ -99,7 +99,7 @@ try {
   assert.equal(firstRequest.max_tokens, 1536, "the spell consumable task uses its own bounded budget");
   assert.equal(firstRequest.temperature, 0, "picks are deterministic");
   const prompt = JSON.stringify(firstRequest.messages);
-  assert.ok(prompt.includes("c-fire | Fireball | base rank 3 | traits: fire, evocation"), "prompt lists issued ids with name, base rank and traits");
+  assert.ok(prompt.includes("S0 | Fireball | base rank 3 | traits: fire, evocation"), "prompt lists issued ids with name, base rank and traits");
   assert.ok(prompt.includes("Item kind: scroll") && prompt.includes("Item level: 5"), "prompt states the kind and item level");
   assert.ok(prompt.includes("Return at most 6 picks"), "prompt states the default count");
   assert.ok(prompt.includes("Do not emit any prices, item levels, DCs, damage, or other numbers beyond the rank"),
