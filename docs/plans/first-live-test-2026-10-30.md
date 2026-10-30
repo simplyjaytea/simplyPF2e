@@ -13,7 +13,7 @@ Setup: Foundry v14 with pf2e **8.5.0** (the declared minimum since v0.3.5.88). U
 ## 1. Bard muse (10 min) — N55, N56. Druid waits on this result.
 
 1. In world settings, turn on **Ordinary multiclass archetypes**.
-2. Actors sidebar → **SimplyPF2e** → **Character**. Level 6, spellcasting on. Open **Required choices** and set **Class** to Fighter; choose a concept that can qualify for Bard Dedication (Charisma +2). In the prompt ask for the Bard Dedication and Basic Bard Spellcasting. Verify those feats in the preview and select them in the editor if needed.
+2. Actors sidebar → **SimplyPF2e** → **Character**. Level 6, spellcasting on. Open **Required choices** and set **Class** to Fighter; choose a concept that can qualify for Bard Dedication (Charisma +2). In the prompt ask for the Bard Dedication and Basic Bard Spellcasting. Verify those feats in the preview. If either is missing, regenerate the plan; if it remains missing, report it instead of trying to add it in the editor.
 3. **Preview Plan**. Expect: a muse (Maestro by default) and a muse control in the editor; a signature-spell control listing the archetype's ranked spells. Change the muse and the signature spell.
 4. **Create**. Pass if: **no** "pick a muse" dialog opens; the Bard Dedication on the sheet shows the muse you picked; a separate "Bard Archetype Spells" entry exists with 2 cantrips and ranks 1–2; exactly one spell is marked signature, and it is the one you picked.
 5. If Occultism or Performance was already trained, one extra trained skill should appear instead.
