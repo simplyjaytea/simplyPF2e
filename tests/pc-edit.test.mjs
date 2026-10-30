@@ -370,4 +370,44 @@ async function expectCode(promise, code) {
   await expectCode(applyPCEdit(bardPlan(), { field: "feat", slot: 0, key: "test.pack:block" }, { services, catalogs }), PC_EDIT_CODES.DEFERRED);
 }
 
+// Archetype signature spell (feat/dedication-skills): exactly one ranked repertoire spell of the held spellcasting
+// archetype, only from the level its Basic feat allows one. Only a spell the plan already holds is accepted and
+// nothing else is recomputed; a stale stored pick blocks completion.
+{
+  const signaturePlan = (levelValue, signature) => {
+    const plan = basePlan();
+    plan.concept.level = levelValue;
+    plan.concept.archetypeSpellcasting = {
+      pkg: "bard", tradition: "occult", plannedPicks: { 0: 2, 1: 1, 2: 1 }, maxRank: 2, spells: [],
+      ...(signature === undefined ? {} : { signature })
+    };
+    const feats = [
+      { type: "class", level: 2, archetype: true, name: "Bard Dedication", entry: ref("barded") },
+      { type: "class", level: 4, archetype: true, name: "Basic Bard Spellcasting", entry: ref("basicbard") }
+    ];
+    plan.resolved.feats = feats;
+    plan.resolved.featSlots = feats.map((feat) => ({ type: "class", level: feat.level, archetype: true, candidates: [] }));
+    plan.resolved.archetypeSpells = [["Detect Magic", 0], ["Fear", 1], ["Mirror Image", 2]]
+      .map(([name, rank]) => ({ spell: { name, rank }, entry: ref(name) }));
+    return plan;
+  };
+
+  const edited = await applyPCEdit(signaturePlan(6), { field: "archetypeSignature", value: "Mirror Image" }, { services, catalogs });
+  assert.deepEqual(edited.changed, ["archetypeSignature"]);
+  assert.equal(edited.plan.concept.archetypeSpellcasting.signature, "Mirror Image");
+  assert.equal(signaturePlan(6).concept.archetypeSpellcasting.signature, undefined, "the input plan is not mutated");
+  assert.deepEqual((await applyPCEdit(signaturePlan(6, "Mirror Image"), { field: "archetypeSignature", value: "Mirror Image" }, { services, catalogs })).changed,
+    [], "the same pick is a no-op");
+  await expectCode(applyPCEdit(signaturePlan(6), { field: "archetypeSignature", value: "Haste" }, { services, catalogs }), PC_EDIT_CODES.INVALID);
+  await expectCode(applyPCEdit(signaturePlan(6), { field: "archetypeSignature", value: "Detect Magic" }, { services, catalogs }), PC_EDIT_CODES.INVALID);
+  await expectCode(applyPCEdit(signaturePlan(6), { field: "archetypeSignature", value: 5 }, { services, catalogs }), PC_EDIT_CODES.INVALID);
+  await expectCode(applyPCEdit(signaturePlan(4), { field: "archetypeSignature", value: "Fear" }, { services, catalogs }), PC_EDIT_CODES.INVALID);
+  await expectCode(applyPCEdit(basePlan(), { field: "archetypeSignature", value: "Fear" }, { services, catalogs }), PC_EDIT_CODES.INVALID);
+  // Completion: a valid or absent pick passes; a stale one is an error.
+  assert.ok(!validatePCEditCompletion(signaturePlan(6)).errors.some((line) => /signature spell/.test(line)), "no pick keeps the default");
+  assert.ok(!validatePCEditCompletion(signaturePlan(6, "Mirror Image")).errors.some((line) => /signature spell/.test(line)));
+  assert.ok(validatePCEditCompletion(signaturePlan(6, "Haste")).errors.some((line) => /signature spell is missing or not eligible/.test(line)));
+  assert.ok(validatePCEditCompletion(signaturePlan(4, "Fear")).errors.some((line) => /signature spell is missing or not eligible/.test(line)));
+}
+
 console.log("pc-edit tests passed");

@@ -258,13 +258,19 @@ async function generate() {
   const control = Array.from(app.context.pcEditor.controls).find((entry) => entry.control === "archetypeChoice");
   assert.ok(control, "the muse is an editor control");
   assert.deepEqual(Array.from(control.options, (option) => [option.label, option.selected]), [["Enigma", false], ["Maestro", true], ["Warrior", false]]);
+  const signatureControl = Array.from(app.context.pcEditor.controls).find((entry) => entry.control === "archetypeSignature");
+  assert.ok(signatureControl, "the signature spell is an editor control");
+  assert.equal(signatureControl.label, "SIMPLYPF2E.PCEdit.ArchetypeSignature");
+  assert.deepEqual(Array.from(signatureControl.options, (option) => [option.value, option.label, option.selected]),
+    [["Fear", "Fear", true], ["Mirror Image", "Mirror Image", false]], "only ranked repertoire spells, the deterministic default selected");
   assert.equal(app.context.pcEditor.blocked, false, "a valid default does not block");
 }
 {
-  // Level 4: no signature spell yet.
+  // Level 4: no signature spell yet, so no signature control.
   level = 4;
   const app = await generate();
   assert.equal(Array.from(app.context.pcPreview.archetype.spells).filter((row) => row.signature).length, 0);
+  assert.ok(!Array.from(app.context.pcEditor.controls).some((entry) => entry.control === "archetypeSignature"), "no control before level 6");
   level = 6;
 }
 {

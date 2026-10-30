@@ -40,6 +40,7 @@ const { validatePCIdentityRequirements } = await import("../scripts/pc-builder.m
 const { supportedClassCandidates } = await import("../scripts/pc-support.mjs");
 const identityHelpers = await import("../scripts/pc-identity.mjs");
 const pcEditor = await import("../scripts/pc-editor.mjs");
+const casterArchetype = await import("../scripts/pc-caster-archetype.mjs");
 const { getBackgroundLoreOptions } = await import("../scripts/pc-background-lore.mjs");
 const { parseCoins } = await import("../scripts/builder.mjs");
 const { reviewUnresolvedChoices } = await import("../scripts/choice-set.mjs");
@@ -83,7 +84,7 @@ const context = vm.createContext({
 });
 const mocks = {
   needsExtraPurchasePass,
-  ...identityHelpers, ...pcEditor, getBackgroundLoreOptions, getDocument, getClassPathCandidates, validatePCIdentityRequirements, supportedClassCandidates,
+  ...identityHelpers, ...pcEditor, ...casterArchetype, getBackgroundLoreOptions, getDocument, getClassPathCandidates, validatePCIdentityRequirements, supportedClassCandidates,
   SpfApp: App, MODULE_ID: "simplypf2e", SETTINGS: { freeArchetype: "freeArchetype" }, reviewUnresolvedChoices, normalizeSkillPriorities, skillPriorityOrder,
   AI_TASK: {}, taskMaxTokens: () => 100, assertComplete, completionManifest, completionSummary,
   getProviderRequestConfig: () => ({}), getProviderAuthWarningKey: () => null, sourceReadiness: () => ({ ready: true, missing: [] }),

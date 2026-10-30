@@ -6,7 +6,9 @@
  * `pending`, which blocks completion until the user re-picks. Spell editing is
  * deferred: spell-affecting edits are refused and no spell edit exists, so a
  * class edit into a spellcasting class is refused too (a caster would have no
- * spells while the plan still read as complete).
+ * spells while the plan still read as complete). The one spell property with an
+ * edit is the archetype signature flag, which chooses only among spells the plan
+ * already holds.
  *
  * Plan: { concept, resolved, pending: [{ field, reason }] }
  *   `concept` is the generator's normalized concept (with requiredIdentity);
@@ -24,6 +26,7 @@
  *   { field: "feat", slot, key }                          slot = zero-based index into featSlots
  *   { field: "equipment", index, key }                    index into concept.equipment
  *   { field: "archetypeChoice", value }                   one eligible answer of the held spellcasting archetype's ChoiceSet
+ *   { field: "archetypeSignature", value }                one ranked repertoire spell of the held spellcasting archetype
  *
  * Class paths. A class with one level-one bridge (Rogue, Investigator) edits
  * `classPath` as before: concept.classPath / classPathCandidate and
@@ -45,7 +48,7 @@ import { resolvePCConcept, heritageMatchesAncestry } from "./pc-builder.mjs";
 import { resolveEquipment, equipmentValueGp } from "./builder.mjs";
 import { getBackgroundLoreOptions, resolveBackgroundLore } from "./pc-background-lore.mjs";
 import { multiclassAbilityBlocker, multiclassBlockers } from "./pc-multiclass.mjs";
-import { casterArchetypeFeat, casterArchetypePlans } from "./pc-caster-archetype.mjs";
+import { casterArchetypeFeat, casterArchetypePlans, archetypeSignatureControl } from "./pc-caster-archetype.mjs";
 import { assertPCIdentity, classPathBridges, pcIdentityKey } from "./pc-identity.mjs";
 import { getClassPathCandidates } from "./class-paths.mjs";
 import { completionManifest } from "./completion.mjs";
@@ -65,7 +68,7 @@ export const PC_EDIT_CODES = Object.freeze({
 
 const PC_EDIT_FIELDS = Object.freeze([
   "ancestry", "heritage", "background", "class", "classPath",
-  "keyAbility", "backgroundLore", "feat", "equipment", "archetypeChoice"
+  "keyAbility", "backgroundLore", "feat", "equipment", "archetypeChoice", "archetypeSignature"
 ]);
 
 const DOC_TYPE = Object.freeze({ ancestry: "ancestry", heritage: "heritage", background: "background", class: "class" });
@@ -423,6 +426,22 @@ function applyArchetypeChoiceEdit(next, value, changed) {
   changed.push("archetypeChoice");
 }
 
+/**
+ * Change which ranked repertoire spell of the held spellcasting archetype is its signature spell (Bard, from level 6
+ * with the Basic feat). Only a spell the plan offers is accepted; the flag depends on no slot or feat, so nothing else
+ * is recomputed. An absent stored pick keeps the deterministic default.
+ */
+function applyArchetypeSignatureEdit(next, value, changed) {
+  const control = archetypeSignatureControl(next);
+  if (!control) fail(PC_EDIT_CODES.INVALID, "archetypeSignature", "this character has no archetype signature spell to choose");
+  if (typeof value !== "string" || !control.options.some((option) => option.value === value)) {
+    fail(PC_EDIT_CODES.INVALID, "archetypeSignature", "not a ranked repertoire spell of this archetype");
+  }
+  if (control.value === value) return;
+  next.concept.archetypeSpellcasting.signature = value;
+  changed.push("archetypeSignature");
+}
+
 function applyFeatEdit(next, edit, changed) {
   if (next.pending.length) fail(PC_EDIT_CODES.PENDING, "feat", "resolve pending identity choices before editing feats");
   const { resolved } = next;
@@ -570,6 +589,8 @@ export async function applyPCEdit(plan, edit, { catalogs = {}, services = {}, ma
     await applyEquipmentEdit(next, edit, catalogs, deps, changed);
   } else if (edit.field === "archetypeChoice") {
     applyArchetypeChoiceEdit(next, edit.value, changed);
+  } else if (edit.field === "archetypeSignature") {
+    applyArchetypeSignatureEdit(next, edit.value, changed);
   } else if (edit.field === "keyAbility") {
     applyKeyAbility(next, edit.value, changed);
   } else if (edit.field === "backgroundLore") {
@@ -578,7 +599,7 @@ export async function applyPCEdit(plan, edit, { catalogs = {}, services = {}, ma
     await applyCatalogEdit(next, edit, catalogs, deps, changed, invalidated);
   }
 
-  if (changed.length && next.pending.length === 0 && !["feat", "equipment", "archetypeChoice"].includes(edit.field)) {
+  if (changed.length && next.pending.length === 0 && !["feat", "equipment", "archetypeChoice", "archetypeSignature"].includes(edit.field)) {
     await refresh(next, deps, invalidated, maxRarity);
   }
   const equipmentGp = await deps.equipmentValue(next.resolved.equipment);
@@ -621,6 +642,13 @@ export function validatePCEditCompletion(plan) {
   const choice = planned?.choice;
   if (choice && !choice.options.some((option) => option.value === choice.value)) {
     errors.push("the spellcasting archetype choice is missing or not eligible");
+  }
+  // A stored signature spell must still be one of the archetype's ranked repertoire spells at this level.
+  if (planned && typeof planned.signature === "string" && planned.signature) {
+    const signature = archetypeSignatureControl({ concept, resolved });
+    if (!signature || !signature.options.some((option) => option.value === planned.signature)) {
+      errors.push("the spellcasting archetype signature spell is missing or not eligible");
+    }
   }
   const manifest = completionManifest({ mode: "character", concept, resolved });
   return {

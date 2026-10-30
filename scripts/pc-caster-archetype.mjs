@@ -52,6 +52,7 @@ import { slugify } from "./text.mjs";
  * @property {number} cantripSlots  cantrips prepared per day
  * @property {number} spellsPerRank spells added to the spellbook or repertoire per rank gained
  * @property {number|null} signatureFromLevel level from which one repertoire spell is a signature spell (Basic feat held)
+ * @property {string|null} signatureLabelKey editor label for the signature-spell control (null: no signature control)
  * @property {{flag: string, tag: string, excludeTag: string, defaultValue: string, labelKey: string}|null} choice the dedication's ChoiceSet
  */
 export const CASTER_ARCHETYPES = Object.freeze({
@@ -60,6 +61,7 @@ export const CASTER_ARCHETYPES = Object.freeze({
     noteKey: "SIMPLYPF2E.Preview.PCArchetypeSpells",
     book: "spellbook",
     signatureFromLevel: null,
+    signatureLabelKey: null,
     choice: null,
     label: "Wizard Archetype Spells",
     tradition: "arcane",
@@ -77,6 +79,7 @@ export const CASTER_ARCHETYPES = Object.freeze({
     book: "repertoire",
     // First level at which the Basic feat lets the PC mark one repertoire spell as a signature spell.
     signatureFromLevel: 6,
+    signatureLabelKey: "SIMPLYPF2E.PCEdit.ArchetypeSignature",
     // The dedication's ChoiceSet: rule flag, the class-feature tag its filter selects, the tag it excludes, and the
     // visible default (used only when it is among the eligible choices).
     choice: Object.freeze({
@@ -165,6 +168,25 @@ export function chooseSignatureIndexes(spells, count) {
 }
 
 /**
+ * Name of the repertoire spell that is the signature spell. A stored pick is kept only while it is still one of the
+ * ranked repertoire spells; an unknown or stale name yields null (nothing is marked, and Create refuses it), never a
+ * silent substitution. With no pick, the deterministic default stands: the first ranked spell of the lowest rank.
+ * @param {{name: string, rank: number}[]} spells ranked and cantrip repertoire spells, in pick order
+ * @param {number} signatures how many signature spells the plan allows (0 before the Basic feat's level)
+ * @param {string|null} [stored] the GM's pick from the editor
+ * @returns {string|null}
+ */
+export function signatureSpellName(spells, signatures, stored = null) {
+  const ranked = (spells ?? []).filter((spell) => Number.isInteger(spell?.rank) && spell.rank >= 1);
+  if (!(signatures > 0) || !ranked.length) return null;
+  if (typeof stored === "string" && stored) {
+    return ranked.some((spell) => spell.name === stored) ? stored : null;
+  }
+  const [index] = [...chooseSignatureIndexes(ranked, signatures)];
+  return ranked[index]?.name ?? null;
+}
+
+/**
  * Eligible choices of an archetype's ChoiceSet from class-feature candidates, by the dedication's own filter
  * (`item:tag:<tag>` and not `item:tag:<excludeTag>`), as pf2e's `slugsAsValues` names them (`f.slug ?? sluggify(f.name)`, pf2e's choice-set/rule-element.ts queryCompendium).
  * @param {NonNullable<CasterArchetype["choice"]>} choice
@@ -183,6 +205,38 @@ export function eligibleArchetypeChoices(choice, candidates) {
     options.push({ value, label: candidate.name });
   }
   return options.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/**
+ * The signature-spell control of the held spellcasting archetype (Bard's Basic feat, from level 6). Exactly one
+ * ranked repertoire spell is the signature, so the control lists the archetype entry's ranked spells and shows the
+ * stored pick when it is still one of them, otherwise the deterministic default Create will use. Null when the
+ * archetype has no signature rule or the plan does not allow one at this level (nothing to choose).
+ * @param {{concept: object, resolved: object}} plan
+ * @returns {{labelKey: string, options: {value: string, label: string}[], value: string|null}|null}
+ */
+export function archetypeSignatureControl(plan) {
+  const concept = plan?.concept ?? {};
+  const planned = concept.archetypeSpellcasting ?? null;
+  if (!planned?.pkg) return null;
+  const held = (plan.resolved?.feats ?? []).map((pick) => (pick?.entry ? pick.name : null));
+  const entry = casterArchetypePlans(held, concept.level).find((item) => item.archetype.pkg === planned.pkg);
+  if (!entry || !(entry.signatures > 0) || !entry.archetype.signatureLabelKey) return null;
+  const spells = [];
+  for (const pick of plan.resolved?.archetypeSpells ?? []) {
+    const name = pick?.spell?.name ?? pick?.entry?.name;
+    const rank = Number(pick?.spell?.rank);
+    // Only a resolved, ranked repertoire spell can be a signature spell; a cantrip or a vanished pick is not offered.
+    if (!pick?.entry || !name || !Number.isInteger(rank) || rank < 1 || spells.some((spell) => spell.name === name)) continue;
+    spells.push({ name, rank, label: pick.entry.name ?? name });
+  }
+  if (!spells.length) return null;
+  const stored = typeof planned.signature === "string" && planned.signature ? planned.signature : null;
+  return {
+    labelKey: entry.archetype.signatureLabelKey,
+    options: spells.map((spell) => ({ value: spell.name, label: spell.label })),
+    value: signatureSpellName(spells, entry.signatures, stored)
+  };
 }
 
 /** The visible default when it is eligible, else null: never an arbitrary pick. */
@@ -217,14 +271,16 @@ const ordinalName = (rank) => (rank === 0 ? "cantrip" : `rank ${rank}`);
  * @param {string} args.entryId   id of the new entry; spells are located on it
  * @param {{rank: number, identity: string, source: object}[]} args.spells cloned spell item data, in pick order
  * @param {() => string} args.newId id for each embedded spell
+ * @param {string|null} [args.signatureIdentity] the picked signature spell's identity (null: the deterministic default)
  * @returns {{entry: object, spells: object[], rejected: {name: string, reason: string}[]}}
  */
-export function assembleCasterArchetypeEntry({ plan, entryId, spells, newId }) {
+export function assembleCasterArchetypeEntry({ plan, entryId, spells, newId, signatureIdentity = null }) {
   const { archetype, slots: slotCounts, picks } = plan;
   const slots = {};
   for (let rank = 0; rank <= 10; rank++) slots[`slot${rank}`] = { value: slotCounts[rank] ?? 0, max: slotCounts[rank] ?? 0, prepared: [] };
   const kept = [];
   const keptRanks = [];
+  const keptIdentities = [];
   const rejected = [];
   const used = new Map();
   const seen = new Set();
@@ -252,13 +308,21 @@ export function assembleCasterArchetypeEntry({ plan, entryId, spells, newId }) {
     data.system.location = { value: entryId };
     kept.push(data);
     keptRanks.push({ rank });
+    keptIdentities.push(identity);
     // Prepared: the first picks of each rank fill that rank's slots; the rest stay in the spellbook.
     if (archetype.mode === "prepared" && (slots[`slot${rank}`].prepared.length) < (slotCounts[rank] ?? 0)) {
       slots[`slot${rank}`].prepared.push({ id: data._id, expended: false });
     }
   }
   // Signature spells (Bard, from the level the Basic feat grants one): a flag on the spell, chosen the same way as in the preview.
-  for (const index of chooseSignatureIndexes(keptRanks, plan.signatures ?? 0)) kept[index].system.location.signature = true;
+  // The GM's pick is used only when it is still one of the kept repertoire spells; a vanished pick marks nothing (Create
+  // revalidates before this runs, so an absent pick means "not allowed yet", never a silent fallback).
+  if (plan.signatures ?? 0) {
+    const picked = signatureIdentity ? keptIdentities.indexOf(signatureIdentity) : -1;
+    if (signatureIdentity && picked < 0) throw new Error("the chosen signature spell is not in the archetype's repertoire");
+    const indexes = picked >= 0 ? [picked] : [...chooseSignatureIndexes(keptRanks, plan.signatures)];
+    for (const index of indexes) kept[index].system.location.signature = true;
+  }
   return {
     entry: {
       _id: entryId,

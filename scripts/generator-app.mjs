@@ -22,7 +22,7 @@ import {
   normalizePCConcept, resolvePCConcept, resolveFeatPicks, createCharacterActor, pcStartingWealthGp, validatePCIdentityRequirements
 } from "./pc-builder.mjs";
 import { pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
-import { CASTER_ARCHETYPES, casterArchetypeFeat, casterArchetypePlans, chooseSignatureIndexes, defaultArchetypeChoice } from "./pc-caster-archetype.mjs";
+import { CASTER_ARCHETYPES, archetypeSignatureControl, casterArchetypeFeat, casterArchetypePlans, defaultArchetypeChoice, signatureSpellName } from "./pc-caster-archetype.mjs";
 import { reviewUnresolvedChoices } from "./choice-set.mjs";
 import { normalizeSkillPriorities, skillPriorityOrder } from "./pc-skills.mjs";
 import { treasureBudget, TREASURE_AMOUNT_MULTIPLIER } from "./tables.mjs";
@@ -594,6 +594,11 @@ export class GeneratorApp extends SpfApp {
       if (archetypeChoice) {
         add("archetypeChoice", game.i18n.localize(archetypeChoice.labelKey), archetypeChoice.options.map((entry) => ({ value: entry.value, label: entry.label })));
       }
+      // The signature spell (Bard, from level 6) is exactly one of the archetype's ranked repertoire spells.
+      const archetypeSignature = archetypeSignatureControl(plan);
+      if (archetypeSignature) {
+        add("archetypeSignature", game.i18n.localize(archetypeSignature.labelKey), archetypeSignature.options);
+      }
       const equipment = catalogs.equipment.map(option);
       plan.concept.equipment.forEach((line, index) => add(
         `equipment.${index}`, game.i18n.format("SIMPLYPF2E.PCEdit.EquipmentLine", { index: index + 1, name: line.name }), equipment
@@ -789,15 +794,17 @@ export class GeneratorApp extends SpfApp {
     return (list ?? []).map(({ name, entry }) => ({ name: entry?.name ?? name, found: Boolean(entry) }));
   }
 
-  /** Rows for the archetype spells, with the signature spell the builder will mark (the same deterministic choice). */
+  /** Rows for the archetype spells, with the signature spell the builder will mark (the GM's pick, or the same deterministic default). */
   static #archetypeSpellRows(concept, resolved) {
     const rows = GeneratorApp.#mapSpells(resolved.archetypeSpells);
     const plan = casterArchetypePlans(
       (resolved.feats ?? []).map((pick) => (pick?.entry ? pick.name : null)), concept.level
     ).find((entry) => entry.archetype.pkg === concept.archetypeSpellcasting.pkg);
-    for (const index of chooseSignatureIndexes((resolved.archetypeSpells ?? []).map((pick) => pick.spell), plan?.signatures ?? 0)) {
-      if (rows[index]?.found) rows[index].signature = true;
-    }
+    const picks = (resolved.archetypeSpells ?? []).map(({ spell, entry }) => ({ name: spell?.name ?? entry?.name, rank: spell?.rank }));
+    const signature = signatureSpellName(picks, plan?.signatures ?? 0, concept.archetypeSpellcasting.signature ?? null);
+    rows.forEach((row, index) => {
+      if (row.found && signature !== null && picks[index]?.name === signature) row.signature = true;
+    });
     return rows;
   }
 

@@ -55,7 +55,7 @@ const common = {
 };
 const fighterClass = doc("class", { slug: "fighter", publication: { title: "Pathfinder Player Core", remaster: true }, keyAbility: { value: ["str", "dex"] }, trainedSkills: { value: [], additional: 3 } }, "Fighter");
 const feat = (ref, name, level) => ({ type: "class", level, archetype: false, name, entry: ref });
-const pick = (file, rank) => ({ spell: { name: file, rank }, entry: refs[file] });
+const pick = (file, rank) => ({ spell: { name: spellJson[file].name, rank }, entry: refs[file] });
 const concept = (extra = {}) => ({ ...common, archetypeSpellcasting: { pkg: "bard", choice: { flag: "dedicationMuse", value: "maestro", options: [{ value: "maestro", label: "Maestro" }] }, ...extra } });
 const base = () => ({
   ancestryDoc: doc("ancestry", { boosts: {}, additionalLanguages: {}, languages: { value: [] } }),
@@ -173,6 +173,25 @@ for (const [label, ref] of [["dedication", dedicationRef], ["Basic feat", basicR
   docs.set(key, stashed);
   void label;
 }
+// Signature pick (feat/dedication-skills): the GM's ranked repertoire pick is the only signature spell; an absent
+// pick keeps the deterministic default; a pick the plan does not hold, or a cantrip, or one before level 6, fails
+// closed before Actor.create.
+{
+  await createCharacterActor(concept({ signature: "Mirror Image" }), base());
+  assert.deepEqual(spells().filter((item) => item.system.location.signature).map((item) => item.name), ["Mirror Image"], "the chosen signature spell");
+  assert.equal(spells().filter((item) => item.system.location.signature).length, 1, "exactly one signature");
+  await createCharacterActor(concept(), base());
+  assert.deepEqual(spells().filter((item) => item.system.location.signature).map((item) => item.name), ["Fear"], "no pick keeps the default");
+}
+await refuse(concept({ signature: "Fireball" }), base(), /Errors\.PCArchetypeSignaturePick/);
+await refuse(concept({ signature: "Detect Magic" }), base(), /Errors\.PCArchetypeSignaturePick/);
+await refuse(concept({ signature: 5 }), base(), /Errors\.PCArchetypeSignaturePick/);
+{
+  const l4 = base();
+  l4.archetypeSpells = [pick("detect-magic", 0), pick("light", 0), pick("fear", 1)];
+  await refuse({ ...concept({ signature: "Fear" }), level: 4 }, l4, /Errors\.PCArchetypeSignatureNoSlot/);
+}
+
 // Still valid afterwards (the scenarios restored their changes).
 await createCharacterActor(concept(), base());
 assert.equal(spells().length, 5);
