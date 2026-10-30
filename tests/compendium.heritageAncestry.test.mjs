@@ -12,13 +12,28 @@ const doc = (_id, name, ancestry) => ({
     ...(ancestry ? { ancestry: { name: ancestry, slug: ancestry.toLowerCase(), uuid: `Compendium.pf2e.ancestries.Item.${ancestry}` } } : {})
   }
 });
+// Like Foundry's CompendiumCollection#getIndex: an entry holds only _id plus the
+// requested fields, so a field the module forgets to request is absent live.
+const pick = (source, fields) => {
+  const out = { _id: source._id };
+  for (const path of fields) {
+    const parts = path.split(".");
+    let from = source;
+    for (const key of parts) from = from?.[key];
+    if (from === undefined) continue;
+    let to = out;
+    for (const key of parts.slice(0, -1)) to = to[key] ??= {};
+    to[parts.at(-1)] = structuredClone(from);
+  }
+  return out;
+};
 const pack = {
-  async getIndex() {
+  async getIndex({ fields = [] } = {}) {
     return [
       doc("h-human", "Human Heritage", "Human"),
       doc("h-versatile", "Versatile Heritage", null),
       doc("h-dwarf", "Dwarf Heritage", "Dwarf")
-    ];
+    ].map((entry) => pick(entry, fields));
   }
 };
 

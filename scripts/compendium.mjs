@@ -184,7 +184,10 @@ async function getIndex(packId) {
       fields: [
         "name", "type", "system.slug", "system.level.value",
         "system.traits.value", "system.traits.traditions", "system.ritual",
-        "system.category", "system.stackGroup", "system.spell", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value"
+        "system.category", "system.stackGroup", "system.spell", "system.traits.rarity", "system.traits.otherTags", "system.prerequisites.value",
+        // Heritages: the owning ancestry (null for versatile heritages), so the ABC prompt can withhold heritages of
+        // ancestries that are not offered.
+        "system.ancestry"
       ]
     });
     return index.map((entry) => ({ ...entry, packId, normalized: normalize(entry.name) }));
