@@ -2,7 +2,11 @@
 
 **Branch:** `perf/prompt-budget` (off `main@03737af`, v0.3.5.86)
 **Date:** 2026-10-30
-**Status:** measurement only. No prompt, builder, selection, retry or output behavior was changed.
+**Status:** Phase 1 measured only. Phase 2a (alias-only catalogues, the
+quality-neutral heritage filter and redundant system-prompt trims) is implemented on this branch;
+see [Phase 2a](#phase-2a-quality-neutral-cuts) below. Candidate caps, background ranking,
+drafted-ancestry heritage scoping, concept shortening, call merging, retries and output caps remain
+unbuilt.
 
 ## What this measures
 
@@ -246,6 +250,132 @@ The safest first cut is lever 1 alone: it is a wire-format change with no select
 about a third of every PC generation. Levers 2 and 3 are the next best ratio of savings to risk;
 levers 7 and 8 need a design decision because they can change what gets selected or how a failure is
 recovered.
+
+## Phase 2a: quality-neutral cuts
+
+Only changes that cannot change which candidate the model may pick: the wire format of candidate
+lists, dropping heritages whose ancestry is not on offer, and removing two sentences whose
+constraints are stated verbatim elsewhere in the same prompt.
+
+### What changed
+
+**One shared alias encoder.** `encodeCandidateList(candidates, prefix)` in
+`scripts/ai-candidate-format.mjs` returns deterministic `prefix`+base36 aliases (`S0`, `S1`, … `S10`)
+and keeps the alias→candidate map local to the request. The reply resolves through that map; the
+resolved object is the same issued candidate (same `ref`, so `isIssuedCandidate` and
+`pcIdentityKey` are untouched). Exact issued IDs remain accepted on the way back for compatibility
+with existing callers/tests; unknown and foreign aliases return null. Prefixes are unique per list in
+a prompt (ABC `A/H/B/C`, spells/focus `S/F`, loot/scrolls `L/S`, equipment `E`, abilities `A`,
+parcels `S`/`P`), so a heritage alias cannot satisfy a background/class field. Name fallback and the
+fundamental-rune prefix exception are unchanged.
+
+Selectors converted to aliases:
+
+| Selector | Lists aliased |
+|---|---|
+| `selectAncestryBackgroundClass` | ancestries, heritages, backgrounds, classes |
+| `selectSpells` (PC and creature) | spells, focus spells |
+| `selectArchetypeSpells` | spells |
+| `selectEquipment` | equipment |
+| `selectLoot` | items, scroll spells |
+| `selectSpellConsumables` | spells |
+| `selectParcelSpells` | spells (slot IDs remain module-issued) |
+| `selectParcelPermanents` | permanent candidates (alias resolved back to the real candidate ID) |
+| `selectCreatureAbilities` | bestiary actions |
+
+Already alias-only before this phase: `selectFeats`, `selectCreatureFeats` and
+`generateRunedItemConcept` (Forge groups). `selectCharacterChoices` carries ChoiceSet option IDs,
+not issued `c-` candidate IDs, so it is unchanged. Concept/loot-draft/encounter prompts carry no
+catalogue.
+
+**Heritage ownership filter.** `getHeritageCandidates` now carries the heritage's `ancestry` name
+from `system.ancestry.name` (ancestry-agnostic/versatile heritages carry none). The ABC selector
+drops a heritage whose known ancestry is not in the offered ancestry list, and keeps every heritage
+with no owner. This is not drafted-ancestry scoping: for the normal common-ancestry pool it keeps 66
+of 298 common heritages; the drafted-ancestry cut remains Phase 2b.
+
+**Removed system-prompt sentences.** Only these two; every JSON key, enum, rule and constraint still
+appears elsewhere in the same prompt.
+
+1. `selectEquipment` system prompt: “The only name text allowed is an existing compatible
+   fundamental-rune decoration when relevant to the original request; keep the offered base name
+   exact and do not invent any other variation.” The immediately following `${RUNE_PREFIX_NOTE}`
+   states the same exception and the same “base name exact / no other variation” rule.
+2. `pcSystemPrompt` design-guidance bullet: “- feats/spells/equipment are first drafts only — write
+   plausible real names; a later grounding step selects the actual final picks from the real
+   compendium.” The three schema fields already say “EXACT published … names”, “first draft”, and
+   “the final pick/list is chosen from the real compendium in a second step.”
+
+The spell selector’s “copying each name EXACTLY” became “copying each ID EXACTLY (the name after it
+is for context…)”; that is a required accuracy fix for the alias contract, not a trim.
+
+### Before → after (same six scenarios, same canned concepts)
+
+Only calls whose size changed are listed. `before` is `aed67a2`; `after` is this phase.
+
+| Flow | Call | Before sys/user | After sys/user | Before tok @3.5 | After tok @3.5 |
+|---|---|---|---|---|---|
+| L1 Fighter | ABC | 462 / 41,437 | 462 / 9,562 | 11,971 | 2,864 |
+| L1 Fighter | equipment | 2,396 / 4,962 | 2,204 / 2,718 | 2,102 | 1,406 |
+| L1 Fighter | loot | 1,472 / 6,826 | 1,472 / 2,866 | 2,371 | 1,239 |
+| L1 Fighter | **flow** | | | **20,057 / 28,080** | **9,077 / 12,709** |
+| L8 Bard | ABC | 462 / 41,430 | 462 / 9,555 | 11,969 | 2,862 |
+| L8 Bard | spells | 2,486 / 5,496 | 2,506 / 2,811 | 2,281 | 1,519 |
+| L8 Bard | equipment | 2,396 / 10,440 | 2,204 / 4,884 | 3,667 | 2,025 |
+| L8 Bard | loot | 1,472 / 6,945 | 1,472 / 2,985 | 2,405 | 1,273 |
+| L8 Bard | **flow** | | | **25,227 / 35,317** | **12,539 / 17,555** |
+| L6 archetype | ABC | 462 / 41,466 | 462 / 9,591 | 11,979 | 2,872 |
+| L6 archetype | archetype spells | 1,304 / 3,536 | 1,304 / 1,988 | 1,383 | 941 |
+| L6 archetype | equipment | 2,396 / 9,440 | 2,204 / 4,482 | 3,382 | 1,910 |
+| L6 archetype | loot | 1,472 / 6,934 | 1,472 / 2,974 | 2,402 | 1,270 |
+| L6 archetype | **flow** | | | **23,352 / 32,692** | **11,155 / 15,616** |
+| L5 NPC | spells | 1,428 / 4,004 | 1,448 / 2,202 | 1,552 | 1,043 |
+| L5 NPC | abilities | 884 / 5,864 | 884 / 2,143 | 1,928 | 865 |
+| L5 NPC | equipment | 2,396 / 6,440 | 2,204 / 3,276 | 2,525 | 1,566 |
+| L5 NPC | loot | 1,472 / 9,776 | 1,472 / 3,976 | 3,214 | 1,557 |
+| L5 NPC | **flow** | | | **13,010 / 18,213** | **8,822 / 12,350** |
+| Encounter | member 1 spells | 1,428 / 3,758 | 1,448 / 2,124 | 1,482 | 1,021 |
+| Encounter | member 1 abilities | 884 / 5,871 | 884 / 2,150 | 1,930 | 867 |
+| Encounter | member 1 equipment | 2,396 / 5,455 | 2,204 / 2,843 | 2,243 | 1,442 |
+| Encounter | member 1 loot | 1,472 / 8,333 | 1,472 / 3,407 | 2,801 | 1,394 |
+| Encounter | member 2 spells | 1,428 / 3,007 | 1,448 / 1,889 | 1,267 | 953 |
+| Encounter | member 2 abilities | 884 / 5,876 | 884 / 2,155 | 1,931 | 868 |
+| Encounter | member 2 equipment | 2,396 / 4,797 | 2,204 / 2,553 | 2,055 | 1,359 |
+| Encounter | member 2 loot | 1,472 / 6,774 | 1,472 / 2,814 | 2,356 | 1,225 |
+| Encounter | **flow** | | | **23,361 / 32,705** | **16,425 / 22,996** |
+| Forge | **flow** | | | **1,887 / 2,642** | **1,887 / 2,642** (already alias-only) |
+
+Flow reductions: **PC −54% to −55%** (L1 20.1k→9.1k, L8 25.2k→12.5k, archetype 23.4k→11.2k),
+**NPC −32%**, **encounter −30%**, **Forge 0**. The optional extra purchase pass also drops from
+5,055 to 2,978 tokens @3.5 (−41%). The PC concept call itself falls 157 chars from the removed
+bullet; the spell system prompt grows 20 chars from the ID-accuracy wording.
+
+### Tests and fail-before proof
+
+New `tests/ai.candidateAliases.test.mjs` drives every converted selector with realistic long
+`c-`+base64 IDs and asserts: the prompt contains no long ID; the reply's alias resolves to the
+exact issued candidate; an unknown alias and a foreign-list alias fail closed; the heritage filter
+keeps ancestry-agnostic heritages and drops an unoffered ancestry's; required identity still
+resolves through the alias map. `tests/ai-candidate-format.test.mjs` adds deterministic-alias,
+dedupe, case-insensitive, exact-ID-fallback, foreign/unknown and alias/id-collision cases.
+
+Fail-before: the same new test on `aed67a2` (copied into a temporary worktree) exits 1 at
+`AssertionError: ABC probe prompt must not embed a long issued id`. On this branch it passes.
+
+Existing tests updated only where they asserted the old wire format (`ai.abcSelection`,
+`ai.parcelSpells`, `ai.parcelPermanents`, `ai.pcSpells`, `ai.archetypeSpells`, `ai.spellConsumables`,
+`ai.creatureFidelity`). `ai-candidate-format` and `ai-response-validation` stay green unchanged.
+
+### Mutations
+
+Each mutation was applied to a temporary copy of this branch and killed by the new test:
+
+| Mutation | Result |
+|---|---|
+| Alias map lookup bypassed (return the first candidate) | Killed: “Missing expected rejection” on the foreign/unknown alias checks |
+| Prefixes dropped (index-only aliases, so a heritage alias is also a class alias) | Killed: “a heritage alias used as classId fails closed” |
+| Heritage filter drops ancestry-agnostic heritages | Killed: “ancestry-agnostic heritages stay offered” |
+| Unknown alias falls back to the first candidate | Killed: “Missing expected rejection” on the unknown background check |
 
 ## Gate decision
 
