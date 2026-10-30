@@ -412,3 +412,67 @@ PATH=/var/lib/openbot/OpenBot/Shared/.tools/node22/bin:$PATH node tools/prompt-b
 - QA survivors now killed: N10 (unknown permanent alias → first id), N20 (unknown ability alias → first candidate), N4 (`heritageId: null` overridden by a name), N1 (exact-name fallback in the id field, loot case).
 - Harness rerun: unchanged totals (9,077 / 12,539 / 11,155 / 8,822 / 16,425 / 1,887 tokens @3.5).
 - Not verified: a real model's picks with aliases. The first live PC and NPC generations are the quality check; compare picks and the provider's reported token counts.
+
+
+## Phase 2b: bounded context and short retries
+
+Offline estimates at 3.5 chars/token, compared with a69f2a7. No provider or Foundry calls. Each row shows input prompt estimate.
+
+| Flow | Call | Before | After |
+|---|---|---:|---:|
+| PC level 1 Fighter | concept | 2192 | 2192 |
+| PC level 1 Fighter | abc | 2864 | 2625 |
+| PC level 1 Fighter | feats | 341 | 425 |
+| PC level 1 Fighter | equipment | 1406 | 1167 |
+| PC level 1 Fighter | lootDraft | 1035 | 1035 |
+| PC level 1 Fighter | loot | 1239 | 1184 |
+| PC level 1 Fighter | **total** | **9077** | **8628** |
+| PC level 8 Bard | concept | 2180 | 2180 |
+| PC level 8 Bard | abc | 2862 | 2621 |
+| PC level 8 Bard | feats | 1077 | 1157 |
+| PC level 8 Bard | spellFocus | 568 | 327 |
+| PC level 8 Bard | spells | 1519 | 1278 |
+| PC level 8 Bard | equipment | 2025 | 1293 |
+| PC level 8 Bard | lootDraft | 1035 | 1035 |
+| PC level 8 Bard | loot | 1273 | 1217 |
+| PC level 8 Bard | **total** | **12539** | **11108** |
+| PC level 6 Fighter + Bard Dedication + Basic | concept | 2185 | 2185 |
+| PC level 6 Fighter + Bard Dedication + Basic | abc | 2872 | 2632 |
+| PC level 6 Fighter + Bard Dedication + Basic | feats | 936 | 1023 |
+| PC level 6 Fighter + Bard Dedication + Basic | archetypeSpells | 941 | 699 |
+| PC level 6 Fighter + Bard Dedication + Basic | equipment | 1910 | 1291 |
+| PC level 6 Fighter + Bard Dedication + Basic | lootDraft | 1041 | 1041 |
+| PC level 6 Fighter + Bard Dedication + Basic | loot | 1270 | 1216 |
+| PC level 6 Fighter + Bard Dedication + Basic | **total** | **11155** | **10087** |
+| NPC level 5 spellcaster | concept | 2667 | 2667 |
+| NPC level 5 spellcaster | spellFocus | 529 | 328 |
+| NPC level 5 spellcaster | spells | 1043 | 841 |
+| NPC level 5 spellcaster | abilities | 865 | 627 |
+| NPC level 5 spellcaster | creatureFeats | 595 | 394 |
+| NPC level 5 spellcaster | equipment | 1566 | 1287 |
+| NPC level 5 spellcaster | loot | 1557 | 1262 |
+| NPC level 5 spellcaster | **total** | **8822** | **7406** |
+| Encounter (moderate, party level 3, 4 PCs) | design | 231 | 231 |
+| Encounter (moderate, party level 3, 4 PCs) | member 1: concept | 2694 | 2694 |
+| Encounter (moderate, party level 3, 4 PCs) | member 1: spellFocus | 531 | 330 |
+| Encounter (moderate, party level 3, 4 PCs) | member 1: spells | 1021 | 819 |
+| Encounter (moderate, party level 3, 4 PCs) | member 1: abilities | 867 | 630 |
+| Encounter (moderate, party level 3, 4 PCs) | member 1: creatureFeats | 613 | 411 |
+| Encounter (moderate, party level 3, 4 PCs) | member 1: equipment | 1442 | 1241 |
+| Encounter (moderate, party level 3, 4 PCs) | member 1: loot | 1394 | 1251 |
+| Encounter (moderate, party level 3, 4 PCs) | member 2: concept | 2694 | 2694 |
+| Encounter (moderate, party level 3, 4 PCs) | member 2: spellFocus | 533 | 332 |
+| Encounter (moderate, party level 3, 4 PCs) | member 2: spells | 953 | 753 |
+| Encounter (moderate, party level 3, 4 PCs) | member 2: abilities | 868 | 631 |
+| Encounter (moderate, party level 3, 4 PCs) | member 2: equipment | 1359 | 1158 |
+| Encounter (moderate, party level 3, 4 PCs) | member 2: loot | 1225 | 1158 |
+| Encounter (moderate, party level 3, 4 PCs) | **total** | **16425** | **14333** |
+| Forge runed weapon (level 8, common) | concept | 1887 | 1887 |
+| Forge runed weapon (level 8, common) | **total** | **1887** | **1887** |
+| Extra purchase | lootDraft (extra) | 1035 | 1035 |
+| Extra purchase | loot (extra) | 1943 | 1331 |
+| Extra purchase | **total** | **2978** | **2366** |
+
+Selectors use a deterministic 360-character concept summary; the original GM request stays separate. Loot draft retains full backstory because it generates the actual first-draft items, where later story details can influence the haul. Equipment and loot caps are 60, loot scroll spells 24, and actions 48; exact keyword matches are retained even if this exceeds the nominal equipment cap. These keywords include draft names in the production callers. A large prompt with a parsed but structurally invalid reply retries with the prior JSON and validation error; malformed or truncated replies retain the full prompt. All replies still resolve against the original candidate map. A short retry may be unable to reconstruct an omitted candidate from a list no longer present, and both summary and shortlist can change selection quality.
+
+`tests/ai.tokenRound2.test.mjs` fails on a69f2a7 (missing summary export) and passes here. Five temporary mutations were killed: dropping the GM request, increasing the equipment cap, removing exact-draft overflow, shortening an unparseable retry, and allowing a third attempt. These are targeted tests, not a live-model quality test.

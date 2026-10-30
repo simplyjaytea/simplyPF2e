@@ -9,7 +9,7 @@ import {
 } from "./ai.mjs";
 import { AI_TASK, taskMaxTokens } from "./ai-task-profiles.mjs";
 import {
-  getSpellCandidates, getEquipmentCandidates, getLootCandidates, getScrollSpellCandidates,
+  getSpellCandidates, getEquipmentCandidates, getLootCandidates, getScrollSpellCandidates, LOOT_SCROLL_CANDIDATE_LIMIT,
   getDocument, getAncestryCandidates, getBackgroundCandidates, getClassCandidates, getHeritageCandidates, getFocusSpellCandidates, getFeatCandidates, getCreatureFeatCandidates, normalizeCreatureFeatName, getAbilityCandidates, sourceReadiness
 } from "./compendium.mjs";
 import {
@@ -2272,7 +2272,7 @@ export class GeneratorApp extends SpfApp {
         .filter(Boolean);
       const [candidates, scrollCandidates] = await Promise.all([
         getLootCandidates(concept.level, keywords, { maxRarity: this.#input.rarityCap }),
-        scrollKeywords.length ? getScrollSpellCandidates(10, scrollKeywords, { maxRarity: this.#input.rarityCap }) : []
+        scrollKeywords.length ? getScrollSpellCandidates(10, scrollKeywords, { maxRarity: this.#input.rarityCap, limit: LOOT_SCROLL_CANDIDATE_LIMIT }) : []
       ]);
       if (!candidates.length && !scrollCandidates.length) return;
       const { loot, omitted, usage } = await selectLoot({
