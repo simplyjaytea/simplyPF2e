@@ -20,6 +20,9 @@ const stub = (json, packId) => {
 const bardDedication = stub(load("bard-dedication"), "feats");
 const wizardDedication = stub(load("wizard-dedication"), "feats");
 const cantrips = Object.fromEntries(["detect-magic", "light", "electric-arc", "telekinetic-projectile"].map((file) => [file, stub(load(file), "spells")]));
+// A held ancestry feat with its own literal skill-rank rule (Adroit Manipulation: Thievery upgrade to 1). It is not a
+// dedication, so an overlap with it grants no replacement.
+const adroitManipulation = stub(load("adroit-manipulation"), "feats");
 const maestro = load("maestro");
 
 // ---- Native stand-in: ABC training, plus each embedded feat's own ActiveEffectLike upgrades (pf2e's max).
@@ -159,6 +162,16 @@ const rank1 = (slug) => created.system.skills[slug].rank;
   assert.equal(rank1("occultism"), 1);
   assert.equal(rank1("society"), 1, "the class's own fixed skill");
   assert.equal(rank1("arcana"), 0, "the fourth skill stays untrained");
+}
+
+// Only a dedication counts: an ancestry feat whose own rule trains an already-trained skill adds nothing.
+{
+  const args = scenario("Bard Dedication", bardDedication, ["society", "thievery"], { pkg: "bard", choice: bardChoice }, bardSpells);
+  args.resolved.feats.unshift({ type: "ancestry", level: 1, archetype: false, name: "Adroit Manipulation", entry: adroitManipulation });
+  const result = await createCharacterActor(args.concept, args.resolved);
+  assert.ok(created._source.items.some((item) => item.name === "Adroit Manipulation"), "the ancestry feat is held and its rule applied");
+  assert.equal(result.skillReport.trainingBudget, 3, "a non-dedication feat's overlapping skill rule grants no replacement");
+  assert.equal(rank1("thievery"), 1);
 }
 
 console.log("pc-builder.dedicationSkills.test.mjs: dedication overlaps grant one replacement skill, no overlap adds none");

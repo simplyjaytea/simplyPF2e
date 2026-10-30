@@ -276,6 +276,11 @@ assert.deepEqual(controlFor(6, repertoire), { labelKey: "SIMPLYPF2E.PCEdit.Arche
 assert.equal(controlFor(6, repertoire, "Mirror Image").value, "Mirror Image", "the stored pick");
 assert.equal(controlFor(6, repertoire, "Haste").value, null, "a stale pick asks for a new one");
 assert.equal(controlFor(6, [["Detect Magic", 0]], null), null, "nothing ranked to choose");
+// Two same-named ranked spells (two packs): Create matches a pick by name, so that name is neither offered nor accepted.
+const twin = [["Fear", 1], ["Fear", 1], ["Mirror Image", 2]];
+assert.deepEqual(controlFor(6, twin).options, [{ value: "Mirror Image", label: "Mirror Image" }], "an ambiguous name is not offered");
+assert.equal(controlFor(6, twin, "Fear").value, null, "and a stored ambiguous pick is stale");
+assert.equal(signatureSpellName(named(["Fear", 1], ["Fear", 1]), 1, "Fear"), null);
 assert.equal(archetypeSignatureControl({ concept: { level: 6, archetypeSpellcasting: { pkg: "wizard" } }, resolved: { feats: [], archetypeSpells: [] } }), null);
 
 // Choice options: the dedication's own filter, slug values, sorted; the default only when eligible.

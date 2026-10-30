@@ -13,7 +13,7 @@ Both spellcasting archetypes the module supports name their trained skills twice
 | Bard | `performance` and `occultism` → rank 1, `mode: "upgrade"` | "You become trained in Occultism and Performance; for each of these skills in which you were already trained, you instead become trained in a skill of your choice." | `tests/fixtures/pc-caster/bard-dedication.json:52-61` (rules), `:15` (text) |
 | Wizard | `arcana` → rank 1, `mode: "upgrade"` | "You become trained in Arcana; if you were already trained in Arcana, you instead become trained in a skill of your choice." | `tests/fixtures/pc-caster/wizard-dedication.json:34-37` (rules), `:15` (text) |
 
-For context, the wider 8.5.0 set trains skills the same way when the skill is fixed (Investigator → Society, Ranger → Survival); Fighter and Monk build the skill path through a `ChoiceSet` and are not fixed-path dedications. The module supports only Wizard and Bard today (`scripts/pc-caster-archetype.mjs:58-105`), so those are the two that are modeled.
+For context, the wider 8.5.0 set trains skills the same way when the skill is fixed (Investigator → Society, Ranger → Survival); Fighter and Monk build the skill path through a `ChoiceSet` and are not fixed-path dedications. The helper applies to every dedication the builder places, not only the two spellcasting archetypes (`scripts/pc-caster-archetype.mjs:58-105`): QA ran it on the real 8.5.0 dedications in the noncaster multiclass catalog, and Barbarian (Athletics), Investigator (Society) and Ranger (Survival) also gain one replacement on overlap, as their published text says. Fighter and Monk build the path from a ChoiceSet and gain none (fail closed). Only Bard and Wizard have builder tests.
 
 ### What pf2e does with an overlap
 
@@ -70,8 +70,18 @@ No new numbers are written: the rule's value comes from the cloned item, and the
 | `assembleCasterArchetypeEntry` always uses the default | `pc-builder.bardArchetype` | "Fear", expected "Mirror Image" |
 | Drop the no-slot check at Create | `pc-builder.bardArchetype` | a level-4 pick is accepted (missing expected rejection) |
 
+## Lead follow-up (QA findings, same branch)
+
+QA approved with four LOW/MEDIUM-LOW findings. Closed in a third commit:
+
+- Role guard pinned: `tests/pc-builder.dedicationSkills.test.mjs` holds the real 8.5.0 ancestry feat Adroit Manipulation (literal Thievery upgrade, fixture blob SHA matched) beside a class-trained Thievery; the budget stays 3. Removing the `role === "dedication"` guard now fails it (QA mutation O4).
+- Preview marks the stored pick (`tests/generator-app.casterArchetype.test.mjs`, O14 now killed); a signature edit triggers no identity refresh (`tests/pc-edit.test.mjs`, O16 now killed).
+- Same-named ranked spells: the control no longer offers an ambiguous name, a stored ambiguous pick is stale (`signatureSpellName` requires exactly one match), the preview marks one row only, and the control's default is computed over every ranked spell so it equals the spell Create marks.
+- This record no longer claims only Wizard and Bard are affected.
+
 ## Known gaps
 
+- Timing: the replacement joins the level-1 training budget although the dedication arrives at level 2 or later. QA swept levels 3–19 and no skill increase lands on it; LOW, cosmetic.
 - Investigator Dedication also grants "another skill of your choice" beyond the replacement for an already-trained Society. The module supports only the Wizard and Bard archetypes, and the helper models the replacement-for-overlap rule only; a future Investigator archetype would need that extra pick modeled separately.
 - A dedication whose training comes from a `ChoiceSet` path (Fighter, Monk) contributes no replacement. That is deliberate fail-closed behavior and is covered by the helper test.
 - The native stand-in applies embedded `upgrade` rules like pf2e's `Math.max`; no live Foundry session was run.

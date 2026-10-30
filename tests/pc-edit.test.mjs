@@ -392,8 +392,11 @@ async function expectCode(promise, code) {
     return plan;
   };
 
-  const edited = await applyPCEdit(signaturePlan(6), { field: "archetypeSignature", value: "Mirror Image" }, { services, catalogs });
+  let recomputes = 0;
+  const countingServices = { ...services, recompute: async (...args) => { recomputes += 1; return services.recompute(...args); } };
+  const edited = await applyPCEdit(signaturePlan(6), { field: "archetypeSignature", value: "Mirror Image" }, { services: countingServices, catalogs });
   assert.deepEqual(edited.changed, ["archetypeSignature"]);
+  assert.equal(recomputes, 0, "a signature edit changes only the flag: no identity refresh");
   assert.equal(edited.plan.concept.archetypeSpellcasting.signature, "Mirror Image");
   assert.equal(signaturePlan(6).concept.archetypeSpellcasting.signature, undefined, "the input plan is not mutated");
   assert.deepEqual((await applyPCEdit(signaturePlan(6, "Mirror Image"), { field: "archetypeSignature", value: "Mirror Image" }, { services, catalogs })).changed,

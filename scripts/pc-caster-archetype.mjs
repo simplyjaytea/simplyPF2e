@@ -180,7 +180,8 @@ export function signatureSpellName(spells, signatures, stored = null) {
   const ranked = (spells ?? []).filter((spell) => Number.isInteger(spell?.rank) && spell.rank >= 1);
   if (!(signatures > 0) || !ranked.length) return null;
   if (typeof stored === "string" && stored) {
-    return ranked.some((spell) => spell.name === stored) ? stored : null;
+    // Create needs exactly one held spell of that name; two same-named spells cannot be told apart by the pick.
+    return ranked.filter((spell) => spell.name === stored).length === 1 ? stored : null;
   }
   const [index] = [...chooseSignatureIndexes(ranked, signatures)];
   return ranked[index]?.name ?? null;
@@ -222,20 +223,24 @@ export function archetypeSignatureControl(plan) {
   const held = (plan.resolved?.feats ?? []).map((pick) => (pick?.entry ? pick.name : null));
   const entry = casterArchetypePlans(held, concept.level).find((item) => item.archetype.pkg === planned.pkg);
   if (!entry || !(entry.signatures > 0) || !entry.archetype.signatureLabelKey) return null;
-  const spells = [];
+  const ranked = [];
   for (const pick of plan.resolved?.archetypeSpells ?? []) {
     const name = pick?.spell?.name ?? pick?.entry?.name;
     const rank = Number(pick?.spell?.rank);
     // Only a resolved, ranked repertoire spell can be a signature spell; a cantrip or a vanished pick is not offered.
-    if (!pick?.entry || !name || !Number.isInteger(rank) || rank < 1 || spells.some((spell) => spell.name === name)) continue;
-    spells.push({ name, rank, label: pick.entry.name ?? name });
+    if (!pick?.entry || !name || !Number.isInteger(rank) || rank < 1) continue;
+    ranked.push({ name, rank, label: pick.entry.name ?? name });
   }
+  // A name held twice (two same-named documents) is not offered: Create matches the pick by name and refuses an
+  // ambiguous one, so offering it would be a choice that cannot be built.
+  const spells = ranked.filter((spell) => ranked.filter((other) => other.name === spell.name).length === 1);
   if (!spells.length) return null;
   const stored = typeof planned.signature === "string" && planned.signature ? planned.signature : null;
   return {
     labelKey: entry.archetype.signatureLabelKey,
     options: spells.map((spell) => ({ value: spell.name, label: spell.label })),
-    value: signatureSpellName(spells, entry.signatures, stored)
+    // Over every ranked spell, so the shown default is the one Create marks.
+    value: signatureSpellName(ranked, entry.signatures, stored)
   };
 }
 

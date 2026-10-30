@@ -132,7 +132,12 @@ const mocks = {
   applyTreasureBudget: async (loot) => loot, pcStartingWealthGp: () => 0, equipmentValueGp: () => 0, lootValueGp: () => 0,
   createCharacterActor: async () => ({ actor: null, skillReport: null }),
   validatePCEditCompletion: (plan) => ({ complete: true, pending: [], errors: [], unresolved: [], manifest: {}, plan }),
-  applyPCEdit: async (plan) => ({ plan, changed: [], invalidated: [], equipmentGp: 0 }),
+  // Stands in for the real edit (tested in pc-edit.test.mjs): a signature edit stores the GM's pick on the concept.
+  applyPCEdit: async (plan, edit) => {
+    if (edit?.control !== "archetypeSignature") return { plan, changed: [], invalidated: [], equipmentGp: 0 };
+    plan.concept.archetypeSpellcasting = { ...plan.concept.archetypeSpellcasting, signature: "Mirror Image" };
+    return { plan, changed: ["archetypeSignature"], invalidated: [], equipmentGp: 0 };
+  },
   editableClassCandidates: () => [], pcEditFromControl: (control, value) => ({ control, value }), pcEditorInvalidatedControls: () => [],
   heritageMatchesAncestry: () => true, previewSchoolSpells: async () => null
 };
@@ -264,6 +269,12 @@ async function generate() {
   assert.deepEqual(Array.from(signatureControl.options, (option) => [option.value, option.label, option.selected]),
     [["Fear", "Fear", true], ["Mirror Image", "Mirror Image", false]], "only ranked repertoire spells, the deterministic default selected");
   assert.equal(app.context.pcEditor.blocked, false, "a valid default does not block");
+  // The GM's pick replaces the default in the preview and the control.
+  await actions.applyPCEdit.call(app, null, { dataset: { control: "archetypeSignature" } });
+  assert.deepEqual(Array.from(app.context.pcPreview.archetype.spells).filter((row) => row.signature).map((row) => [row.name, row.rank]),
+    [["Mirror Image", 2]], "the preview marks the stored pick, not the default");
+  const picked = Array.from(app.context.pcEditor.controls).find((entry) => entry.control === "archetypeSignature");
+  assert.deepEqual(Array.from(picked.options, (option) => [option.value, option.selected]), [["Fear", false], ["Mirror Image", true]]);
 }
 {
   // Level 4: no signature spell yet, so no signature control.

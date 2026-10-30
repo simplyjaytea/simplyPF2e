@@ -802,9 +802,10 @@ export class GeneratorApp extends SpfApp {
     ).find((entry) => entry.archetype.pkg === concept.archetypeSpellcasting.pkg);
     const picks = (resolved.archetypeSpells ?? []).map(({ spell, entry }) => ({ name: spell?.name ?? entry?.name, rank: spell?.rank }));
     const signature = signatureSpellName(picks, plan?.signatures ?? 0, concept.archetypeSpellcasting.signature ?? null);
-    rows.forEach((row, index) => {
-      if (row.found && signature !== null && picks[index]?.name === signature) row.signature = true;
-    });
+    // Mark one row, as Create flags one spell.
+    const marked = rows.findIndex((row, index) => row.found && signature !== null && picks[index]?.name === signature
+      && Number.isInteger(picks[index]?.rank) && picks[index].rank >= 1);
+    if (marked >= 0) rows[marked].signature = true;
     return rows;
   }
 
