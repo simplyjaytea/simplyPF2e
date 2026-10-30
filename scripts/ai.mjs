@@ -220,11 +220,6 @@ function throwIfGenerationCancelled(signal) {
   throw new AIRequestError(game.i18n.localize("SIMPLYPF2E.Errors.Cancelled"), { cancelled: true });
 }
 
-/**
- * Request a completion and parse it as JSON, retrying once on the transient
- * failure modes (empty content, truncated/unparseable JSON) before giving up.
- * @returns {Promise<{data: object, usage: object}>} parsed JSON plus token usage
- */
 /** Compact selector context; the GM request is transmitted separately and unmodified. */
 export function selectorSummary(concept, limit = 360) {
   const clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
@@ -239,6 +234,11 @@ export function selectorSummary(concept, limit = 360) {
   return word > 0 ? prefix.slice(0, word) : "";
 }
 
+/**
+ * Request a completion and parse it as JSON, retrying once on the transient
+ * failure modes (empty content, truncated/unparseable JSON) before giving up.
+ * @returns {Promise<{data: object, usage: object}>} parsed JSON plus token usage
+ */
 async function requestJSON(args) {
   // Presentation must never change the provider/validation outcome.
   const observer = args.onProgress;
@@ -247,7 +247,6 @@ async function requestJSON(args) {
     catch (err) { console.warn("simplypf2e | progress display failed", err); }
   } };
   let lastError = null;
-  let structuralRetry = null;
   // Tokens spent by failed attempts are still spent — sum usage across every
   // attempt that returned one, so the report reflects the real total.
   const total = { prompt: 0, completion: 0, total: 0, estimated: false };
@@ -265,7 +264,7 @@ async function requestJSON(args) {
       const requestArgs = attempt === 0 ? args : {
         ...args,
         retryAttempt: attempt,
-        user: structuralRetry ?? `${args.user}\n\nIMPORTANT RETRY: the previous response was truncated, invalid, or incomplete. Return one complete JSON object with every required field. No commentary.`
+        user: `${args.user}\n\nIMPORTANT RETRY: the previous response was truncated, invalid, or incomplete. Return one complete JSON object with every required field. No commentary.`
       };
       const { content, usage, finishReason, reasoningChars } = await requestCompletion(requestArgs);
       addUsage(usage);
@@ -284,10 +283,6 @@ async function requestJSON(args) {
       }
       const structureProblem = args.validate ? args.validate(data) : taskResponseProblem(args.task, data);
       if (structureProblem) {
-        if (attempt === 0 && args.user.length > 4000) {
-          const retry = `Previous JSON response:\n${JSON.stringify(data)}\n\nValidation error: ${structureProblem}\nReturn the corrected complete JSON object with all required fields. No commentary.`;
-          if (retry.length < args.user.length) structuralRetry = retry;
-        }
         throw new AIRequestError(
           game.i18n.format("SIMPLYPF2E.Errors.BadStructure", { detail: structureProblem }),
           {

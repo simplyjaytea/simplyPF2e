@@ -414,7 +414,7 @@ PATH=/var/lib/openbot/OpenBot/Shared/.tools/node22/bin:$PATH node tools/prompt-b
 - Not verified: a real model's picks with aliases. The first live PC and NPC generations are the quality check; compare picks and the provider's reported token counts.
 
 
-## Phase 2b: bounded context and short retries
+## Phase 2b: bounded context and smaller lists (short retries reverted, see follow-up)
 
 Offline estimates at 3.5 chars/token, compared with a69f2a7. No provider or Foundry calls. Each row shows input prompt estimate.
 
@@ -476,3 +476,11 @@ Offline estimates at 3.5 chars/token, compared with a69f2a7. No provider or Foun
 Selectors use a deterministic 360-character concept summary; the original GM request stays separate. Loot draft retains full backstory because it generates the actual first-draft items, where later story details can influence the haul. Equipment and loot caps are 60, loot scroll spells 24, and actions 48; exact keyword matches are retained even if this exceeds the nominal equipment cap. These keywords include draft names in the production callers. A large prompt with a parsed but structurally invalid reply retries with the prior JSON and validation error; malformed or truncated replies retain the full prompt. All replies still resolve against the original candidate map. A short retry may be unable to reconstruct an omitted candidate from a list no longer present, and both summary and shortlist can change selection quality.
 
 `tests/ai.tokenRound2.test.mjs` fails on a69f2a7 (missing summary export) and passes here. Five temporary mutations were killed: dropping the GM request, increasing the equipment cap, removing exact-draft overflow, shortening an unparseable retry, and allowing a third attempt. These are targeted tests, not a live-model quality test.
+
+## Phase 2b follow-up (Lead review)
+
+- **Short structural retry reverted.** The retry sent only the prior JSON and the validation error. Every user prompt over 4,000 characters is a selector prompt whose candidate list lives in that user prompt, so a reply missing a pick (for example `classId`) could not be repaired without the list: the retry would fail and the whole generation would be lost, which costs more than the ~8k characters it saved. Retries again resend the full prompt; the test pins that a structural retry starts with the full original prompt (mutation "short retry" is killed). Concept calls, whose user prompts are small, never qualified.
+- `getScrollSpellCandidates` always keeps exact first-draft names (it previously did so only when the caller passed exactly 24). Tests now reach the scroll and creature-ability paths through the real candidate functions; mutations removing either keep, the 48 ability cap, the equipment keep and the 360-character summary cap are all killed.
+- Harness after follow-up (input tokens @3.5): L1 Fighter 8,628; L8 Bard 11,108; Fighter + Bard Dedication 10,087; caster NPC 7,406; encounter 14,333; Forge 1,887; extra purchase pass 2,366. Happy-path totals are unchanged by the revert.
+- From v0.3.5.86 to here: L1 Fighter 20.1k→8.6k (−57%), L8 Bard 25.2k→11.1k (−56%), Fighter + Bard Dedication 23.4k→10.1k (−57%), NPC 13.0k→7.4k (−43%), encounter 23.4k→14.3k (−39%).
+- What remains is mostly fixed instruction text: system prompts are now about half of every flow (L1 Fighter 14.5k of 30.2k characters; the PC concept system prompt alone is 7.6k). Trimming them is the next lever and needs care, because they carry the rules.

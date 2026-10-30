@@ -602,7 +602,8 @@ export async function getScrollSpellCandidates(maxRank = 10, keywords = [], { ma
     }
   }
   candidates.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
-  return limitSpellCandidates(candidates, keywords, limit, null, limit === LOOT_SCROLL_CANDIDATE_LIMIT);
+  // Exact first-draft scroll names always survive the cut, even above the cap.
+  return limitSpellCandidates(candidates, keywords, limit, null, true);
 }
 
 /**
