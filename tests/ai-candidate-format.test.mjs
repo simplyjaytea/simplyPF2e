@@ -97,4 +97,12 @@ assert.equal(aliased.resolve("E9"), null, "an unknown alias resolves to nothing"
 const shadowed = encodeCandidateList([{ id: "X1", name: "First" }, { id: "other", name: "Second" }], "X");
 assert.equal(shadowed.resolve("X1").candidate.name, "First", "an exact id is never shadowed by another candidate's alias");
 assert.equal(shadowed.resolve("X1X").candidate.name, "Second", "a colliding alias is extended deterministically");
+// Legacy short ids equal to generated aliases: every issued alias stays unique after the "X" suffix.
+{
+  const legacy = [...Array.from({ length: 70 }, (_, i) => `x${i}`), "S0", "S1"].map((id) => ({ id, name: id }));
+  const encoded = encodeCandidateList(legacy, "S");
+  const aliases = encoded.entries.map((entry) => entry.alias.toUpperCase());
+  assert.equal(new Set(aliases).size, aliases.length, "no two candidates share an alias");
+  for (const entry of encoded.entries) assert.equal(encoded.resolve(entry.alias), entry, `${entry.alias} resolves to its own candidate`);
+}
 console.log("ai-candidate-format.test.mjs: shared candidate aliases are deterministic and fail closed");

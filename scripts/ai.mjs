@@ -870,7 +870,8 @@ When the Original GM request permits carried equipment, pick the logical items t
  * @returns {Promise<{loot: {name: string, quantity: number}[], usage: object}>}
  */
 export async function selectLoot({ concept, candidates, scrollCandidates = [], onProgress, signal }) {
-  const lootEncoding = encodeCandidateList(candidates, "L");
+  // "I", not "L": loot lines carry level tags like "(L2)", which must never read as an alias.
+  const lootEncoding = encodeCandidateList(candidates, "I");
   const scrollEncoding = encodeCandidateList(scrollCandidates, "S");
   const byType = new Map();
   for (const entry of lootEncoding.entries) {

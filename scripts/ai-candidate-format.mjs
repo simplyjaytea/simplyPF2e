@@ -26,7 +26,8 @@ export function encodeCandidateList(candidates, prefix = "C") {
     let alias = `${prefix}${entries.length.toString(36).toUpperCase()}`;
     // A short test/legacy ID may equal a generated alias. Never let an exact
     // ID reply be shadowed by a different candidate's alias.
-    while (reservedIds.has(alias) && reservedIds.get(alias) !== candidate) alias += "X";
+    // The suffixed alias must also differ from every alias already issued.
+    while ((reservedIds.has(alias) && reservedIds.get(alias) !== candidate) || byAlias.has(alias.toUpperCase())) alias += "X";
     const entry = {
       alias,
       id,

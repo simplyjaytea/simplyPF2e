@@ -97,6 +97,11 @@ try {
   assert.equal(abc.classCandidate, fighter.ref);
   assert.equal(abc.heritage, "Human Heritage");
 
+  // heritageId null means no heritage, even when the model also writes a heritage name.
+  replies.push({ ancestryId: ancestryAlias, heritageId: null, heritage: "Human Heritage", backgroundId: backgroundAlias, classId: classAlias, keyAbility: "str" });
+  const noHeritage = await ai.selectAncestryBackgroundClass(abcArgs);
+  assert.equal(noHeritage.heritageCandidate, null, "a null heritageId is not overridden by a heritage name");
+
   // A foreign list's alias is unknown and must not resolve (a heritage alias as classId).
   const lockedConcept = { ...abcArgs.concept, class: "Rogue", requiredIdentity: { class: rogue } };
   replies.push({ ancestryId: ancestryAlias, heritageId: heritageAlias, backgroundId: backgroundAlias, classId: heritageAlias, keyAbility: "str" });
@@ -172,7 +177,7 @@ try {
   const scroll = (name, rank, id) => ({ id: longId("pf2e.spells-srd", id), name, rank, traits: [], ref: ref("pf2e.spells-srd", id) });
   const potion = item("Potion of Healing", "potion", "consumable", 1);
   const fireballScroll = scroll("Fireball", 3, "fireball-scroll");
-  replies.push({ loot: [{ id: "L0", quantity: 2 }, { scrollSpellId: "S0", rank: 3, quantity: 1 }] });
+  replies.push({ loot: [{ id: "I0", quantity: 2 }, { scrollSpellId: "S0", rank: 3, quantity: 1 }] });
   const loot = await ai.selectLoot({
     concept: { name: "Alias Loot", level: 5, rarity: "common", blurb: "", traits: [], loot: [{ name: "Potion", quantity: 1 }], equipment: [] },
     candidates: [potion],
@@ -183,6 +188,16 @@ try {
   assert.equal(loot.loot[0].candidate, potion.ref);
   assert.equal(loot.loot[1].name, "Scroll of Fireball (Rank 3)");
   assert.equal(loot.loot[1].scrollCandidate, fireballScroll.ref);
+  assert.match(promptOf(requests.at(-1)), /I0 \| Potion of Healing \(L1\)/, "loot aliases do not share the level tag's letter");
+  // A level tag copied as an id ("L1") is not an alias; an exact name in the id field still resolves (name fallback).
+  replies.push({ loot: [{ id: "L1", quantity: 1 }, { id: "Potion of Healing", quantity: 1 }] });
+  const tagged = await ai.selectLoot({
+    concept: { name: "Alias Loot", level: 5, rarity: "common", blurb: "", traits: [], loot: [{ name: "Potion", quantity: 1 }], equipment: [] },
+    candidates: [potion],
+    scrollCandidates: [fireballScroll]
+  });
+  assert.equal(tagged.loot.length, 1, "a copied level tag resolves to nothing");
+  assert.equal(tagged.loot[0].candidate, potion.ref, "the exact-name fallback is kept");
 
   // ---- creature abilities
   const ability = (name, id) => ({ id: longId("pf2e.bestiary-ability-glossary-srd", id), name, traits: [], ref: ref("pf2e.bestiary-ability-glossary-srd", id) });
@@ -194,6 +209,12 @@ try {
   });
   assertNoLongIds(requests.at(-1), "abilities");
   assert.equal(abilities.abilities[0].candidate, grab.ref);
+  replies.push({ abilityIds: ["A7", "ZZ"] });
+  const noAbilities = await ai.selectCreatureAbilities({
+    concept: { name: "Alias Beast", level: 3, blurb: "", description: "", traits: [], specialAbilities: [{ name: "Grab", glossary: "Grab" }] },
+    candidates: [grab]
+  });
+  assert.equal(noAbilities.abilities.length, 0, "an unknown ability alias never falls back to the first candidate");
 
   // ---- spell consumables
   const consumableSpell = scroll("Fireball", 3, "fireball-consumable");
@@ -225,6 +246,14 @@ try {
   assertNoLongIds(requests.at(-1), "parcel permanents");
   assert.equal(permanents.picks[0].candidateId, longId("pf2e.equipment-srd", "cube"));
   assert.deepEqual(permanents.dropped, []);
+  replies.push({ picks: [{ slot: "perm-1", candidate: "P9" }] });
+  const unknownPermanent = await ai.selectParcelPermanents("recall", {
+    partyLevel: 5, slots: [{ id: "perm-1", allowedLevels: [5] }],
+    candidates: [item("Cube of Recall", "cube", "equipment", 5)]
+  });
+  // An unknown value passes through raw (the parcel assigner then drops it as unoffered); it never becomes the first id.
+  assert.ok(unknownPermanent.picks.every((pick) => pick.candidateId !== longId("pf2e.equipment-srd", "cube")),
+    "an unknown permanent alias never maps to the first candidate");
 
   // Every captured prompt (including the retries/failures above) is alias-only.
   for (const [index, request] of requests.entries()) {

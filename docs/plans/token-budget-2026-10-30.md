@@ -345,7 +345,7 @@ Only calls whose size changed are listed. `before` is `aed67a2`; `after` is this
 | Encounter | **flow** | | | **23,361 / 32,705** | **16,425 / 22,996** |
 | Forge | **flow** | | | **1,887 / 2,642** | **1,887 / 2,642** (already alias-only) |
 
-Flow reductions: **PC −54% to −55%** (L1 20.1k→9.1k, L8 25.2k→12.5k, archetype 23.4k→11.2k),
+Flow reductions: **PC −50% to −55%** (L1 20.1k→9.1k, L8 25.2k→12.5k, archetype 23.4k→11.2k),
 **NPC −32%**, **encounter −30%**, **Forge 0**. The optional extra purchase pass also drops from
 5,055 to 2,978 tokens @3.5 (−41%). The PC concept call itself falls 157 chars from the removed
 bullet; the spell system prompt grows 20 chars from the ID-accuracy wording.
@@ -403,3 +403,12 @@ PATH=/var/lib/openbot/OpenBot/Shared/.tools/node22/bin:$PATH node tools/prompt-b
   is imported.
 - A failed structural reply forces the real one-retry path; the retry measurement above is produced
   by deliberately returning `{}` once, then a valid object.
+
+## Phase 2a follow-up (Lead, after QA APPROVE)
+
+- `cf0d5c3`: `getIndex` requests `system.ancestry`. Foundry's index returns only requested fields, so without it every heritage looked ancestry-agnostic and the offered-ancestry filter was a no-op live. `tests/compendium.heritageAncestry.test.mjs` now uses an index mock that honours `fields` and fails without the field. The harness reads packs directly, so it never showed this.
+- QA finding 1 (LOW-MEDIUM): loot lines read `L3 | Healing Potion (L2)`, so a copied level tag looked like an alias. Loot items now use prefix `I`; a reply of `L1` resolves to nothing (test).
+- QA finding 3: a legacy short id equal to a generated alias could make the `X`-suffixed alias equal a later alias. The suffix loop now also skips aliases already issued (test with 70 ids then `S0`, `S1`).
+- QA survivors now killed: N10 (unknown permanent alias → first id), N20 (unknown ability alias → first candidate), N4 (`heritageId: null` overridden by a name), N1 (exact-name fallback in the id field, loot case).
+- Harness rerun: unchanged totals (9,077 / 12,539 / 11,155 / 8,822 / 16,425 / 1,887 tokens @3.5).
+- Not verified: a real model's picks with aliases. The first live PC and NPC generations are the quality check; compare picks and the provider's reported token counts.
