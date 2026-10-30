@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
-  BASIC_SPELLCASTING_RANK_LEVELS, CASTER_ARCHETYPES, applyArchetypeChoice, assembleCasterArchetypeEntry, casterArchetypeFeat,
-  casterArchetypePlans, chooseSignatureIndexes, defaultArchetypeChoice, eligibleArchetypeChoices, isCasterPackage
+  BASIC_SPELLCASTING_RANK_LEVELS, CASTER_ARCHETYPES, applyArchetypeChoice, archetypeSignatureControl, assembleCasterArchetypeEntry, casterArchetypeFeat,
+  casterArchetypePlans, chooseSignatureIndexes, defaultArchetypeChoice, eligibleArchetypeChoices, isCasterPackage, signatureSpellName
 } from "../scripts/pc-caster-archetype.mjs";
 import { MULTICLASS_PACKAGES, multiclassAbilityBlocker, multiclassPickBlocker } from "../scripts/pc-multiclass.mjs";
 
@@ -250,6 +250,39 @@ assert.deepEqual([...chooseSignatureIndexes(ranks(0, 0, 1, 1), 1)], [2], "the fi
 assert.deepEqual([...chooseSignatureIndexes(ranks(0, 0), 1)], [], "cantrips are never signature spells");
 assert.deepEqual([...chooseSignatureIndexes(ranks(1, 2), 0)], []);
 
+// The stored pick is honored only while it is still a ranked repertoire spell; otherwise the deterministic default
+// stands (preview/editor) or null is reported (Create refuses it).
+const named = (...list) => list.map(([name, rank]) => ({ name, rank }));
+assert.equal(signatureSpellName(named(["Detect Magic", 0], ["Fear", 1], ["Mirror Image", 2]), 1), "Fear", "the default is unchanged");
+assert.equal(signatureSpellName(named(["Detect Magic", 0], ["Fear", 1], ["Mirror Image", 2]), 1, "Mirror Image"), "Mirror Image", "a stored pick wins");
+assert.equal(signatureSpellName(named(["Detect Magic", 0], ["Fear", 1]), 1, "Haste"), null, "a vanished pick is reported, not replaced");
+assert.equal(signatureSpellName(named(["Detect Magic", 0], ["Fear", 1]), 1, "Detect Magic"), null, "a cantrip cannot be a signature spell");
+assert.equal(signatureSpellName(named(["Detect Magic", 0], ["Fear", 1]), 0, "Fear"), null, "no allowance before level 6");
+assert.equal(signatureSpellName([], 1), null);
+
+// The editor control: offered only while the held plan allows a signature, listing exactly the ranked repertoire
+// spells; the stored pick wins, a stale one shows the placeholder instead of a silent default.
+const controlFor = (levelValue, spells, signature) => archetypeSignatureControl({
+  concept: { level: levelValue, archetypeSpellcasting: { pkg: "bard", ...(signature === undefined ? {} : { signature }) } },
+  resolved: {
+    feats: [{ name: "Bard Dedication", entry: { packId: "p", _id: "ded" } }, { name: "Basic Bard Spellcasting", entry: { packId: "p", _id: "basic" } }],
+    archetypeSpells: spells.map(([name, rank]) => ({ spell: { name, rank }, entry: { name } }))
+  }
+});
+const repertoire = [["Detect Magic", 0], ["Fear", 1], ["Mirror Image", 2]];
+assert.equal(controlFor(4, repertoire), null, "no control before the Basic feat's signature level");
+assert.deepEqual(controlFor(6, repertoire), { labelKey: "SIMPLYPF2E.PCEdit.ArchetypeSignature",
+  options: [{ value: "Fear", label: "Fear" }, { value: "Mirror Image", label: "Mirror Image" }], value: "Fear" }, "the default selection");
+assert.equal(controlFor(6, repertoire, "Mirror Image").value, "Mirror Image", "the stored pick");
+assert.equal(controlFor(6, repertoire, "Haste").value, null, "a stale pick asks for a new one");
+assert.equal(controlFor(6, [["Detect Magic", 0]], null), null, "nothing ranked to choose");
+// Two same-named ranked spells (two packs): Create matches a pick by name, so that name is neither offered nor accepted.
+const twin = [["Fear", 1], ["Fear", 1], ["Mirror Image", 2]];
+assert.deepEqual(controlFor(6, twin).options, [{ value: "Mirror Image", label: "Mirror Image" }], "an ambiguous name is not offered");
+assert.equal(controlFor(6, twin, "Fear").value, null, "and a stored ambiguous pick is stale");
+assert.equal(signatureSpellName(named(["Fear", 1], ["Fear", 1]), 1, "Fear"), null);
+assert.equal(archetypeSignatureControl({ concept: { level: 6, archetypeSpellcasting: { pkg: "wizard" } }, resolved: { feats: [], archetypeSpells: [] } }), null);
+
 // Choice options: the dedication's own filter, slug values, sorted; the default only when eligible.
 const loadTagged = async (name) => { const json = await load(name); return { name: json.name, tags: json.system.traits.otherTags }; };
 const muses = await Promise.all(["enigma", "maestro", "polymath", "warrior", "zoophonia"].map(loadTagged));
@@ -297,6 +330,12 @@ assert.deepEqual(eligibleArchetypeChoices(bard.choice, [
   assert.equal(built.spells.length, 5);
   assert.ok(built.spells.every((item) => item.system.location.value === "bard-entry" && !("heightenedLevel" in item.system.location)));
   assert.deepEqual(built.spells.filter((item) => item.system.location.signature).map((item) => item.name), ["Fear"], "one signature: the rank-1 spell");
+  // The GM's pick replaces the default and nothing else; an identity the entry does not hold fails closed.
+  const chosenPicks = [await mk("detect-magic", 0), await mk("light", 0), await mk("fear", 1), await mk("mirror-image", 2), await mk("haste", 3)];
+  const chosen = assembleCasterArchetypeEntry({ plan, entryId: "bard-entry", spells: chosenPicks, newId: () => "s", signatureIdentity: chosenPicks[3].identity });
+  assert.deepEqual(chosen.spells.filter((item) => item.system.location.signature).map((item) => item.name), ["Mirror Image"], "the picked signature spell");
+  assert.throws(() => assembleCasterArchetypeEntry({ plan, entryId: "e", spells: chosenPicks, newId: () => "s", signatureIdentity: "missing" }),
+    /not in the archetype's repertoire/, "a pick the entry no longer holds never falls back to the default");
   // Level 4: no signature; arcane-only spell rejected as non-occult.
   const l4 = assembleCasterArchetypeEntry({ plan: casterArchetypePlans(["Bard Dedication", "Basic Bard Spellcasting"], 4)[0], entryId: "e", newId: () => "x",
     spells: [await mk("detect-magic", 0), await mk("light", 0), await mk("fear", 1)] });

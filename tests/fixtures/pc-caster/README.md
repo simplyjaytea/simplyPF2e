@@ -10,3 +10,5 @@ Spells (`packs/pf2e/spells/spells/`): cantrips `detect-magic`, `electric-arc`, `
 Also (fix/caster-gate): rank 2 `invisibility`, `web`; rank 3 `lightning-bolt`, same provenance (blob SHAs matched).
 
 Bard (feat/bard-archetype), same provenance (blob SHAs matched `pf2e-8.5.0`): `bard-dedication.json` (`feats/archetype/bard/level-2/`), `basic-bard-spellcasting.json` (`level-4/`), `expert-bard-spellcasting.json` (`level-12/`), `master-bard-spellcasting.json` (`level-18/`); the five bard muses `enigma`, `maestro`, `polymath`, `warrior`, `zoophonia` (`packs/pf2e/class-features/`, tag `bard-muse`); spell `haste` (rank 3, arcane/occult/primal).
+
+Dedication skills (feat/dedication-skills), same provenance (blob SHA `5f3379aa` matched `pf2e-8.5.0`): `adroit-manipulation.json` (`packs/pf2e/feats/ancestry/halfling/level-1/`), an ancestry feat with a literal Thievery `ActiveEffectLike` upgrade, used to pin that only a dedication's overlap grants a replacement skill.

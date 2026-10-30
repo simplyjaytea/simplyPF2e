@@ -6,7 +6,7 @@
  *
  * Control names: ancestry | heritage | background | class | classPath |
  * classPath.<bridge> | keyAbility | backgroundLore | feat.<slot> |
- * equipment.<index>.
+ * equipment.<index> | archetypeChoice | archetypeSignature.
  * An empty heritage or classPath value means "none" (cleared); any other empty
  * value is refused, so a placeholder option can never be applied.
  *
@@ -18,11 +18,12 @@
  * a bridge comes from concept.classPathCandidates[bridge].
  */
 import { PC_EDIT_CODES, classCastsSpells } from "./pc-edit.mjs";
+import { archetypeSignatureControl } from "./pc-caster-archetype.mjs";
 import { pcIdentityKey } from "./pc-identity.mjs";
 
 const NULLABLE = new Set(["heritage", "classPath"]);
 const KEY_FIELDS = new Set(["ancestry", "background", "class"]);
-const VALUE_FIELDS = new Set(["keyAbility", "backgroundLore", "archetypeChoice"]);
+const VALUE_FIELDS = new Set(["keyAbility", "backgroundLore", "archetypeChoice", "archetypeSignature"]);
 const FEAT_CONTROL = /^feat\.(\d+)$/;
 const EQUIPMENT_CONTROL = /^equipment\.(\d+)$/;
 const CLASS_PATH_CONTROL = /^classPath\.(.+)$/s;
@@ -85,6 +86,8 @@ export function pcEditorSelections(plan) {
     backgroundLore: pick("backgroundLore", concept.backgroundLore ?? "")
   };
   if (concept.archetypeSpellcasting?.choice) selections.archetypeChoice = concept.archetypeSpellcasting.choice.value ?? "";
+  const signature = archetypeSignatureControl(plan);
+  if (signature) selections.archetypeSignature = pick("archetypeSignature", signature.value ?? "");
   for (const [bridge, ref] of Object.entries(concept.classPathCandidates ?? {})) {
     selections[`classPath.${bridge}`] = pick(`classPath.${bridge}`, keyOf(ref));
   }

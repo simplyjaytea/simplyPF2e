@@ -171,4 +171,26 @@ assert.throws(() => pcEditFromControl("archetypeChoice", "  "), (error) => error
   assert.ok(!("archetypeChoice" in pcEditorSelections({ concept: {}, resolved: { feats: [], equipment: [] }, pending: [] })), "no control without an archetype choice");
 }
 
+// Signature-spell control (feat/dedication-skills control name; the archetype's own rule).
+assert.deepEqual(pcEditFromControl("archetypeSignature", " Mirror Image "), { field: "archetypeSignature", value: "Mirror Image" });
+assert.throws(() => pcEditFromControl("archetypeSignature", "   "), (error) => error.code === "PC_EDIT_INVALID");
+{
+  const bardPlan = (signature) => ({
+    concept: { level: 6, archetypeSpellcasting: { pkg: "bard", ...(signature === undefined ? {} : { signature }) } },
+    resolved: {
+      feats: [{ name: "Bard Dedication", entry: { packId: "p", _id: "d" } }, { name: "Basic Bard Spellcasting", entry: { packId: "p", _id: "b" } }],
+      archetypeSpells: [["Detect Magic", 0], ["Fear", 1], ["Mirror Image", 2]]
+        .map(([name, rank]) => ({ spell: { name, rank }, entry: { name } }))
+    },
+    pending: []
+  });
+  assert.equal(pcEditorSelections(bardPlan()).archetypeSignature, "Fear", "the default Create will use is the control's selection");
+  assert.equal(pcEditorSelections(bardPlan("Mirror Image")).archetypeSignature, "Mirror Image", "the stored pick");
+  assert.equal(pcEditorSelections(bardPlan("Haste")).archetypeSignature, "", "a stale pick shows the placeholder, not the default");
+  assert.equal(pcEditorSelections({ ...bardPlan(), pending: [{ field: "archetypeSignature", reason: "x" }] }).archetypeSignature, "",
+    "a pending re-pick clears the selection");
+  assert.ok(!("archetypeSignature" in pcEditorSelections({ concept: { level: 6, archetypeSpellcasting: { pkg: "bard" } }, resolved: { feats: [], archetypeSpells: [] }, pending: [] })),
+    "no control before the level 6 signature allowance");
+}
+
 console.log("pc-editor.test.mjs: ok");

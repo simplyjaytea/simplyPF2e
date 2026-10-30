@@ -11,7 +11,7 @@ import { isAdvancedSchoolSpellFeat, isArcaneSchoolSource, schoolAdvancedSpellLin
 import { preselectChoiceSets } from "./choice-set.mjs";
 import { ABILITY_BOOST_LEVELS, PC_WEALTH_BY_LEVEL, buildFeatSlots, featSlotLocation, pcSpellcastingProfile, pcSpellPlan } from "./pc-tables.mjs";
 import { SETTINGS, getSetting } from "./settings.mjs";
-import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTraining, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
+import { CORE_SKILLS, SKILL_ATTRIBUTES, normalizeSkillPriorities, initialSkillTraining, dedicationSkillReplacements, allocateCharacterSkills, characterSkillSnapshot } from "./pc-skills.mjs";
 import { applyCharacterLoadout } from "./pc-loadout.mjs";
 import { getClassPathCandidates, preflightClassPaths, stageClassPaths } from "./class-paths.mjs";
 import { assertPCIdentity } from "./pc-identity.mjs";
@@ -1018,7 +1018,11 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
     throw new Error("simplypf2e | resolved key ability does not match the required identity");
   }
 
-  const { ranks: initialRanks, replacements } = initialSkillTraining(resolved.classDoc.system, resolved.backgroundDoc.system);
+  const initialTraining = initialSkillTraining(resolved.classDoc.system, resolved.backgroundDoc.system);
+  const initialRanks = initialTraining.ranks;
+  // Class/background duplicates are provable now; a dedication's own duplicate is added below, once
+  // its feat is loaded, because the dedication is the item that names the skill.
+  let replacements = initialTraining.replacements;
   const backgroundLore = [];
   const concreteBackgroundLore = resolveBackgroundLore(resolved.backgroundDoc, concept.requiredIdentity?.backgroundLore);
 
@@ -1090,6 +1094,13 @@ export async function createCharacterActor(concept, resolved, { img = null, sele
       continue;
     }
     const data = toItemData(doc);
+    // A dedication that trains a skill the PC already has grants a replacement skill of the PC's choice
+    // (Player Core, initial proficiencies). The rank itself comes from the feat's cloned ActiveEffectLike
+    // (`upgrade` = max, so stacking is harmless); only the extra choice is modeled, through the ordinary
+    // training budget and priority order.
+    if (multiclassFeatInfo(data.name)?.role === "dedication") {
+      replacements += dedicationSkillReplacements([data.system], initialRanks);
+    }
     // The dedication's ChoiceSet is answered with the previewed choice (the same `selection` pf2e writes), so no prompt opens.
     if (archetypeChoice && casterArchetypeFeat(data.name)?.archetype === archetypeChoice.archetype
       && casterArchetypeFeat(data.name)?.role === "dedication") {
@@ -1605,16 +1616,39 @@ async function buildCasterArchetypeItems(concept, resolved) {
     const label = plan.archetype.label;
     const planned = Object.entries(plan.picks);
     const picked = resolved.archetypeSpells ?? [];
+    // The GM's signature pick (Bard, from level 6): it must still be exactly one of the ranked repertoire spells, or
+    // Create refuses before anything is written instead of quietly keeping the default.
+    const storedSignature = concept.archetypeSpellcasting?.pkg === plan.archetype.pkg
+      ? concept.archetypeSpellcasting.signature ?? null : null;
+    const failSignature = (reason) => {
+      throw new Error(game.i18n.format("SIMPLYPF2E.Errors.PCArchetypeSignature", { archetype: label, reason }));
+    };
+    let signatureName = null;
+    if (storedSignature !== null) {
+      if (typeof storedSignature !== "string" || !storedSignature) {
+        failSignature(game.i18n.format("SIMPLYPF2E.Errors.PCArchetypeSignaturePick", { spell: String(storedSignature) }));
+      }
+      if ((plan.signatures ?? 0) < 1) failSignature(game.i18n.localize("SIMPLYPF2E.Errors.PCArchetypeSignatureNoSlot"));
+      const matches = picked.filter(({ spell, entry }) => String(spell?.name ?? entry?.name ?? "") === storedSignature
+        && Number.isInteger(spell?.rank) && spell.rank >= 1);
+      if (matches.length !== 1) {
+        failSignature(game.i18n.format("SIMPLYPF2E.Errors.PCArchetypeSignaturePick", { spell: storedSignature }));
+      }
+      signatureName = storedSignature;
+    }
     const spells = [];
+    let signatureIdentity = null;
     for (const { spell, entry } of picked) {
       const name = spell?.name ?? entry?.name ?? "?";
       const doc = entry ? await getDocument(entry) : null;
       if (!doc) fail(label, `"${name}" could not be loaded`);
       const identity = doc.uuid ?? entry?.uuid ?? (entry?.packId && entry?._id ? `${entry.packId}:${entry._id}` : null);
+      if (signatureName !== null && name === signatureName) signatureIdentity = identity;
       spells.push({ rank: spell?.rank, identity, source: toItemData(doc) });
     }
+    if (signatureName !== null && !signatureIdentity) failSignature(game.i18n.format("SIMPLYPF2E.Errors.PCArchetypeSignaturePick", { spell: signatureName }));
     const built = assembleCasterArchetypeEntry({
-      plan, entryId: foundry.utils.randomID(), spells, newId: () => foundry.utils.randomID()
+      plan, entryId: foundry.utils.randomID(), spells, newId: () => foundry.utils.randomID(), signatureIdentity
     });
     if (built.rejected.length) {
       const [{ name, reason }] = built.rejected;
