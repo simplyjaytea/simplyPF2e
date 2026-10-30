@@ -1,4 +1,5 @@
-import { CANTRIP_DECK_RANK } from "./spell-consumables.mjs";
+import { limitForgeBaseCandidates } from "./compendium.mjs";
+import { CANTRIP_DECK_RANK, lootScrollMaxRank } from "./spell-consumables.mjs";
 import { hazardTraitCandidates } from "./hazard-candidates.mjs";
 import {
   SETTINGS, chatCompletionsUrl, getSetting, getProviderRequestConfig, isOfficialDeepSeekEndpoint,
@@ -882,6 +883,8 @@ When the Original GM request permits carried equipment, pick the logical items t
 export async function selectLoot({ concept, candidates, scrollCandidates = [], onProgress, signal }) {
   // "I", not "L": loot lines carry level tags like "(L2)", which must never read as an alias.
   const lootEncoding = encodeCandidateList(candidates, "I");
+  const maxScrollRank = lootScrollMaxRank(concept.level);
+  scrollCandidates = scrollCandidates.filter((spell) => Number(spell.rank) >= 1 && Number(spell.rank) <= maxScrollRank);
   const scrollEncoding = encodeCandidateList(scrollCandidates, "S");
   const byType = new Map();
   for (const entry of lootEncoding.entries) {
@@ -893,7 +896,7 @@ export async function selectLoot({ concept, candidates, scrollCandidates = [], o
     .map(([type, names]) => `${type}: ${names.join("; ")}`)
     .join("\n");
 
-  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting dropped loot for a Pathfinder 2e creature. Choose ONLY IDs from the provided lists. Coins are module-built and retain their first-draft quantities automatically. A scroll must use an offered spell ID and a rank no lower than that spell's base rank. Respond with a single JSON object and nothing else:
+  const system = `${GM_CONCEPT_PRIORITY}\n\nYou are selecting dropped loot for a Pathfinder 2e creature. Choose ONLY IDs from the provided lists. Coins are module-built and retain their first-draft quantities automatically. A scroll must use an offered spell ID and a rank no lower than that spell's base rank and no higher than ${maxScrollRank}. Respond with a single JSON object and nothing else:
 { "loot": [ { "id": string, "quantity": number }, { "scrollSpellId": string, "rank": number, "quantity": number } ] }
 ${RUNE_PREFIX_NOTE}
 Recreate the first-draft haul: replace each non-coin entry with the closest valid item or scroll spell. Keep the draft's quantities. Drop an entry only when nothing available comes close.`;
@@ -926,7 +929,9 @@ Recreate the first-draft haul: replace each non-coin entry with the closest vali
   for (const pick of picks) {
     const spell = candidateFromAlias(scrollEncoding, scrollCandidates, pick?.scrollSpellId);
     if (!spell) continue;
-    const rank = Math.min(Math.max(Math.round(Number(pick.rank) || spell.rank), spell.rank), 10);
+    const requestedRank = Math.round(Number(pick.rank) || spell.rank);
+    if (requestedRank > maxScrollRank) continue;
+    const rank = Math.max(requestedRank, spell.rank);
     loot.push({
       name: `Scroll of ${spell.name} (Rank ${rank})`,
       ...(spell.ref ? { scrollCandidate: spell.ref } : {}),
@@ -1518,7 +1523,7 @@ export async function generateRunedItemConcept({
   prompt, level, rarity, kind, baseCandidates, runeCandidates, potencyCandidates, secondaryCandidates, onProgress, signal
 }) {
   const secondaryLabel = kind === "weapon" ? "striking" : "resilient";
-  const encoded = encodeForgeCandidateGroups({ baseCandidates, potencyCandidates, secondaryCandidates, runeCandidates });
+  const encoded = encodeForgeCandidateGroups({ baseCandidates: limitForgeBaseCandidates(baseCandidates, prompt), potencyCandidates, secondaryCandidates, runeCandidates });
   const baseList = encoded.base.entries.map((c) => {
     const category = kind === "armor" && c.category ? `${c.category} armor, ` : "";
     return `${c.alias} | ${c.name}${c.level > 0 || category ? ` (${category}L${c.level})` : ""}`;

@@ -1,3 +1,4 @@
+import { lootScrollMaxRank } from "./spell-consumables.mjs";
 import {
   MODULE_ID, SETTINGS, getProviderAuthWarningKey, getProviderRequestConfig,
   authorizeApiKeyForCurrentBaseUrl
@@ -2243,6 +2244,7 @@ export class GeneratorApp extends SpfApp {
     } catch (err) {
       if (err?.cancelled) throw err;
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Equipment"), err?.usage);
+      this.#warnToleratedStage("equipment");
       console.warn(`${MODULE_ID} | grounded equipment selection failed; unmatched draft equipment will be skipped`, err);
     }
   }
@@ -2272,7 +2274,7 @@ export class GeneratorApp extends SpfApp {
         .filter(Boolean);
       const [candidates, scrollCandidates] = await Promise.all([
         getLootCandidates(concept.level, keywords, { maxRarity: this.#input.rarityCap }),
-        scrollKeywords.length ? getScrollSpellCandidates(10, scrollKeywords, { maxRarity: this.#input.rarityCap, limit: LOOT_SCROLL_CANDIDATE_LIMIT }) : []
+        scrollKeywords.length ? getScrollSpellCandidates(lootScrollMaxRank(concept.level), scrollKeywords, { maxRarity: this.#input.rarityCap, limit: LOOT_SCROLL_CANDIDATE_LIMIT }) : []
       ]);
       if (!candidates.length && !scrollCandidates.length) return;
       const { loot, omitted, usage } = await selectLoot({
@@ -2286,6 +2288,7 @@ export class GeneratorApp extends SpfApp {
     } catch (err) {
       if (err?.cancelled) throw err;
       this._recordTokens(game.i18n.localize("SIMPLYPF2E.Progress.Loot"), err?.usage);
+      this.#warnToleratedStage("loot");
       console.warn(`${MODULE_ID} | grounded loot selection failed; unmatched draft loot will be skipped`, err);
     }
   }

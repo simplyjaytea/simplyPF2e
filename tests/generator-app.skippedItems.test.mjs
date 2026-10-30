@@ -27,9 +27,12 @@ const i18n = {
 globalThis.game = { i18n, settings: { get: () => ({}) }, packs: new Map() };
 
 const source = (await readFile(new URL("../scripts/generator-app.mjs", import.meta.url), "utf8"))
-  .replace(/#(input|concept|resolved|manifest|error|busy|pcConcept|pcResolved|buildPreviewContext|buildPCPreviewContext|refineLoot)\b/g, "_test_$1");
+  .replace(/#(input|concept|resolved|manifest|error|busy|pcConcept|pcResolved|buildPreviewContext|buildPCPreviewContext|refineLoot|refineEquipment)\b/g, "_test_$1");
 const context = vm.createContext({ console: { warn() {}, error() {}, log() {} }, game: globalThis.game });
 let scrollOptions = null;
+let scrollMax = null;
+let failSelection = false;
+const warnings = [];
 const realLootCandidates = [{ name: "Healing Potion", ref: { packId: "test.equipment", _id: "potion" } }];
 const mocks = {
   needsExtraPurchasePass,
@@ -39,16 +42,17 @@ const mocks = {
   AI_TASK: {}, taskMaxTokens: () => 100,
   SpfApp: class {
     _beginProgress() { return new AbortController().signal; }
-    async _setStep() {} _skipStep() {} _warnStep() {} _recordTokens() {} _progressCallback() { return () => {}; }
+    async _setStep() {} _skipStep() {} _warnStep(key) { warnings.push(key); } _recordTokens() {} _progressCallback() { return () => {}; }
     _finishRun() {} _throwIfCancelled() {} async render() {}
   },
   normalizeConcept, normalizeLoot, parseCoins, parseScroll, computeStats, completionManifest, assertComplete,
+  lootScrollMaxRank: (level) => Math.min(10, Math.max(1, Math.ceil((level + 2) / 2))),
   normalizeSkillPriorities, skillPriorityOrder,
   findPreset: () => null,
-  getLootCandidates: async () => realLootCandidates,
-  getScrollSpellCandidates: async (maxRank, keywords, options) => { scrollOptions = options; return []; },
+  getLootCandidates: async () => { if (failSelection) throw new Error("offline"); return realLootCandidates; },
+  getScrollSpellCandidates: async (maxRank, keywords, options) => { scrollOptions = options; scrollMax = maxRank; return []; },
   selectLoot: async () => ({ loot: [], omitted: false }),
-  getEquipmentCandidates: async () => [], getAbilityCandidates: async () => [], getSpellCandidates: async () => [],
+  getEquipmentCandidates: async () => { if (failSelection) throw new Error("offline"); return []; }, getAbilityCandidates: async () => [], getSpellCandidates: async () => [],
 };
 const module = new vm.SourceTextModule(source, { context });
 await module.link((specifier) => {
@@ -127,7 +131,19 @@ function npcPreview(skipped) {
     equipment: [], loot: [{ name: "Scroll of Fireball (Rank 3)", quantity: 1 }] };
   scrollOptions = null;
   await app._test_refineLoot(concept);
+  assert.equal(scrollMax, 3, "level 4 scrolls are offered only through rank 3");
   assert.equal(scrollOptions?.maxRarity, "uncommon", "scroll candidates are offered only within the rarity cap");
+}
+
+// A tolerated provider/catalog failure must remain visible on its owning progress step.
+{
+  const app = npcPreview({ equipment: [], loot: [] });
+  const concept = {level: 1, equipment: [{name: "Sword"}], strikes: [], loot: [{name: "Lantern"}]};
+  warnings.length = 0; failSelection = true;
+  await app._test_refineEquipment(concept);
+  await app._test_refineLoot(concept);
+  failSelection = false;
+  assert.deepEqual(warnings, ["equipment", "loot"]);
 }
 
 console.log("generator-app.skippedItems.test.mjs: skipped names are listed in one escaped line; scroll candidates honor the rarity cap");

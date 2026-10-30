@@ -18,6 +18,7 @@ const stub = (json, packId) => {
   return { packId, _id: json._id, uuid: `Compendium.pf2e.${packId}.Item.${json._id}`, name: json.name };
 };
 const bardDedication = stub(load("bard-dedication"), "feats");
+const investigatorDedication = stub(load("investigator-dedication"), "feats");
 const wizardDedication = stub(load("wizard-dedication"), "feats");
 const cantrips = Object.fromEntries(["detect-magic", "light", "electric-arc", "telekinetic-projectile"].map((file) => [file, stub(load(file), "spells")]));
 // A held ancestry feat with its own literal skill-rank rule (Adroit Manipulation: Thievery upgrade to 1). It is not a
@@ -172,6 +173,13 @@ const rank1 = (slug) => created.system.skills[slug].rank;
   assert.ok(created._source.items.some((item) => item.name === "Adroit Manipulation"), "the ancestry feat is held and its rule applied");
   assert.equal(result.skillReport.trainingBudget, 3, "a non-dedication feat's overlapping skill rule grants no replacement");
   assert.equal(rank1("thievery"), 1);
+}
+
+// Investigator always grants one free skill, plus a second on Society overlap.
+for (const [trained, expected] of [[[], 4], [["society"], 5]]) {
+  const args = scenario("Investigator Dedication", investigatorDedication, trained, null, []);
+  const result = await createCharacterActor(args.concept, args.resolved);
+  assert.equal(result.skillReport.trainingBudget, expected);
 }
 
 console.log("pc-builder.dedicationSkills.test.mjs: dedication overlaps grant one replacement skill, no overlap adds none");

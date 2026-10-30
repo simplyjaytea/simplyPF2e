@@ -70,4 +70,14 @@ assert.match(taskResponseProblem(AI_TASK.RUNED_ITEM_CONCEPT, {
 assert.match(taskResponseProblem(AI_TASK.MAGIC_ITEM_CONCEPT, {
   name: "QA Charm", description: "A charm.", rarity: "common", usage: "worn", traits: [], bulk: 100, invested: true, effects: []
 }), /enum slugs/, "numeric bulk cannot pass the provider contract");
+runedReply = { baseItemId: "B0", potencyRuneId: "P0", secondaryRuneId: "none", propertyRuneIds: [], description: "A quiet blade." };
+const bases = Array.from({length: 100}, (_, i) => ({id:`id-${i}`, name:`Base ${String(i).padStart(3, "0")}`, level:0}));
+for (const kind of ["weapon", "armor"]) {
+  const choice = await generateRunedItemConcept({prompt:"Base 099", level:8, rarity:"common", kind, baseCandidates:bases, runeCandidates:[], potencyCandidates:[{id:"potency",name:"Potency"}], secondaryCandidates:[]});
+  const system = requests.at(-1).messages[0].content;
+  assert.equal((system.match(/B[0-9A-Z]+ \| Base/g) ?? []).length, 40);
+  assert.ok(system.includes("Base 099"));
+  assert.equal(choice.concept.baseItemId, "id-99");
+}
+
 console.log("forge provider enum contracts passed");

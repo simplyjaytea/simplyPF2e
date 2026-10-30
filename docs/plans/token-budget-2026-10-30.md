@@ -484,3 +484,9 @@ Selectors use a deterministic 360-character concept summary; the original GM req
 - Harness after follow-up (input tokens @3.5): L1 Fighter 8,628; L8 Bard 11,108; Fighter + Bard Dedication 10,087; caster NPC 7,406; encounter 14,333; Forge 1,887; extra purchase pass 2,366. Happy-path totals are unchanged by the revert.
 - From v0.3.5.86 to here: L1 Fighter 20.1k→8.6k (−57%), L8 Bard 25.2k→11.1k (−56%), Fighter + Bard Dedication 23.4k→10.1k (−57%), NPC 13.0k→7.4k (−43%), encounter 23.4k→14.3k (−39%).
 - What remains is mostly fixed instruction text: system prompts are now about half of every flow (L1 Fighter 14.5k of 30.2k characters; the PC concept system prompt alone is 7.6k). Trimming them is the next lever and needs care, because they carry the rules.
+
+## Forge base shortlist (mini-batch)
+
+The runed item prompt ranks the eligible weapon or armor bases using the existing keyword relevance score, offering 40 plus any additional exact candidate names explicitly mentioned in the GM request. The returned aliases still resolve only against that offered list. On the pinned offline Forge scenario, the full pool is 183 weapons and the prompt falls from 6,606 to 3,324 characters, or 1,887 to 950 estimated input tokens at 3.5 characters/token (2,642 to 1,330 at 2.5). Not provider counts. Ranking can exclude an unmentioned base that the AI might otherwise have preferred.
+
+The Forge provider test drives weapon and armor requests and asserts 40 offered candidates, retention of a named base and resolution back to its issued ID; it fails on feb0e31 (100 vs 40). `tests/miniBatch.test.mjs` also asserts that more than 40 explicitly named bases survive. Temporary mutants removing the cap or exact-name retention were both killed.

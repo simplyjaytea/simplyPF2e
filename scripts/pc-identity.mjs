@@ -36,7 +36,6 @@ const ABILITIES = Object.freeze({
   strength: "str", dexterity: "dex", constitution: "con", intelligence: "int",
   wisdom: "wis", charisma: "cha"
 });
-const ABILITY_NAMES = Object.freeze(Object.keys(ABILITIES).filter((key) => key.length > 3));
 
 const DECLARATION_FIELDS = Object.freeze({
   name: "name", ancestry: "ancestry", heritage: "heritage", background: "background",
@@ -323,9 +322,8 @@ function proseAmbiguity(parsed, resolved, catalogs) {
 
   const markerChecks = [
     ["classPath", /\b(?:racket|methodology|class\s+path)\b/iu],
-    ["class", /\bclass\b/iu], ["ancestry", /\bancestry\b/iu],
-    ["heritage", /\bheritage\b/iu], ["background", /\bbackground\b/iu],
-    ["name", /\b(?:named|called)\b/iu], ["keyAbility", /\bkey\s+ability\b/iu]
+    ["name", /\b(?:character|hero|adventurer)\s+(?:named|called)\b/iu],
+    ["keyAbility", /\bkey\s+ability\b/iu]
   ];
   // Only "racket", "methodology" and "class path" mark a class-path request in
   // prose. "school" and "thesis" are ordinary backstory words, so they bind
@@ -336,12 +334,7 @@ function proseAmbiguity(parsed, resolved, catalogs) {
       fail("PC_IDENTITY_AMBIGUOUS", field, `prose marks an identity request; set Required choices for ${fieldLabel(field)}`);
     }
   }
-  if (!resolved.has("keyAbility")) {
-    const fullAbility = new RegExp(`\\b(?:${ABILITY_NAMES.join("|")})\\b`, "iu");
-    if (fullAbility.test(freeText)) {
-      fail("PC_IDENTITY_AMBIGUOUS", "keyAbility", "prose mentions an ability; set Required choices for key ability");
-    }
-  }
+
 }
 
 /**

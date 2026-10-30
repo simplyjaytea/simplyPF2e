@@ -15,7 +15,7 @@ export function encodeCandidateList(candidates, prefix = "C") {
   const reservedIds = new Map();
   for (const candidate of list) {
     const id = String(candidate?.id ?? "").trim();
-    if (id && !reservedIds.has(id)) reservedIds.set(id, candidate);
+    if (id && !reservedIds.has(id.toUpperCase())) reservedIds.set(id.toUpperCase(), candidate);
   }
   const entries = [];
   const byAlias = new Map();
@@ -27,7 +27,7 @@ export function encodeCandidateList(candidates, prefix = "C") {
     // A short test/legacy ID may equal a generated alias. Never let an exact
     // ID reply be shadowed by a different candidate's alias.
     // The suffixed alias must also differ from every alias already issued.
-    while ((reservedIds.has(alias) && reservedIds.get(alias) !== candidate) || byAlias.has(alias.toUpperCase())) alias += "X";
+    while ((reservedIds.has(alias.toUpperCase()) && reservedIds.get(alias.toUpperCase()) !== candidate) || byAlias.has(alias.toUpperCase())) alias += "X";
     const entry = {
       alias,
       id,
@@ -41,13 +41,13 @@ export function encodeCandidateList(candidates, prefix = "C") {
   return {
     entries,
     /**
-     * Resolve one model-authored value: alias first (case-insensitive), then
-     * the exact issued ID for compatibility. Foreign aliases return null.
+     * Resolve one model-authored value: exact issued ID first, then
+     * the case-insensitive alias for compatibility. Foreign aliases return null.
      */
     resolve(value) {
       const key = String(value ?? "").trim();
       if (!key) return null;
-      return byAlias.get(key.toUpperCase()) ?? byId.get(key) ?? null;
+      return byId.get(key) ?? byAlias.get(key.toUpperCase()) ?? null;
     }
   };
 }

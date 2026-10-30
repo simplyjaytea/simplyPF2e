@@ -91,3 +91,9 @@ QA approved with four LOW/MEDIUM-LOW findings. Closed in a third commit:
 `PATH=/var/lib/openbot/OpenBot/Shared/.tools/node22/bin:$PATH node tools/check.mjs </dev/null`
 
 `Syntax passed: 64 scripts, 177 tests, 4 tooling files` · `Integrity passed: 464 imports, 1175 exports, 15 templates, 681 localization keys; 0 unused keys` · `Links passed: 249 links in 71 files` · `Regressions passed: 177 files` · `Manifest/localization JSON passed; Node v22.23.4`
+
+## Extra unconditional training (mini-batch)
+
+Scanned the seven supported multiclass dedications (Fighter, Investigator, Barbarian, Monk, Ranger, Wizard and Bard) in pinned pf2e 8.5.0. Only Investigator has an unconditional unrestricted extra skill in addition to a named skill. `investigator-dedication` adds one to the existing training budget: `packs/pf2e/feats/archetype/investigator/investigator-dedication.json`, “You become trained in Society and another skill of your choice.” Its Society overlap replacement remains additive, so an existing Society rank produces two choices. The other six descriptions grant conditional replacements, already handled separately, or a bounded choice, not an unconditional extra.
+
+The byte-identical source fixture and provenance live in `tests/fixtures/pc-caster/`. The builder test asserts no overlap +1 and Society overlap +2; its prior Bard case checks +0. This test fails on feb0e31 (3 vs 4) and passes with the change. `tests/miniBatch.test.mjs` pins the table and source sentence.

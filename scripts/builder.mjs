@@ -5,7 +5,7 @@ import { parseRunes, applyRunes, capRunes, runeGp, hasRunes } from "./runes.mjs"
 import { persistedExpectedItems } from "./post-create.mjs";
 import { coinEntry } from "./loot-actor.mjs";
 import { splitCurrencyGp } from "./treasure-parcel.mjs";
-import { buildSpellConsumable, spellConsumableTemplateRef } from "./spell-consumables.mjs";
+import { buildSpellConsumable, spellConsumableTemplateRef, lootScrollMaxRank } from "./spell-consumables.mjs";
 import {
   resolveNpcAbilityPackages, revalidateNpcAbilityPackages, npcPackageUnarmedStrike,
   registerNpcAbilityExpectations
@@ -609,18 +609,26 @@ export async function resolveLoot(concept, { exactContent = false, skipped = [] 
     const scroll = parseScroll(name);
     if (scroll) {
       let entry = null;
+      let spellDoc = null;
       if (isIssuedCandidate(scrollCandidate, getPacksFor("spells"))) {
         const doc = await getDocument(scrollCandidate);
         if (doc?.type === "spell" && !(doc.system?.traits?.value ?? []).includes("cantrip") && !(doc.system?.traits?.value ?? []).includes("focus") && !doc.system?.ritual) {
           entry = scrollCandidate;
+          spellDoc = doc;
         }
       } else if (!exactContent) {
         entry = await findEntry(getPacksFor("spells"), scroll.spellName, (e) =>
           e.type === "spell" && !(e.system?.traits?.value ?? []).includes("cantrip") && !(e.system?.traits?.value ?? []).includes("focus") && !e.system?.ritual
         );
       }
-      const baseRank = entry?.system?.level?.value ?? 1;
-      const rank = Math.min(Math.max(scroll.rank ?? baseRank, baseRank), 10);
+      const baseRank = spellDoc?.system?.level?.value ?? entry?.system?.level?.value ?? 1;
+      const maxRank = lootScrollMaxRank(concept.level);
+      if (baseRank > maxRank || (scroll.rank ?? baseRank) > maxRank) {
+        console.warn(`simplypf2e | dropped scroll loot "${name}": rank exceeds level ceiling ${maxRank}`);
+        skipped.push(name);
+        continue;
+      }
+      const rank = Math.max(scroll.rank ?? baseRank, baseRank);
       // A scroll's real price lives on the rank template it will be built
       // from at creation (there is no premade scroll item to price).
       // Without that template the scroll cannot be built, so it stays unresolved
